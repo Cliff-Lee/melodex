@@ -1,8 +1,34 @@
-# Melodex
+<p align="center">
+  <strong style="font-size: 32px;">MELODEX</strong>
+</p>
 
-## Don't shuffle. Flow.
+<h1 align="center">Don't shuffle. Flow.</h1>
 
-**Melodex turns the music you already have access to into continuous, personalised listening journeys.**
+<p align="center">
+  <strong>A local-first music player that turns your library into continuous, personalised listening journeys.</strong>
+</p>
+
+<p align="center">
+  <a href="https://github.com/Cliff-Lee/melodex/releases/latest"><img src="https://img.shields.io/github/v/release/Cliff-Lee/melodex?display_name=tag&sort=semver" alt="Latest release"></a>
+  <a href="https://github.com/Cliff-Lee/melodex/actions/workflows/test.yml"><img src="https://github.com/Cliff-Lee/melodex/actions/workflows/test.yml/badge.svg" alt="Tests"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/Cliff-Lee/melodex" alt="MIT licence"></a>
+  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Android-informational" alt="Platforms">
+</p>
+
+<p align="center">
+  <a href="https://github.com/Cliff-Lee/melodex/releases/latest"><strong>Download</strong></a> ·
+  <a href="docs/VISUAL_TOUR.md">Visual tour</a> ·
+  <a href="docs/START_HERE.md">Documentation</a> ·
+  <a href="docs/WHY_MELODEX.md">Why Melodex?</a>
+</p>
+
+<p align="center">
+  <img src="docs/images/play-for-me.png" alt="Melodex Play for Me screen" width="92%">
+</p>
+
+---
+
+## Music players choose the next track. Melodex chooses the next direction.
 
 Most players ask:
 
@@ -12,202 +38,218 @@ Melodex asks:
 
 > **What should this listening session feel like next?**
 
-It combines your music, your listening history, explicit feedback, and — where audio analysis is available — characteristics such as tempo, energy, key and structure to make the queue feel more intentional than ordinary shuffle.
+It combines your music, your listening history, explicit feedback and — when available — local audio analysis such as tempo, energy, key and structure to make queues feel intentional rather than random.
 
-**No subscription required. No AI required. Your listening history can stay local.**
-
-<p align="center">
-  <img src="docs/images/play-for-me.png" alt="Melodex Play for Me screen showing session controls and the music player" width="100%">
-</p>
-
-**[Download Melodex](https://github.com/Cliff-Lee/melodex/releases/latest)** · **[5-minute visual tour](docs/VISUAL_TOUR.md)** · **[Start here](docs/START_HERE.md)** · **[Why Melodex?](docs/WHY_MELODEX.md)**
+**Local-first. No subscription required. No AI required.**
 
 ---
 
 ## Why Melodex?
 
-### Flow instead of shuffle
+<table>
+<tr>
+<td width="50%" valign="top">
+
+### 🌊 Flow
 
 Shuffle treats every ordering as roughly equivalent.
 
 **Flow tries to make one track lead naturally into the next.**
 
-When the relevant audio is available, Melodex can consider tempo, energy, key, loudness, timbre, intro/outro structure and other local analysis. If deep analysis is unavailable, it falls back rather than pretending to know more than it does.
+When relevant audio analysis is available, Melodex can consider tempo, energy, key, loudness, timbre and structure. When it is not, it falls back rather than pretending to know more than it does.
 
-### A player that learns your taste
+</td>
+<td width="50%" valign="top">
 
-Melodex quietly learns from how you listen.
+### 🧠 Taste memory
 
-- **♥ Love** — a strong positive signal.
-- **Keep** — this belongs in my musical world.
-- **Finished tracks** — useful positive evidence.
-- **Early skips** — useful negative evidence without treating one skip as hatred.
-- **Rediscovery** — brings back music you liked but have not heard recently.
+Melodex quietly learns from how you listen:
+
+- **♥ Love** — strong positive signal
+- **Keep** — belongs in your musical world
+- completed tracks — positive evidence
+- early skips — useful negative evidence
+- rediscovery — brings back music you once liked
 
 Taste data is stored locally.
 
-### Familiar when you want it. Strange when you don't.
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
 
-<p align="center">
-  <img src="docs/images/familiar-surprising.png" alt="Melodex Familiar to Surprising control" width="100%">
-</p>
+### ↔ Familiar → Surprising
 
-The **Familiar ↔ Surprising** control changes how adventurous Melodex is allowed to be.
+Choose how adventurous a listening session is allowed to become.
 
-Move toward **Familiar** for comfort. Move toward **Surprising** when you want Melodex to reach further into your collection.
+Move toward **Familiar** for comfort.
 
-### Remember moments, not only tracks
+Move toward **Surprising** when you want Melodex to reach further into your collection.
 
-A favourite musical memory is often a point *inside* a song: an entrance, breakdown, lyric, solo or transition.
+</td>
+<td width="50%" valign="top">
+
+### 🔖 Moments
+
+A favourite musical memory is often a point *inside* a track: a breakdown, entrance, lyric, solo or transition.
 
 **Moments** lets you bookmark that exact point and return to it later.
 
-### AI is optional
+</td>
+</tr>
+</table>
 
-Melodex's core player does not need an LLM.
+### ✨ Optional AI, not AI-dependent
 
-Flow, local playback, taste memory and Play for Me work without one. If you connect Ollama, OpenWebUI or another compatible model, you can also express listening intent naturally:
+Melodex's core player does not require an LLM.
 
-> Keep this mood but make the next hour stranger.
+Flow, playback, taste memory and Play for Me work without one. If you connect Ollama, OpenWebUI or another compatible model, natural language becomes another interface to the player:
+
+> Keep this mood, but make the next hour stranger.
 
 > Start familiar, then gradually increase the energy.
 
 > Bring back something I used to like but haven't heard recently.
 
-The LLM is another interface to Melodex — not the music engine itself.
+---
+
+## See it in action
+
+<table>
+<tr>
+<td width="50%" align="center"><img src="docs/images/familiar-surprising.png" alt="Familiar to Surprising control"><br><strong>Control how adventurous the session becomes</strong></td>
+<td width="50%" align="center"><img src="docs/images/taste-controls.png" alt="Taste controls"><br><strong>Teach Melodex naturally as you listen</strong></td>
+</tr>
+<tr>
+<td width="50%" align="center"><img src="docs/images/moments.png" alt="Moments"><br><strong>Remember exact moments inside tracks</strong></td>
+<td width="50%" align="center"><img src="docs/images/ask-melodex.png" alt="Ask Melodex"><br><strong>Optional natural-language control</strong></td>
+</tr>
+</table>
+
+<p align="center"><a href="docs/VISUAL_TOUR.md"><strong>Take the 5-minute visual tour →</strong></a></p>
 
 ---
 
-## See it in five minutes
-
-### 1. Add your music
-
-Open **My music** and choose **Add folder…**.
-
-<p align="center">
-  <img src="docs/images/my-music-empty.png" alt="Empty My Music screen with Add folder button" width="100%">
-</p>
-
-Melodex indexes the folder without moving your original files.
-
-### 2. Your library appears
-
-<p align="center">
-  <img src="docs/images/my-music-library.png" alt="Melodex My Music screen populated with local tracks" width="100%">
-</p>
-
-You can play normally, queue tracks, or let Melodex build a session.
-
-### 3. Try Play for Me
-
-Choose a mode, session length, and how adventurous you want the session to be.
-
-<p align="center">
-  <img src="docs/images/play-for-me.png" alt="Melodex Play for Me screen" width="100%">
-</p>
-
-### 4. Teach it naturally
-
-<p align="center">
-  <img src="docs/images/taste-controls.png" alt="Melodex player controls showing Keep, Love and Queue controls" width="100%">
-</p>
-
-Use **Keep**, **♥**, complete tracks, or skip things you are not in the mood for. Melodex gradually builds a local taste memory.
-
-### 5. Connect the sources you want
-
-<p align="center">
-  <img src="docs/images/sources.png" alt="Melodex Music Sources screen showing local music, Jamendo, provider installation and Provider Bridge" width="100%">
-</p>
-
-Melodex itself is source-neutral. The public project ships with Local Files and a Jamendo reference source, plus the open Melodex Provider Protocol for compatible third-party providers.
-
-**[Continue the visual tour →](docs/VISUAL_TOUR.md)**
-
----
-
-## Install Melodex
+## Download
 
 You do **not** need Python, Git or developer tools to use a release build.
 
-**[Download the latest release](https://github.com/Cliff-Lee/melodex/releases/latest)**
-
-| Platform | Recommended download | Instructions |
+| Platform | Download | Installation |
 | --- | --- | --- |
-| macOS — Apple Silicon | `Melodex-macOS-arm64.dmg` | [Install on macOS](docs/INSTALL_MACOS.md) |
-| macOS — Intel | `Melodex-macOS-intel.dmg` | [Install on macOS](docs/INSTALL_MACOS.md) |
-| Windows 10/11 | `Melodex-Windows-x64-Setup.exe` | [Install on Windows](docs/INSTALL_WINDOWS.md) |
-| Windows portable | `Melodex-Windows-portable.zip` | [Install on Windows](docs/INSTALL_WINDOWS.md) |
-| Android preview | `Melodex-Android.apk` | [Install on Android](docs/INSTALL_ANDROID.md) |
+| macOS — Apple Silicon | `Melodex-macOS-arm64.dmg` | [Guide](docs/INSTALL_MACOS.md) |
+| macOS — Intel | `Melodex-macOS-intel.dmg` | [Guide](docs/INSTALL_MACOS.md) |
+| Windows 10/11 | `Melodex-Windows-x64-Setup.exe` | [Guide](docs/INSTALL_WINDOWS.md) |
+| Windows portable | `Melodex-Windows-portable.zip` | [Guide](docs/INSTALL_WINDOWS.md) |
+| Android preview | `Melodex-Android.apk` | [Guide](docs/INSTALL_ANDROID.md) |
+
+<p align="center"><a href="https://github.com/Cliff-Lee/melodex/releases/latest"><strong>Download the latest release →</strong></a></p>
 
 > **Android preview:** Android currently connects to a Provider Bridge running on a Mac, Windows PC, NAS or home server.
 
 ---
 
-## What can I do with it?
+## How it works
 
-| I want to… | Start here |
-| --- | --- |
-| Start listening quickly | [5-minute visual tour](docs/VISUAL_TOUR.md) |
-| Understand what makes Melodex different | [Why Melodex?](docs/WHY_MELODEX.md) |
-| Let Melodex choose music | [Play for Me](docs/VISUAL_TOUR.md#play-for-me) |
-| Make a queue feel less random | [Flow](docs/VISUAL_TOUR.md#flow-not-shuffle) |
-| Teach Melodex my taste | [Taste controls](docs/VISUAL_TOUR.md#teach-melodex-your-taste) |
-| Use natural-language control | [Ask Melodex](docs/VISUAL_TOUR.md#ask-melodex) |
-| Add another music source | [Providers](docs/PROVIDER_DEVELOPMENT.md) |
-| Listen from Android | [Android installation](docs/INSTALL_ANDROID.md) |
+```text
+Your music
+    ↓
+Local library / connected providers
+    ↓
+Optional audio analysis
+    ↓
+Taste memory + session intent
+    ↓
+Flow sequencing
+    ↓
+A queue designed to go somewhere
+```
 
----
-
-## Three ways to use Melodex
-
-**Sunday morning**
-
-> Keep things familiar, low-energy and spacious. Bring back something I haven't heard for a while.
-
-**Driving**
-
-> Start with known music. Gradually increase the energy. Avoid abrupt changes.
-
-**Headphones at night**
-
-> Stay near this mood, but slowly become stranger.
-
-Most of this can be done with Melodex's normal controls. An optional LLM gives you a more expressive way to state the intent.
-
----
-
-## Privacy
-
-Local listening history, taste memory, Moments and Flow analysis can remain on your device.
-
-Nothing needs to be sent to an LLM unless you explicitly configure one and submit a request. Provider credentials should never be included in LLM context.
+Melodex is source-neutral. It can work with local files and compatible providers without hard-coding a particular music service into the player.
 
 ---
 
 ## Providers
 
-Melodex Core is source-neutral. Providers implement the Melodex Provider Protocol (MPP).
+Melodex Core implements an open **Melodex Provider Protocol (MPP)**.
 
-- Built in: **Local Files**
-- Reference online source: **Jamendo**
-- Desktop: installable `.mdxprovider` packages
-- Mobile: authenticated **Provider Bridge**
+- **Built in:** Local Files
+- **Reference online source:** Jamendo
+- **Desktop:** installable `.mdxprovider` packages
+- **Mobile:** authenticated Provider Bridge
+- **SDK:** [`provider-sdk/`](provider-sdk/)
 
-Developer documentation: [`docs/PROVIDER_DEVELOPMENT.md`](docs/PROVIDER_DEVELOPMENT.md)
+Want to build a source integration? Start with the [Provider Development Guide](docs/PROVIDER_DEVELOPMENT.md).
 
-Provider SDK: [`provider-sdk/`](provider-sdk/)
+---
+
+## Privacy
+
+Melodex is designed to be local-first.
+
+Listening history, taste memory, Moments and Flow analysis can remain on your device. Nothing needs to be sent to an LLM unless you explicitly configure one and submit a request.
+
+Provider credentials should never be included in LLM context.
+
+[Read the privacy notes →](docs/PRIVACY.md)
+
+---
+
+## Documentation
+
+| I want to… | Start here |
+| --- | --- |
+| Get running quickly | [Start here](docs/START_HERE.md) |
+| See how Melodex works | [Visual tour](docs/VISUAL_TOUR.md) |
+| Understand the idea | [Why Melodex?](docs/WHY_MELODEX.md) |
+| Install on macOS | [macOS guide](docs/INSTALL_MACOS.md) |
+| Install on Windows | [Windows guide](docs/INSTALL_WINDOWS.md) |
+| Install on Android | [Android guide](docs/INSTALL_ANDROID.md) |
+| Connect an LLM | [LLM guide](docs/LLM_GUIDE.md) |
+| Build a provider | [Provider development](docs/PROVIDER_DEVELOPMENT.md) |
+| Build from source | [Build guide](docs/BUILD_FROM_SOURCE.md) |
+| Troubleshoot | [Troubleshooting](docs/TROUBLESHOOTING.md) |
+
+---
+
+## Development
+
+Melodex is open source and contributions are welcome.
+
+```bash
+git clone https://github.com/Cliff-Lee/melodex.git
+cd melodex
+```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for test commands, project conventions and contribution guidance.
+
+Useful starting points:
+
+- `desktop/` — desktop player
+- `android/` — Android client
+- `provider-sdk/` — provider SDK and examples
+- `docs/` — user and developer documentation
+- `scripts/` — release and development tooling
 
 ---
 
 ## Responsible source policy
 
-Melodex is designed for music that the user is authorised to access. The public project does not ship source-specific bypass logic, private credentials, copyrighted media, or access-control circumvention.
+Melodex is designed for music that the user is authorised to access.
 
-See [`RESPONSIBLE_USE.md`](RESPONSIBLE_USE.md).
+The public project does not ship source-specific bypass logic, private credentials, copyrighted media or access-control circumvention.
+
+See [RESPONSIBLE_USE.md](RESPONSIBLE_USE.md).
 
 ---
 
-## License
+## Roadmap
+
+Current priorities include richer provider permissions, additional first-party legal providers, improved local-library indexing, better phrase/beat-grid analysis, transition previews and stronger Android support.
+
+[See the roadmap →](ROADMAP.md)
+
+---
+
+## Licence
 
 MIT for Melodex code in this repository unless a subdirectory states otherwise. Third-party dependencies retain their own licences.
