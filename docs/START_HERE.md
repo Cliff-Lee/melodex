@@ -1,56 +1,59 @@
 # Start Here
 
-If you just want to use Melodex, start here. You do **not** need to understand providers, DSP, APIs, Git, or language models.
+You do **not** need to understand providers, DSP, APIs, Git or language models to use Melodex.
 
-## 1. Install Melodex
+## New to Melodex?
 
-Choose your platform:
+Start with the **[5-minute visual tour](VISUAL_TOUR.md)**.
 
-- [macOS installation](INSTALL_MACOS.md)
-- [Windows installation](INSTALL_WINDOWS.md)
-- [Android installation](INSTALL_ANDROID.md)
+It shows the actual application and covers:
+
+1. adding your music;
+2. browsing the library;
+3. Play for Me;
+4. Familiar ↔ Surprising;
+5. teaching Melodex your taste;
+6. Flow;
+7. Moments;
+8. music sources;
+9. optional LLM control.
+
+## Install
+
+- [macOS](INSTALL_MACOS.md)
+- [Windows](INSTALL_WINDOWS.md)
+- [Android](INSTALL_ANDROID.md)
 - [Installation chooser](INSTALL.md)
 
-The easiest first experience is on **macOS or Windows**. Android currently connects to a Melodex Provider Bridge running on another computer.
+## The shortest possible introduction
 
-## 2. Add music
+1. Install Melodex.
+2. Open **My music**.
+3. Press **Add folder…**.
+4. Select your music folder.
+5. Open **Play for Me**.
+6. Choose a session length.
+7. Set **Familiar ↔ Surprising**.
+8. Press **Build this journey**.
 
-After opening desktop Melodex:
+That is enough to start.
 
-1. Open **Sources**.
-2. Click **Add local folder…**.
-3. Choose a folder containing your own/authorized audio files.
-4. Wait for indexing to finish.
-5. Open **My music** to check the tracks are there.
+Everything involving Jamendo, third-party providers, Provider Bridge or an LLM is optional.
 
-That is enough to start using Melodex. Online sources and AI features are optional.
+## Five controls worth knowing
 
-## 3. Press Play for me
+- **Play for Me** — build a listening session.
+- **Flow queue** — resequence the upcoming queue.
+- **Keep** — tell Melodex this belongs in your taste.
+- **♥** — strong positive feedback.
+- **••• → Save Moment** — remember the exact point in a song.
 
-Open **Play for me** and let Melodex create a listening journey from your connected catalogue.
+## Want to understand the idea?
 
-You can control how adventurous it is with **Familiar ↔ Surprising**.
+Read **[Why Melodex?](WHY_MELODEX.md)**.
 
-## 4. Five controls worth knowing
+## Need help?
 
-- **Play for me** — choose music for you.
-- **Flow queue** — intelligently resequence the upcoming queue.
-- **Keep** — tell Melodex this belongs in your taste memory.
-- **♥** — give strong positive feedback.
-- **••• → Save Moment** — remember the exact point in a track.
-
-Everything else is optional.
-
-## 5. Optional extras
-
-Once basic playback works, you can explore:
-
-- [Jamendo reference source](JAMENDO_REFERENCE_PROVIDER.md)
-- [Installing third-party providers](PROVIDER_INSTALLATION.md)
-- [LLM / AI control](LLM_GUIDE.md)
-- [OpenWebUI](OPENWEBUI.md)
-- [Ollama](OLLAMA.md)
-
-## Something not working?
-
-Go to [Troubleshooting](TROUBLESHOOTING.md) or the [FAQ](FAQ.md).
+- [User guide](USER_GUIDE.md)
+- [Troubleshooting](TROUBLESHOOTING.md)
+- [FAQ](FAQ.md)
