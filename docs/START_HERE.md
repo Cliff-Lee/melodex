@@ -1,23 +1,56 @@
-# Start here
+# Start Here
 
-Melodex is designed so you do not need to understand providers, DSP or language models.
+If you just want to use Melodex, start here. You do **not** need to understand providers, DSP, APIs, Git, or language models.
 
-## First launch
+## 1. Install Melodex
 
-Choose one of three paths:
+Choose your platform:
 
-1. **Play my music** — add a folder containing your own audio files.
-2. **Explore independent music** — configure the Jamendo reference source with your own developer client ID.
-3. **Connect a source** — install a desktop `.mdxprovider` or connect to a Provider Bridge.
+- [macOS installation](INSTALL_MACOS.md)
+- [Windows installation](INSTALL_WINDOWS.md)
+- [Android installation](INSTALL_ANDROID.md)
+- [Installation chooser](INSTALL.md)
 
-Once music is available, press **Play for me**. Melodex builds a listening journey from your connected catalogue.
+The easiest first experience is on **macOS or Windows**. Android currently connects to a Melodex Provider Bridge running on another computer.
 
-## Five controls worth knowing
+## 2. Add music
 
-- **Play for me**: choose music for you.
-- **Flow queue**: intelligently reorder the upcoming queue.
-- **Keep**: tell Melodex this belongs in your taste memory.
-- **♥**: a strong positive signal.
-- **••• → Save Moment**: remember the exact point in a track.
+After opening desktop Melodex:
+
+1. Open **Sources**.
+2. Click **Add local folder…**.
+3. Choose a folder containing your own/authorized audio files.
+4. Wait for indexing to finish.
+5. Open **My music** to check the tracks are there.
+
+That is enough to start using Melodex. Online sources and AI features are optional.
+
+## 3. Press Play for me
+
+Open **Play for me** and let Melodex create a listening journey from your connected catalogue.
+
+You can control how adventurous it is with **Familiar ↔ Surprising**.
+
+## 4. Five controls worth knowing
+
+- **Play for me** — choose music for you.
+- **Flow queue** — intelligently resequence the upcoming queue.
+- **Keep** — tell Melodex this belongs in your taste memory.
+- **♥** — give strong positive feedback.
+- **••• → Save Moment** — remember the exact point in a track.
 
 Everything else is optional.
+
+## 5. Optional extras
+
+Once basic playback works, you can explore:
+
+- [Jamendo reference source](JAMENDO_REFERENCE_PROVIDER.md)
+- [Installing third-party providers](PROVIDER_INSTALLATION.md)
+- [LLM / AI control](LLM_GUIDE.md)
+- [OpenWebUI](OPENWEBUI.md)
+- [Ollama](OLLAMA.md)
+
+## Something not working?
+
+Go to [Troubleshooting](TROUBLESHOOTING.md) or the [FAQ](FAQ.md).

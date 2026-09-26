@@ -27,25 +27,33 @@ Melodex is a source-neutral music player that turns the music you already have a
 - installable `.mdxprovider` packages on desktop
 - authenticated Provider Bridge for Android and other clients
 
-## Quick start — desktop
+## Install Melodex
 
-```bash
-cd desktop
-python -m venv .venv
-source .venv/bin/activate       # Windows: .venv\\Scripts\\activate
-pip install -r requirements.txt
-python run.py
-```
+You do **not** need Python or developer tools to use a release build.
 
-Then choose **Sources → Add local folder**.
+Download the latest release: **https://github.com/Cliff-Lee/melodex/releases/latest**
 
-For online independent music, add your own Jamendo developer `client_id` under **Sources → Jamendo settings**.
+| Platform | Recommended download | Instructions |
+| --- | --- | --- |
+| macOS — Apple Silicon | `Melodex-macOS-arm64.dmg` | [Install on macOS](docs/INSTALL_MACOS.md) |
+| macOS — Intel | `Melodex-macOS-intel.dmg` | [Install on macOS](docs/INSTALL_MACOS.md) |
+| Windows 10/11 | `Melodex-Windows-x64-Setup.exe` | [Install on Windows](docs/INSTALL_WINDOWS.md) |
+| Windows portable | `Melodex-Windows-portable.zip` | [Install on Windows](docs/INSTALL_WINDOWS.md) |
+| Android | `Melodex-Android.apk` | [Install on Android](docs/INSTALL_ANDROID.md) |
 
-## Quick start — Android
+New user? Start with **[Start Here](docs/START_HERE.md)**.
 
-The Android app is a Provider Bridge client. Start Melodex on a desktop/NAS, choose **Sources → Provider Bridge**, then enter the displayed URL and bearer token in the Android app.
+> **Android note:** the current Android preview connects to a Provider Bridge running on a Mac, Windows PC, NAS, or home server. Install desktop Melodex first for the easiest setup.
 
-See [`docs/INSTALL_ANDROID.md`](docs/INSTALL_ANDROID.md).
+### Fastest desktop first run
+
+1. Install and open Melodex.
+2. Choose **Sources → Add local folder…**.
+3. Select a folder containing music you are authorized to play.
+4. Open **Play for me** or **My music**.
+5. Use **Flow queue** when you want the upcoming tracks resequenced into a smoother journey.
+
+Jamendo, third-party providers and LLM features are optional.
 
 ## Providers
 

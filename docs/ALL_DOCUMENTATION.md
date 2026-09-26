@@ -7,6 +7,7 @@
 - [Troubleshooting](TROUBLESHOOTING.md)
 
 ## Installation
+- [Installation chooser](INSTALL.md)
 - [macOS](INSTALL_MACOS.md)
 - [Windows](INSTALL_WINDOWS.md)
 - [Android](INSTALL_ANDROID.md)
