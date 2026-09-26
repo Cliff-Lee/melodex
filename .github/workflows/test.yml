@@ -14,7 +14,7 @@ jobs:
           python-version: '3.12'
       - run: pip install pytest numpy mutagen requests
       - run: python -m compileall -q desktop/melodex
-      - run: pytest -q desktop/tests
+      - run: PYTHONPATH=desktop pytest -q desktop/tests
       - run: python scripts/release_check.py
       - name: Provider SDK tests
         run: |
