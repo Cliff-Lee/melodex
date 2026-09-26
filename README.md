@@ -1,4 +1,7 @@
 <p align="center">
+  <img src="docs/images/melodex.jpg" width="100%" alt="Melodex — Don't shuffle. Flow.">
+</p>
+<p align="center">
   <strong style="font-size: 32px;">MELODEX</strong>
 </p>
 
