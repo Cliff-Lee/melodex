@@ -1,0 +1,47 @@
+name: SDK / protocol bug
+about: Report a reproducible problem in the SDK, spec, CLI, or docs
+title: "[Bug] "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: "Please do not include credentials, cookies, tokens, signed URLs, or private keys."
+  - type: input
+    id: version
+    attributes:
+      label: Version / commit
+      placeholder: "0.1.0 or commit SHA"
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Protocol / OpenAPI
+        - Manifest / schema
+        - Python SDK
+        - CLI
+        - Demo provider
+        - Documentation
+        - GitHub workflow
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction steps
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true

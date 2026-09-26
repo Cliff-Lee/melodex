@@ -1,0 +1,251 @@
+openapi: 3.1.0
+info:
+  title: Melodex Provider Protocol
+  version: 0.1.0
+  description: >-
+    Source-neutral HTTP mapping for the Melodex Provider Protocol (MPP).
+    This preview specification may change before a 1.0 compatibility guarantee.
+servers:
+  - url: https://provider.example.test
+security:
+  - BearerAuth: []
+paths:
+  /v1/health:
+    get:
+      operationId: health
+      security: []
+      responses:
+        '200':
+          description: Provider health
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+  /v1/provider:
+    get:
+      operationId: providerInfo
+      responses:
+        '200':
+          description: Provider metadata and capabilities
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProviderInfo'
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /v1/search:
+    post:
+      operationId: search
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SearchRequest'
+      responses:
+        '200':
+          description: Search results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchResponse'
+        '400': {$ref: '#/components/responses/Error'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /v1/tracks/{track_id}:
+    get:
+      operationId: getTrack
+      parameters:
+        - in: path
+          name: track_id
+          required: true
+          schema: {type: string}
+      responses:
+        '200':
+          description: Normalized track
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Track'
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/Error'}
+  /v1/albums/{album_id}:
+    get:
+      operationId: getAlbum
+      parameters:
+        - in: path
+          name: album_id
+          required: true
+          schema: {type: string}
+      responses:
+        '200':
+          description: Normalized album
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Album'
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/Error'}
+  /v1/artists/{artist_id}:
+    get:
+      operationId: getArtist
+      parameters:
+        - in: path
+          name: artist_id
+          required: true
+          schema: {type: string}
+      responses:
+        '200':
+          description: Normalized artist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Artist'
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/Error'}
+  /v1/playback/resolve:
+    post:
+      operationId: resolvePlayback
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlaybackRequest'
+      responses:
+        '200':
+          description: Playable resource
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaybackResource'
+        '400': {$ref: '#/components/responses/Error'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/Error'}
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+  responses:
+    Error:
+      description: Provider error
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ErrorEnvelope'}
+    Unauthorized:
+      description: Authentication required or invalid
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ErrorEnvelope'}
+  schemas:
+    Health:
+      type: object
+      required: [status]
+      properties:
+        status: {type: string, enum: [ready, auth_required, degraded]}
+        message: {type: [string, 'null']}
+    ProviderInfo:
+      type: object
+      required: [id, name, version, protocol_version, capabilities]
+      properties:
+        id: {type: string}
+        name: {type: string}
+        version: {type: string}
+        protocol_version: {type: string, const: '1.0'}
+        capabilities:
+          type: array
+          uniqueItems: true
+          items: {type: string}
+    SearchRequest:
+      type: object
+      additionalProperties: false
+      required: [query]
+      properties:
+        query: {type: string, minLength: 1}
+        types:
+          type: array
+          uniqueItems: true
+          items: {type: string, enum: [track, album, artist]}
+        limit: {type: integer, minimum: 1, maximum: 100, default: 25}
+        cursor: {type: [string, 'null']}
+    SearchResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            oneOf:
+              - {$ref: '#/components/schemas/Track'}
+              - {$ref: '#/components/schemas/Album'}
+              - {$ref: '#/components/schemas/Artist'}
+        next_cursor: {type: [string, 'null']}
+    Track:
+      type: object
+      required: [type, provider_id, provider_track_id, title]
+      properties:
+        type: {type: string, const: track}
+        provider_id: {type: string}
+        provider_track_id: {type: string}
+        title: {type: string}
+        artist: {type: string}
+        album: {type: string}
+        duration_ms: {type: [integer, 'null'], minimum: 0}
+        artwork_url: {type: [string, 'null'], format: uri}
+        isrc: {type: [string, 'null']}
+        musicbrainz_recording_id: {type: [string, 'null']}
+        metadata: {type: object, additionalProperties: true}
+    Album:
+      type: object
+      required: [type, provider_id, provider_album_id, title]
+      properties:
+        type: {type: string, const: album}
+        provider_id: {type: string}
+        provider_album_id: {type: string}
+        title: {type: string}
+        artist: {type: string}
+        year: {type: [integer, 'null']}
+        artwork_url: {type: [string, 'null'], format: uri}
+        metadata: {type: object, additionalProperties: true}
+    Artist:
+      type: object
+      required: [type, provider_id, provider_artist_id, name]
+      properties:
+        type: {type: string, const: artist}
+        provider_id: {type: string}
+        provider_artist_id: {type: string}
+        name: {type: string}
+        artwork_url: {type: [string, 'null'], format: uri}
+        metadata: {type: object, additionalProperties: true}
+    PlaybackRequest:
+      type: object
+      additionalProperties: false
+      required: [provider_track_id, purpose]
+      properties:
+        provider_track_id: {type: string, minLength: 1}
+        purpose: {type: string, enum: [stream, prefetch, offline]}
+    PlaybackResource:
+      type: object
+      required: [kind, url, headers, seekable, cache_policy]
+      properties:
+        kind: {type: string, enum: [http, file, hls]}
+        url: {type: string}
+        headers:
+          type: object
+          additionalProperties: {type: string}
+        mime_type: {type: [string, 'null']}
+        expires_at: {type: [string, 'null'], format: date-time}
+        seekable: {type: boolean}
+        cache_policy: {type: string, enum: [none, session, temporary, offline_allowed]}
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, retryable]
+          properties:
+            code:
+              type: string
+              enum: [AUTH_REQUIRED, NOT_FOUND, RATE_LIMITED, TEMPORARY_FAILURE, UNSUPPORTED, PERMISSION_DENIED, PLAYBACK_EXPIRED, INVALID_REQUEST]
+            message: {type: string}
+            retryable: {type: boolean}

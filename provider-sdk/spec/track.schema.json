@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://melodex.example/schema/track-v1.json",
+  "title": "Melodex Track v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["type", "provider_id", "provider_track_id", "title"],
+  "properties": {
+    "type": {"const": "track"},
+    "provider_id": {"type": "string", "minLength": 1},
+    "provider_track_id": {"type": "string", "minLength": 1},
+    "title": {"type": "string", "minLength": 1},
+    "artist": {"type": "string"},
+    "album": {"type": "string"},
+    "duration_ms": {"type": ["integer", "null"], "minimum": 0},
+    "artwork_url": {"type": ["string", "null"], "format": "uri"},
+    "isrc": {"type": ["string", "null"]},
+    "musicbrainz_recording_id": {"type": ["string", "null"]},
+    "metadata": {"type": "object"}
+  }
+}

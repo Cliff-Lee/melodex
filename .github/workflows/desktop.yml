@@ -1,0 +1,67 @@
+name: Build desktop
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            name: macOS-arm64
+          - os: macos-13
+            name: macOS-intel
+          - os: windows-latest
+            name: Windows-x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build macOS
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          cd desktop
+          chmod +x build_macos.sh
+          ./build_macos.sh
+          if [ -f dist/Melodex.dmg ]; then mv dist/Melodex.dmg dist/Melodex-${{ matrix.name }}.dmg; fi
+      - name: Build Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          cd desktop
+          .\build_windows.ps1
+          choco install innosetup -y --no-progress
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
+      - name: Upload macOS artifact
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Melodex-${{ matrix.name }}
+          path: desktop/dist/Melodex-${{ matrix.name }}.dmg
+      - name: Upload Windows artifact
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Melodex-${{ matrix.name }}
+          path: |
+            desktop/dist/Melodex-Windows-portable.zip
+            desktop/dist/Melodex-Windows-x64-Setup.exe
+      - name: Attach desktop assets to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            desktop/dist/Melodex-${{ matrix.name }}.dmg
+            desktop/dist/Melodex-Windows-portable.zip
+            desktop/dist/Melodex-Windows-x64-Setup.exe
+          fail_on_unmatched_files: false

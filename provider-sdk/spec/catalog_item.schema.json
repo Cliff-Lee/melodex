@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://melodex.example/schema/catalog-item-v1.json",
+  "title": "Melodex Catalog Item v1",
+  "oneOf": [
+    {"$ref": "track.schema.json"},
+    {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["type", "provider_id", "provider_album_id", "title"],
+      "properties": {
+        "type": {"const": "album"},
+        "provider_id": {"type": "string", "minLength": 1},
+        "provider_album_id": {"type": "string", "minLength": 1},
+        "title": {"type": "string", "minLength": 1},
+        "artist": {"type": "string"},
+        "year": {"type": ["integer", "null"]},
+        "artwork_url": {"type": ["string", "null"], "format": "uri"},
+        "metadata": {"type": "object"}
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["type", "provider_id", "provider_artist_id", "name"],
+      "properties": {
+        "type": {"const": "artist"},
+        "provider_id": {"type": "string", "minLength": 1},
+        "provider_artist_id": {"type": "string", "minLength": 1},
+        "name": {"type": "string", "minLength": 1},
+        "artwork_url": {"type": ["string", "null"], "format": "uri"},
+        "metadata": {"type": "object"}
+      }
+    }
+  ]
+}

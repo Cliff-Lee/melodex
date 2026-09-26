@@ -1,0 +1,401 @@
+from __future__ import annotations
+
+import json
+import threading
+import time
+import uuid
+from pathlib import Path
+from typing import Any
+
+from PySide6.QtCore import Qt, QTimer, Signal, QObject
+from PySide6.QtGui import QAction, QDesktopServices
+from PySide6.QtWidgets import (
+    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QListWidget,
+    QListWidgetItem, QStackedWidget, QLineEdit, QComboBox, QFileDialog, QMessageBox,
+    QSlider, QTextEdit, QInputDialog, QDialog, QFormLayout, QDialogButtonBox, QCheckBox
+)
+
+from .paths import app_data_dir
+from .provider_manager import ProviderManager
+from .flow import FlowEngine
+from .mind import MindEngine
+from .user_state import UserState
+from .player import FlowPlayer
+from .llm_bridge import LLMClient, LLMSettings
+from .bridge_server import ProviderBridge
+
+
+class WorkerSignals(QObject):
+    done = Signal(object)
+    error = Signal(str)
+
+
+def _track_text(t: dict[str, Any]) -> str:
+    artist = str(t.get("artist") or "Unknown artist")
+    title = str(t.get("title") or "Unknown track")
+    source = str(t.get("provider_id") or "")
+    return f"{artist} — {title}" + (f"   ·   {source}" if source else "")
+
+
+class MainWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Melodex")
+        self.resize(1280, 800)
+        self.data_dir = app_data_dir()
+        self.providers = ProviderManager(self.data_dir)
+        self.state = UserState(self.data_dir / "taste.sqlite3")
+        self.flow = FlowEngine(self.data_dir / "flow.sqlite3")
+        self.mind = MindEngine(self.state, self.flow)
+        self.llm = LLMClient()
+        self.bridge: ProviderBridge | None = None
+        self.current_history_id = 0
+        self.current_track_started = 0.0
+        self.current_track: dict[str, Any] | None = None
+        self.current_page = "home"
+
+        self.player = FlowPlayer(self.providers.resolve, self._transition_for, self)
+        self.player.trackChanged.connect(self._on_track_changed)
+        self.player.positionChanged.connect(self._on_position)
+        self.player.error.connect(lambda s: self.statusBar().showMessage(s, 7000))
+        self.player.queueChanged.connect(self._refresh_queue)
+
+        self._build_ui()
+        self._show_home()
+
+    # ------------------------------- UI
+    def _build_ui(self):
+        root = QWidget(); self.setCentralWidget(root)
+        outer = QVBoxLayout(root); outer.setContentsMargins(0,0,0,0); outer.setSpacing(0)
+        body = QWidget(); body_l = QHBoxLayout(body); body_l.setContentsMargins(0,0,0,0); body_l.setSpacing(0)
+        outer.addWidget(body, 1)
+
+        self.sidebar = QWidget(); self.sidebar.setFixedWidth(190)
+        side = QVBoxLayout(self.sidebar); side.setContentsMargins(14,18,14,14)
+        logo = QLabel("MELODEX"); logo.setStyleSheet("font-size:22px;font-weight:700;letter-spacing:2px")
+        side.addWidget(logo)
+        for text, page in [("Home","home"),("Play for me","for_you"),("Discover","discover"),("My music","library"),("Playlists","playlists"),("Moments","moments"),("Ask Melodex","ask"),("Sources","sources")]:
+            b = QPushButton(text); b.setCursor(Qt.PointingHandCursor); b.clicked.connect(lambda _=False,p=page:self.open_page(p)); side.addWidget(b)
+        side.addStretch(1)
+        self.power_toggle = QCheckBox("Show power tools")
+        self.power_toggle.stateChanged.connect(self._power_changed)
+        side.addWidget(self.power_toggle)
+        body_l.addWidget(self.sidebar)
+
+        self.stack = QStackedWidget(); body_l.addWidget(self.stack, 1)
+        self.pages: dict[str, QWidget] = {}
+        for name in ["home","for_you","discover","library","playlists","moments","ask","sources"]:
+            w = QWidget(); self.pages[name]=w; self.stack.addWidget(w)
+        self._build_home(); self._build_for_you(); self._build_discover(); self._build_library(); self._build_playlists(); self._build_moments(); self._build_ask(); self._build_sources()
+
+        self.queue_panel = QWidget(); self.queue_panel.setFixedWidth(320)
+        ql = QVBoxLayout(self.queue_panel); ql.setContentsMargins(12,12,12,12)
+        qhead = QHBoxLayout(); qhead.addWidget(QLabel("Up next")); flow_btn=QPushButton("Flow queue"); flow_btn.clicked.connect(self._flow_queue); qhead.addWidget(flow_btn); ql.addLayout(qhead)
+        self.queue_list = QListWidget(); self.queue_list.itemDoubleClicked.connect(self._queue_jump); ql.addWidget(self.queue_list,1)
+        self.queue_panel.hide(); body_l.addWidget(self.queue_panel)
+
+        # player bar
+        bar = QWidget(); bar.setFixedHeight(112); bl=QHBoxLayout(bar); bl.setContentsMargins(20,8,20,8)
+        prev=QPushButton("◀"); prev.clicked.connect(self.player.previous); play=QPushButton("▶ / ❚❚"); play.clicked.connect(self.player.play_pause); nxt=QPushButton("▶"); nxt.clicked.connect(self.player.next)
+        bl.addWidget(prev); bl.addWidget(play); bl.addWidget(nxt)
+        text_col=QVBoxLayout(); self.now_title=QLabel("Nothing playing"); self.now_title.setStyleSheet("font-weight:650;font-size:15px"); self.now_meta=QLabel(""); self.now_meta.setOpenExternalLinks(True); text_col.addWidget(self.now_title); text_col.addWidget(self.now_meta)
+        self.seek=QSlider(Qt.Horizontal); self.seek.setRange(0,1000); self.seek.sliderReleased.connect(self._seek_released); text_col.addWidget(self.seek); bl.addLayout(text_col,1)
+        keep=QPushButton("Keep"); keep.clicked.connect(self._keep); love=QPushButton("♥"); love.clicked.connect(lambda:self._feedback(True)); more=QPushButton("•••"); more.clicked.connect(self._more_actions); queue=QPushButton("Queue"); queue.clicked.connect(lambda:self.queue_panel.setVisible(not self.queue_panel.isVisible()))
+        bl.addWidget(keep); bl.addWidget(love); bl.addWidget(more); bl.addWidget(queue)
+        outer.addWidget(bar)
+
+        self.setStyleSheet("""
+            QMainWindow,QWidget{background:#101114;color:#f2f2f2;font-family:Arial;font-size:13px}
+            QPushButton{background:#1d2026;border:1px solid #2b3038;border-radius:8px;padding:9px 12px;text-align:left}
+            QPushButton:hover{background:#262b33} QLineEdit,QComboBox,QTextEdit,QListWidget{background:#16191e;border:1px solid #2b3038;border-radius:8px;padding:7px}
+            QListWidget::item{padding:9px;border-bottom:1px solid #20242a} QListWidget::item:selected{background:#26344a}
+        """)
+
+    def _page_layout(self, page: str, title: str, subtitle: str=""):
+        lay=QVBoxLayout(self.pages[page]); lay.setContentsMargins(28,24,28,24)
+        t=QLabel(title); t.setStyleSheet("font-size:28px;font-weight:700"); lay.addWidget(t)
+        if subtitle:
+            s=QLabel(subtitle); s.setWordWrap(True); s.setStyleSheet("color:#aab0ba"); lay.addWidget(s)
+        return lay
+
+    def _build_home(self):
+        l=self._page_layout("home","Your music, without the work.","Press one button, search everything you have connected, or add your own collection.")
+        hero=QPushButton("▶  Play for me"); hero.setMinimumHeight(74); hero.setStyleSheet("font-size:20px;font-weight:700;background:#2a5fd7"); hero.clicked.connect(lambda:self._play_for_me("balanced",60,0.35)); l.addWidget(hero)
+        row=QHBoxLayout(); a=QPushButton("Comfort"); a.clicked.connect(lambda:self._play_for_me("comfort",60,0.15)); b=QPushButton("Surprise me"); b.clicked.connect(lambda:self._play_for_me("explore",60,0.82)); c=QPushButton("Add my music"); c.clicked.connect(self._choose_music_folder)
+        row.addWidget(a); row.addWidget(b); row.addWidget(c); l.addLayout(row)
+        self.home_status=QLabel(); self.home_status.setWordWrap(True); l.addWidget(self.home_status); l.addStretch(1)
+
+    def _build_for_you(self):
+        l=self._page_layout("for_you","Play for me","Melodex uses only local listening history and audio analysis unless you explicitly connect an LLM.")
+        row=QHBoxLayout(); self.mode=QComboBox(); self.mode.addItems(["balanced","comfort","rediscover","explore"]); self.minutes=QComboBox(); self.minutes.addItems(["30","60","90","120"]); self.adventure=QSlider(Qt.Horizontal); self.adventure.setRange(0,100); self.adventure.setValue(35)
+        row.addWidget(QLabel("Mode")); row.addWidget(self.mode); row.addWidget(QLabel("Minutes")); row.addWidget(self.minutes); row.addWidget(QLabel("Familiar")); row.addWidget(self.adventure,1); row.addWidget(QLabel("Surprising")); l.addLayout(row)
+        go=QPushButton("▶ Build this journey"); go.clicked.connect(lambda:self._play_for_me(self.mode.currentText(),int(self.minutes.currentText()),self.adventure.value()/100)); l.addWidget(go)
+        self.taste_label=QLabel(); self.taste_label.setWordWrap(True); l.addWidget(self.taste_label); l.addStretch(1)
+
+    def _build_discover(self):
+        l=self._page_layout("discover","Discover","Search all connected music sources. Add a source in Sources if you want more places to search.")
+        row=QHBoxLayout(); self.search_box=QLineEdit(); self.search_box.setPlaceholderText("Artist, track or album…"); self.search_source=QComboBox(); row.addWidget(self.search_box,1); row.addWidget(self.search_source); search=QPushButton("Search"); search.clicked.connect(self._search); row.addWidget(search); l.addLayout(row)
+        self.search_box.returnPressed.connect(self._search)
+        self.results=QListWidget(); self.results.itemDoubleClicked.connect(self._play_result); l.addWidget(self.results,1)
+        row2=QHBoxLayout(); addq=QPushButton("Add selected to queue"); addq.clicked.connect(self._add_selected_to_queue); source_btn=QPushButton("Open source page"); source_btn.clicked.connect(self._open_selected_source); row2.addWidget(addq); row2.addWidget(source_btn); row2.addStretch(1); l.addLayout(row2)
+
+    def _build_library(self):
+        l=self._page_layout("library","My music","Local music stays on your device. Melodex analyses it locally for Flow.")
+        row=QHBoxLayout(); add=QPushButton("Add folder…"); add.clicked.connect(self._choose_music_folder); scan=QPushButton("Rescan"); scan.clicked.connect(self._rescan); row.addWidget(add); row.addWidget(scan); row.addStretch(1); l.addLayout(row)
+        self.library_list=QListWidget(); self.library_list.itemDoubleClicked.connect(self._play_library); l.addWidget(self.library_list,1)
+
+    def _build_playlists(self):
+        l=self._page_layout("playlists","Playlists","Saved journeys and imported playlists live locally.")
+        self.playlists_list=QListWidget(); l.addWidget(self.playlists_list,1)
+
+    def _build_moments(self):
+        l=self._page_layout("moments","Moments","Bookmarks inside songs — the exact musical moments you wanted to remember.")
+        self.moments_list=QListWidget(); l.addWidget(self.moments_list,1)
+
+    def _build_ask(self):
+        l=self._page_layout("ask","Ask Melodex","Optional. Connect OpenWebUI, Ollama or another compatible model. The player still works without any LLM.")
+        self.chat=QTextEdit(); self.chat.setReadOnly(True); l.addWidget(self.chat,1)
+        row=QHBoxLayout(); self.ask_box=QLineEdit(); self.ask_box.setPlaceholderText("e.g. Keep this mood but make the next hour stranger"); self.ask_box.returnPressed.connect(self._ask); ask=QPushButton("Ask"); ask.clicked.connect(self._ask); cfg=QPushButton("Connect LLM…"); cfg.clicked.connect(self._llm_settings_dialog); row.addWidget(self.ask_box,1); row.addWidget(ask); row.addWidget(cfg); l.addLayout(row)
+
+    def _build_sources(self):
+        l=self._page_layout("sources","Music sources","Melodex itself is source-neutral. Built-in sources are local files and the Jamendo reference provider; third-party desktop providers use the public MPP format.")
+        self.sources_list=QListWidget(); l.addWidget(self.sources_list,1)
+        row=QHBoxLayout(); local=QPushButton("Add local folder…"); local.clicked.connect(self._choose_music_folder); jam=QPushButton("Jamendo settings…"); jam.clicked.connect(self._jamendo_settings); inst=QPushButton("Install .mdxprovider…"); inst.clicked.connect(self._install_provider); bridge=QPushButton("Provider Bridge…"); bridge.clicked.connect(self._bridge_dialog); row.addWidget(local); row.addWidget(jam); row.addWidget(inst); row.addWidget(bridge); l.addLayout(row)
+
+    # ------------------------------- navigation/data
+    def open_page(self, name: str):
+        self.current_page=name; self.stack.setCurrentWidget(self.pages[name])
+        if name=="home": self._show_home()
+        elif name=="library": self._refresh_library()
+        elif name=="sources": self._refresh_sources()
+        elif name=="moments": self._refresh_moments()
+        elif name=="playlists": self._refresh_playlists()
+        elif name=="for_you": self._refresh_taste()
+        elif name=="discover": self._refresh_source_combo()
+
+    def _show_home(self):
+        self._refresh_library(); self._refresh_sources(); self._refresh_taste()
+        count=len(self.providers.local_catalog()); src=len(self.providers.providers)
+        self.home_status.setText(f"{count:,} local tracks · {src} connected sources · Flow {'ready' if self.flow.analysis_available else 'works with metadata; install ffmpeg for deep analysis'}")
+
+    def _power_changed(self, _):
+        self.statusBar().showMessage("Power tools enabled" if self.power_toggle.isChecked() else "Simple mode", 2500)
+
+    def _refresh_source_combo(self):
+        current=self.search_source.currentData(); self.search_source.clear(); self.search_source.addItem("All sources","all")
+        for pid,p in self.providers.providers.items(): self.search_source.addItem(p.info.name,pid)
+        idx=self.search_source.findData(current); self.search_source.setCurrentIndex(idx if idx>=0 else 0)
+
+    def _refresh_sources(self):
+        self.sources_list.clear()
+        for pid,p in self.providers.providers.items():
+            item=QListWidgetItem(f"{p.info.name}\n{p.info.description}"); item.setData(Qt.UserRole,pid); self.sources_list.addItem(item)
+        self._refresh_source_combo()
+
+    def _refresh_library(self):
+        self.library_list.clear()
+        for t in self.providers.local_catalog():
+            it=QListWidgetItem(_track_text(t)); it.setData(Qt.UserRole,t); self.library_list.addItem(it)
+
+    def _refresh_playlists(self):
+        self.playlists_list.clear()
+        for p in self.state.playlists(): self.playlists_list.addItem(f"{p.get('name')}\n{p.get('description','')}")
+
+    def _refresh_moments(self):
+        self.moments_list.clear()
+        for m in self.state.moments():
+            t=m.get("track") if isinstance(m.get("track"),dict) else {}
+            if not t:
+                try: t=json.loads(m.get("track_json") or "{}")
+                except Exception: t={}
+            sec=int(m.get("position_ms",0))//1000
+            self.moments_list.addItem(f"{_track_text(t)} · {sec//60}:{sec%60:02d}   {m.get('label','')}")
+
+    def _refresh_taste(self):
+        s=self.state.taste_summary(); self.taste_label.setText(f"Taste memory: {s.get('tracks',0)} tracks learned · {s.get('artists',0)} artists · completion rate {float(s.get('completion_rate',0))*100:.0f}%")
+
+    # ------------------------------- sources/search
+    def _choose_music_folder(self):
+        folder=QFileDialog.getExistingDirectory(self,"Choose a music folder")
+        if not folder: return
+        roots=[Path(x) for x in self.providers.settings.get("local_roots",[])]
+        p=Path(folder)
+        if p not in roots: roots.append(p)
+        count=self.providers.set_local_roots(roots); self.statusBar().showMessage(f"Found {count:,} tracks",5000); self._refresh_library(); self._show_home()
+
+    def _rescan(self):
+        roots=[Path(x) for x in self.providers.settings.get("local_roots",[])]
+        count=self.providers.set_local_roots(roots); self.statusBar().showMessage(f"Rescanned {count:,} tracks",4000); self._refresh_library()
+
+    def _jamendo_settings(self):
+        value,ok=QInputDialog.getText(self,"Jamendo reference provider","Your Jamendo developer client ID:",text=str(self.providers.settings.get("jamendo_client_id","")))
+        if ok:
+            self.providers.set_jamendo_client_id(value.strip()); self.statusBar().showMessage("Jamendo source updated",3000)
+
+    def _install_provider(self):
+        path,_=QFileDialog.getOpenFileName(self,"Install provider",filter="Melodex Provider (*.mdxprovider *.zip)")
+        if not path:return
+        try:
+            p=self.providers.install_package(Path(path)); QMessageBox.information(self,"Provider installed",f"Installed {p.info.name}"); self._refresh_sources()
+        except Exception as exc: QMessageBox.critical(self,"Could not install provider",str(exc))
+
+    def _search(self):
+        q=self.search_box.text().strip(); pid=str(self.search_source.currentData() or "all")
+        if not q:return
+        self.results.clear(); self.results.addItem("Searching…")
+        self._run_async(lambda:self.providers.search(q,pid,100),self._show_results)
+
+    def _show_results(self, tracks):
+        self.results.clear()
+        for t in tracks:
+            it=QListWidgetItem(_track_text(t)); it.setData(Qt.UserRole,t); self.results.addItem(it)
+
+    def _play_result(self,item):
+        t=dict(item.data(Qt.UserRole) or {}); self.player.set_queue([t],0,True)
+
+    def _open_selected_source(self):
+        item=self.results.currentItem()
+        if not item:return
+        t=dict(item.data(Qt.UserRole) or {})
+        url=str(t.get("source_page") or "")
+        if url: QDesktopServices.openUrl(url)
+        else: self.statusBar().showMessage("This source did not provide a content page",3000)
+
+    def _play_library(self,item):
+        t=dict(item.data(Qt.UserRole) or {}); tracks=self.providers.local_catalog(); idx=next((i for i,x in enumerate(tracks) if x.get('track_id')==t.get('track_id')),0); self.player.set_queue(tracks,idx,True)
+
+    def _add_selected_to_queue(self):
+        item=self.results.currentItem()
+        if not item:return
+        t=dict(item.data(Qt.UserRole) or {}); q=list(self.player.queue)
+        if not q: self.player.set_queue([t],0,False)
+        else: self.player.queue.append(t); self.player.queueChanged.emit(self.player.queue)
+
+    # ------------------------------- Flow / Mind
+    def _path_for(self,t):
+        p=str(t.get("local_path") or ""); return Path(p) if p else None
+
+    def _transition_for(self,a,b):
+        aa=self.flow.cached_analysis_for(self._path_for(a)); bb=self.flow.cached_analysis_for(self._path_for(b)); return self.flow.transition(aa,bb).as_dict()
+
+    def _flow_queue(self):
+        q=list(self.player.queue)
+        if len(q)<2:return
+        self.statusBar().showMessage("Planning Flow…")
+        self._run_async(lambda:self.flow.plan_order(q,self._path_for,start_index=max(0,self.player.index),adventurous=0.35),lambda plan:self._apply_flow(plan))
+
+    def _apply_flow(self,plan):
+        tracks=list(plan.get("tracks",[])); self.player.set_queue(tracks,0,True); self.statusBar().showMessage(f"Flow ready · {plan.get('analysed',0)} tracks audio-analysed",5000)
+
+    def _play_for_me(self,mode,minutes,adventure):
+        catalog=self.providers.local_catalog()
+        if not catalog:
+            QMessageBox.information(self,"Add music first","Play for Me needs at least some local music. Add a folder, then try again."); return
+        self.statusBar().showMessage("Building your journey…")
+        self._run_async(lambda:self.mind.build_session(catalog,self._path_for,minutes=minutes,adventure=adventure,mode=mode),lambda plan:self._apply_mind(plan))
+
+    def _apply_mind(self,plan):
+        tracks=list(plan.get("tracks",[]));
+        if tracks:self.player.set_queue(tracks,0,True)
+        self.statusBar().showMessage(f"Journey ready · {len(tracks)} tracks · {plan.get('new_to_you',0)} new to you",6000)
+
+    # ------------------------------- player/taste
+    def _on_track_changed(self,t):
+        if self.current_track and self.current_track_started and time.time()-self.current_track_started<30:
+            self.state.record_skip(self.current_track)
+        self.current_track=dict(t); self.current_track_started=time.time(); self.current_history_id=self.state.record_play(t)
+        self.now_title.setText(str(t.get("title") or "Unknown track")); base=f"{t.get('artist','Unknown artist')}   ·   {t.get('album','')}   ·   {t.get('provider_id','')}"; src=str(t.get("source_page") or ""); attr=str(t.get("attribution") or ""); self.now_meta.setText(base + ((f"   ·   <a href=\"{src}\">{attr or 'Source'}</a>") if src else ""))
+
+    def _on_position(self,pos,dur):
+        if dur>0:self.seek.setValue(int(1000*pos/dur))
+        if dur>0 and pos>=dur-1500 and self.current_history_id:
+            self.state.mark_completed(self.current_history_id); self.current_history_id=0
+
+    def _seek_released(self):
+        p=self.player.players[self.player.active]; dur=p.duration()
+        if dur>0:self.player.seek(int(dur*self.seek.value()/1000))
+
+    def _feedback(self,positive):
+        if self.current_track:self.state.record_feedback(self.current_track,positive); self.statusBar().showMessage("Loved" if positive else "Not for me",2500)
+
+    def _keep(self):
+        if self.current_track:self.state.record_keep(self.current_track); self.statusBar().showMessage("Kept in taste memory",2500)
+
+    def _more_actions(self):
+        if not self.current_track:return
+        label,ok=QInputDialog.getText(self,"Save a moment","Moment note (leave blank if you like):")
+        if ok:
+            pos=self.player.players[self.player.active].position(); self.state.save_moment(self.current_track,pos,label); self.statusBar().showMessage("Moment saved",3000)
+
+    def _refresh_queue(self,tracks):
+        self.queue_list.clear()
+        for i,t in enumerate(tracks):
+            prefix="▶ " if i==self.player.index else ""; item=QListWidgetItem(prefix+_track_text(t)); item.setData(Qt.UserRole,i); self.queue_list.addItem(item)
+
+    def _queue_jump(self,item):
+        idx=int(item.data(Qt.UserRole)); self.player.players[self.player.active].stop(); self.player._load_index(idx,True)
+
+    # ------------------------------- LLM
+    def _llm_settings(self):
+        return LLMSettings(
+            provider=self.state.get_text("llm_provider","openwebui"),
+            endpoint=self.state.get_text("llm_endpoint",LLMClient.default_endpoint(self.state.get_text("llm_provider","openwebui"))),
+            model=self.state.get_text("llm_model",""), api_key=self.state.get_text("llm_api_key","")
+        )
+
+    def _llm_settings_dialog(self):
+        d=QDialog(self); d.setWindowTitle("Connect an LLM"); f=QFormLayout(d)
+        provider=QComboBox(); provider.addItems(["openwebui","ollama","openai","custom"]); provider.setCurrentText(self.state.get_text("llm_provider","openwebui"))
+        endpoint=QLineEdit(self.state.get_text("llm_endpoint",LLMClient.default_endpoint(provider.currentText()))); model=QLineEdit(self.state.get_text("llm_model","")); key=QLineEdit(self.state.get_text("llm_api_key","")); key.setEchoMode(QLineEdit.Password)
+        provider.currentTextChanged.connect(lambda p:endpoint.setText(LLMClient.default_endpoint(p)))
+        f.addRow("Provider",provider); f.addRow("Endpoint",endpoint); f.addRow("Model",model); f.addRow("API key",key)
+        buttons=QDialogButtonBox(QDialogButtonBox.Save|QDialogButtonBox.Cancel); buttons.accepted.connect(d.accept); buttons.rejected.connect(d.reject); f.addRow(buttons)
+        if d.exec():
+            self.state.set_text("llm_provider",provider.currentText()); self.state.set_text("llm_endpoint",endpoint.text().strip()); self.state.set_text("llm_model",model.text().strip()); self.state.set_text("llm_api_key",key.text().strip())
+
+    def _llm_context(self):
+        return {"current_track":self.current_track,"queue":self.player.queue[self.player.index:self.player.index+12] if self.player.index>=0 else [],"current_page":self.current_page,"taste":self.state.taste_summary(),"recent":self.state.recent_tracks(15),"vibes":self.state.vibes(10)}
+
+    def _ask(self):
+        prompt=self.ask_box.text().strip();
+        if not prompt:return
+        self.ask_box.clear(); self.chat.append(f"You: {prompt}")
+        settings=self._llm_settings(); self._run_async(lambda:self.llm.complete(settings,prompt,self._llm_context(),[]),lambda text:self._handle_llm(text))
+
+    def _handle_llm(self,text):
+        reply,actions=self.llm.parse_action_response(str(text)); self.chat.append(f"Melodex: {reply}")
+        for a in actions:self._execute_action(a)
+
+    def _execute_action(self,a):
+        typ=str(a.get("type") or ""); args=dict(a.get("args") or {})
+        if typ=="play_for_me":self._play_for_me(args.get("mode","balanced"),int(args.get("minutes",60)),float(args.get("adventure",0.35)))
+        elif typ=="search": self.open_page("discover"); self.search_box.setText(str(args.get("query", ""))); self._search()
+        elif typ=="play_pause":self.player.play_pause()
+        elif typ=="next":self.player.next()
+        elif typ=="previous":self.player.previous()
+        elif typ=="flow_queue":self._flow_queue()
+        elif typ=="save_moment":
+            if self.current_track:self.state.save_moment(self.current_track,self.player.players[self.player.active].position(),str(args.get("label", "")))
+        elif typ=="open_view":self.open_page(str(args.get("view","home")) if str(args.get("view","home")) in self.pages else "home")
+        elif typ=="import_playlist":
+            pid=str(uuid.uuid4()); payload={"tracks":args.get("tracks",[])}; self.state.save_playlist(pid,str(args.get("name","AI playlist")),str(args.get("description","")),"llm",payload); self._refresh_playlists()
+
+    # ------------------------------- bridge
+    def _bridge_dialog(self):
+        if self.bridge:
+            QMessageBox.information(self,"Provider Bridge",f"Running on {self.bridge.host}:{self.bridge.port}\nToken: {self.bridge.token}")
+            return
+        host="0.0.0.0" if QMessageBox.question(self,"Provider Bridge","Allow phones/computers on your LAN to connect?\n\nChoose No for this computer only.",QMessageBox.Yes|QMessageBox.No)==QMessageBox.Yes else "127.0.0.1"
+        self.bridge=ProviderBridge(self.providers,host,8766); self.bridge.start(); QMessageBox.information(self,"Provider Bridge",f"Bridge started on port {self.bridge.port}.\n\nBearer token:\n{self.bridge.token}\n\nKeep this token private.")
+
+    # ------------------------------- helpers
+    def _run_async(self,fn,done):
+        sig=WorkerSignals(); sig.done.connect(done); sig.error.connect(lambda e:QMessageBox.warning(self,"Melodex",e)); self._last_worker=sig
+        def work():
+            try:sig.done.emit(fn())
+            except Exception as exc:sig.error.emit(str(exc))
+        threading.Thread(target=work,daemon=True).start()
+
+    def closeEvent(self,event):
+        if self.bridge:self.bridge.stop()
+        self.providers.close(); self.flow.close(); self.state.close(); super().closeEvent(event)

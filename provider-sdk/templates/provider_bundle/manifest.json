@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "id": "org.example.provider",
+  "name": "Example Provider",
+  "version": "0.1.0",
+  "publisher": "Your Name",
+  "protocol_version": "1.0",
+  "description": "Describe the music source this provider connects to.",
+  "capabilities": ["search", "track", "album", "artist", "playback"],
+  "permissions": {
+    "network_hosts": ["api.example.org"],
+    "offline_downloads": false,
+    "local_files": false,
+    "browser_auth": false,
+    "lan_discovery": false
+  }
+}

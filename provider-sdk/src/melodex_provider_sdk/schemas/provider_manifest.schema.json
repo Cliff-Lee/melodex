@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://melodex.local/schema/provider-manifest-v1.json",
+  "title": "Melodex Provider Manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "id", "name", "version", "publisher", "protocol_version", "capabilities", "permissions"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "id": {"type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{2,127}$"},
+    "name": {"type": "string", "minLength": 1, "maxLength": 80},
+    "version": {"type": "string", "minLength": 1, "maxLength": 40},
+    "publisher": {"type": "string", "minLength": 1, "maxLength": 120},
+    "protocol_version": {"const": "1.0"},
+    "description": {"type": "string", "maxLength": 500},
+    "homepage": {"type": "string", "format": "uri"},
+    "capabilities": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"enum": ["search", "browse", "track", "album", "artist", "playback", "library", "offline", "recommendations", "auth"]}
+    },
+    "permissions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["network_hosts", "offline_downloads", "local_files"],
+      "properties": {
+        "network_hosts": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "offline_downloads": {"type": "boolean"},
+        "local_files": {"type": "boolean"},
+        "browser_auth": {"type": "boolean", "default": false},
+        "lan_discovery": {"type": "boolean", "default": false}
+      }
+    },
+    "entrypoints": {
+      "type": "object",
+      "additionalProperties": {"type": "string"}
+    }
+  }
+}

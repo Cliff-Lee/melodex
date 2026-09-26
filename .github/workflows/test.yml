@@ -1,0 +1,22 @@
+name: Tests
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install pytest numpy mutagen requests
+      - run: python -m compileall -q desktop/melodex
+      - run: pytest -q desktop/tests
+      - run: python scripts/release_check.py
+      - name: Provider SDK tests
+        run: |
+          pip install -e provider-sdk
+          pytest -q provider-sdk/tests

@@ -1,0 +1,32 @@
+name: Protocol proposal
+about: Propose a source-neutral MPP capability or schema change
+title: "[Proposal] "
+labels: [enhancement, protocol]
+body:
+  - type: input
+    id: usecase
+    attributes:
+      label: User/provider use case
+      description: Describe the generic capability rather than one site's implementation details.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed protocol change
+    validations:
+      required: true
+  - type: textarea
+    id: compatibility
+    attributes:
+      label: Compatibility impact
+      description: Is this additive, optional, or breaking?
+    validations:
+      required: true
+  - type: checkboxes
+    id: authorization
+    attributes:
+      label: Source-neutrality check
+      options:
+        - label: This proposal does not require DRM/access-control circumvention or unauthorized access to media.
+          required: true

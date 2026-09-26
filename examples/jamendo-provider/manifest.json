@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "id": "org.melodex.example.jamendo",
+  "name": "Jamendo Reference Provider",
+  "version": "1.0.0",
+  "publisher": "Melodex examples",
+  "protocol_version": "1.0",
+  "description": "Reference MPP provider for independent Creative Commons music via the Jamendo API.",
+  "homepage": "https://developer.jamendo.com/",
+  "capabilities": ["search", "track", "playback", "auth"],
+  "permissions": {
+    "network_hosts": ["api.jamendo.com", "usercontent.jamendo.com"],
+    "offline_downloads": false,
+    "local_files": false,
+    "browser_auth": false,
+    "lan_discovery": false
+  },
+  "entrypoints": {"python": "provider.py"}
+}

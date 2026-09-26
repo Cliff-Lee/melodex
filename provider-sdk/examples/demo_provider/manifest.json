@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "id": "org.melodex.demo",
+  "name": "Melodex Demo Provider",
+  "version": "1.0.0",
+  "publisher": "Melodex SDK",
+  "protocol_version": "1.0",
+  "description": "A fictional catalog used to test provider integration.",
+  "capabilities": ["search", "track", "playback"],
+  "permissions": {
+    "network_hosts": ["media.example.invalid"],
+    "offline_downloads": false,
+    "local_files": false,
+    "browser_auth": false,
+    "lan_discovery": false
+  }
+}
