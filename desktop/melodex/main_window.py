@@ -217,7 +217,9 @@ class MainWindow(QMainWindow):
         row=QHBoxLayout()
         local=QPushButton("Add local folder…"); local.clicked.connect(self._choose_music_folder)
         jam=QPushButton("Jamendo settings…"); jam.clicked.connect(self._jamendo_settings)
-        row.addWidget(local); row.addWidget(jam); row.addStretch(1); l.addLayout(row)
+        streams=QPushButton("User Streams…"); streams.clicked.connect(self._user_streams_dialog)
+        row.addWidget(local); row.addWidget(jam); row.addWidget(streams)
+        row.addStretch(1); l.addLayout(row)
 
         self.source_power_panel = QWidget()
         power=QVBoxLayout(self.source_power_panel); power.setContentsMargins(0,4,0,0); power.setSpacing(8)
@@ -274,6 +276,10 @@ class MainWindow(QMainWindow):
                 configured = bool(str(self.providers.settings.get("jamendo_client_id", "")).strip())
                 status = "READY" if configured else "SETUP NEEDED"
                 kind = "REFERENCE"
+            elif pid == "streams":
+                count = len(self.providers.user_streams())
+                status = f"{count} STREAM" if count == 1 else f"{count} STREAMS"
+                kind = "BUILT-IN"
             else:
                 status = "INSTALLED"
                 kind = "PROVIDER"
@@ -408,6 +414,139 @@ class MainWindow(QMainWindow):
         try:
             p=self.providers.install_package(Path(path)); QMessageBox.information(self,"Provider installed",f"Installed {p.info.name}"); self._refresh_sources()
         except Exception as exc: QMessageBox.critical(self,"Could not install provider",str(exc))
+
+    def _stream_prompt(self, existing: dict[str, Any] | None = None):
+        existing = existing or {}
+        name, ok = QInputDialog.getText(
+            self,
+            "User Stream",
+            "Name:",
+            text=str(existing.get("name") or ""),
+        )
+        if not ok:
+            return None
+        url, ok = QInputDialog.getText(
+            self,
+            "User Stream",
+            "HTTP(S) stream URL:",
+            text=str(existing.get("url") or ""),
+        )
+        if not ok:
+            return None
+        genre, ok = QInputDialog.getText(
+            self,
+            "User Stream",
+            "Genre (optional):",
+            text=str(existing.get("genre") or ""),
+        )
+        if not ok:
+            return None
+        return {
+            "name": name.strip() or "Untitled stream",
+            "url": url.strip(),
+            "genre": genre.strip(),
+            "description": str(existing.get("description") or ""),
+        }
+
+    def _user_streams_dialog(self):
+        dialog = QDialog(self)
+        dialog.setWindowTitle("User Streams")
+        dialog.resize(720, 420)
+        layout = QVBoxLayout(dialog)
+        intro = QLabel(
+            "Add internet radio or direct HTTP(S) audio streams. "
+            "You can also import M3U, M3U8 or PLS stream playlists."
+        )
+        intro.setWordWrap(True)
+        layout.addWidget(intro)
+
+        rows = QListWidget()
+        layout.addWidget(rows, 1)
+
+        def refresh():
+            rows.clear()
+            for entry in self.providers.user_streams():
+                detail = entry.get("genre") or entry.get("url") or ""
+                item = QListWidgetItem(f"{entry.get('name','Untitled stream')}\n{detail}")
+                item.setData(Qt.UserRole, entry)
+                rows.addItem(item)
+
+        def add_url():
+            values = self._stream_prompt()
+            if not values:
+                return
+            try:
+                self.providers.add_user_stream(**values)
+                refresh()
+                self._refresh_sources()
+            except Exception as exc:
+                QMessageBox.critical(dialog, "Could not add stream", str(exc))
+
+        def edit_selected():
+            current = rows.currentItem()
+            if not current:
+                return
+            entry = dict(current.data(Qt.UserRole) or {})
+            values = self._stream_prompt(entry)
+            if not values:
+                return
+            try:
+                self.providers.update_user_stream(str(entry.get("id") or ""), **values)
+                refresh()
+                self._refresh_sources()
+            except Exception as exc:
+                QMessageBox.critical(dialog, "Could not update stream", str(exc))
+
+        def import_playlist():
+            filename, _ = QFileDialog.getOpenFileName(
+                dialog,
+                "Import stream playlist",
+                filter="Stream playlists (*.m3u *.m3u8 *.pls)",
+            )
+            if not filename:
+                return
+            try:
+                added = self.providers.import_user_stream_playlist(Path(filename))
+                refresh()
+                self._refresh_sources()
+                QMessageBox.information(
+                    dialog,
+                    "Playlist imported",
+                    f"Added {len(added)} new stream(s).",
+                )
+            except Exception as exc:
+                QMessageBox.critical(dialog, "Could not import playlist", str(exc))
+
+        def remove_selected():
+            current = rows.currentItem()
+            if not current:
+                return
+            entry = dict(current.data(Qt.UserRole) or {})
+            if QMessageBox.question(
+                dialog,
+                "Remove stream",
+                f"Remove {entry.get('name','this stream')}?",
+                QMessageBox.Yes | QMessageBox.No,
+            ) != QMessageBox.Yes:
+                return
+            self.providers.remove_user_stream(str(entry.get("id") or ""))
+            refresh()
+            self._refresh_sources()
+
+        buttons = QHBoxLayout()
+        add_button = QPushButton("Add URL"); add_button.clicked.connect(add_url)
+        edit_button = QPushButton("Edit"); edit_button.clicked.connect(edit_selected)
+        import_button = QPushButton("Import playlist"); import_button.clicked.connect(import_playlist)
+        remove_button = QPushButton("Remove"); remove_button.clicked.connect(remove_selected)
+        close_button = QPushButton("Close"); close_button.clicked.connect(dialog.accept)
+        for button in (add_button, edit_button, import_button, remove_button):
+            buttons.addWidget(button)
+        buttons.addStretch(1); buttons.addWidget(close_button)
+        layout.addLayout(buttons)
+
+        rows.itemDoubleClicked.connect(lambda _item: edit_selected())
+        refresh()
+        dialog.exec()
 
     def _search(self):
         q=self.search_box.text().strip(); pid=str(self.search_source.currentData() or "all")
