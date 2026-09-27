@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from .provider import MusicProvider, ProviderInstaller
-from .providers import JamendoProvider, LocalFilesProvider
+from .providers import JamendoProvider, LocalFilesProvider, UserStreamsProvider
 from .resolver import UniversalResolver
 
 
@@ -19,6 +19,7 @@ class ProviderManager:
         self.providers: dict[str, MusicProvider] = {
             "local": LocalFilesProvider(local_roots),
             "jamendo": JamendoProvider(str(self.settings.get("jamendo_client_id", ""))),
+            "streams": UserStreamsProvider(list(self.settings.get("user_streams", []))),
         }
         for provider in self.installer.load_installed():
             self.providers[provider.info.id] = provider
@@ -49,6 +50,55 @@ class ProviderManager:
         provider.configure({"client_id": client_id})
         self.settings["jamendo_client_id"] = client_id.strip()
         self.save()
+
+    def _streams_provider(self) -> UserStreamsProvider:
+        provider = self.providers["streams"]
+        assert isinstance(provider, UserStreamsProvider)
+        return provider
+
+    def _save_user_streams(self) -> None:
+        self.settings["user_streams"] = self._streams_provider().entries
+        self.save()
+
+    def user_streams(self) -> list[dict[str, Any]]:
+        return self._streams_provider().entries
+
+    def add_user_stream(
+        self,
+        name: str,
+        url: str,
+        genre: str = "",
+        description: str = "",
+    ) -> dict[str, Any]:
+        item = self._streams_provider().add_stream(name, url, genre, description)
+        self._save_user_streams()
+        return item
+
+    def update_user_stream(
+        self,
+        stream_id: str,
+        name: str,
+        url: str,
+        genre: str = "",
+        description: str = "",
+    ) -> dict[str, Any]:
+        item = self._streams_provider().update_stream(
+            stream_id, name, url, genre, description
+        )
+        self._save_user_streams()
+        return item
+
+    def remove_user_stream(self, stream_id: str) -> bool:
+        changed = self._streams_provider().remove_stream(stream_id)
+        if changed:
+            self._save_user_streams()
+        return changed
+
+    def import_user_stream_playlist(self, path: Path) -> list[dict[str, Any]]:
+        items = self._streams_provider().import_playlist(path)
+        if items:
+            self._save_user_streams()
+        return items
 
     def provider_order(self) -> list[str]:
         return self.resolver.provider_order()

@@ -47,3 +47,7 @@ Save the exact playback position of a musical moment you want to remember.
 ## Queue
 
 Open the Queue panel to inspect or jump to upcoming tracks. **Flow queue** can reorganise it.
+
+## User Streams
+
+Open **Sources → User Streams…** to add direct HTTP(S) audio or internet radio streams. You can also import `.m3u`, `.m3u8` and `.pls` stream playlists. Configured streams become a normal Melodex source and can be searched, queued and played alongside other connected sources.
