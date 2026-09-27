@@ -47,3 +47,17 @@ This document tracks useful Parachord ideas against the Melodex architecture. Th
 - Features that duplicate Melodex Flow / Mind without improving the user experience.
 - Provider logic embedded in the core player. New services should stay behind the provider/meta-service boundary.
 - Anything that makes the public app depend on unofficial copyrighted-content sources.
+
+
+## Rich Now Playing / music knowledge
+
+- [x] MusicBrainz recording/artist/release identity and cache
+- [x] Cover Art Archive artwork
+- [x] embedded/provider/CAA artwork priority
+- [x] full Now Playing information page
+- [x] artist/band relationships, genres/tags and structured credits
+- [x] local embedded / .lrc / .txt lyrics with synchronized highlighting
+- [x] artwork-derived visual accent/background
+- [ ] optional Last.fm / ListenBrainz enrichment
+- [ ] Wikimedia/Wikidata artist photographs with attribution
+- [ ] waveform / spectrum visualization

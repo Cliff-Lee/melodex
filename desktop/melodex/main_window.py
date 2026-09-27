@@ -24,6 +24,8 @@ from .player import FlowPlayer
 from .llm_bridge import LLMClient, LLMSettings
 from .bridge_server import ProviderBridge
 from .playlist_io import load_playlist, save_playlist
+from .metadata import RichMetadataService
+from .rich_now_playing import RichNowPlayingWidget
 
 
 class WorkerSignals(QObject):
@@ -51,6 +53,7 @@ class MainWindow(QMainWindow):
         self.flow = FlowEngine(self.data_dir / "flow.sqlite3")
         self.mind = MindEngine(self.state, self.flow)
         self.llm = LLMClient()
+        self.metadata = RichMetadataService(self.data_dir)
         self.bridge: ProviderBridge | None = None
         self.current_history_id = 0
         self.current_track_started = 0.0
@@ -79,7 +82,7 @@ class MainWindow(QMainWindow):
         side = QVBoxLayout(self.sidebar); side.setContentsMargins(14,18,14,14)
         logo = QLabel("MELODEX"); logo.setStyleSheet("font-size:22px;font-weight:700;letter-spacing:2px")
         side.addWidget(logo)
-        for text, page in [("Home","home"),("Play for me","for_you"),("Discover","discover"),("My music","library"),("Playlists","playlists"),("Moments","moments"),("Ask Melodex","ask"),("Sources","sources")]:
+        for text, page in [("Home","home"),("Now playing","now_playing"),("Play for me","for_you"),("Discover","discover"),("My music","library"),("Playlists","playlists"),("Moments","moments"),("Ask Melodex","ask"),("Sources","sources")]:
             b = QPushButton(text); b.setCursor(Qt.PointingHandCursor); b.clicked.connect(lambda _=False,p=page:self.open_page(p)); side.addWidget(b)
         side.addStretch(1)
         self.power_toggle = QCheckBox("Show power tools")
@@ -89,9 +92,9 @@ class MainWindow(QMainWindow):
 
         self.stack = QStackedWidget(); body_l.addWidget(self.stack, 1)
         self.pages: dict[str, QWidget] = {}
-        for name in ["home","for_you","discover","library","playlists","moments","ask","sources"]:
+        for name in ["home","now_playing","for_you","discover","library","playlists","moments","ask","sources"]:
             w = QWidget(); self.pages[name]=w; self.stack.addWidget(w)
-        self._build_home(); self._build_for_you(); self._build_discover(); self._build_library(); self._build_playlists(); self._build_moments(); self._build_ask(); self._build_sources()
+        self._build_home(); self._build_now_playing(); self._build_for_you(); self._build_discover(); self._build_library(); self._build_playlists(); self._build_moments(); self._build_ask(); self._build_sources()
 
         self.queue_panel = QWidget(); self.queue_panel.setFixedWidth(320)
         ql = QVBoxLayout(self.queue_panel); ql.setContentsMargins(12,12,12,12)
@@ -105,8 +108,8 @@ class MainWindow(QMainWindow):
         bl.addWidget(prev); bl.addWidget(play); bl.addWidget(nxt)
         text_col=QVBoxLayout(); self.now_title=QLabel("Nothing playing"); self.now_title.setStyleSheet("font-weight:650;font-size:15px"); self.now_meta=QLabel(""); self.now_meta.setOpenExternalLinks(True); text_col.addWidget(self.now_title); text_col.addWidget(self.now_meta)
         self.seek=QSlider(Qt.Horizontal); self.seek.setRange(0,1000); self.seek.sliderReleased.connect(self._seek_released); text_col.addWidget(self.seek); bl.addLayout(text_col,1)
-        keep=QPushButton("Keep"); keep.clicked.connect(self._keep); love=QPushButton("♥"); love.clicked.connect(lambda:self._feedback(True)); match=QPushButton("Match"); match.clicked.connect(self._inspect_current_match); more=QPushButton("•••"); more.clicked.connect(self._more_actions); queue=QPushButton("Queue"); queue.clicked.connect(lambda:self.queue_panel.setVisible(not self.queue_panel.isVisible()))
-        bl.addWidget(keep); bl.addWidget(love); bl.addWidget(match); bl.addWidget(more); bl.addWidget(queue)
+        keep=QPushButton("Keep"); keep.clicked.connect(self._keep); love=QPushButton("♥"); love.clicked.connect(lambda:self._feedback(True)); info=QPushButton("Info"); info.clicked.connect(lambda:self.open_page("now_playing")); match=QPushButton("Match"); match.clicked.connect(self._inspect_current_match); more=QPushButton("•••"); more.clicked.connect(self._more_actions); queue=QPushButton("Queue"); queue.clicked.connect(lambda:self.queue_panel.setVisible(not self.queue_panel.isVisible()))
+        bl.addWidget(keep); bl.addWidget(love); bl.addWidget(info); bl.addWidget(match); bl.addWidget(more); bl.addWidget(queue)
         outer.addWidget(bar)
 
         self.setStyleSheet("""
@@ -129,6 +132,10 @@ class MainWindow(QMainWindow):
         row=QHBoxLayout(); a=QPushButton("Comfort"); a.clicked.connect(lambda:self._play_for_me("comfort",60,0.15)); b=QPushButton("Surprise me"); b.clicked.connect(lambda:self._play_for_me("explore",60,0.82)); c=QPushButton("Add my music"); c.clicked.connect(self._choose_music_folder)
         row.addWidget(a); row.addWidget(b); row.addWidget(c); l.addLayout(row)
         self.home_status=QLabel(); self.home_status.setWordWrap(True); l.addWidget(self.home_status); l.addStretch(1)
+
+    def _build_now_playing(self):
+        l=self._page_layout("now_playing","Now playing","Artwork, local lyrics, artist relationships and recording credits are enriched independently from the playback source.")
+        self.rich_now=RichNowPlayingWidget(self.metadata,self); l.addWidget(self.rich_now,1)
 
     def _build_for_you(self):
         l=self._page_layout("for_you","Play for me","Melodex uses only local listening history and audio analysis unless you explicitly connect an LLM.")
@@ -392,8 +399,10 @@ class MainWindow(QMainWindow):
             self.state.record_skip(self.current_track)
         self.current_track=dict(t); self.current_track_started=time.time(); self.current_history_id=self.state.record_play(t)
         self.now_title.setText(str(t.get("title") or "Unknown track")); base=f"{t.get('artist','Unknown artist')}   ·   {t.get('album','')}   ·   {t.get('provider_id','')}"; src=str(t.get("source_page") or ""); attr=str(t.get("attribution") or ""); self.now_meta.setText(base + ((f"   ·   <a href=\"{src}\">{attr or 'Source'}</a>") if src else ""))
+        if hasattr(self,"rich_now"):self.rich_now.set_track(dict(t))
 
     def _on_position(self,pos,dur):
+        if hasattr(self,"rich_now"):self.rich_now.set_position(pos)
         if dur>0:self.seek.setValue(int(1000*pos/dur))
         if dur>0 and pos>=dur-1500 and self.current_history_id:
             self.state.mark_completed(self.current_history_id); self.current_history_id=0
@@ -641,4 +650,4 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self,event):
         if self.bridge:self.bridge.stop()
-        self.providers.close(); self.flow.close(); self.state.close(); super().closeEvent(event)
+        self.metadata.close(); self.providers.close(); self.flow.close(); self.state.close(); super().closeEvent(event)
