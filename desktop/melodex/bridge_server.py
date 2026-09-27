@@ -5,33 +5,81 @@ import mimetypes
 import os
 import secrets
 import threading
+import time
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 
 class ProviderBridge:
-    """Small authenticated LAN bridge used by mobile/remote Melodex clients.
+    """Authenticated bridge for providers plus optional playback/control actions.
 
-    Catalog operations use a Bearer token. For local media playback the resolve
-    response returns a bridge media URL containing the same token as a query
-    parameter because basic media players cannot always attach custom headers.
-    Keep the bridge on a trusted LAN or behind HTTPS/VPN.
+    The desktop app starts a loopback-only instance automatically so local MCP
+    servers can control the running GUI without importing Qt into the MCP
+    process. The existing LAN use case is still supported when the user
+    explicitly restarts the bridge on 0.0.0.0.
     """
 
-    def __init__(self, manager, host: str = "127.0.0.1", port: int = 8766, token: str = ""):
+    def __init__(
+        self,
+        manager,
+        host: str = "127.0.0.1",
+        port: int = 8766,
+        token: str = "",
+        controller: Callable[[str, dict[str, Any]], Any] | None = None,
+        state_path: Path | None = None,
+    ):
         self.manager = manager
         self.host = host
         self.port = int(port)
         self.token = token or secrets.token_urlsafe(24)
+        self.controller = controller
+        self.state_path = Path(state_path) if state_path else None
         self._server: ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
+
+    def _write_state(self) -> None:
+        if not self.state_path:
+            return
+        self.state_path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "version": 1,
+            "host": self.host,
+            "port": self.port,
+            "token": self.token,
+            "pid": os.getpid(),
+            "started_at": time.time(),
+        }
+        tmp = self.state_path.with_suffix(self.state_path.suffix + ".tmp")
+        tmp.write_text(json.dumps(payload, indent=2), "utf-8")
+        try:
+            os.chmod(tmp, 0o600)
+        except OSError:
+            pass
+        tmp.replace(self.state_path)
+        try:
+            os.chmod(self.state_path, 0o600)
+        except OSError:
+            pass
+
+    @staticmethod
+    def _public_track(track: dict[str, Any]) -> dict[str, Any]:
+        out = dict(track)
+        out.pop("local_path", None)
+        return out
+
+    def _control(self, action: str, args: dict[str, Any] | None = None) -> Any:
+        if not self.controller:
+            raise RuntimeError("Playback control is unavailable in this bridge instance")
+        return self.controller(str(action), dict(args or {}))
 
     def start(self) -> None:
         bridge = self
 
         class Handler(BaseHTTPRequestHandler):
+            server_version = "MelodexBridge/0.2"
+
             def log_message(self, *_args):
                 return
 
@@ -47,14 +95,28 @@ class ProviderBridge:
                 query_token = q.get("token", [""])[0]
                 return auth == f"Bearer {bridge.token}" or secrets.compare_digest(query_token, bridge.token)
 
-            def _send(self, code: int, payload: Any, ctype="application/json"):
-                body = payload if isinstance(payload, (bytes, bytearray)) else json.dumps(payload, ensure_ascii=False).encode()
+            def _send(self, code: int, payload: Any, ctype: str = "application/json"):
+                body = payload if isinstance(payload, (bytes, bytearray)) else json.dumps(payload, ensure_ascii=False).encode("utf-8")
                 self.send_response(code)
                 self.send_header("Content-Type", ctype)
                 self.send_header("Content-Length", str(len(body)))
+                self.send_header("Cache-Control", "no-store")
                 self.end_headers()
                 if self.command != "HEAD":
                     self.wfile.write(body)
+
+            def _json_body(self, max_bytes: int = 2 * 1024 * 1024) -> dict[str, Any]:
+                try:
+                    length = int(self.headers.get("Content-Length", "0") or 0)
+                except ValueError:
+                    raise ValueError("Invalid Content-Length")
+                if length < 0 or length > max_bytes:
+                    raise ValueError("Request body is too large")
+                raw = self.rfile.read(length) if length else b"{}"
+                data = json.loads(raw.decode("utf-8"))
+                if not isinstance(data, dict):
+                    raise ValueError("JSON body must be an object")
+                return data
 
             def _stream_file(self, path: Path):
                 if not path.exists() or not path.is_file():
@@ -95,65 +157,122 @@ class ProviderBridge:
                         self.wfile.write(chunk)
                         remaining -= len(chunk)
 
+            def _remote_track(self, resolved: dict[str, Any]) -> dict[str, Any]:
+                if not resolved.get("local_path"):
+                    return bridge._public_track(resolved)
+                host = self.headers.get("Host") or f"127.0.0.1:{bridge.port}"
+                pid = str(resolved.get("provider_id") or "local")
+                tid = str(resolved.get("track_id") or "")
+                media_q = urllib.parse.urlencode({"provider": pid, "id": tid, "token": bridge.token})
+                out = bridge._public_track(resolved)
+                out["stream_url"] = f"http://{host}/v1/media?{media_q}"
+                return out
+
             def do_HEAD(self):
                 return self.do_GET()
 
             def do_GET(self):
                 if not self._auth():
-                    return self._send(401, {"error":"unauthorized"})
+                    return self._send(401, {"error": "unauthorized"})
                 u, q = self._query()
                 try:
                     if u.path == "/health":
-                        return self._send(200, {"ok": True, "service": "melodex-provider-bridge"})
+                        return self._send(200, {"ok": True, "service": "melodex-provider-bridge", "control": bool(bridge.controller)})
                     if u.path == "/v1/providers":
-                        return self._send(200, {"providers":[{"id":p.info.id,"name":p.info.name,"description":p.info.description,"capabilities":p.info.capabilities} for p in bridge.manager.providers.values()]})
+                        order = bridge.manager.provider_order() if hasattr(bridge.manager, "provider_order") else list(bridge.manager.providers)
+                        providers = []
+                        for rank, pid in enumerate(order, start=1):
+                            p = bridge.manager.providers[pid]
+                            providers.append({"id": p.info.id, "name": p.info.name, "description": p.info.description, "capabilities": p.info.capabilities, "priority": rank})
+                        return self._send(200, {"providers": providers})
                     if u.path == "/v1/search":
                         text = q.get("q", [""])[0]
                         pid = q.get("provider", ["all"])[0]
-                        return self._send(200, {"items": bridge.manager.search(text, pid, 100)})
+                        limit = max(1, min(100, int(q.get("limit", ["100"])[0] or 100)))
+                        return self._send(200, {"items": [bridge._public_track(x) for x in bridge.manager.search(text, pid, limit)]})
                     if u.path == "/v1/browse":
                         pid = q.get("provider", ["local"])[0]
                         kind = q.get("kind", ["featured"])[0]
-                        return self._send(200, {"items": bridge.manager.browse(pid, kind, 100)})
+                        return self._send(200, {"items": [bridge._public_track(x) for x in bridge.manager.browse(pid, kind, 100)]})
                     if u.path == "/v1/resolve":
                         pid = q.get("provider", [""])[0]
                         tid = q.get("id", [""])[0]
-                        if pid and tid:
-                            target = {"provider_id":pid,"track_id":tid,"rel":f"{pid}:{tid}"}
-                        else:
-                            target = {
-                                "artist": q.get("artist", [""])[0],
-                                "title": q.get("title", [""])[0],
-                                "album": q.get("album", [""])[0],
-                            }
-                        resolved = bridge.manager.resolve(target)
-                        if resolved.get("local_path"):
-                            host = self.headers.get("Host") or f"127.0.0.1:{bridge.port}"
-                            actual_pid = str(resolved.get("provider_id") or pid)
-                            actual_tid = str(resolved.get("track_id") or tid)
-                            media_q = urllib.parse.urlencode({"provider": actual_pid, "id": actual_tid, "token": bridge.token})
-                            resolved = dict(resolved)
-                            resolved["stream_url"] = f"http://{host}/v1/media?{media_q}"
-                            # Never send an absolute server filesystem path to a remote client.
-                            resolved.pop("local_path", None)
-                        return self._send(200, resolved)
+                        target = {"provider_id": pid, "track_id": tid, "rel": f"{pid}:{tid}"} if pid and tid else {
+                            "artist": q.get("artist", [""])[0],
+                            "title": q.get("title", [""])[0],
+                            "album": q.get("album", [""])[0],
+                        }
+                        return self._send(200, self._remote_track(bridge.manager.resolve(target)))
+                    if u.path == "/v1/status":
+                        status = dict(bridge._control("status") or {})
+                        if isinstance(status.get("current_track"), dict):
+                            status["current_track"] = bridge._public_track(status["current_track"])
+                        status["queue"] = [bridge._public_track(x) for x in list(status.get("queue") or []) if isinstance(x, dict)]
+                        return self._send(200, status)
                     if u.path == "/v1/media":
                         pid = q.get("provider", [""])[0]
                         tid = q.get("id", [""])[0]
-                        resolved = bridge.manager.resolve({"provider_id":pid,"track_id":tid,"rel":f"{pid}:{tid}"})
+                        resolved = bridge.manager.resolve({"provider_id": pid, "track_id": tid, "rel": f"{pid}:{tid}"})
                         local = str(resolved.get("local_path") or "")
                         if not local:
                             url = str(resolved.get("stream_url") or "")
                             if not url:
-                                return self._send(404, {"error":"media unavailable"})
+                                return self._send(404, {"error": "media unavailable"})
                             self.send_response(302)
                             self.send_header("Location", url)
                             self.end_headers()
                             return
                         return self._stream_file(Path(local))
-                    return self._send(404, {"error":"not found"})
+                    return self._send(404, {"error": "not found"})
                 except (BrokenPipeError, ConnectionResetError):
                     return
+                except Exception as exc:
+                    return self._send(500, {"error": str(exc)})
+
+            def do_POST(self):
+                if not self._auth():
+                    return self._send(401, {"error": "unauthorized"})
+                u, _ = self._query()
+                try:
+                    body = self._json_body()
+                    if u.path == "/v1/play":
+                        resolved = bridge.manager.resolve(body)
+                        bridge._control("set_queue", {"tracks": [resolved], "start": 0, "autoplay": True})
+                        return self._send(200, {"ok": True, "track": self._remote_track(resolved)})
+                    if u.path == "/v1/queue":
+                        requested = [dict(x) for x in list(body.get("tracks") or []) if isinstance(x, dict)]
+                        if not requested:
+                            raise ValueError("tracks must contain at least one track")
+                        result = bridge.manager.resolve_playlist(requested)
+                        tracks = list(result.get("tracks") or [])
+                        mode = str(body.get("mode") or "replace").lower()
+                        autoplay = bool(body.get("autoplay", True))
+                        if tracks:
+                            action = "append_queue" if mode == "append" else "set_queue"
+                            bridge._control(action, {"tracks": tracks, "start": 0, "autoplay": autoplay})
+                        return self._send(200, {
+                            "ok": bool(tracks),
+                            "requested": int(result.get("requested") or len(requested)),
+                            "matched": len(tracks),
+                            "unresolved": list(result.get("unresolved") or []),
+                            "tracks": [bridge._public_track(x) for x in tracks],
+                        })
+                    if u.path == "/v1/control":
+                        action = str(body.get("action") or "").strip()
+                        allowed = {
+                            "play_pause", "next", "previous", "stop", "clear_queue", "flow_queue",
+                            "love_current", "dislike_current", "keep_current", "save_moment",
+                            "set_volume", "seek_ms", "open_view",
+                        }
+                        if action not in allowed:
+                            return self._send(400, {"error": f"unsupported control action: {action}"})
+                        result = bridge._control(action, dict(body.get("args") or {}))
+                        return self._send(200, {"ok": True, "result": result})
+                    return self._send(404, {"error": "not found"})
+                except (BrokenPipeError, ConnectionResetError):
+                    return
+                except ValueError as exc:
+                    return self._send(400, {"error": str(exc)})
                 except Exception as exc:
                     return self._send(500, {"error": str(exc)})
 
@@ -161,9 +280,17 @@ class ProviderBridge:
         self.port = int(self._server.server_port)
         self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
         self._thread.start()
+        self._write_state()
 
     def stop(self) -> None:
         if self._server:
             self._server.shutdown()
             self._server.server_close()
             self._server = None
+        if self.state_path:
+            try:
+                current = json.loads(self.state_path.read_text("utf-8"))
+                if str(current.get("token") or "") == self.token:
+                    self.state_path.unlink(missing_ok=True)
+            except Exception:
+                pass

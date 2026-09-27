@@ -245,6 +245,18 @@ class UniversalResolver:
         target = dict(track)
         pid = str(target.get("provider_id") or "").strip()
         direct_error = ""
+
+        # Playlist files may contain a directly playable local path or URL that
+        # is not owned by an installed Melodex provider. Preserve it rather than
+        # forcing a metadata search. Provider-backed tracks still use the
+        # provider's resolve() method below so expiring URLs can be refreshed.
+        if not pid and _playable(target):
+            target["_resolution"] = {
+                "mode": "playlist-direct",
+                "provider_id": "",
+                "confidence": 1.0,
+            }
+            return target
         if pid and pid in self.manager.providers and (
             target.get("track_id") or target.get("local_path") or target.get("stream_url")
         ):

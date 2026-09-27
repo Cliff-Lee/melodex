@@ -42,8 +42,45 @@ class FlowPlayer(QObject):
         if autoplay and self.index >= 0:
             self._load_index(self.index, play=True)
 
+    def append_queue(self, tracks: list[dict[str, Any]], autoplay: bool = False) -> None:
+        incoming = [dict(x) for x in tracks]
+        if not incoming:
+            return
+        if not self.queue:
+            self.set_queue(incoming, 0, autoplay)
+            return
+        self.queue.extend(incoming)
+        self.queueChanged.emit(self.queue)
+
+    def clear_queue(self) -> None:
+        for p in self.players:
+            p.stop()
+        self.queue = []
+        self.index = -1
+        self._crossfading = False
+        self.queueChanged.emit(self.queue)
+        self.playingChanged.emit(False)
+
+    def stop(self) -> None:
+        for p in self.players:
+            p.stop()
+        self._crossfading = False
+        self.playingChanged.emit(False)
+
     def current_track(self) -> dict[str, Any] | None:
         return dict(self.queue[self.index]) if 0 <= self.index < len(self.queue) else None
+
+    def status(self) -> dict[str, Any]:
+        p = self.players[self.active]
+        return {
+            "playing": p.playbackState() == QMediaPlayer.PlayingState,
+            "position_ms": int(p.position()),
+            "duration_ms": int(p.duration()),
+            "volume": float(self.outputs[self.active].volume()),
+            "index": int(self.index),
+            "current_track": self.current_track(),
+            "queue": [dict(x) for x in self.queue],
+        }
 
     def _media_url(self, track: dict[str, Any]) -> QUrl:
         resolved = self.resolver(dict(track))
@@ -148,7 +185,6 @@ class FlowPlayer(QObject):
             self._begin_crossfade()
         if self._crossfading:
             next_deck = 1 - self.active
-            # approximate fade based on outgoing remaining time
             progress = 1.0 - max(0.0, min(1.0, remaining / max(1, self._transition_ms)))
             self.outputs[self.active].setVolume(max(0.0, 1.0 - progress))
             self.outputs[next_deck].setVolume(min(1.0, progress))

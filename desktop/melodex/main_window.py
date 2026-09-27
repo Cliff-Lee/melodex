@@ -23,6 +23,7 @@ from .user_state import UserState
 from .player import FlowPlayer
 from .llm_bridge import LLMClient, LLMSettings
 from .bridge_server import ProviderBridge
+from .playlist_io import load_playlist, save_playlist
 
 
 class WorkerSignals(QObject):
@@ -38,6 +39,8 @@ def _track_text(t: dict[str, Any]) -> str:
 
 
 class MainWindow(QMainWindow):
+    externalCommand = Signal(str, object, object)
+
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Melodex")
@@ -53,6 +56,7 @@ class MainWindow(QMainWindow):
         self.current_track_started = 0.0
         self.current_track: dict[str, Any] | None = None
         self.current_page = "home"
+        self.externalCommand.connect(self._on_external_command)
 
         self.player = FlowPlayer(self.providers.resolve, self._transition_for, self)
         self.player.trackChanged.connect(self._on_track_changed)
@@ -62,6 +66,7 @@ class MainWindow(QMainWindow):
 
         self._build_ui()
         self._show_home()
+        self._start_local_bridge()
 
     # ------------------------------- UI
     def _build_ui(self):
@@ -145,8 +150,9 @@ class MainWindow(QMainWindow):
         self.library_list=QListWidget(); self.library_list.itemDoubleClicked.connect(self._play_library); l.addWidget(self.library_list,1)
 
     def _build_playlists(self):
-        l=self._page_layout("playlists","Playlists","Saved journeys and imported playlists live locally.")
+        l=self._page_layout("playlists","Playlists","Saved journeys and imported playlists live locally. Import or export XSPF, M3U and M3U8.")
         self.playlists_list=QListWidget(); self.playlists_list.itemDoubleClicked.connect(self._play_saved_playlist); l.addWidget(self.playlists_list,1)
+        row=QHBoxLayout(); imp=QPushButton("Import playlist…"); imp.clicked.connect(self._import_playlist_file); exp=QPushButton("Export selected…"); exp.clicked.connect(self._export_selected_playlist); expq=QPushButton("Export queue…"); expq.clicked.connect(self._export_queue); row.addWidget(imp); row.addWidget(exp); row.addWidget(expq); row.addStretch(1); l.addLayout(row)
 
     def _build_moments(self):
         l=self._page_layout("moments","Moments","Bookmarks inside songs — the exact musical moments you wanted to remember.")
@@ -215,9 +221,15 @@ class MainWindow(QMainWindow):
         for p in self.state.playlists():
             item=QListWidgetItem(f"{p.get('name')}\n{p.get('description','')}"); item.setData(Qt.UserRole,p); self.playlists_list.addItem(item)
 
+    @staticmethod
+    def _playlist_tracks(record):
+        payload=dict(record.get("payload") or {})
+        requested=payload.get("requested_tracks")
+        if isinstance(requested,list):return [dict(x) for x in requested if isinstance(x,dict)]
+        return [dict(x) for x in list(payload.get("tracks") or payload.get("rows") or []) if isinstance(x,dict)]
+
     def _play_saved_playlist(self,item):
-        record=dict(item.data(Qt.UserRole) or {}); payload=dict(record.get("payload") or {})
-        tracks=[dict(x) for x in list(payload.get("tracks") or payload.get("rows") or []) if isinstance(x,dict)]
+        record=dict(item.data(Qt.UserRole) or {}); tracks=self._playlist_tracks(record)
         if not tracks:
             self.statusBar().showMessage("This playlist has no tracks",3000); return
         self.statusBar().showMessage("Resolving playlist across connected sources…")
@@ -229,6 +241,52 @@ class MainWindow(QMainWindow):
         msg=f"Playing {len(tracks)} matched tracks"
         if unresolved:msg+=f" · {len(unresolved)} could not be matched"
         self.statusBar().showMessage(msg,6000)
+
+    def _import_playlist_file(self):
+        filename,_=QFileDialog.getOpenFileName(self,"Import playlist",filter="Playlists (*.xspf *.m3u *.m3u8);;XSPF (*.xspf);;M3U/M3U8 (*.m3u *.m3u8)")
+        if not filename:return
+        try:data=load_playlist(Path(filename))
+        except Exception as exc:QMessageBox.warning(self,"Could not import playlist",str(exc)); return
+        requested=[dict(x) for x in list(data.get("tracks") or []) if isinstance(x,dict)]
+        if not requested:QMessageBox.information(self,"Empty playlist","No tracks were found in this playlist."); return
+        playlist_id=str(uuid.uuid4()); name=str(data.get("name") or Path(filename).stem); description=str(data.get("description") or "")
+        self.statusBar().showMessage(f"Importing and matching {len(requested)} tracks…")
+        self._run_async(lambda:self.providers.resolve_playlist(requested),lambda result:self._finish_playlist_file_import(playlist_id,name,description,str(data.get("format") or "playlist"),requested,result))
+
+    def _finish_playlist_file_import(self,playlist_id,name,description,fmt,requested,result):
+        tracks=list(result.get("tracks") or []); unresolved=list(result.get("unresolved") or [])
+        payload={"tracks":tracks,"unresolved":unresolved,"requested_tracks":requested,"format":fmt}
+        self.state.save_playlist(playlist_id,name,description,f"import:{fmt}",payload); self._refresh_playlists()
+        msg=f"Imported {name}: {len(tracks)} playable"
+        if unresolved:msg+=f" · {len(unresolved)} unresolved (kept for future matching)"
+        self.statusBar().showMessage(msg,7000)
+
+    def _playlist_export_path(self,title):
+        path,chosen=QFileDialog.getSaveFileName(self,title,filter="XSPF Playlist (*.xspf);;M3U8 Playlist (*.m3u8);;M3U Playlist (*.m3u)")
+        if not path:return None
+        p=Path(path)
+        if not p.suffix:
+            suffix=".m3u8" if "M3U8" in chosen else ".m3u" if "M3U Playlist" in chosen else ".xspf"
+            p=p.with_suffix(suffix)
+        return p
+
+    def _export_selected_playlist(self):
+        item=self.playlists_list.currentItem()
+        if not item:self.statusBar().showMessage("Select a playlist first",3000); return
+        record=dict(item.data(Qt.UserRole) or {}); tracks=self._playlist_tracks(record)
+        if not tracks:self.statusBar().showMessage("This playlist has no tracks",3000); return
+        path=self._playlist_export_path("Export playlist")
+        if not path:return
+        try:save_playlist(path,tracks,str(record.get("name") or "Melodex playlist"),str(record.get("description") or "")); self.statusBar().showMessage(f"Exported {path.name}",5000)
+        except Exception as exc:QMessageBox.warning(self,"Could not export playlist",str(exc))
+
+    def _export_queue(self):
+        tracks=[dict(x) for x in self.player.queue if isinstance(x,dict)]
+        if not tracks:self.statusBar().showMessage("The queue is empty",3000); return
+        path=self._playlist_export_path("Export queue")
+        if not path:return
+        try:save_playlist(path,tracks,"Melodex queue",""); self.statusBar().showMessage(f"Exported {path.name}",5000)
+        except Exception as exc:QMessageBox.warning(self,"Could not export queue",str(exc))
 
     def _refresh_moments(self):
         self.moments_list.clear()
@@ -428,13 +486,72 @@ class MainWindow(QMainWindow):
         if unresolved:msg+=f" · {len(unresolved)} unresolved"
         self.statusBar().showMessage(msg,7000)
 
-    # ------------------------------- bridge
+    # ------------------------------- bridge / external control
+    def _control_request(self, action, args):
+        event=threading.Event(); box={}
+        self.externalCommand.emit(str(action),dict(args or {}),(event,box))
+        if not event.wait(12):raise RuntimeError("Melodex GUI did not answer the control request")
+        if box.get("error"):raise RuntimeError(str(box["error"]))
+        return box.get("result")
+
+    def _on_external_command(self,action,args,reply):
+        event,box=reply
+        try:
+            action=str(action or ""); args=dict(args or {})
+            if action=="status":
+                result=self.player.status(); result["page"]=self.current_page; result["taste"]=self.state.taste_summary()
+            elif action=="set_queue":
+                tracks=[dict(x) for x in list(args.get("tracks") or []) if isinstance(x,dict)]; self.player.set_queue(tracks,int(args.get("start",0)),bool(args.get("autoplay",True))); result=self.player.status()
+            elif action=="append_queue":
+                tracks=[dict(x) for x in list(args.get("tracks") or []) if isinstance(x,dict)]; self.player.append_queue(tracks,bool(args.get("autoplay",False))); result=self.player.status()
+            elif action=="play_pause":self.player.play_pause(); result=self.player.status()
+            elif action=="next":self.player.next(); result=self.player.status()
+            elif action=="previous":self.player.previous(); result=self.player.status()
+            elif action=="stop":self.player.stop(); result=self.player.status()
+            elif action=="clear_queue":self.player.clear_queue(); result=self.player.status()
+            elif action=="seek_ms":self.player.seek(int(args.get("value",0))); result=self.player.status()
+            elif action=="set_volume":self.player.set_volume(float(args.get("value",1.0))); result=self.player.status()
+            elif action=="flow_queue":self._flow_queue(); result={"started":True,"queue_length":len(self.player.queue)}
+            elif action=="love_current":self._feedback(True); result={"recorded":bool(self.current_track)}
+            elif action=="dislike_current":self._feedback(False); result={"recorded":bool(self.current_track)}
+            elif action=="keep_current":self._keep(); result={"recorded":bool(self.current_track)}
+            elif action=="save_moment":
+                if self.current_track:
+                    moment_id=self.state.save_moment(self.current_track,self.player.players[self.player.active].position(),str(args.get("label", ""))); result={"saved":True,"id":moment_id}
+                else:result={"saved":False,"reason":"nothing playing"}
+            elif action=="open_view":
+                view=str(args.get("view","home")); self.open_page(view if view in self.pages else "home"); result={"page":self.current_page}
+            else:raise RuntimeError(f"Unsupported control action: {action}")
+            box["result"]=result
+        except Exception as exc:box["error"]=str(exc)
+        finally:event.set()
+
+    def _start_local_bridge(self):
+        if self.bridge:return
+        try:
+            self.bridge=ProviderBridge(self.providers,"127.0.0.1",0,controller=self._control_request,state_path=self.data_dir/"bridge.json"); self.bridge.start()
+        except Exception as exc:
+            self.bridge=None; self.statusBar().showMessage(f"AI control bridge could not start: {exc}",7000)
+
+    def _restart_bridge(self,host):
+        token=self.bridge.token if self.bridge else ""; port=self.bridge.port if self.bridge else 0
+        if self.bridge:self.bridge.stop()
+        self.bridge=ProviderBridge(self.providers,host,port,token=token,controller=self._control_request,state_path=self.data_dir/"bridge.json"); self.bridge.start()
+
     def _bridge_dialog(self):
-        if self.bridge:
-            QMessageBox.information(self,"Provider Bridge",f"Running on {self.bridge.host}:{self.bridge.port}\nToken: {self.bridge.token}")
-            return
-        host="0.0.0.0" if QMessageBox.question(self,"Provider Bridge","Allow phones/computers on your LAN to connect?\n\nChoose No for this computer only.",QMessageBox.Yes|QMessageBox.No)==QMessageBox.Yes else "127.0.0.1"
-        self.bridge=ProviderBridge(self.providers,host,8766); self.bridge.start(); QMessageBox.information(self,"Provider Bridge",f"Bridge started on port {self.bridge.port}.\n\nBearer token:\n{self.bridge.token}\n\nKeep this token private.")
+        if not self.bridge:
+            self._start_local_bridge()
+            if not self.bridge:return
+        if self.bridge.host=="127.0.0.1":
+            choice=QMessageBox.question(self,"Provider Bridge",f"The private AI control bridge is running locally on port {self.bridge.port}.\n\nAllow phones/computers on your LAN to use the provider bridge too?\n\nChoose No to keep it local-only.",QMessageBox.Yes|QMessageBox.No)
+            if choice==QMessageBox.Yes:
+                try:self._restart_bridge("0.0.0.0"); QMessageBox.information(self,"Provider Bridge",f"LAN bridge enabled on port {self.bridge.port}.\n\nBearer token:\n{self.bridge.token}\n\nKeep this token private.")
+                except Exception as exc:self.statusBar().showMessage(str(exc),7000)
+        else:
+            choice=QMessageBox.question(self,"Provider Bridge",f"The bridge currently accepts LAN connections on port {self.bridge.port}.\n\nRestrict it to this computer only?",QMessageBox.Yes|QMessageBox.No)
+            if choice==QMessageBox.Yes:
+                try:self._restart_bridge("127.0.0.1"); self.statusBar().showMessage("Provider bridge restricted to this computer",4000)
+                except Exception as exc:self.statusBar().showMessage(str(exc),7000)
 
     # ------------------------------- helpers
     def _run_async(self,fn,done):

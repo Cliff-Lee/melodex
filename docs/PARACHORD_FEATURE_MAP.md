@@ -2,7 +2,7 @@
 
 This document tracks useful Parachord ideas against the Melodex architecture. The goal is not to clone Parachord; it is to adopt the useful source-neutral capabilities while preserving Melodex's simpler UI, Flow engine, taste memory and AI-first controls.
 
-## Implemented / foundation in this update
+## Implemented
 
 - **Smart multi-source resolution** — metadata-only requests are matched across connected providers.
 - **Source priority** — persistent provider ordering with simple up/down controls.
@@ -11,6 +11,10 @@ This document tracks useful Parachord ideas against the Melodex architecture. Th
 - **AI playlist resolution** — LLM-created track lists are resolved, saved and played.
 - **Remote metadata resolve** — Provider Bridge `/v1/resolve` accepts provider/id or artist/title/album.
 - **Resolver confidence / version protection** — title, artist and album similarity plus penalties for unintended live/remix/cover/etc. variants.
+- **MCP control server** — standard MCP tools expose status, search, resolution, queue, playback, Flow, volume, seeking, taste feedback and saved moments.
+- **OpenWebUI-native MCP path** — optional Streamable HTTP server with bearer authentication; stdio remains available for desktop MCP clients.
+- **Private GUI control bridge** — the desktop app starts a loopback-only authenticated bridge automatically; MCP never manipulates Qt objects from a second process.
+- **Playlist interchange** — XSPF, M3U and M3U8 import/export, including metadata-only entries that re-resolve against connected providers.
 
 ## Already present in Melodex
 
@@ -21,21 +25,19 @@ This document tracks useful Parachord ideas against the Melodex architecture. Th
 - Flow transitions / crossfade planning.
 - Taste memory, likes/dislikes, keeps, listening history and saved moments.
 - Play For Me / journey generation.
-- Optional OpenWebUI, Ollama, OpenAI-compatible LLM control.
+- Optional OpenWebUI, Ollama, OpenAI-compatible LLM control inside the app.
 - Provider Bridge for other devices/tools.
 
 ## High-value next additions
 
-1. **MCP server** — expose search, resolve, queue, playback, current track, playlists, taste and Flow controls to ChatGPT/OpenWebUI/Claude-compatible agents.
-2. **Playlist interchange** — XSPF, M3U and M3U8 import/export while retaining Melodex JSON for AI-generated playlists.
-3. **Resolver inspector** — optional power-user panel showing candidate confidence and a `Wrong match` action wired to the blocklist.
-4. **Volume normalization** — ReplayGain / loudness metadata where available, with conservative fallback gain.
-5. **Scrobbling** — Last.fm and ListenBrainz as optional meta-service plug-ins rather than hard-coded providers.
-6. **Recommendations / spinoff** — use ListenBrainz, Last.fm or AI to branch from a track while still resolving playback independently.
-7. **Deep links** — `melodex://search`, `melodex://track`, `melodex://playlist` for browser/tools/automation.
-8. **URL playlist import** — import supported public playlist URLs through meta/importer plug-ins, keeping playback resolution separate.
-9. **Browser extension bridge** — optional extension that sends detected album/playlist metadata to Melodex rather than scraping inside the player.
-10. **Auto-update checks** — GitHub Releases-based update notification; installation remains explicit.
+1. **Resolver inspector** — optional power-user panel showing candidate confidence and a `Wrong match` action wired to the blocklist.
+2. **Volume normalization** — ReplayGain / loudness metadata where available, with conservative fallback gain.
+3. **Scrobbling** — Last.fm and ListenBrainz as optional meta-service plug-ins rather than hard-coded providers.
+4. **Recommendations / spinoff** — use ListenBrainz, Last.fm or AI to branch from a track while still resolving playback independently.
+5. **Deep links** — `melodex://search`, `melodex://track`, `melodex://playlist` for browser/tools/automation.
+6. **URL playlist import** — import supported public playlist URLs through meta/importer plug-ins, keeping playback resolution separate.
+7. **Browser extension bridge** — optional extension that sends detected album/playlist metadata to Melodex rather than scraping inside the player.
+8. **Auto-update checks** — GitHub Releases-based update notification; installation remains explicit.
 
 ## Deliberately not copied blindly
 
