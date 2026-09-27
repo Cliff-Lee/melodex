@@ -11,11 +11,13 @@
   <a href="https://github.com/Cliff-Lee/melodex/releases/latest"><img src="https://img.shields.io/github/v/release/Cliff-Lee/melodex?display_name=tag&sort=semver" alt="Latest release"></a>
   <a href="https://github.com/Cliff-Lee/melodex/actions/workflows/test.yml"><img src="https://github.com/Cliff-Lee/melodex/actions/workflows/test.yml/badge.svg" alt="Tests"></a>
   <a href="LICENSE"><img src="https://img.shields.io/github/license/Cliff-Lee/melodex" alt="MIT licence"></a>
-  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Android-informational" alt="Platforms">
+  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux%20%7C%20Android-informational" alt="Platforms">
 </p>
 
 <p align="center">
   <a href="https://github.com/Cliff-Lee/melodex/releases/latest"><strong>Download</strong></a> ·
+  <a href="docs/manuals/Melodex_User_Manual_v0.2.pdf"><strong>User manual</strong></a> ·
+  <a href="docs/manuals/Melodex_Power_User_Manual_v0.2.pdf">Power user manual</a> ·
   <a href="docs/VISUAL_TOUR.md">Visual tour</a> ·
   <a href="docs/START_HERE.md">Documentation</a> ·
   <a href="docs/WHY_MELODEX.md">Why Melodex?</a>
@@ -157,6 +159,7 @@ You do **not** need Python, Git or developer tools to use a release build.
 | macOS — Intel | `Melodex-macOS-intel.dmg` | [Guide](docs/INSTALL_MACOS.md) |
 | Windows 10/11 | `Melodex-Windows-x64-Setup.exe` | [Guide](docs/INSTALL_WINDOWS.md) |
 | Windows portable | `Melodex-Windows-portable.zip` | [Guide](docs/INSTALL_WINDOWS.md) |
+| Linux x86_64 | `Melodex-Linux-x86_64.AppImage` | [Guide](docs/INSTALL_LINUX.md) |
 | Android preview | `Melodex-Android.apk` | [Guide](docs/INSTALL_ANDROID.md) |
 
 <p align="center"><a href="https://github.com/Cliff-Lee/melodex/releases/latest"><strong>Download the latest release →</strong></a></p>
@@ -189,11 +192,12 @@ Melodex is source-neutral. It can work with local files and compatible providers
 
 Melodex Core implements an open **Melodex Provider Protocol (MPP)**.
 
-- **Built in:** Local Files
-- **Reference online source:** Jamendo
+- **Built in:** Local Files and User Streams
+- **Reference online source:** Jamendo (bring your own developer client ID)
+- **Official optional provider:** Internet Archive for publicly accessible Archive audio
 - **Desktop:** installable `.mdxprovider` packages
 - **Mobile:** authenticated Provider Bridge
-- **SDK:** [`provider-sdk/`](provider-sdk/)
+- **SDK:** [`provider-sdk/`](provider-sdk/) — v0.2.0
 
 Want to build a source integration? Start with the [Provider Development Guide](docs/PROVIDER_DEVELOPMENT.md).
 
@@ -205,7 +209,7 @@ Melodex is designed to be local-first.
 
 Listening history, taste memory, Moments and Flow analysis can remain on your device. Nothing needs to be sent to an LLM unless you explicitly configure one and submit a request.
 
-Provider credentials should never be included in LLM context.
+Playback-only provider fields such as headers, cookies, refresh tokens, signed stream URLs and local paths are stripped from LLM/control status responses.
 
 [Read the privacy notes →](docs/PRIVACY.md)
 
@@ -215,11 +219,14 @@ Provider credentials should never be included in LLM context.
 
 | I want to… | Start here |
 | --- | --- |
+| Read the complete everyday guide | [User Manual PDF](docs/manuals/Melodex_User_Manual_v0.2.pdf) |
+| Configure providers, resolver and MCP | [Power User Manual PDF](docs/manuals/Melodex_Power_User_Manual_v0.2.pdf) |
 | Get running quickly | [Start here](docs/START_HERE.md) |
 | See how Melodex works | [Visual tour](docs/VISUAL_TOUR.md) |
 | Understand the idea | [Why Melodex?](docs/WHY_MELODEX.md) |
 | Install on macOS | [macOS guide](docs/INSTALL_MACOS.md) |
 | Install on Windows | [Windows guide](docs/INSTALL_WINDOWS.md) |
+| Install on Linux | [Linux guide](docs/INSTALL_LINUX.md) |
 | Install on Android | [Android guide](docs/INSTALL_ANDROID.md) |
 | Connect an LLM | [LLM guide](docs/LLM_GUIDE.md) |
 | Control Melodex over MCP | [MCP control](docs/MCP_CONTROL.md) |

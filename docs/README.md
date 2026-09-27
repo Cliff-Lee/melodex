@@ -2,7 +2,13 @@
 
 **Don't shuffle. Flow.**
 
-Melodex is a local-first music player that turns your library and connected sources into continuous, personalised listening journeys.
+Melodex is a local-first, source-neutral music player for macOS, Windows and Linux, with an Android Provider Bridge client.
+
+## Complete manuals
+
+- [Melodex User Manual v0.2 (PDF)](manuals/Melodex_User_Manual_v0.2.pdf)
+- [Melodex Power User Manual v0.2 (PDF)](manuals/Melodex_Power_User_Manual_v0.2.pdf)
+- [Manuals landing page](MANUALS.md)
 
 ## Start here
 
@@ -15,37 +21,40 @@ Melodex is a local-first music player that turns your library and connected sour
 
 ## Installation
 
-- [Install overview](INSTALL.md)
+- [Installation chooser](INSTALL.md)
 - [macOS](INSTALL_MACOS.md)
 - [Windows](INSTALL_WINDOWS.md)
-- [Android](INSTALL_ANDROID.md)
+- [Linux](INSTALL_LINUX.md)
+- [Android preview](INSTALL_ANDROID.md)
+
+## Music sources and playlists
+
+- [Sources](SOURCES.md)
+- [User Streams](USER_STREAMS.md)
+- [Official providers](OFFICIAL_PROVIDERS.md)
+- [Installing providers](PROVIDER_INSTALLATION.md)
+- [Jamendo reference provider](JAMENDO_REFERENCE_PROVIDER.md)
+- [Universal Resolver](UNIVERSAL_RESOLVER.md)
+- [Resolver Inspector](RESOLVER_INSPECTOR.md)
+- [Playlist interchange](PLAYLIST_INTERCHANGE.md)
 
 ## Optional AI control
 
 - [LLM guide](LLM_GUIDE.md)
+- [MCP control](MCP_CONTROL.md)
 - [Ollama](OLLAMA.md)
 - [OpenWebUI](OPENWEBUI.md)
 
-## Music sources and providers
+## Developers
 
-- [Sources](SOURCES.md)
-- [Provider installation](PROVIDER_INSTALLATION.md)
 - [Provider development](PROVIDER_DEVELOPMENT.md)
-- [Jamendo reference provider](JAMENDO_REFERENCE_PROVIDER.md)
 - [Provider SDK](../provider-sdk/)
-
-## Development
-
 - [Build from source](BUILD_FROM_SOURCE.md)
 - [Release process](RELEASING.md)
 - [Contributing](../CONTRIBUTING.md)
+
+## Trust
+
+- [Privacy](PRIVACY.md)
 - [Security](../SECURITY.md)
-- [Roadmap](../ROADMAP.md)
-
-## Project principles
-
-- Local-first where practical
-- Source-neutral core
-- Optional AI rather than AI dependency
-- Explicit user control over providers and credentials
-- No bundled copyrighted media or access-control circumvention
+- [Responsible use](../RESPONSIBLE_USE.md)
