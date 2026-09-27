@@ -1,22 +1,43 @@
 from __future__ import annotations
 
 import re
-import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SKIP_DIRS = {".git", ".venv", "venv", "dist", "build", "__pycache__", ".pytest_cache", ".ruff_cache"}
-TEXT_SUFFIXES = {".md", ".py", ".json", ".yaml", ".yml", ".toml", ".txt", ".ini", ".cfg", ".sh"}
+SKIP_DIRS = {
+    ".git",
+    ".venv",
+    "venv",
+    "dist",
+    "build",
+    "__pycache__",
+    ".pytest_cache",
+    ".ruff_cache",
+}
+TEXT_SUFFIXES = {
+    ".md",
+    ".py",
+    ".json",
+    ".yaml",
+    ".yml",
+    ".toml",
+    ".txt",
+    ".ini",
+    ".cfg",
+    ".sh",
+}
 
-# High-signal patterns only. This is a guardrail, not a substitute for a proper secret scanner.
 PATTERNS = {
     "private key": re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),
     "AWS access key": re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
     "GitHub token": re.compile(r"\bgh[pousr]_[A-Za-z0-9_]{30,}\b"),
-    "generic bearer secret": re.compile(r"Authorization:\s*Bearer\s+(?!demo-token\b)[A-Za-z0-9._~+/-]{24,}", re.I),
+    "generic bearer secret": re.compile(
+        r"Authorization:\s*Bearer\s+(?!demo-token\b)[A-Za-z0-9._~+/-]{24,}",
+        re.I,
+    ),
 }
 
-FORBIDDEN_PUBLIC_TERMS = []
+FORBIDDEN_PUBLIC_TERMS: list[str] = []
 
 
 def iter_text_files():

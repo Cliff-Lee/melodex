@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import platform
 import subprocess
 import sys
 import threading
@@ -39,9 +40,12 @@ class MusicProvider(ABC):
     @abstractmethod
     def resolve(self, track: dict[str, Any]) -> dict[str, Any]: ...
 
+    def refresh(self, track: dict[str, Any]) -> dict[str, Any]:
+        return self.resolve(track)
+
 
 class ExternalProvider(MusicProvider):
-    """MPP v1 JSON-RPC provider running out-of-process over stdio."""
+    """MPP JSON-RPC provider running out-of-process over stdio."""
 
     def __init__(self, folder: Path, manifest: dict[str, Any]):
         self.folder = Path(folder)
@@ -53,24 +57,55 @@ class ExternalProvider(MusicProvider):
     @property
     def info(self) -> ProviderInfo:
         return ProviderInfo(
-            id=str(self.manifest["id"]), name=str(self.manifest["name"]),
+            id=str(self.manifest["id"]),
+            name=str(self.manifest["name"]),
             version=str(self.manifest.get("version", "1.0")),
             description=str(self.manifest.get("description", "")),
             capabilities=list(self.manifest.get("capabilities", [])),
             permissions=dict(self.manifest.get("permissions", {})),
         )
 
+    def _platform_entrypoint_key(self) -> str:
+        system = platform.system().casefold()
+        machine = platform.machine().casefold()
+        arch = "arm64" if machine in {"arm64", "aarch64"} else "x86_64"
+        prefix = {"darwin": "macos", "windows": "windows", "linux": "linux"}.get(
+            system, system
+        )
+        return f"{prefix}-{arch}"
+
     def _command(self) -> list[str]:
-        entry = str((self.manifest.get("entrypoints") or {}).get("python", "provider.py"))
-        return [sys.executable, "-u", str(self.folder / entry)]
+        entries = dict(self.manifest.get("entrypoints") or {})
+        python_entry = str(entries.get("python") or "").strip()
+        if python_entry:
+            return [sys.executable, "-u", str(self.folder / python_entry)]
+        native = str(
+            entries.get(self._platform_entrypoint_key()) or entries.get("executable") or ""
+        )
+        if native:
+            return [str(self.folder / native)]
+        return [sys.executable, "-u", str(self.folder / "provider.py")]
 
     def _ensure(self) -> subprocess.Popen[str]:
         if self._proc and self._proc.poll() is None:
             return self._proc
+        env = {**os.environ, "MELODEX_PROVIDER_ID": self.info.id}
+        paths = [str(self.folder)]
+        vendor = self.folder / "vendor"
+        if vendor.is_dir():
+            paths.insert(0, str(vendor))
+        if env.get("PYTHONPATH"):
+            paths.append(env["PYTHONPATH"])
+        env["PYTHONPATH"] = os.pathsep.join(paths)
         self._proc = subprocess.Popen(
-            self._command(), cwd=str(self.folder), stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1,
-            env={**os.environ, "MELODEX_PROVIDER_ID": self.info.id},
+            self._command(),
+            cwd=str(self.folder),
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            bufsize=1,
+            env=env,
         )
         return self._proc
 
@@ -92,14 +127,49 @@ class ExternalProvider(MusicProvider):
             return response.get("result")
 
     def search(self, query: str, limit: int = 50) -> list[dict[str, Any]]:
-        result = self._rpc("catalog.search", {"query": query, "types": ["track"], "limit": limit, "cursor": None}) or {}
-        return [_normalise_track(x, self.info.id) for x in result.get("items", []) if isinstance(x, dict)]
+        result = self._rpc(
+            "catalog.search",
+            {"query": query, "types": ["track"], "limit": limit, "cursor": None},
+        ) or {}
+        return [
+            _normalise_track(item, self.info.id)
+            for item in result.get("items", [])
+            if isinstance(item, dict)
+        ]
+
+    def _playback_params(self, track: dict[str, Any]) -> dict[str, Any]:
+        track_id = str(
+            track.get("track_id")
+            or track.get("provider_track_id")
+            or track.get("id")
+            or ""
+        )
+        return {"track_id": track_id, "provider_track_id": track_id, "purpose": "stream"}
+
+    def _merge_playback(
+        self, track: dict[str, Any], resource: dict[str, Any]
+    ) -> dict[str, Any]:
+        out = dict(track)
+        out.update(resource)
+        hosts = list((self.info.permissions or {}).get("network_hosts") or [])
+        if hosts:
+            out["_playback_allowed_hosts"] = [str(x) for x in hosts]
+        return out
 
     def resolve(self, track: dict[str, Any]) -> dict[str, Any]:
-        result = self._rpc("playback.resolve", {"track_id": str(track.get("track_id") or track.get("id") or "")}) or {}
-        out = dict(track)
-        out.update(result)
-        return out
+        result = self._rpc("playback.resolve", self._playback_params(track)) or {}
+        return self._merge_playback(track, dict(result))
+
+    def refresh(self, track: dict[str, Any]) -> dict[str, Any]:
+        params = self._playback_params(track)
+        token = str(track.get("refresh_token") or "")
+        if token:
+            params["refresh_token"] = token
+        try:
+            result = self._rpc("playback.refresh", params) or {}
+            return self._merge_playback(track, dict(result))
+        except RuntimeError:
+            return self.resolve(track)
 
     def close(self) -> None:
         if self._proc and self._proc.poll() is None:
@@ -108,15 +178,20 @@ class ExternalProvider(MusicProvider):
 
 def _normalise_track(raw: dict[str, Any], provider_id: str) -> dict[str, Any]:
     item = dict(raw)
-    track_id = str(item.get("track_id") or item.get("id") or "")
-    item.update({
-        "provider_id": provider_id,
-        "track_id": track_id,
-        "title": str(item.get("title") or item.get("name") or "Unknown track"),
-        "artist": str(item.get("artist") or item.get("artist_name") or "Unknown artist"),
-        "album": str(item.get("album") or item.get("album_name") or ""),
-        "rel": str(item.get("rel") or f"{provider_id}:{track_id}"),
-    })
+    track_id = str(
+        item.get("track_id") or item.get("provider_track_id") or item.get("id") or ""
+    )
+    item.update(
+        {
+            "provider_id": provider_id,
+            "track_id": track_id,
+            "provider_track_id": str(item.get("provider_track_id") or track_id),
+            "title": str(item.get("title") or item.get("name") or "Unknown track"),
+            "artist": str(item.get("artist") or item.get("artist_name") or "Unknown artist"),
+            "album": str(item.get("album") or item.get("album_name") or ""),
+            "rel": str(item.get("rel") or f"{provider_id}:{track_id}"),
+        }
+    )
     return item
 
 
@@ -131,7 +206,9 @@ class ProviderInstaller:
             raise ValueError("Provider packages must use .mdxprovider")
         with zipfile.ZipFile(package) as zf:
             names = zf.namelist()
-            manifest_name = next((n for n in names if n.rstrip("/").endswith("manifest.json")), None)
+            manifest_name = next(
+                (name for name in names if name.rstrip("/").endswith("manifest.json")), None
+            )
             if not manifest_name:
                 raise ValueError("Provider package has no manifest.json")
             manifest = json.loads(zf.read(manifest_name))
@@ -141,6 +218,7 @@ class ProviderInstaller:
             dest = self.providers_dir / pid
             if dest.exists():
                 import shutil
+
                 shutil.rmtree(dest)
             dest.mkdir(parents=True)
             for member in zf.infolist():

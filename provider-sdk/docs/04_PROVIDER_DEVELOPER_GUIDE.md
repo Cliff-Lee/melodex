@@ -1,172 +1,119 @@
 # 4. Provider developer guide
 
-## 4.1 Smallest possible provider
+## 4.1 The 15-minute path
 
-A provider needs:
+A desktop Python provider needs:
 
 ```text
 my-provider/
   manifest.json
-  provider executable
+  provider.py
   README.md
   LICENSE
+  vendor/          # optional
 ```
 
-The manifest describes identity, capabilities and permissions. The executable implements MPP.
+Create it with:
 
-## 4.2 Required manifest fields
+```bash
+melodex-provider init my-provider
+melodex-provider doctor my-provider
+```
+
+## 4.2 Required semantic operations
+
+A playback provider normally implements:
+
+- `provider.info`
+- `provider.health`
+- `catalog.search`
+- `catalog.get_track`
+- `playback.resolve`
+
+`playback.refresh` is optional and is intended for short-lived playback URLs.
+Older v0.1 providers remain valid.
+
+## 4.3 Normalize early
+
+Convert provider-specific data into a small stable object:
 
 ```json
 {
-  "schema_version": 1,
-  "id": "org.example.music",
-  "name": "Example Music",
-  "version": "1.0.0",
-  "publisher": "Example Org",
-  "protocol_version": "1.0",
-  "capabilities": ["search", "track", "album", "artist", "playback"],
-  "permissions": {
-    "network_hosts": ["api.example.org", "cdn.example.org"],
-    "offline_downloads": false,
-    "local_files": false
-  }
+  "type": "track",
+  "provider_id": "org.example.music",
+  "provider_track_id": "opaque-id",
+  "artist": "Example Artist",
+  "title": "Example Track",
+  "album": "Example Album"
 }
 ```
 
-See `spec/provider_manifest.schema.json`.
+The track ID is opaque. It can be a source ID, compound key, or stable hash of a
+canonical detail URL.
 
-## 4.3 Search
+## 4.4 Playback resources
 
-Request:
-
-```json
-{
-  "query": "artist title",
-  "types": ["track", "album", "artist"],
-  "limit": 25,
-  "cursor": null
-}
-```
-
-Response:
-
-```json
-{
-  "items": [
-    {
-      "type": "track",
-      "provider_id": "org.example.music",
-      "provider_track_id": "t-123",
-      "artist": "Example Artist",
-      "title": "Example Track",
-      "album": "Example Album",
-      "duration_ms": 245000,
-      "artwork_url": "https://cdn.example.org/art/123.jpg"
-    }
-  ],
-  "next_cursor": null
-}
-```
-
-## 4.4 Playback resolution
-
-Providers should return the least-privileged resource necessary for playback. Short-lived signed URLs are preferred when the service supports them.
-
-Request:
-
-```json
-{
-  "provider_track_id": "t-123",
-  "purpose": "stream"
-}
-```
-
-Response:
+Simple source:
 
 ```json
 {
   "kind": "http",
-  "url": "https://cdn.example.org/play/t-123?...",
+  "url": "https://cdn.example.org/audio/123.mp3",
   "headers": {},
-  "mime_type": "audio/mpeg",
-  "expires_at": "2026-09-26T14:30:00Z",
+  "cookies": {},
   "seekable": true,
   "cache_policy": "session"
 }
 ```
 
-A provider must not claim `offline_allowed` unless the source terms/technical interface actually permit persistent offline storage.
-
-## 4.5 Authentication
-
-MPP v1 supports these patterns:
-
-- API token supplied by user;
-- Basic credentials where appropriate;
-- OAuth 2 browser flow;
-- device-code flow;
-- bridge-managed credentials.
-
-Melodex owns credential storage. A provider receives credentials only for its own source.
-
-## 4.6 Pagination
-
-Use opaque cursors. Never force Melodex to know provider page numbers.
-
-## 4.7 Errors
-
-Normalized error envelope:
+Source that requires request state:
 
 ```json
 {
-  "error": {
-    "code": "AUTH_REQUIRED",
-    "message": "Sign-in required",
-    "retryable": false
-  }
+  "kind": "http",
+  "url": "https://cdn.example.org/temporary/abc",
+  "headers": {"Referer": "https://example.org/track/123"},
+  "cookies": {"session": "opaque-provider-value"},
+  "expires_at": "2026-09-27T14:30:00Z",
+  "refresh_token": "opaque-refresh-state",
+  "seekable": true,
+  "cache_policy": "session"
 }
 ```
 
-Standard codes:
+The desktop Playback Gateway forwards the required state and preserves Range
+requests for seeking.
 
-- `AUTH_REQUIRED`
-- `NOT_FOUND`
-- `RATE_LIMITED`
-- `TEMPORARY_FAILURE`
-- `UNSUPPORTED`
-- `PERMISSION_DENIED`
-- `PLAYBACK_EXPIRED`
-- `INVALID_REQUEST`
+## 4.5 Messy sources
 
-## 4.8 Packaging
+Keep discovery and playback separate. A provider may internally:
 
-Desktop providers use `.mdxprovider`, a ZIP with a fixed root layout:
+1. search an API or HTML page;
+2. follow one or more detail pages;
+3. normalize inconsistent metadata;
+4. obtain an authorized temporary playback URL;
+5. return a normalized PlaybackResource.
 
-```text
-manifest.json
-bin/
-  macos-arm64/provider
-  macos-x86_64/provider
-  windows-x86_64/provider.exe
-  linux-x86_64/provider
-  linux-aarch64/provider
-README.md
-LICENSE
-icon.png
-```
+Use `melodex_provider_sdk.WebSession` for cookies, redirects, retries, gzip and
+rate limiting. Vendor Beautiful Soup or lxml when CSS/XPath parsing is required.
 
-A pure-Python provider may instead declare a Python entry point and minimum runtime version. Melodex should still launch it out-of-process.
+## 4.6 Dependencies
 
-## 4.9 Development workflow
+Pure-Python dependencies can be bundled under `vendor/`. Platform-specific
+standalone executables can use entrypoint keys such as `macos-arm64`,
+`windows-x86_64` or `linux-x86_64`.
 
-Proposed SDK commands:
+## 4.7 Security and permissions
+
+Use documented APIs or access methods for which the user/provider has
+permission. Do not put credentials in catalog metadata or LLM context. The SDK
+intentionally omits DRM circumvention, CAPTCHA solving and access-control bypass
+helpers.
+
+## 4.8 Test and package
 
 ```bash
-melodex-provider init my-provider
-melodex-provider validate ./my-provider
-melodex-provider serve ./my-provider
-melodex-provider test ./my-provider
-melodex-provider pack ./my-provider
+melodex-provider validate my-provider
+melodex-provider doctor my-provider
+melodex-provider pack my-provider
 ```
-
-The design package includes a small Python reference SDK and demo server.

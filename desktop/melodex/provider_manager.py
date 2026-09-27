@@ -32,19 +32,21 @@ class ProviderManager:
 
     def save(self) -> None:
         self.data_dir.mkdir(parents=True, exist_ok=True)
-        self.settings_path.write_text(json.dumps(self.settings, indent=2, ensure_ascii=False), "utf-8")
+        self.settings_path.write_text(
+            json.dumps(self.settings, indent=2, ensure_ascii=False), "utf-8"
+        )
 
     def set_local_roots(self, roots: list[Path]) -> int:
-        p = self.providers["local"]
-        assert isinstance(p, LocalFilesProvider)
-        p.set_roots(roots)
+        provider = self.providers["local"]
+        assert isinstance(provider, LocalFilesProvider)
+        provider.set_roots(roots)
         self.settings["local_roots"] = [str(x) for x in roots]
         self.save()
-        return len(p.tracks)
+        return len(provider.tracks)
 
     def set_jamendo_client_id(self, client_id: str) -> None:
-        p = self.providers["jamendo"]
-        p.configure({"client_id": client_id})
+        provider = self.providers["jamendo"]
+        provider.configure({"client_id": client_id})
         self.settings["jamendo_client_id"] = client_id.strip()
         self.save()
 
@@ -58,9 +60,10 @@ class ProviderManager:
         folder = self.installer.install(path)
         manifest = json.loads((folder / "manifest.json").read_text("utf-8"))
         from .provider import ExternalProvider
-        p = ExternalProvider(folder, manifest)
-        self.providers[p.info.id] = p
-        return p
+
+        provider = ExternalProvider(folder, manifest)
+        self.providers[provider.info.id] = provider
+        return provider
 
     def search(self, query: str, provider_id: str = "all", limit: int = 50) -> list[dict[str, Any]]:
         if provider_id != "all":
@@ -81,11 +84,18 @@ class ProviderManager:
     def resolve(self, track: dict[str, Any]) -> dict[str, Any]:
         return self.resolver.resolve(track)
 
+    def refresh_playback(self, track: dict[str, Any]) -> dict[str, Any]:
+        provider_id = str(track.get("provider_id") or "")
+        provider = self.providers.get(provider_id)
+        if provider is None:
+            return self.resolve(track)
+        return provider.refresh(track)
+
     def resolve_exact(self, candidate: dict[str, Any], requested: dict[str, Any] | None = None) -> dict[str, Any]:
         return self.resolver.resolve_exact(candidate, requested)
 
     def resolve_candidates(self, track: dict[str, Any], limit: int = 20) -> list[dict[str, Any]]:
-        return [x.as_dict() for x in self.resolver.candidates(track, total_limit=limit)]
+        return [item.as_dict() for item in self.resolver.candidates(track, total_limit=limit)]
 
     def inspect_resolution(self, track: dict[str, Any], limit: int = 20) -> dict[str, Any]:
         return self.resolver.inspect(track, limit)
@@ -109,8 +119,8 @@ class ProviderManager:
         self.resolver.unblock_all()
 
     def local_catalog(self) -> list[dict[str, Any]]:
-        p = self.providers["local"]
-        return p.tracks if isinstance(p, LocalFilesProvider) else []
+        provider = self.providers["local"]
+        return provider.tracks if isinstance(provider, LocalFilesProvider) else []
 
     def close(self) -> None:
         for provider in self.providers.values():

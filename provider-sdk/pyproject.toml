@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "melodex-provider-sdk"
-version = "0.1.0"
+version = "0.2.0"
 description = "Reference SDK and protocol files for the source-neutral Melodex Provider Protocol"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -24,6 +24,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+web = [
+  "requests>=2.31,<3",
+  "beautifulsoup4>=4.12,<5",
+]
 dev = [
   "pytest>=8.3,<9",
   "ruff>=0.9,<1",
