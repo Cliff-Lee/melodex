@@ -16,6 +16,8 @@ import requests
 
 _MB_BASE = "https://musicbrainz.org/ws/2"
 _CAA_BASE = "https://coverartarchive.org"
+_WD_ENTITY_BASE = "https://www.wikidata.org/wiki/Special:EntityData"
+_WM_FILE_PATH = "https://commons.wikimedia.org/wiki/Special:FilePath"
 _USER_AGENT = "Melodex/0.1 (https://github.com/Cliff-Lee/melodex)"
 _LRC_RE = re.compile(r"\[(?P<m>\d{1,3}):(?P<s>\d{1,2})(?:[\.:](?P<f>\d{1,3}))?\]")
 _VERSION_WORDS = re.compile(r"\b(live|remix|acoustic|cover|karaoke|instrumental|demo|edit|remaster(?:ed)?)\b", re.I)
@@ -417,6 +419,114 @@ class RichMetadataService:
         url = str(thumbs.get("500") or thumbs.get("1200") or thumbs.get("250") or image.get("image") or "")
         return url, str(image.get("comment") or "")
 
+    @staticmethod
+    def _extract_wikidata_qid(artist: dict[str, Any]) -> str:
+        for row in list(artist.get("links") or []):
+            if not isinstance(row, dict):
+                continue
+            url = str(row.get("url") or "")
+            m = re.search(r"wikidata\.org/(?:wiki/)?(Q\d+)", url)
+            if m:
+                return m.group(1)
+        return ""
+
+    def _remote_json(self, key: str, url: str, max_age: float = 45 * 86400) -> dict[str, Any]:
+        cached = self._cached_json(key, max_age)
+        if isinstance(cached, dict):
+            return cached
+        response = self.session.get(url, timeout=15, headers={"Accept": "application/json", "User-Agent": _USER_AGENT})
+        response.raise_for_status()
+        data = response.json()
+        if isinstance(data, dict):
+            self._save_json(key, data)
+            return data
+        return {}
+
+    def artist_photo(self, artist: dict[str, Any]) -> dict[str, Any]:
+        qid = self._extract_wikidata_qid(artist)
+        if not qid:
+            return {"path": "", "source": "", "source_url": "", "attribution": "", "wikidata_qid": ""}
+        data = self._remote_json(f"wikidata:{qid}", f"{_WD_ENTITY_BASE}/{qid}.json")
+        entity = (data.get("entities") or {}).get(qid) if isinstance(data.get("entities"), dict) else {}
+        claims = entity.get("claims") if isinstance(entity, dict) else {}
+        image_name = ""
+        try:
+            p18 = list(claims.get("P18") or [])
+            mainsnak = p18[0].get("mainsnak") if p18 and isinstance(p18[0], dict) else {}
+            datavalue = mainsnak.get("datavalue") if isinstance(mainsnak, dict) else {}
+            image_name = str(datavalue.get("value") or "") if isinstance(datavalue, dict) else ""
+        except Exception:
+            image_name = ""
+        if not image_name:
+            return {"path": "", "source": "", "source_url": "", "attribution": "", "wikidata_qid": qid}
+        image_url = f"{_WM_FILE_PATH}/{urllib.parse.quote(image_name.replace(' ', '_'))}"
+        downloaded = self._download_artwork(image_url)
+        labels = entity.get("labels") if isinstance(entity, dict) else {}
+        label = ((labels.get("en") or {}).get("value") if isinstance(labels, dict) else "") or str(artist.get("name") or "")
+        return {
+            "path": str(downloaded or ""),
+            "source": "Wikimedia Commons",
+            "source_url": image_url,
+            "attribution": f"Wikimedia Commons image for {label}",
+            "wikidata_qid": qid,
+            "filename": image_name,
+        }
+
+    def discography(self, artist_mbid: str, limit: int = 18) -> list[dict[str, Any]]:
+        """Return release metadata quickly; artwork is hydrated in a later stage.
+
+        Do not download cover thumbnails here. A discography can contain many
+        releases and serial image requests made the old all-in-one enrichment
+        path appear frozen before the basic track identity reached the UI.
+        """
+        if not artist_mbid:
+            return []
+        data = self._mb_json(
+            "release-group/",
+            {"artist": artist_mbid, "fmt": "json", "limit": max(1, min(int(limit), 50)), "type": "album|ep|single"},
+            45 * 86400,
+        )
+        groups = [x for x in list(data.get("release-groups") or []) if isinstance(x, dict)]
+        rows: list[dict[str, Any]] = []
+        for group in groups:
+            rgid = str(group.get("id") or "")
+            date = str(group.get("first-release-date") or "")
+            year = int(date[:4]) if len(date) >= 4 and date[:4].isdigit() else 9999
+            rows.append({
+                "id": rgid,
+                "title": str(group.get("title") or ""),
+                "primary_type": str(group.get("primary-type") or ""),
+                "secondary_types": [str(x) for x in list(group.get("secondary-types") or []) if x],
+                "date": date,
+                "year": None if year == 9999 else year,
+                "cover_url": f"{_CAA_BASE}/release-group/{rgid}/front-250" if rgid else "",
+                "cover_path": "",
+            })
+        rows.sort(key=lambda row: (row.get("year") if row.get("year") is not None else 9999, str(row.get("title") or "").casefold()))
+        return rows[:limit]
+
+    def hydrate_discography_covers(self, rows: list[dict[str, Any]], limit: int = 8) -> list[dict[str, Any]]:
+        """Download only a small visible subset of release thumbnails.
+
+        This is intentionally separate from ``discography`` so a missing or
+        slow Cover Art Archive image can never delay track identification.
+        """
+        out = [dict(row) for row in rows]
+        remaining = max(0, int(limit))
+        for row in out:
+            if remaining <= 0:
+                break
+            if row.get("cover_path"):
+                continue
+            url = str(row.get("cover_url") or "")
+            if not url:
+                continue
+            downloaded = self._download_artwork(url)
+            if downloaded:
+                row["cover_path"] = str(downloaded)
+            remaining -= 1
+        return out
+
     def artwork(self, track: dict[str, Any], identity: MetadataIdentity) -> dict[str, Any]:
         embedded = self._embedded_artwork(track)
         if embedded:
@@ -440,28 +550,89 @@ class RichMetadataService:
                 continue
         return {"path": "", "source": "", "source_url": ""}
 
-    def enrich(self, track: dict[str, Any]) -> dict[str, Any]:
+    @staticmethod
+    def identity_from_dict(data: dict[str, Any]) -> MetadataIdentity:
+        return MetadataIdentity(
+            recording_mbid=str(data.get("recording_mbid") or ""),
+            artist_mbid=str(data.get("artist_mbid") or ""),
+            release_mbid=str(data.get("release_mbid") or ""),
+            release_group_mbid=str(data.get("release_group_mbid") or ""),
+            artist=str(data.get("artist") or ""),
+            title=str(data.get("title") or ""),
+            album=str(data.get("album") or ""),
+            date=str(data.get("date") or ""),
+            score=float(data.get("score") or 0.0),
+        )
+
+    def enrich_identity(self, track: dict[str, Any]) -> dict[str, Any]:
+        """Fast first stage: local lyrics plus MusicBrainz identity only."""
         track = dict(track or {})
-        bundle: dict[str, Any] = {"track_key": track_key(track), "track": track, "errors": []}
-        bundle["lyrics"] = self.local_lyrics(track)
+        out: dict[str, Any] = {"track_key": track_key(track), "track": track, "errors": []}
+        out["lyrics"] = self.local_lyrics(track)
         try:
             identity = self.identify(track)
-            bundle["identity"] = identity.as_dict()
+            out["identity"] = identity.as_dict()
         except Exception as exc:
-            identity = MetadataIdentity(artist=str(track.get("artist") or ""), title=str(track.get("title") or ""), album=str(track.get("album") or ""))
-            bundle["identity"] = identity.as_dict(); bundle["errors"].append(f"MusicBrainz match: {exc}")
+            identity = MetadataIdentity(
+                artist=str(track.get("artist") or ""),
+                title=str(track.get("title") or ""),
+                album=str(track.get("album") or ""),
+            )
+            out["identity"] = identity.as_dict()
+            out["errors"].append(f"MusicBrainz match: {exc}")
+        return out
+
+    def enrich_artwork(self, track: dict[str, Any], identity: dict[str, Any]) -> dict[str, Any]:
         try:
-            bundle["artist"] = self.artist_info(identity.artist_mbid)
+            return {"artwork": self.artwork(dict(track or {}), self.identity_from_dict(identity)), "errors": []}
         except Exception as exc:
-            bundle["artist"] = {}; bundle["errors"].append(f"Artist information: {exc}")
+            return {"artwork": {"path": "", "source": "", "source_url": ""}, "errors": [f"Artwork: {exc}"]}
+
+    def enrich_artist(self, identity: dict[str, Any]) -> dict[str, Any]:
         try:
-            bundle["credits"] = self.recording_credits(identity.recording_mbid)
+            return {"artist": self.artist_info(str(identity.get("artist_mbid") or "")), "errors": []}
         except Exception as exc:
-            bundle["credits"] = []; bundle["errors"].append(f"Credits: {exc}")
+            return {"artist": {}, "errors": [f"Artist information: {exc}"]}
+
+    def enrich_artist_photo(self, artist: dict[str, Any]) -> dict[str, Any]:
         try:
-            bundle["artwork"] = self.artwork(track, identity)
+            return {"artist_photo": self.artist_photo(dict(artist or {})), "errors": []}
         except Exception as exc:
-            bundle["artwork"] = {"path": "", "source": "", "source_url": ""}; bundle["errors"].append(f"Artwork: {exc}")
+            return {"artist_photo": {"path": "", "source": "", "source_url": "", "attribution": ""}, "errors": [f"Artist photo: {exc}"]}
+
+    def enrich_credits(self, identity: dict[str, Any]) -> dict[str, Any]:
+        try:
+            return {"credits": self.recording_credits(str(identity.get("recording_mbid") or "")), "errors": []}
+        except Exception as exc:
+            return {"credits": [], "errors": [f"Credits: {exc}"]}
+
+    def enrich_discography(self, identity: dict[str, Any]) -> dict[str, Any]:
+        try:
+            return {"discography": self.discography(str(identity.get("artist_mbid") or "")), "errors": []}
+        except Exception as exc:
+            return {"discography": [], "errors": [f"Discography: {exc}"]}
+
+    def enrich(self, track: dict[str, Any]) -> dict[str, Any]:
+        """Compatibility all-in-one enrichment.
+
+        The GUI no longer calls this method because progressive stages are much
+        more responsive. Keeping it makes existing integrations/tests work.
+        Discography cover thumbnails are deliberately *not* hydrated here.
+        """
+        bundle = self.enrich_identity(track)
+        identity = bundle.get("identity") if isinstance(bundle.get("identity"), dict) else {}
+        for stage in (
+            self.enrich_artwork(track, identity),
+            self.enrich_artist(identity),
+            self.enrich_credits(identity),
+            self.enrich_discography(identity),
+        ):
+            bundle.update({k: v for k, v in stage.items() if k != "errors"})
+            bundle.setdefault("errors", []).extend(stage.get("errors") or [])
+        artist = bundle.get("artist") if isinstance(bundle.get("artist"), dict) else {}
+        photo = self.enrich_artist_photo(artist)
+        bundle.update({k: v for k, v in photo.items() if k != "errors"})
+        bundle.setdefault("errors", []).extend(photo.get("errors") or [])
         return bundle
 
     def close(self) -> None:
