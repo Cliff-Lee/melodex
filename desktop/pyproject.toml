@@ -18,3 +18,6 @@ melodex-mcp = "melodex.mcp_server:main"
 
 [tool.setuptools]
 packages = ["melodex", "melodex.providers"]
+
+[tool.setuptools.package-data]
+melodex = ["assets/*", "bundled_providers/*.mdxprovider"]

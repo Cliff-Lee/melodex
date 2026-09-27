@@ -49,7 +49,6 @@ def _run_provider_if_requested() -> bool:
 
     _restore_stdio()
 
-    # Make provider-local modules and vendored dependencies importable.
     folder = script.parent
     vendor = folder / "vendor"
 
@@ -74,6 +73,12 @@ if __name__ == "__main__" and _run_provider_if_requested():
 if sys.platform == "darwin":
     os.environ.setdefault("QT_MEDIA_BACKEND", "ffmpeg")
 
+
+# Presentation-only redesign. It patches the existing v0.2 GUI classes before
+# the application creates MainWindow; core playback/provider logic is unchanged.
+from melodex.ui_redesign import apply_redesign
+
+apply_redesign()
 
 from melodex.app import main
 

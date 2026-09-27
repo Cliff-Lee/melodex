@@ -7,6 +7,12 @@ from typing import Any
 from .provider import MusicProvider, ProviderInstaller
 from .providers import JamendoProvider, LocalFilesProvider, UserStreamsProvider
 from .resolver import UniversalResolver
+from .bundled_sources import (
+    bundled_provider_ids,
+    ensure_bundled_providers,
+    restore_all_bundled_provider_flags,
+    set_bundled_provider_disabled,
+)
 
 
 class ProviderManager:
@@ -15,6 +21,7 @@ class ProviderManager:
         self.settings_path = self.data_dir / "sources.json"
         self.installer = ProviderInstaller(self.data_dir / "providers")
         self.settings = self._load_settings()
+        ensure_bundled_providers(self.installer, self.settings)
         local_roots = [Path(x) for x in self.settings.get("local_roots", [])]
         self.providers: dict[str, MusicProvider] = {
             "local": LocalFilesProvider(local_roots),
@@ -114,6 +121,71 @@ class ProviderManager:
         provider = ExternalProvider(folder, manifest)
         self.providers[provider.info.id] = provider
         return provider
+
+
+    def is_bundled_provider(self, provider_id: str) -> bool:
+        return str(provider_id or "") in set(bundled_provider_ids())
+
+    def remove_provider(self, provider_id: str) -> bool:
+        import shutil
+
+        pid = str(provider_id or "").strip()
+        if not pid or pid in {"local", "jamendo", "streams"}:
+            return False
+
+        provider = self.providers.get(pid)
+        if provider is None:
+            return False
+
+        folder = self.installer.providers_dir / pid
+        close = getattr(provider, "close", None)
+        if callable(close):
+            try:
+                close()
+            except Exception:
+                pass
+
+        if folder.exists():
+            shutil.rmtree(folder)
+
+        self.providers.pop(pid, None)
+
+        if self.is_bundled_provider(pid):
+            set_bundled_provider_disabled(self.settings, pid, True)
+
+        self.settings["provider_priority"] = [
+            x
+            for x in list(self.settings.get("provider_priority") or [])
+            if str(x) != pid
+        ]
+        self.save()
+        return True
+
+    def restore_bundled_providers(self) -> list[str]:
+        restore_all_bundled_provider_flags(self.settings)
+        self.save()
+
+        expected = set(ensure_bundled_providers(self.installer, self.settings))
+        restored: list[str] = []
+
+        from .provider import ExternalProvider
+        from .bundled_sources import bundled_packages
+
+        for pid, _package, manifest in bundled_packages():
+            if pid not in expected or pid in self.providers:
+                continue
+
+            folder = self.installer.providers_dir / pid
+            if not (folder / "manifest.json").exists():
+                continue
+
+            provider = ExternalProvider(folder, manifest)
+            self.providers[pid] = provider
+            restored.append(pid)
+
+        if restored:
+            self.set_provider_order(self.provider_order())
+        return restored
 
     def search(self, query: str, provider_id: str = "all", limit: int = 50) -> list[dict[str, Any]]:
         if provider_id != "all":
