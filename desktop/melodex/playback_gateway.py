@@ -4,7 +4,7 @@ import secrets
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import requests
 
@@ -17,11 +17,13 @@ _FORWARD_RESPONSE_HEADERS = {
     "etag",
     "last-modified",
 }
+_REDIRECT_STATUSES = {301, 302, 303, 307, 308}
+_MAX_REDIRECTS = 8
 
 
 def _host_allowed(host: str, patterns: list[str]) -> bool:
     if not patterns:
-        return True
+        return False
     host = host.casefold().strip(".")
     for raw in patterns:
         pattern = str(raw).casefold().strip().strip(".")
@@ -34,6 +36,12 @@ def _host_allowed(host: str, patterns: list[str]) -> bool:
         elif host == pattern:
             return True
     return False
+
+
+def _allowed_hosts(resource: dict[str, Any]) -> list[str] | None:
+    if "_playback_allowed_hosts" not in resource:
+        return None
+    return [str(item) for item in resource.get("_playback_allowed_hosts") or []]
 
 
 class PlaybackGateway:
@@ -73,14 +81,62 @@ class PlaybackGateway:
         parsed = urlparse(url)
         if parsed.scheme not in {"http", "https"} or not parsed.hostname:
             raise ValueError("Playback gateway requires an http(s) resource")
-        allowed = [str(x) for x in resource.get("_playback_allowed_hosts") or []]
-        if allowed and not _host_allowed(parsed.hostname, allowed):
+        allowed = _allowed_hosts(resource)
+        if allowed is not None and not _host_allowed(parsed.hostname, allowed):
             raise ValueError(f"Playback host is not declared by provider: {parsed.hostname}")
         self._ensure_started()
         token = secrets.token_urlsafe(24)
         with self._lock:
             self._resources[token] = dict(resource)
         return f"http://127.0.0.1:{self.port}/play/{token}"
+
+    def _request_upstream(
+        self,
+        method: str,
+        url: str,
+        headers: dict[str, str],
+        allowed: list[str] | None,
+        timeout: float,
+        stream: bool,
+    ) -> requests.Response:
+        current = url
+        for _redirect_count in range(_MAX_REDIRECTS + 1):
+            parsed = urlparse(current)
+            if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+                raise PermissionError("Provider redirected to an invalid playback URL")
+            if allowed is not None and not _host_allowed(parsed.hostname, allowed):
+                raise PermissionError(
+                    f"Provider redirected outside declared hosts: {parsed.hostname}"
+                )
+
+            response = requests.request(
+                method,
+                current,
+                headers=headers,
+                allow_redirects=False,
+                stream=stream,
+                timeout=timeout,
+            )
+            if response.status_code not in _REDIRECT_STATUSES:
+                return response
+
+            location = response.headers.get("Location")
+            if not location:
+                return response
+
+            next_url = urljoin(current, location)
+            next_host = urlparse(next_url).hostname or ""
+            if allowed is not None and not _host_allowed(next_host, allowed):
+                response.close()
+                raise PermissionError(
+                    f"Provider redirected outside declared hosts: {next_host}"
+                )
+            response.close()
+            current = next_url
+
+        raise requests.TooManyRedirects(
+            f"Playback resource exceeded {_MAX_REDIRECTS} redirects"
+        )
 
     def _serve(self, handler: BaseHTTPRequestHandler, head_only: bool) -> None:
         prefix = "/play/"
@@ -104,21 +160,16 @@ class PlaybackGateway:
             headers["Range"] = incoming_range
 
         timeout = float(resource.get("request_timeout_seconds") or 30.0)
+        allowed = _allowed_hosts(resource)
         try:
-            response = requests.request(
+            response = self._request_upstream(
                 "HEAD" if head_only else "GET",
                 url,
-                headers=headers,
-                allow_redirects=True,
+                headers,
+                allowed,
+                timeout,
                 stream=not head_only,
-                timeout=timeout,
             )
-            final_host = urlparse(response.url).hostname or ""
-            allowed = [str(x) for x in resource.get("_playback_allowed_hosts") or []]
-            if allowed and not _host_allowed(final_host, allowed):
-                response.close()
-                handler.send_error(502, "Provider redirected outside declared hosts")
-                return
             handler.send_response(response.status_code)
             for name, value in response.headers.items():
                 if name.casefold() in _FORWARD_RESPONSE_HEADERS:
@@ -132,6 +183,8 @@ class PlaybackGateway:
                 except (BrokenPipeError, ConnectionResetError):
                     pass
             response.close()
+        except PermissionError as exc:
+            handler.send_error(502, str(exc))
         except requests.RequestException as exc:
             handler.send_error(502, f"Upstream playback request failed: {exc}")
 

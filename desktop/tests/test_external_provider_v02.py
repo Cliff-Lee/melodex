@@ -68,3 +68,20 @@ def test_external_provider_v02_refresh_and_vendor(tmp_path: Path):
         assert refreshed["url"].endswith("b.mp3")
     finally:
         provider.close()
+
+def test_external_provider_preserves_empty_host_policy(tmp_path: Path):
+    manifest = {
+        "id": "org.example.nohosts",
+        "name": "No Hosts",
+        "version": "1",
+        "capabilities": ["playback"],
+        "permissions": {"network_hosts": []},
+        "entrypoints": {"python": "provider.py"},
+    }
+    provider = ExternalProvider(tmp_path, manifest)
+    merged = provider._merge_playback(
+        {"track_id": "1"},
+        {"kind": "http", "url": "https://example.invalid/audio.mp3"},
+    )
+    assert "_playback_allowed_hosts" in merged
+    assert merged["_playback_allowed_hosts"] == []

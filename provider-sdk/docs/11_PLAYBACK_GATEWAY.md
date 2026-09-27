@@ -17,10 +17,15 @@ The gateway:
 - binds only to `127.0.0.1`;
 - uses an unguessable token for each registered resource;
 - forwards provider headers and the supplied playback cookies;
-- follows ordinary HTTP redirects;
+- follows ordinary HTTP redirects only after validating each next destination;
 - forwards Range requests for seeking;
 - forwards Content-Range, Content-Type and related response headers;
-- checks declared provider hosts for external provider resources.
+- checks declared provider hosts for external provider resources;
+- treats an external provider with an empty `network_hosts` list as having no
+  permission to make playback network requests.
+
+Redirect destinations are checked before Melodex sends the next request, so
+provider-supplied headers and cookies are not forwarded to an undeclared host.
 
 ## Refresh
 

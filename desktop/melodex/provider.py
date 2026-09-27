@@ -152,8 +152,7 @@ class ExternalProvider(MusicProvider):
         out = dict(track)
         out.update(resource)
         hosts = list((self.info.permissions or {}).get("network_hosts") or [])
-        if hosts:
-            out["_playback_allowed_hosts"] = [str(x) for x in hosts]
+        out["_playback_allowed_hosts"] = [str(x) for x in hosts]
         return out
 
     def resolve(self, track: dict[str, Any]) -> dict[str, Any]:
