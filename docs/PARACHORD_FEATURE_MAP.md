@@ -61,3 +61,13 @@ This document tracks useful Parachord ideas against the Melodex architecture. Th
 - [ ] optional Last.fm / ListenBrainz enrichment
 - [ ] Wikimedia/Wikidata artist photographs with attribution
 - [ ] waveform / spectrum visualization
+
+
+## Visual enrichment / artist visuals
+
+- [x] Wikimedia Commons artist photographs via Wikidata links
+- [x] MusicBrainz release-group timeline / discography lookup
+- [x] album-cover wall / release timeline tab in Now Playing
+- [ ] richer attribution / license display for artist photos
+- [ ] click-through artist/release browsing pages
+- [ ] waveform / spectrum / motion graphics

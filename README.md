@@ -111,6 +111,24 @@ Flow, playback, taste memory and Play for Me work without one. If you connect Ol
 
 > Bring back something I used to like but haven't heard recently.
 
+### 🎧 Rich Now Playing
+
+Playback and music knowledge are deliberately separate. A track can come from any connected audio provider while Melodex enriches it independently with:
+
+- MusicBrainz recording, artist and release identity;
+- Cover Art Archive artwork;
+- Wikidata-linked Wikimedia Commons artist images when available;
+- artist relationships, recording/work credits and release timelines;
+- local embedded lyrics, `.lrc` synchronized lyrics and `.txt` sidecars.
+
+Enrichment loads progressively so metadata or artwork lookups do not block playback.
+
+### 🔎 Universal resolution
+
+AI playlists, imported XSPF/M3U playlists and ordinary searches can contain just artist/title/album metadata. Melodex searches connected providers, scores candidate matches, remembers preferred matches and lets you mark a result as **Wrong match** without disabling the whole provider.
+
+The resolver design is inspired in part by [Parachord](https://github.com/Parachord/parachord) and the earlier source-neutral approach pioneered by Tomahawk. Melodex's resolver implementation is independent; see [Third-Party Notices](THIRD_PARTY_NOTICES.md).
+
 ---
 
 ## See it in action
@@ -205,6 +223,11 @@ Provider credentials should never be included in LLM context.
 | Install on Windows | [Windows guide](docs/INSTALL_WINDOWS.md) |
 | Install on Android | [Android guide](docs/INSTALL_ANDROID.md) |
 | Connect an LLM | [LLM guide](docs/LLM_GUIDE.md) |
+| Control Melodex over MCP | [MCP control](docs/MCP_CONTROL.md) |
+| Understand multi-source matching | [Universal resolver](docs/UNIVERSAL_RESOLVER.md) |
+| Inspect/correct a match | [Resolver inspector](docs/RESOLVER_INSPECTOR.md) |
+| Use playlist interchange | [XSPF / M3U / M3U8](docs/PLAYLIST_INTERCHANGE.md) |
+| Explore Now Playing metadata/lyrics | [Rich Now Playing](docs/RICH_NOW_PLAYING.md) |
 | Build a provider | [Provider development](docs/PROVIDER_DEVELOPMENT.md) |
 | Build from source | [Build guide](docs/BUILD_FROM_SOURCE.md) |
 | Troubleshoot | [Troubleshooting](docs/TROUBLESHOOTING.md) |
@@ -250,6 +273,21 @@ Current priorities include richer provider permissions, additional first-party l
 
 ---
 
+## Acknowledgements & external data
+
+Melodex is MIT-licensed software, but music, artwork and externally fetched metadata are **not relicensed under the Melodex MIT licence**.
+
+- **[Parachord](https://github.com/Parachord/parachord)** — multi-source resolver design inspiration. Parachord is MIT licensed, Copyright © 2025 Jason Herskowitz. Melodex's resolver was independently implemented; the Parachord notice is retained in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) and [`docs/licenses/PARACHORD-LICENSE.txt`](docs/licenses/PARACHORD-LICENSE.txt).
+- **[MusicBrainz](https://musicbrainz.org/)** / MetaBrainz Foundation — recording, artist, release, relationship and credit metadata. MusicBrainz core data is CC0; supplementary data is under CC BY-NC-SA 3.0. See the [MusicBrainz data licence](https://musicbrainz.org/doc/About/Data_License).
+- **[Cover Art Archive](https://coverartarchive.org/)** — release artwork indexed through MusicBrainz and hosted by the Internet Archive. Cover images remain subject to rights in the underlying artwork; the archive does not provide a blanket Melodex licence for every image.
+- **[Wikidata](https://www.wikidata.org/)** — structured artist/image-link data, released under CC0.
+- **[Wikimedia Commons](https://commons.wikimedia.org/)** — optional artist images. Each file has its own copyright/licence and attribution requirements; Melodex does not relicense those images.
+- **[Jamendo](https://www.jamendo.com/)** — optional reference music provider. Content remains under its individual licence. The provider retains creator/Jamendo attribution, licence information and a direct source-page link.
+
+For fuller notes, see [Third-Party Notices](THIRD_PARTY_NOTICES.md).
+
+---
+
 ## Licence
 
-MIT for Melodex code in this repository unless a subdirectory states otherwise. Third-party dependencies retain their own licences.
+MIT for Melodex code in this repository unless a subdirectory states otherwise. Third-party dependencies retain their own licences. External music, artwork and metadata retain the licences/rights of their respective providers and creators.
