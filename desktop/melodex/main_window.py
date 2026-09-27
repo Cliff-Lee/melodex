@@ -59,6 +59,7 @@ class MainWindow(QMainWindow):
         self.current_track_started = 0.0
         self.current_track: dict[str, Any] | None = None
         self.current_page = "home"
+        self._closing = False
         self.externalCommand.connect(self._on_external_command)
 
         self.player = FlowPlayer(
@@ -610,6 +611,8 @@ class MainWindow(QMainWindow):
 
     # ------------------------------- player/taste
     def _on_track_changed(self,t):
+        if self._closing:
+            return
         if self.current_track and self.current_track_started and time.time()-self.current_track_started<30:
             self.state.record_skip(self.current_track)
         self.current_track=dict(t); self.current_track_started=time.time(); self.current_history_id=self.state.record_play(t)
@@ -617,6 +620,8 @@ class MainWindow(QMainWindow):
         if hasattr(self,"rich_now"):self.rich_now.set_track(dict(t))
 
     def _on_position(self,pos,dur):
+        if self._closing:
+            return
         if hasattr(self,"rich_now"):self.rich_now.set_position(pos)
         if dur>0:self.seek.setValue(int(1000*pos/dur))
         if dur>0 and pos>=dur-1500 and self.current_history_id:
@@ -857,12 +862,16 @@ class MainWindow(QMainWindow):
 
     # ------------------------------- helpers
     def _run_async(self,fn,done):
-        sig=WorkerSignals(); sig.done.connect(done); sig.error.connect(lambda e:QMessageBox.warning(self,"Melodex",e)); self._last_worker=sig
+        sig=WorkerSignals()
+        sig.done.connect(lambda result: None if self._closing else done(result))
+        sig.error.connect(lambda e: None if self._closing else QMessageBox.warning(self,"Melodex",e))
+        self._last_worker=sig
         def work():
             try:sig.done.emit(fn())
             except Exception as exc:sig.error.emit(str(exc))
         threading.Thread(target=work,daemon=True).start()
 
     def closeEvent(self,event):
+        self._closing = True
         if self.bridge:self.bridge.stop()
         self.player.close(); self.metadata.close(); self.providers.close(); self.flow.close(); self.state.close(); super().closeEvent(event)
