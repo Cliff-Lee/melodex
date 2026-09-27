@@ -118,10 +118,20 @@ class ProviderBridge:
                     if u.path == "/v1/resolve":
                         pid = q.get("provider", [""])[0]
                         tid = q.get("id", [""])[0]
-                        resolved = bridge.manager.resolve({"provider_id":pid,"track_id":tid,"rel":f"{pid}:{tid}"})
+                        if pid and tid:
+                            target = {"provider_id":pid,"track_id":tid,"rel":f"{pid}:{tid}"}
+                        else:
+                            target = {
+                                "artist": q.get("artist", [""])[0],
+                                "title": q.get("title", [""])[0],
+                                "album": q.get("album", [""])[0],
+                            }
+                        resolved = bridge.manager.resolve(target)
                         if resolved.get("local_path"):
                             host = self.headers.get("Host") or f"127.0.0.1:{bridge.port}"
-                            media_q = urllib.parse.urlencode({"provider": pid, "id": tid, "token": bridge.token})
+                            actual_pid = str(resolved.get("provider_id") or pid)
+                            actual_tid = str(resolved.get("track_id") or tid)
+                            media_q = urllib.parse.urlencode({"provider": actual_pid, "id": actual_tid, "token": bridge.token})
                             resolved = dict(resolved)
                             resolved["stream_url"] = f"http://{host}/v1/media?{media_q}"
                             # Never send an absolute server filesystem path to a remote client.

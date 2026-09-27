@@ -6,6 +6,7 @@ from typing import Any
 
 from .provider import MusicProvider, ProviderInstaller
 from .providers import JamendoProvider, LocalFilesProvider
+from .resolver import UniversalResolver
 
 
 class ProviderManager:
@@ -21,6 +22,7 @@ class ProviderManager:
         }
         for provider in self.installer.load_installed():
             self.providers[provider.info.id] = provider
+        self.resolver = UniversalResolver(self)
 
     def _load_settings(self) -> dict[str, Any]:
         try:
@@ -46,6 +48,12 @@ class ProviderManager:
         self.settings["jamendo_client_id"] = client_id.strip()
         self.save()
 
+    def provider_order(self) -> list[str]:
+        return self.resolver.provider_order()
+
+    def set_provider_order(self, provider_ids: list[str]) -> list[str]:
+        return self.resolver.set_provider_order(provider_ids)
+
     def install_package(self, path: Path) -> MusicProvider:
         folder = self.installer.install(path)
         manifest = json.loads((folder / "manifest.json").read_text("utf-8"))
@@ -58,9 +66,11 @@ class ProviderManager:
         if provider_id != "all":
             return self.providers[provider_id].search(query, limit)
         out: list[dict[str, Any]] = []
-        for pid, provider in self.providers.items():
+        per_provider = max(10, limit // max(1, len(self.providers)))
+        for pid in self.provider_order():
+            provider = self.providers[pid]
             try:
-                out.extend(provider.search(query, max(10, limit // max(1, len(self.providers)))))
+                out.extend(provider.search(query, per_provider))
             except Exception:
                 continue
         return out[:limit]
@@ -69,10 +79,19 @@ class ProviderManager:
         return self.providers[provider_id].browse(kind, limit)
 
     def resolve(self, track: dict[str, Any]) -> dict[str, Any]:
-        pid = str(track.get("provider_id") or "local")
-        if pid not in self.providers:
-            raise RuntimeError(f"Source '{pid}' is not installed")
-        return self.providers[pid].resolve(track)
+        return self.resolver.resolve(track)
+
+    def resolve_candidates(self, track: dict[str, Any], limit: int = 20) -> list[dict[str, Any]]:
+        return [x.as_dict() for x in self.resolver.candidates(track, total_limit=limit)]
+
+    def resolve_playlist(self, tracks: list[dict[str, Any]]) -> dict[str, Any]:
+        return self.resolver.resolve_many(tracks)
+
+    def block_resolution(self, requested: dict[str, Any], matched: dict[str, Any]) -> None:
+        self.resolver.block(requested, matched)
+
+    def clear_resolution_blocklist(self) -> None:
+        self.resolver.unblock_all()
 
     def local_catalog(self) -> list[dict[str, Any]]:
         p = self.providers["local"]

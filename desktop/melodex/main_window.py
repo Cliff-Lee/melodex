@@ -146,7 +146,7 @@ class MainWindow(QMainWindow):
 
     def _build_playlists(self):
         l=self._page_layout("playlists","Playlists","Saved journeys and imported playlists live locally.")
-        self.playlists_list=QListWidget(); l.addWidget(self.playlists_list,1)
+        self.playlists_list=QListWidget(); self.playlists_list.itemDoubleClicked.connect(self._play_saved_playlist); l.addWidget(self.playlists_list,1)
 
     def _build_moments(self):
         l=self._page_layout("moments","Moments","Bookmarks inside songs — the exact musical moments you wanted to remember.")
@@ -161,6 +161,7 @@ class MainWindow(QMainWindow):
         l=self._page_layout("sources","Music sources","Melodex itself is source-neutral. Built-in sources are local files and the Jamendo reference provider; third-party desktop providers use the public MPP format.")
         self.sources_list=QListWidget(); l.addWidget(self.sources_list,1)
         row=QHBoxLayout(); local=QPushButton("Add local folder…"); local.clicked.connect(self._choose_music_folder); jam=QPushButton("Jamendo settings…"); jam.clicked.connect(self._jamendo_settings); inst=QPushButton("Install .mdxprovider…"); inst.clicked.connect(self._install_provider); bridge=QPushButton("Provider Bridge…"); bridge.clicked.connect(self._bridge_dialog); row.addWidget(local); row.addWidget(jam); row.addWidget(inst); row.addWidget(bridge); l.addLayout(row)
+        priority=QHBoxLayout(); up=QPushButton("Prefer source ↑"); down=QPushButton("Prefer source ↓"); up.clicked.connect(lambda:self._move_source(-1)); down.clicked.connect(lambda:self._move_source(1)); priority.addWidget(up); priority.addWidget(down); priority.addStretch(1); l.addLayout(priority)
 
     # ------------------------------- navigation/data
     def open_page(self, name: str):
@@ -183,14 +184,26 @@ class MainWindow(QMainWindow):
 
     def _refresh_source_combo(self):
         current=self.search_source.currentData(); self.search_source.clear(); self.search_source.addItem("All sources","all")
-        for pid,p in self.providers.providers.items(): self.search_source.addItem(p.info.name,pid)
+        for pid in self.providers.provider_order():
+            p=self.providers.providers[pid]; self.search_source.addItem(p.info.name,pid)
         idx=self.search_source.findData(current); self.search_source.setCurrentIndex(idx if idx>=0 else 0)
 
     def _refresh_sources(self):
         self.sources_list.clear()
-        for pid,p in self.providers.providers.items():
-            item=QListWidgetItem(f"{p.info.name}\n{p.info.description}"); item.setData(Qt.UserRole,pid); self.sources_list.addItem(item)
+        for rank,pid in enumerate(self.providers.provider_order(),start=1):
+            p=self.providers.providers[pid]
+            item=QListWidgetItem(f"#{rank}  {p.info.name}\n{p.info.description}"); item.setData(Qt.UserRole,pid); self.sources_list.addItem(item)
         self._refresh_source_combo()
+
+    def _move_source(self, delta):
+        item=self.sources_list.currentItem()
+        if not item:return
+        pid=str(item.data(Qt.UserRole) or ""); order=self.providers.provider_order()
+        if pid not in order:return
+        i=order.index(pid); j=max(0,min(len(order)-1,i+int(delta)))
+        if i==j:return
+        order[i],order[j]=order[j],order[i]; self.providers.set_provider_order(order); self._refresh_sources(); self.sources_list.setCurrentRow(j)
+        self.statusBar().showMessage("Source priority updated",2500)
 
     def _refresh_library(self):
         self.library_list.clear()
@@ -199,7 +212,23 @@ class MainWindow(QMainWindow):
 
     def _refresh_playlists(self):
         self.playlists_list.clear()
-        for p in self.state.playlists(): self.playlists_list.addItem(f"{p.get('name')}\n{p.get('description','')}")
+        for p in self.state.playlists():
+            item=QListWidgetItem(f"{p.get('name')}\n{p.get('description','')}"); item.setData(Qt.UserRole,p); self.playlists_list.addItem(item)
+
+    def _play_saved_playlist(self,item):
+        record=dict(item.data(Qt.UserRole) or {}); payload=dict(record.get("payload") or {})
+        tracks=[dict(x) for x in list(payload.get("tracks") or payload.get("rows") or []) if isinstance(x,dict)]
+        if not tracks:
+            self.statusBar().showMessage("This playlist has no tracks",3000); return
+        self.statusBar().showMessage("Resolving playlist across connected sources…")
+        self._run_async(lambda:self.providers.resolve_playlist(tracks),self._start_resolved_playlist)
+
+    def _start_resolved_playlist(self,result):
+        tracks=list(result.get("tracks") or []); unresolved=list(result.get("unresolved") or [])
+        if tracks:self.player.set_queue(tracks,0,True)
+        msg=f"Playing {len(tracks)} matched tracks"
+        if unresolved:msg+=f" · {len(unresolved)} could not be matched"
+        self.statusBar().showMessage(msg,6000)
 
     def _refresh_moments(self):
         self.moments_list.clear()
@@ -377,8 +406,27 @@ class MainWindow(QMainWindow):
         elif typ=="save_moment":
             if self.current_track:self.state.save_moment(self.current_track,self.player.players[self.player.active].position(),str(args.get("label", "")))
         elif typ=="open_view":self.open_page(str(args.get("view","home")) if str(args.get("view","home")) in self.pages else "home")
-        elif typ=="import_playlist":
-            pid=str(uuid.uuid4()); payload={"tracks":args.get("tracks",[])}; self.state.save_playlist(pid,str(args.get("name","AI playlist")),str(args.get("description","")),"llm",payload); self._refresh_playlists()
+        elif typ=="import_playlist":self._import_ai_playlist(args)
+
+    def _import_ai_playlist(self,args):
+        requested=[dict(x) for x in list(args.get("tracks") or []) if isinstance(x,dict)]
+        if not requested:
+            self.statusBar().showMessage("The AI playlist did not contain any tracks",4000); return
+        playlist_id=str(uuid.uuid4()); name=str(args.get("name","AI playlist")); description=str(args.get("description",""))
+        self.statusBar().showMessage(f"Matching {len(requested)} playlist tracks across your sources…")
+        self._run_async(
+            lambda:self.providers.resolve_playlist(requested),
+            lambda result:self._finish_ai_playlist(playlist_id,name,description,result),
+        )
+
+    def _finish_ai_playlist(self,playlist_id,name,description,result):
+        tracks=list(result.get("tracks") or []); unresolved=list(result.get("unresolved") or [])
+        payload={"tracks":tracks,"unresolved":unresolved,"requested":int(result.get("requested") or len(tracks)+len(unresolved))}
+        self.state.save_playlist(playlist_id,name,description,"llm",payload); self._refresh_playlists()
+        if tracks:self.player.set_queue(tracks,0,True)
+        msg=f"{name}: matched {len(tracks)} track{'s' if len(tracks)!=1 else ''}"
+        if unresolved:msg+=f" · {len(unresolved)} unresolved"
+        self.statusBar().showMessage(msg,7000)
 
     # ------------------------------- bridge
     def _bridge_dialog(self):
