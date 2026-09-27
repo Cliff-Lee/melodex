@@ -7,6 +7,7 @@ def test_artist_photo_from_wikidata_link(tmp_path: Path):
     svc = RichMetadataService(tmp_path / 'data')
     svc._download_artwork = lambda url: tmp_path / 'artist.jpg'
     (tmp_path / 'artist.jpg').write_bytes(b'jpg')
+
     svc._remote_json = lambda key, url, max_age=0: {
         'entities': {
             'Q42': {
@@ -19,12 +20,32 @@ def test_artist_photo_from_wikidata_link(tmp_path: Path):
             }
         }
     }
-    artist = {'name': 'Artist Example', 'links': [{'type': 'wikidata', 'url': 'https://www.wikidata.org/wiki/Q42'}]}
+
+    svc._commons_file_info = lambda name: {
+        'image_url': 'https://upload.wikimedia.org/example.jpg',
+        'description_url': 'https://commons.wikimedia.org/wiki/File:Artist_Example_Portrait.jpg',
+        'creator': 'Jane Doe',
+        'credit': 'Own work',
+        'license_name': 'CC BY-SA 4.0',
+        'license_url': 'https://creativecommons.org/licenses/by-sa/4.0/',
+        'attribution_required': 'true',
+        'copyrighted': 'True',
+        'explicit_attribution': '',
+    }
+
+    artist = {
+        'name': 'Artist Example',
+        'links': [{'type': 'wikidata', 'url': 'https://www.wikidata.org/wiki/Q42'}],
+    }
+
     out = svc.artist_photo(artist)
+
     assert out['source'] == 'Wikimedia Commons'
     assert out['wikidata_qid'] == 'Q42'
     assert out['path'].endswith('artist.jpg')
-    assert 'Wikimedia Commons image' in out['attribution']
+    assert out['creator'] == 'Jane Doe'
+    assert out['license_name'] == 'CC BY-SA 4.0'
+    assert out['attribution'] == 'Jane Doe / Wikimedia Commons / CC BY-SA 4.0'
 
 
 def test_discography_parsing_and_sorting(tmp_path: Path):

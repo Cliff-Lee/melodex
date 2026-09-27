@@ -1,8 +1,7 @@
 <p align="center">
-  <strong style="font-size: 32px;">MELODEX</strong>
+  <img src="docs/images/melodex.jpg" width="100%" alt="Melodex — Don't shuffle. Flow.">
 </p>
 
-<h1 align="center">Don't shuffle. Flow.</h1>
 
 <p align="center">
   <strong>A local-first music player that turns your library into continuous, personalised listening journeys.</strong>
