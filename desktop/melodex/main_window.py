@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import Qt, QTimer, Signal, QObject
-from PySide6.QtGui import QAction, QDesktopServices
+from PySide6.QtGui import QAction, QDesktopServices, QPixmap
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QListWidget,
     QListWidgetItem, QStackedWidget, QLineEdit, QComboBox, QFileDialog, QMessageBox,
@@ -81,10 +81,27 @@ class MainWindow(QMainWindow):
         body = QWidget(); body_l = QHBoxLayout(body); body_l.setContentsMargins(0,0,0,0); body_l.setSpacing(0)
         outer.addWidget(body, 1)
 
-        self.sidebar = QWidget(); self.sidebar.setFixedWidth(190)
-        side = QVBoxLayout(self.sidebar); side.setContentsMargins(14,18,14,14)
-        logo = QLabel("MELODEX"); logo.setStyleSheet("font-size:22px;font-weight:700;letter-spacing:2px")
-        side.addWidget(logo)
+        self.sidebar = QWidget(); self.sidebar.setObjectName("sidebar"); self.sidebar.setFixedWidth(220)
+        side = QVBoxLayout(self.sidebar); side.setContentsMargins(16,18,16,14)
+        brand = QHBoxLayout(); brand.setSpacing(10)
+        mark = QLabel()
+        mark_path = Path(__file__).resolve().parent / "assets" / "melodex-mark.png"
+        pixmap = QPixmap(str(mark_path))
+        if not pixmap.isNull():
+            mark.setPixmap(
+                pixmap.scaled(
+                    44, 44, Qt.KeepAspectRatio, Qt.SmoothTransformation
+                )
+            )
+        mark.setFixedSize(46, 46)
+        titles = QVBoxLayout(); titles.setSpacing(0)
+        logo = QLabel("MELODEX")
+        logo.setStyleSheet("font-size:20px;font-weight:750;letter-spacing:2px")
+        tagline = QLabel("Don't shuffle. Flow.")
+        tagline.setObjectName("brandTagline")
+        titles.addWidget(logo); titles.addWidget(tagline)
+        brand.addWidget(mark); brand.addLayout(titles, 1)
+        side.addLayout(brand); side.addSpacing(12)
         for text, page in [("Home","home"),("Now playing","now_playing"),("Play for me","for_you"),("Discover","discover"),("My music","library"),("Playlists","playlists"),("Moments","moments"),("Ask Melodex","ask"),("Sources","sources")]:
             b = QPushButton(text); b.setCursor(Qt.PointingHandCursor); b.clicked.connect(lambda _=False,p=page:self.open_page(p)); side.addWidget(b)
         side.addStretch(1)
@@ -116,10 +133,25 @@ class MainWindow(QMainWindow):
         outer.addWidget(bar)
 
         self.setStyleSheet("""
-            QMainWindow,QWidget{background:#101114;color:#f2f2f2;font-family:Arial;font-size:13px}
-            QPushButton{background:#1d2026;border:1px solid #2b3038;border-radius:8px;padding:9px 12px;text-align:left}
-            QPushButton:hover{background:#262b33} QLineEdit,QComboBox,QTextEdit,QListWidget{background:#16191e;border:1px solid #2b3038;border-radius:8px;padding:7px}
-            QListWidget::item{padding:9px;border-bottom:1px solid #20242a} QListWidget::item:selected{background:#26344a}
+            QMainWindow,QWidget{background:#0f1116;color:#f4f6fa;font-family:Arial;font-size:13px}
+            QWidget#sidebar{background:#0b0d12;border-right:1px solid #242a34}
+            QLabel#brandTagline{color:#8f9aaa;font-size:10px}
+            QWidget#sidebar QPushButton{
+                background:transparent;border:0;border-radius:9px;
+                padding:10px 12px;text-align:left
+            }
+            QWidget#sidebar QPushButton:hover{background:#1a2130}
+            QPushButton{
+                background:#1a1f28;border:1px solid #2b3340;border-radius:9px;
+                padding:9px 12px;text-align:left
+            }
+            QPushButton:hover{background:#232b37;border-color:#354154}
+            QLineEdit,QComboBox,QTextEdit,QListWidget{
+                background:#141820;border:1px solid #2b3340;border-radius:10px;padding:7px
+            }
+            QListWidget::item{padding:11px;border-bottom:1px solid #222934}
+            QListWidget::item:selected{background:#233a59}
+            QListWidget#sourcesList::item{padding:14px}
         """)
 
     def _page_layout(self, page: str, title: str, subtitle: str=""):
@@ -174,10 +206,32 @@ class MainWindow(QMainWindow):
         row=QHBoxLayout(); self.ask_box=QLineEdit(); self.ask_box.setPlaceholderText("e.g. Keep this mood but make the next hour stranger"); self.ask_box.returnPressed.connect(self._ask); ask=QPushButton("Ask"); ask.clicked.connect(self._ask); cfg=QPushButton("Connect LLM…"); cfg.clicked.connect(self._llm_settings_dialog); row.addWidget(self.ask_box,1); row.addWidget(ask); row.addWidget(cfg); l.addLayout(row)
 
     def _build_sources(self):
-        l=self._page_layout("sources","Music sources","Melodex itself is source-neutral. Built-in sources are local files and the Jamendo reference provider; third-party desktop providers use the public MPP format.")
-        self.sources_list=QListWidget(); l.addWidget(self.sources_list,1)
-        row=QHBoxLayout(); local=QPushButton("Add local folder…"); local.clicked.connect(self._choose_music_folder); jam=QPushButton("Jamendo settings…"); jam.clicked.connect(self._jamendo_settings); inst=QPushButton("Install .mdxprovider…"); inst.clicked.connect(self._install_provider); bridge=QPushButton("Provider Bridge…"); bridge.clicked.connect(self._bridge_dialog); row.addWidget(local); row.addWidget(jam); row.addWidget(inst); row.addWidget(bridge); l.addLayout(row)
-        priority=QHBoxLayout(); up=QPushButton("Prefer source ↑"); down=QPushButton("Prefer source ↓"); up.clicked.connect(lambda:self._move_source(-1)); down.clicked.connect(lambda:self._move_source(1)); priority.addWidget(up); priority.addWidget(down); priority.addStretch(1); l.addLayout(priority)
+        l=self._page_layout(
+            "sources",
+            "Music sources",
+            "Connect Melodex to your music. Built-in sources stay simple; "
+            "provider tools are available when you need them.",
+        )
+        self.sources_list=QListWidget(); self.sources_list.setObjectName("sourcesList"); l.addWidget(self.sources_list,1)
+
+        row=QHBoxLayout()
+        local=QPushButton("Add local folder…"); local.clicked.connect(self._choose_music_folder)
+        jam=QPushButton("Jamendo settings…"); jam.clicked.connect(self._jamendo_settings)
+        row.addWidget(local); row.addWidget(jam); row.addStretch(1); l.addLayout(row)
+
+        self.source_power_panel = QWidget()
+        power=QVBoxLayout(self.source_power_panel); power.setContentsMargins(0,4,0,0); power.setSpacing(8)
+        provider_row=QHBoxLayout()
+        inst=QPushButton("Install .mdxprovider…"); inst.clicked.connect(self._install_provider)
+        bridge=QPushButton("Provider Bridge…"); bridge.clicked.connect(self._bridge_dialog)
+        provider_row.addWidget(inst); provider_row.addWidget(bridge); provider_row.addStretch(1)
+        power.addLayout(provider_row)
+        priority=QHBoxLayout()
+        up=QPushButton("Prefer source ↑"); down=QPushButton("Prefer source ↓")
+        up.clicked.connect(lambda:self._move_source(-1)); down.clicked.connect(lambda:self._move_source(1))
+        priority.addWidget(up); priority.addWidget(down); priority.addStretch(1); power.addLayout(priority)
+        self.source_power_panel.setVisible(self.power_toggle.isChecked())
+        l.addWidget(self.source_power_panel)
 
     # ------------------------------- navigation/data
     def open_page(self, name: str):
@@ -196,7 +250,10 @@ class MainWindow(QMainWindow):
         self.home_status.setText(f"{count:,} local tracks · {src} connected sources · Flow {'ready' if self.flow.analysis_available else 'works with metadata; install ffmpeg for deep analysis'}")
 
     def _power_changed(self, _):
-        self.statusBar().showMessage("Power tools enabled" if self.power_toggle.isChecked() else "Simple mode", 2500)
+        enabled = self.power_toggle.isChecked()
+        if hasattr(self, "source_power_panel"):
+            self.source_power_panel.setVisible(enabled)
+        self.statusBar().showMessage("Power tools enabled" if enabled else "Simple mode", 2500)
 
     def _refresh_source_combo(self):
         current=self.search_source.currentData(); self.search_source.clear(); self.search_source.addItem("All sources","all")
@@ -206,9 +263,25 @@ class MainWindow(QMainWindow):
 
     def _refresh_sources(self):
         self.sources_list.clear()
-        for rank,pid in enumerate(self.providers.provider_order(),start=1):
+        for pid in self.providers.provider_order():
             p=self.providers.providers[pid]
-            item=QListWidgetItem(f"#{rank}  {p.info.name}\n{p.info.description}"); item.setData(Qt.UserRole,pid); self.sources_list.addItem(item)
+            name = p.info.name.replace(" (reference provider)", "")
+            if pid == "local":
+                count = len(self.providers.local_catalog())
+                status = f"{count:,} TRACKS" if count else "ADD MUSIC"
+                kind = "BUILT-IN"
+            elif pid == "jamendo":
+                configured = bool(str(self.providers.settings.get("jamendo_client_id", "")).strip())
+                status = "READY" if configured else "SETUP NEEDED"
+                kind = "REFERENCE"
+            else:
+                status = "INSTALLED"
+                kind = "PROVIDER"
+            item=QListWidgetItem(
+                f"{name}    ·    {kind}    ·    {status}\n{p.info.description}"
+            )
+            item.setData(Qt.UserRole,pid)
+            self.sources_list.addItem(item)
         self._refresh_source_combo()
 
     def _move_source(self, delta):
