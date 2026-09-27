@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from .paths import app_data_dir
+from .redaction import redact_for_llm
 
 
 class ControlError(RuntimeError):
@@ -72,7 +73,7 @@ class MelodexControlClient:
                 raw = response.read()
                 if not raw:
                     return {}
-                return json.loads(raw.decode("utf-8"))
+                return redact_for_llm(json.loads(raw.decode("utf-8")))
         except urllib.error.HTTPError as exc:
             try:
                 raw = exc.read().decode("utf-8", errors="replace")

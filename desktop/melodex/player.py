@@ -8,6 +8,7 @@ from PySide6.QtCore import QObject, QTimer, QUrl, Signal
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 
 from .playback_gateway import PlaybackGateway
+from .redaction import redact_for_llm
 
 
 def _expired(value: Any, skew_seconds: int = 15) -> bool:
@@ -106,8 +107,8 @@ class FlowPlayer(QObject):
             "duration_ms": int(player.duration()),
             "volume": float(self.outputs[self.active].volume()),
             "index": int(self.index),
-            "current_track": self.current_track(),
-            "queue": [dict(item) for item in self.queue],
+            "current_track": redact_for_llm(self.current_track()),
+            "queue": redact_for_llm([dict(item) for item in self.queue]),
         }
 
     def _resolve_for_playback(self, index: int) -> dict[str, Any]:

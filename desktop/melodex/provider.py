@@ -74,17 +74,37 @@ class ExternalProvider(MusicProvider):
         )
         return f"{prefix}-{arch}"
 
+    def _python_command(self, script: Path) -> list[str]:
+        script = Path(script)
+
+        # In a PyInstaller build sys.executable is the Melodex executable,
+        # not a Python interpreter. Re-launch Melodex in its hidden provider
+        # runner mode rather than accidentally opening another GUI instance.
+        if getattr(sys, "frozen", False):
+            return [
+                sys.executable,
+                "--melodex-provider-script",
+                str(script),
+            ]
+
+        return [sys.executable, "-u", str(script)]
+
     def _command(self) -> list[str]:
         entries = dict(self.manifest.get("entrypoints") or {})
+
         python_entry = str(entries.get("python") or "").strip()
         if python_entry:
-            return [sys.executable, "-u", str(self.folder / python_entry)]
+            return self._python_command(self.folder / python_entry)
+
         native = str(
-            entries.get(self._platform_entrypoint_key()) or entries.get("executable") or ""
+            entries.get(self._platform_entrypoint_key())
+            or entries.get("executable")
+            or ""
         )
         if native:
             return [str(self.folder / native)]
-        return [sys.executable, "-u", str(self.folder / "provider.py")]
+
+        return self._python_command(self.folder / "provider.py")
 
     def _ensure(self) -> subprocess.Popen[str]:
         if self._proc and self._proc.poll() is None:

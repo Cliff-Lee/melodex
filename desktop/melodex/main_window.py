@@ -26,6 +26,7 @@ from .bridge_server import ProviderBridge
 from .playlist_io import load_playlist, save_playlist
 from .metadata import RichMetadataService
 from .rich_now_playing import RichNowPlayingWidget
+from .redaction import redact_for_llm
 
 
 class WorkerSignals(QObject):
@@ -615,7 +616,9 @@ class MainWindow(QMainWindow):
             return
         if self.current_track and self.current_track_started and time.time()-self.current_track_started<30:
             self.state.record_skip(self.current_track)
-        self.current_track=dict(t); self.current_track_started=time.time(); self.current_history_id=self.state.record_play(t)
+        safe_t=redact_for_llm(dict(t))
+        self.current_track=safe_t; self.current_track_started=time.time(); self.current_history_id=self.state.record_play(safe_t)
+        t=safe_t
         self.now_title.setText(str(t.get("title") or "Unknown track")); base=f"{t.get('artist','Unknown artist')}   ·   {t.get('album','')}   ·   {t.get('provider_id','')}"; src=str(t.get("source_page") or ""); attr=str(t.get("attribution") or ""); self.now_meta.setText(base + ((f"   ·   <a href=\"{src}\">{attr or 'Source'}</a>") if src else ""))
         if hasattr(self,"rich_now"):self.rich_now.set_track(dict(t))
 
@@ -748,7 +751,8 @@ class MainWindow(QMainWindow):
             self.state.set_text("llm_provider",provider.currentText()); self.state.set_text("llm_endpoint",endpoint.text().strip()); self.state.set_text("llm_model",model.text().strip()); self.state.set_text("llm_api_key",key.text().strip())
 
     def _llm_context(self):
-        return {"current_track":self.current_track,"queue":self.player.queue[self.player.index:self.player.index+12] if self.player.index>=0 else [],"current_page":self.current_page,"taste":self.state.taste_summary(),"recent":self.state.recent_tracks(15),"vibes":self.state.vibes(10)}
+        context={"current_track":self.current_track,"queue":self.player.queue[self.player.index:self.player.index+12] if self.player.index>=0 else [],"current_page":self.current_page,"taste":self.state.taste_summary(),"recent":self.state.recent_tracks(15),"vibes":self.state.vibes(10)}
+        return redact_for_llm(context)
 
     def _ask(self):
         prompt=self.ask_box.text().strip();
