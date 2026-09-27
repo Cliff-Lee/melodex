@@ -105,8 +105,8 @@ class MainWindow(QMainWindow):
         bl.addWidget(prev); bl.addWidget(play); bl.addWidget(nxt)
         text_col=QVBoxLayout(); self.now_title=QLabel("Nothing playing"); self.now_title.setStyleSheet("font-weight:650;font-size:15px"); self.now_meta=QLabel(""); self.now_meta.setOpenExternalLinks(True); text_col.addWidget(self.now_title); text_col.addWidget(self.now_meta)
         self.seek=QSlider(Qt.Horizontal); self.seek.setRange(0,1000); self.seek.sliderReleased.connect(self._seek_released); text_col.addWidget(self.seek); bl.addLayout(text_col,1)
-        keep=QPushButton("Keep"); keep.clicked.connect(self._keep); love=QPushButton("♥"); love.clicked.connect(lambda:self._feedback(True)); more=QPushButton("•••"); more.clicked.connect(self._more_actions); queue=QPushButton("Queue"); queue.clicked.connect(lambda:self.queue_panel.setVisible(not self.queue_panel.isVisible()))
-        bl.addWidget(keep); bl.addWidget(love); bl.addWidget(more); bl.addWidget(queue)
+        keep=QPushButton("Keep"); keep.clicked.connect(self._keep); love=QPushButton("♥"); love.clicked.connect(lambda:self._feedback(True)); match=QPushButton("Match"); match.clicked.connect(self._inspect_current_match); more=QPushButton("•••"); more.clicked.connect(self._more_actions); queue=QPushButton("Queue"); queue.clicked.connect(lambda:self.queue_panel.setVisible(not self.queue_panel.isVisible()))
+        bl.addWidget(keep); bl.addWidget(love); bl.addWidget(match); bl.addWidget(more); bl.addWidget(queue)
         outer.addWidget(bar)
 
         self.setStyleSheet("""
@@ -413,6 +413,84 @@ class MainWindow(QMainWindow):
         label,ok=QInputDialog.getText(self,"Save a moment","Moment note (leave blank if you like):")
         if ok:
             pos=self.player.players[self.player.active].position(); self.state.save_moment(self.current_track,pos,label); self.statusBar().showMessage("Moment saved",3000)
+
+    @staticmethod
+    def _resolver_target(track):
+        track=dict(track or {}); resolution=track.get("_resolution")
+        if isinstance(resolution,dict) and isinstance(resolution.get("requested"),dict):
+            requested=dict(resolution.get("requested") or {})
+            if str(requested.get("title") or "").strip():return requested
+        return {"artist":str(track.get("artist") or ""),"title":str(track.get("title") or ""),"album":str(track.get("album") or ""),"duration":track.get("duration") or 0}
+
+    def _inspect_current_match(self):
+        if not self.current_track:
+            self.statusBar().showMessage("Play a track first, then inspect its source match",3500); return
+        target=self._resolver_target(self.current_track)
+        self.statusBar().showMessage("Checking resolver candidates…")
+        self._run_async(lambda:self.providers.inspect_resolution(target,24),lambda info:self._show_resolver_inspector(target,info))
+
+    def _show_resolver_inspector(self,target,info):
+        d=QDialog(self); d.setWindowTitle("Resolver Inspector"); d.resize(760,560); lay=QVBoxLayout(d)
+        requested=f"{target.get('artist','')} — {target.get('title','')}".strip(" —")
+        album=str(target.get("album") or ""); head=QLabel(f"Requested: {requested}" + (f"  ·  {album}" if album else "")); head.setWordWrap(True); lay.addWidget(head)
+        blocked=int(info.get("blocked_count") or 0); threshold=float(info.get("minimum_score") or 0.62); preferred=info.get("preferred")
+        summary=QLabel(f"Automatic threshold: {threshold:.0%}  ·  Wrong matches remembered: {blocked}" + ("  ·  Preferred match remembered" if preferred else "")); summary.setWordWrap(True); summary.setStyleSheet("color:#aab0ba"); lay.addWidget(summary)
+        rows=QListWidget(); lay.addWidget(rows,1)
+        current_pid=str((self.current_track or {}).get("provider_id") or ""); current_tid=str((self.current_track or {}).get("track_id") or ""); current_row=-1
+        for i,row in enumerate(list(info.get("candidates") or [])):
+            if not isinstance(row,dict):continue
+            t=dict(row.get("track") or {}); score=float(row.get("score") or 0); provider=str(row.get("provider_id") or t.get("provider_id") or "")
+            flags=", ".join(list(row.get("flags") or [])); reasons=" · ".join(list(row.get("reasons") or []))
+            duration=row.get("duration_delta"); duration_text=(f" · Δ{float(duration):.0f}s" if duration is not None else "")
+            star="★ " if bool(row.get("preferred")) else ""
+            line1=f"{star}{score:.0%}  {provider}  ·  {t.get('artist','Unknown artist')} — {t.get('title','Unknown track')}"
+            line2=f"title {float(row.get('title_score') or 0):.0%} · artist {float(row.get('artist_score') or 0):.0%} · album {float(row.get('album_score') or 0):.0%}{duration_text}"
+            if flags:line2+=f" · [{flags}]"
+            if reasons:line2+=f"\n{reasons}"
+            item=QListWidgetItem(line1+"\n"+line2); item.setData(Qt.UserRole,row); rows.addItem(item)
+            if str(t.get("provider_id") or "")==current_pid and str(t.get("track_id") or "")==current_tid:current_row=rows.count()-1
+        if rows.count()==0:
+            rows.addItem("No resolver candidates were returned by the connected sources.")
+        else:rows.setCurrentRow(current_row if current_row>=0 else 0)
+        buttons=QHBoxLayout(); play=QPushButton("Play this match"); prefer=QPushButton("Prefer"); wrong=QPushButton("Wrong match"); reset=QPushButton("Reset memory"); close=QPushButton("Close")
+        for b in (play,prefer,wrong,reset,close):buttons.addWidget(b)
+        lay.addLayout(buttons)
+        def selected():
+            item=rows.currentItem(); data=item.data(Qt.UserRole) if item else None
+            return dict(data or {}) if isinstance(data,dict) else {}
+        play.clicked.connect(lambda:self._resolver_use_candidate(target,selected(),d,False))
+        prefer.clicked.connect(lambda:self._resolver_use_candidate(target,selected(),d,True))
+        wrong.clicked.connect(lambda:self._resolver_wrong_candidate(target,selected(),d))
+        reset.clicked.connect(lambda:self._resolver_reset_memory(target,d))
+        close.clicked.connect(d.reject)
+        d.exec()
+
+    def _resolver_use_candidate(self,target,row,dialog,remember):
+        candidate=dict(row.get("track") or {}) if isinstance(row,dict) else {}
+        if not candidate:
+            self.statusBar().showMessage("Select a resolver candidate first",3000); return
+        if remember:self.providers.prefer_resolution(target,candidate)
+        dialog.accept(); self.statusBar().showMessage("Using preferred match…" if remember else "Loading selected match…")
+        self._run_async(lambda:self.providers.resolve_exact(candidate,target),self._apply_resolver_match)
+
+    def _resolver_wrong_candidate(self,target,row,dialog):
+        candidate=dict(row.get("track") or {}) if isinstance(row,dict) else {}
+        if not candidate:
+            self.statusBar().showMessage("Select a resolver candidate first",3000); return
+        self.providers.block_resolution(target,candidate); dialog.accept(); self.statusBar().showMessage("Wrong match remembered · trying the next candidate…")
+        self._run_async(lambda:self.providers.resolve(target),self._apply_resolver_match)
+
+    def _resolver_reset_memory(self,target,dialog):
+        self.providers.clear_resolution_preference(target); self.providers.clear_resolution_blocks(target); dialog.accept(); self.statusBar().showMessage("Match memory reset for this song",3500)
+        self._run_async(lambda:self.providers.inspect_resolution(target,24),lambda info:self._show_resolver_inspector(target,info))
+
+    def _apply_resolver_match(self,resolved):
+        if not isinstance(resolved,dict):return
+        idx=self.player.index
+        if idx<0:self.player.set_queue([resolved],0,True); return
+        self.player.queue[idx]=dict(resolved); self.player.queueChanged.emit(self.player.queue); self.player.players[self.player.active].stop(); self.player._load_index(idx,True)
+        mode=str((resolved.get("_resolution") or {}).get("mode") or "match") if isinstance(resolved.get("_resolution"),dict) else "match"
+        self.statusBar().showMessage(f"Resolver match applied · {mode}",4000)
 
     def _refresh_queue(self,tracks):
         self.queue_list.clear()

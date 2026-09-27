@@ -203,6 +203,24 @@ class ProviderBridge:
                             "album": q.get("album", [""])[0],
                         }
                         return self._send(200, self._remote_track(bridge.manager.resolve(target)))
+                    if u.path == "/v1/resolve-candidates":
+                        target = {
+                            "artist": q.get("artist", [""])[0],
+                            "title": q.get("title", [""])[0],
+                            "album": q.get("album", [""])[0],
+                        }
+                        limit = max(1, min(50, int(q.get("limit", ["20"])[0] or 20)))
+                        info = dict(bridge.manager.inspect_resolution(target, limit) or {})
+                        clean = []
+                        for row in list(info.get("candidates") or []):
+                            if not isinstance(row, dict):
+                                continue
+                            item = dict(row)
+                            if isinstance(item.get("track"), dict):
+                                item["track"] = bridge._public_track(item["track"])
+                            clean.append(item)
+                        info["candidates"] = clean
+                        return self._send(200, info)
                     if u.path == "/v1/status":
                         status = dict(bridge._control("status") or {})
                         if isinstance(status.get("current_track"), dict):
@@ -257,6 +275,23 @@ class ProviderBridge:
                             "unresolved": list(result.get("unresolved") or []),
                             "tracks": [bridge._public_track(x) for x in tracks],
                         })
+                    if u.path == "/v1/resolver/prefer":
+                        requested = dict(body.get("requested") or {})
+                        candidate = dict(body.get("candidate") or {})
+                        bridge.manager.prefer_resolution(requested, candidate)
+                        return self._send(200, {"ok": True})
+                    if u.path == "/v1/resolver/block":
+                        requested = dict(body.get("requested") or {})
+                        candidate = dict(body.get("candidate") or {})
+                        bridge.manager.block_resolution(requested, candidate)
+                        return self._send(200, {"ok": True})
+                    if u.path == "/v1/resolver/reset":
+                        requested = dict(body.get("requested") or {})
+                        if bool(body.get("clear_preference", True)):
+                            bridge.manager.clear_resolution_preference(requested)
+                        if bool(body.get("clear_blocks", True)):
+                            bridge.manager.clear_resolution_blocks(requested)
+                        return self._send(200, {"ok": True})
                     if u.path == "/v1/control":
                         action = str(body.get("action") or "").strip()
                         allowed = {

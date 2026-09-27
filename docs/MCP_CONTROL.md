@@ -92,3 +92,14 @@ Melodex itself must already be running. The MCP process discovers its private co
 - Local filesystem paths are stripped from control/MCP responses.
 - The HTTP MCP process only needs to bind `0.0.0.0` when another container or device must reach it.
 - Treat the MCP bearer token like a password.
+
+## Resolver transparency tools
+
+With the Resolver Inspector update, MCP also exposes:
+
+- `melodex_resolution_candidates` — inspect ranked source matches and score explanations.
+- `melodex_prefer_match` — remember one provider result for one requested song.
+- `melodex_wrong_match` — reject one bad result without disabling its provider.
+- `melodex_reset_match_memory` — clear the per-song preference and wrong-match blocks.
+
+These tools change resolver memory only; they do not grant an external model direct filesystem access.

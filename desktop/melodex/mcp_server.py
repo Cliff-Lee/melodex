@@ -49,6 +49,26 @@ def build_server(client: MelodexControlClient):
         """Resolve artist/title/album metadata to Melodex's best playable source without changing playback."""
         return client.resolve(artist, title, album)
 
+    @mcp.tool(name="melodex_resolution_candidates", title="Inspect resolver candidates", annotations=read_only)
+    def melodex_resolution_candidates(artist: str, title: str, album: str = "", limit: int = 12) -> dict[str, Any]:
+        """Show candidate matches, confidence components, variant flags, provider priority and remembered preference."""
+        return client.resolve_candidates(artist, title, album, limit=limit)
+
+    @mcp.tool(name="melodex_prefer_match", title="Prefer a resolver match", annotations=write_safe)
+    def melodex_prefer_match(requested: dict[str, str], candidate: dict[str, Any]) -> dict[str, Any]:
+        """Remember a specific provider result as the preferred match for one requested song."""
+        return client.prefer_match(dict(requested), dict(candidate))
+
+    @mcp.tool(name="melodex_wrong_match", title="Reject a resolver match", annotations=write_safe)
+    def melodex_wrong_match(requested: dict[str, str], candidate: dict[str, Any]) -> dict[str, Any]:
+        """Block one bad provider result for one requested song without disabling the provider."""
+        return client.block_match(dict(requested), dict(candidate))
+
+    @mcp.tool(name="melodex_reset_match_memory", title="Reset resolver memory", annotations=write_safe)
+    def melodex_reset_match_memory(requested: dict[str, str]) -> dict[str, Any]:
+        """Clear the preferred match and wrong-match blocks for one requested song."""
+        return client.reset_match_memory(dict(requested))
+
     @mcp.tool(name="melodex_play", title="Play a track", annotations=write_safe)
     def melodex_play(artist: str, title: str, album: str = "") -> dict[str, Any]:
         """Resolve a track across connected sources, replace the queue with it, and start playback."""

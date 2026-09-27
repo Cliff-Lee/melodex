@@ -46,6 +46,22 @@ class FakeManager:
     def resolve_playlist(self, tracks):
         return {"requested": len(tracks), "tracks": [self.resolve(x) for x in tracks], "unresolved": []}
 
+    def inspect_resolution(self, track, limit=20):
+        candidate = {"provider_id":"web","track_id":"1","artist":track.get("artist","Example"),"title":track.get("title","Song"),"album":track.get("album",""),"stream_url":"https://example.invalid/a.mp3"}
+        return {"requested":dict(track),"minimum_score":0.62,"preferred":None,"blocked_count":0,"candidates":[{"track":candidate,"score":0.97,"provider_id":"web","provider_rank":1,"title_score":1.0,"artist_score":1.0,"album_score":1.0,"version_penalty":0.0,"duration_adjustment":0.0,"duration_delta":None,"preferred":False,"candidate_key":"web:1","flags":[],"reasons":["exact title","exact artist"]}][:limit]}
+
+    def prefer_resolution(self, requested, candidate):
+        self.preferred = (dict(requested), dict(candidate))
+
+    def block_resolution(self, requested, candidate):
+        self.blocked = (dict(requested), dict(candidate))
+
+    def clear_resolution_preference(self, requested):
+        self.preferred = None
+
+    def clear_resolution_blocks(self, requested):
+        self.blocked = None
+
 
 class FakeController:
     def __init__(self):
@@ -77,6 +93,12 @@ def test_control_bridge_and_client(tmp_path: Path):
         resolved = client.resolve("Artist", "Track")
         assert resolved["provider_id"] == "web"
         assert "local_path" not in resolved
+        inspected = client.resolve_candidates("Artist", "Track")
+        assert inspected["candidates"][0]["score"] == 0.97
+        candidate = inspected["candidates"][0]["track"]
+        assert client.prefer_match(inspected["requested"], candidate)["ok"] is True
+        assert client.block_match(inspected["requested"], candidate)["ok"] is True
+        assert client.reset_match_memory(inspected["requested"])["ok"] is True
         played = client.play("Artist", "Track")
         assert played["ok"] is True
         assert controller.actions[-1][0] == "set_queue"

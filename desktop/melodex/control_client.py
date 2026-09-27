@@ -100,6 +100,18 @@ class MelodexControlClient:
     def resolve(self, artist: str, title: str, album: str = "") -> dict[str, Any]:
         return dict(self._request("GET", "/v1/resolve", params={"artist": artist, "title": title, "album": album}) or {})
 
+    def resolve_candidates(self, artist: str, title: str, album: str = "", limit: int = 20) -> dict[str, Any]:
+        return dict(self._request("GET", "/v1/resolve-candidates", params={"artist": artist, "title": title, "album": album, "limit": max(1, min(50, int(limit)))}) or {})
+
+    def prefer_match(self, requested: dict[str, Any], candidate: dict[str, Any]) -> dict[str, Any]:
+        return dict(self._request("POST", "/v1/resolver/prefer", {"requested": requested, "candidate": candidate}) or {})
+
+    def block_match(self, requested: dict[str, Any], candidate: dict[str, Any]) -> dict[str, Any]:
+        return dict(self._request("POST", "/v1/resolver/block", {"requested": requested, "candidate": candidate}) or {})
+
+    def reset_match_memory(self, requested: dict[str, Any], clear_preference: bool = True, clear_blocks: bool = True) -> dict[str, Any]:
+        return dict(self._request("POST", "/v1/resolver/reset", {"requested": requested, "clear_preference": bool(clear_preference), "clear_blocks": bool(clear_blocks)}) or {})
+
     def play(self, artist: str, title: str, album: str = "") -> dict[str, Any]:
         return dict(self._request("POST", "/v1/play", {"artist": artist, "title": title, "album": album}) or {})
 

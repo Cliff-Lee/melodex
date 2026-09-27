@@ -81,14 +81,29 @@ class ProviderManager:
     def resolve(self, track: dict[str, Any]) -> dict[str, Any]:
         return self.resolver.resolve(track)
 
+    def resolve_exact(self, candidate: dict[str, Any], requested: dict[str, Any] | None = None) -> dict[str, Any]:
+        return self.resolver.resolve_exact(candidate, requested)
+
     def resolve_candidates(self, track: dict[str, Any], limit: int = 20) -> list[dict[str, Any]]:
         return [x.as_dict() for x in self.resolver.candidates(track, total_limit=limit)]
+
+    def inspect_resolution(self, track: dict[str, Any], limit: int = 20) -> dict[str, Any]:
+        return self.resolver.inspect(track, limit)
 
     def resolve_playlist(self, tracks: list[dict[str, Any]]) -> dict[str, Any]:
         return self.resolver.resolve_many(tracks)
 
     def block_resolution(self, requested: dict[str, Any], matched: dict[str, Any]) -> None:
         self.resolver.block(requested, matched)
+
+    def prefer_resolution(self, requested: dict[str, Any], matched: dict[str, Any]) -> None:
+        self.resolver.prefer(requested, matched)
+
+    def clear_resolution_preference(self, requested: dict[str, Any]) -> None:
+        self.resolver.clear_preference(requested)
+
+    def clear_resolution_blocks(self, requested: dict[str, Any]) -> None:
+        self.resolver.unblock_target(requested)
 
     def clear_resolution_blocklist(self) -> None:
         self.resolver.unblock_all()
