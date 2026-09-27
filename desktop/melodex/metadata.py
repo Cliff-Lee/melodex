@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import html
 import json
 import re
 import threading
@@ -18,6 +19,7 @@ _MB_BASE = "https://musicbrainz.org/ws/2"
 _CAA_BASE = "https://coverartarchive.org"
 _WD_ENTITY_BASE = "https://www.wikidata.org/wiki/Special:EntityData"
 _WM_FILE_PATH = "https://commons.wikimedia.org/wiki/Special:FilePath"
+_WM_API = "https://commons.wikimedia.org/w/api.php"
 _USER_AGENT = "Melodex/0.1 (https://github.com/Cliff-Lee/melodex)"
 _LRC_RE = re.compile(r"\[(?P<m>\d{1,3}):(?P<s>\d{1,2})(?:[\.:](?P<f>\d{1,3}))?\]")
 _VERSION_WORDS = re.compile(r"\b(live|remix|acoustic|cover|karaoke|instrumental|demo|edit|remaster(?:ed)?)\b", re.I)
@@ -442,10 +444,96 @@ class RichMetadataService:
             return data
         return {}
 
+    @staticmethod
+    def _plain_extmetadata(value: Any) -> str:
+        """Turn Commons extmetadata HTML into safe plain text for display."""
+        if isinstance(value, dict):
+            value = value.get("value") or ""
+        text = str(value or "")
+        text = re.sub(r"<br\s*/?>", " · ", text, flags=re.I)
+        text = re.sub(r"<[^>]+>", "", text)
+        return " ".join(html.unescape(text).split())
+
+    @staticmethod
+    def _meta_value(extmetadata: dict[str, Any], key: str) -> str:
+        value = extmetadata.get(key) if isinstance(extmetadata, dict) else None
+        return RichMetadataService._plain_extmetadata(value)
+
+    def _commons_file_info(self, image_name: str) -> dict[str, Any]:
+        """Fetch the actual Commons file URL and machine-readable credit/licence metadata."""
+        image_name = str(image_name or "").strip()
+        if not image_name:
+            return {}
+        key = f"commons-file:{image_name.casefold()}"
+        cached = self._cached_json(key, 45 * 86400)
+        if isinstance(cached, dict):
+            return cached
+        params = {
+            "action": "query",
+            "format": "json",
+            "formatversion": "2",
+            "prop": "imageinfo",
+            "titles": f"File:{image_name}",
+            "iiprop": "url|extmetadata",
+            "iiurlwidth": "640",
+            "iiextmetadatalanguage": "en",
+            "iiextmetadatafilter": "Artist|Credit|Attribution|LicenseShortName|LicenseUrl|UsageTerms|Copyrighted|AttributionRequired",
+        }
+        response = self.session.get(_WM_API, params=params, timeout=15, headers={"Accept": "application/json", "User-Agent": _USER_AGENT})
+        response.raise_for_status()
+        payload = response.json()
+        pages = ((payload.get("query") or {}).get("pages") if isinstance(payload, dict) else None) or []
+        page = pages[0] if pages and isinstance(pages[0], dict) else {}
+        info_rows = page.get("imageinfo") if isinstance(page.get("imageinfo"), list) else []
+        info = info_rows[0] if info_rows and isinstance(info_rows[0], dict) else {}
+        ext = info.get("extmetadata") if isinstance(info.get("extmetadata"), dict) else {}
+        direct_url = str(info.get("thumburl") or info.get("url") or "")
+        description_url = str(info.get("descriptionurl") or "")
+        if not description_url:
+            description_url = "https://commons.wikimedia.org/wiki/File:" + urllib.parse.quote(image_name.replace(" ", "_"))
+        result = {
+            "image_url": direct_url,
+            "description_url": description_url,
+            "creator": self._meta_value(ext, "Artist"),
+            "credit": self._meta_value(ext, "Credit"),
+            "explicit_attribution": self._meta_value(ext, "Attribution"),
+            "license_name": self._meta_value(ext, "LicenseShortName") or self._meta_value(ext, "UsageTerms"),
+            "license_url": self._meta_value(ext, "LicenseUrl"),
+            "usage_terms": self._meta_value(ext, "UsageTerms"),
+            "copyrighted": self._meta_value(ext, "Copyrighted"),
+            "attribution_required": self._meta_value(ext, "AttributionRequired"),
+        }
+        self._save_json(key, result)
+        return result
+
+    @staticmethod
+    def _commons_credit_line(info: dict[str, Any]) -> str:
+        explicit = str(info.get("explicit_attribution") or "").strip()
+        if explicit:
+            return explicit
+        creator = str(info.get("creator") or "").strip()
+        credit = str(info.get("credit") or "").strip()
+        license_name = str(info.get("license_name") or "").strip()
+        parts: list[str] = []
+        if creator:
+            parts.append(creator)
+        if credit and credit.casefold() not in {creator.casefold(), "own work"}:
+            parts.append(credit)
+        parts.append("Wikimedia Commons")
+        if license_name:
+            parts.append(license_name)
+        return " / ".join(dict.fromkeys(x for x in parts if x))
+
     def artist_photo(self, artist: dict[str, Any]) -> dict[str, Any]:
         qid = self._extract_wikidata_qid(artist)
+        empty = {
+            "path": "", "source": "", "source_url": "", "attribution": "",
+            "wikidata_qid": qid, "filename": "", "creator": "", "credit": "",
+            "license_name": "", "license_url": "", "description_url": "",
+            "attribution_required": "", "copyrighted": "",
+        }
         if not qid:
-            return {"path": "", "source": "", "source_url": "", "attribution": "", "wikidata_qid": ""}
+            return empty
         data = self._remote_json(f"wikidata:{qid}", f"{_WD_ENTITY_BASE}/{qid}.json")
         entity = (data.get("entities") or {}).get(qid) if isinstance(data.get("entities"), dict) else {}
         claims = entity.get("claims") if isinstance(entity, dict) else {}
@@ -458,18 +546,26 @@ class RichMetadataService:
         except Exception:
             image_name = ""
         if not image_name:
-            return {"path": "", "source": "", "source_url": "", "attribution": "", "wikidata_qid": qid}
-        image_url = f"{_WM_FILE_PATH}/{urllib.parse.quote(image_name.replace(' ', '_'))}"
+            return empty
+
+        commons = self._commons_file_info(image_name)
+        image_url = str(commons.get("image_url") or "") or f"{_WM_FILE_PATH}/{urllib.parse.quote(image_name.replace(' ', '_'))}"
         downloaded = self._download_artwork(image_url)
-        labels = entity.get("labels") if isinstance(entity, dict) else {}
-        label = ((labels.get("en") or {}).get("value") if isinstance(labels, dict) else "") or str(artist.get("name") or "")
         return {
+            **empty,
             "path": str(downloaded or ""),
             "source": "Wikimedia Commons",
             "source_url": image_url,
-            "attribution": f"Wikimedia Commons image for {label}",
+            "description_url": str(commons.get("description_url") or ""),
+            "attribution": self._commons_credit_line(commons),
             "wikidata_qid": qid,
             "filename": image_name,
+            "creator": str(commons.get("creator") or ""),
+            "credit": str(commons.get("credit") or ""),
+            "license_name": str(commons.get("license_name") or ""),
+            "license_url": str(commons.get("license_url") or ""),
+            "attribution_required": str(commons.get("attribution_required") or ""),
+            "copyrighted": str(commons.get("copyrighted") or ""),
         }
 
     def discography(self, artist_mbid: str, limit: int = 18) -> list[dict[str, Any]]:

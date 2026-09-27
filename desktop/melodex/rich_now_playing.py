@@ -58,8 +58,10 @@ class RichNowPlayingWidget(QWidget):
         self.links = QLabel(""); self.links.setOpenExternalLinks(True); self.links.setWordWrap(True)
         self.artist_photo_thumb = QLabel(""); self.artist_photo_thumb.setAlignment(Qt.AlignCenter); self.artist_photo_thumb.setFixedSize(160, 160)
         self.artist_photo_thumb.setStyleSheet("background:#15181d;border:1px solid #303640;border-radius:16px;color:#808894")
+        self.artist_photo_credit = QLabel(""); self.artist_photo_credit.setOpenExternalLinks(True); self.artist_photo_credit.setWordWrap(True)
+        self.artist_photo_credit.setMaximumWidth(330); self.artist_photo_credit.setStyleSheet("color:#8f96a1;font-size:10px")
         right.addWidget(self.title); right.addWidget(self.artist); right.addWidget(self.album); right.addWidget(self.facts)
-        right.addWidget(self.progress); right.addWidget(self.links); right.addWidget(self.artist_photo_thumb, 0, Qt.AlignLeft); right.addStretch(1)
+        right.addWidget(self.progress); right.addWidget(self.links); right.addWidget(self.artist_photo_thumb, 0, Qt.AlignLeft); right.addWidget(self.artist_photo_credit); right.addStretch(1)
         self.art_source = QLabel(""); self.art_source.setWordWrap(True); self.art_source.setStyleSheet("color:#777f8a;font-size:11px"); right.addWidget(self.art_source)
 
         self.tabs = QTabWidget(); outer.addWidget(self.tabs, 1)
@@ -97,7 +99,7 @@ class RichNowPlayingWidget(QWidget):
         duration_text = f"{int(duration)//60}:{int(duration)%60:02d}" if duration > 0 else ""
         self.facts.setText(" · ".join(x for x in (provider, duration_text) if x))
         self.progress.setText("Identifying with MusicBrainz…")
-        self.links.clear(); self.art_source.clear(); self._set_art(""); self._set_artist_photo(""); self._empty_tabs()
+        self.links.clear(); self.art_source.clear(); self.artist_photo_credit.clear(); self._set_art(""); self._set_artist_photo(""); self._empty_tabs()
         key = track_key(request_track)
         if not key:
             self.progress.setText("Not enough metadata to identify this track")
@@ -164,6 +166,7 @@ class RichNowPlayingWidget(QWidget):
             photo = payload.get("artist_photo") if isinstance(payload.get("artist_photo"), dict) else {}
             self.bundle["artist_photo"] = photo
             self._set_artist_photo(str(photo.get("path") or ""))
+            self._set_artist_photo_credit(photo)
             artist = self.bundle.get("artist") if isinstance(self.bundle.get("artist"), dict) else {}
             self.artist_info.setHtml(self._artist_html(artist, photo))
 
@@ -265,6 +268,19 @@ class RichNowPlayingWidget(QWidget):
         self.info.setHtml(self._info_html(identity, artwork, photo, self.bundle.get("errors") or []))
 
     # ---------------------------- visuals / HTML
+    def _set_artist_photo_credit(self, photo: dict[str, Any]) -> None:
+        if not photo or not photo.get("path"):
+            self.artist_photo_credit.clear()
+            return
+        attribution = _escape(photo.get("attribution") or "Wikimedia Commons")
+        description_url = _escape(photo.get("description_url") or "")
+        license_name = _escape(photo.get("license_name") or "")
+        license_url = _escape(photo.get("license_url") or "")
+        source = f'<a href="{description_url}">Commons file</a>' if description_url else "Wikimedia Commons"
+        licence = f'<a href="{license_url}">{license_name}</a>' if license_url and license_name else license_name
+        suffix = f" · {licence}" if licence and licence.casefold() not in attribution.casefold() else ""
+        self.artist_photo_credit.setText(f"Photo: {attribution} · {source}{suffix}")
+
     def _set_artist_photo(self, path: str) -> None:
         if path and Path(path).exists():
             pix = QPixmap(path)
@@ -334,9 +350,17 @@ class RichNowPlayingWidget(QWidget):
         if photo.get("path"):
             uri = Path(str(photo.get("path"))).resolve().as_uri()
             caption = _escape(photo.get("attribution") or photo.get("source") or "")
+            description_url = _escape(photo.get("description_url") or "")
+            license_name = _escape(photo.get("license_name") or "")
+            license_url = _escape(photo.get("license_url") or "")
             parts.append(f'<p><img src="{uri}" width="220"></p>')
-            if caption:
-                parts.append(f"<p style='color:#9097a2'>{caption}</p>")
+            credit_bits = [caption] if caption else []
+            if description_url:
+                credit_bits.append(f'<a href="{description_url}">Wikimedia Commons file</a>')
+            if license_name:
+                credit_bits.append(f'<a href="{license_url}">{license_name}</a>' if license_url else license_name)
+            if credit_bits:
+                parts.append("<p style='color:#9097a2'>Photo: " + " · ".join(credit_bits) + "</p>")
         members = [x for x in list(artist.get("members") or []) if isinstance(x, dict)]
         if members:
             parts.append("<h3>Members / membership</h3><ul>" + "".join(f"<li>{_escape(x.get('name'))} — {_escape(x.get('type'))}{' (former)' if x.get('ended') else ''}</li>" for x in members) + "</ul>")
@@ -387,6 +411,15 @@ class RichNowPlayingWidget(QWidget):
             rows.append(f"<tr><td><b>Artwork</b></td><td>{_escape(artwork.get('source'))}</td></tr>")
         if artist_photo.get("source"):
             rows.append(f"<tr><td><b>Artist photo</b></td><td>{_escape(artist_photo.get('source'))}</td></tr>")
+        if artist_photo.get("creator"):
+            rows.append(f"<tr><td><b>Photo creator</b></td><td>{_escape(artist_photo.get('creator'))}</td></tr>")
+        if artist_photo.get("license_name"):
+            licence = _escape(artist_photo.get("license_name"))
+            licence_url = _escape(artist_photo.get("license_url") or "")
+            licence_html = f'<a href="{licence_url}">{licence}</a>' if licence_url else licence
+            rows.append(f"<tr><td><b>Photo licence</b></td><td>{licence_html}</td></tr>")
+        if artist_photo.get("description_url"):
+            rows.append(f'<tr><td><b>Commons source</b></td><td><a href="{_escape(artist_photo.get("description_url"))}">file page</a></td></tr>')
         if artist_photo.get("wikidata_qid"):
             rows.append(f"<tr><td><b>Wikidata</b></td><td>{_escape(artist_photo.get('wikidata_qid'))}</td></tr>")
         body = "<h2>Track identity</h2><table cellspacing='7'>" + "".join(rows) + "</table>" if rows else "<p>No external identity data yet.</p>"
