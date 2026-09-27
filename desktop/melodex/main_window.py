@@ -61,7 +61,10 @@ class MainWindow(QMainWindow):
         self.current_page = "home"
         self.externalCommand.connect(self._on_external_command)
 
-        self.player = FlowPlayer(self.providers.resolve, self._transition_for, self)
+        self.player = FlowPlayer(
+            self.providers.resolve, self._transition_for, self,
+            playback_refresher=self.providers.refresh_playback,
+        )
         self.player.trackChanged.connect(self._on_track_changed)
         self.player.positionChanged.connect(self._on_position)
         self.player.error.connect(lambda s: self.statusBar().showMessage(s, 7000))
@@ -650,4 +653,4 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self,event):
         if self.bridge:self.bridge.stop()
-        self.metadata.close(); self.providers.close(); self.flow.close(); self.state.close(); super().closeEvent(event)
+        self.player.close(); self.metadata.close(); self.providers.close(); self.flow.close(); self.state.close(); super().closeEvent(event)

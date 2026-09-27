@@ -52,10 +52,13 @@ class PlaybackResource:
     kind: str
     url: str
     headers: dict[str, str] = field(default_factory=dict)
+    cookies: dict[str, str] = field(default_factory=dict)
     mime_type: str | None = None
     expires_at: str | None = None
     seekable: bool = True
     cache_policy: str = "session"
+    refresh_token: str | None = None
+    request_timeout_seconds: float = 30.0
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
