@@ -121,7 +121,7 @@ Current registry status vocabulary:
 | Status | Meaning |
 | --- | --- |
 | `example` | Maintained as a Melodex/reference learning example |
-| `community` | Community-published; not represented as Melodex-reviewed |
+| `community` | Community-published; not represented as a reviewed registry entry |
 | `reviewed` | Passed the project's current technical/source-policy review |
 | `deprecated` | Still indexed for continuity but no longer recommended for new installs |
 | `blocked` | Hidden/refused because it should not be installed |
