@@ -56,6 +56,13 @@ def test_registry_schema_and_semantics():
     assert validation_errors(data) == []
 
 
+def test_registry_rejects_insecure_review_record():
+    data = _registry("demo.mdxplugin", b"abc")
+    data["plugins"][0]["review"]["record"] = "http://example.org/review.json"
+    errors = validation_errors(data)
+    assert any("review records must use HTTPS" in error for error in errors)
+
+
 def test_registry_rejects_wrong_package_format():
     data = _registry("demo.mdxplugin", b"abc")
     data["plugins"][0]["distribution"]["format"] = "mdxprovider"
