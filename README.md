@@ -22,7 +22,7 @@
 
 Melodex is a source-neutral music player that tries to make listening sessions **go somewhere**.
 
-It combines your library and connected sources with taste memory, optional audio analysis, **Flow** sequencing, **Play for Me**, Moments, and a resolver that can match requested music across multiple providers.
+It combines your library and connected sources with taste memory, optional audio analysis, **Flow** sequencing, **Play for me**, Moments, and a resolver that can match requested music across multiple providers.
 
 But Melodex is also becoming something broader:
 
