@@ -58,6 +58,7 @@ package URL
 compatibility
 source policy
 review status
+review-record URL + latest review time
 ```
 
 ## Discovery UI
@@ -83,6 +84,8 @@ AI / automation
 
 The desktop Sources page now includes **Explore plugins…**, backed by the canonical registry. Installable entries are downloaded over HTTPS, checked against registry byte-size/SHA-256 metadata, and checked for package ID/version agreement before the install is recorded as registry-verified.
 
+Each entry also links an append-only review record. **View review** opens that record from the Plugin Directory. A community intake record is not the same as the stronger `reviewed` status.
+
 See [Publish a community plugin](../tutorials/ADD_PLUGIN_TO_REGISTRY.md).
 
 
@@ -92,6 +95,7 @@ See [Publish a community plugin](../tutorials/ADD_PLUGIN_TO_REGISTRY.md).
 melodex-registry validate registry/registry.json
 melodex-registry summary registry/registry.json
 melodex-registry verify-packages registry/registry.json --packages registry/packages
+melodex-registry validate-reviews registry/registry.json --reviews registry/reviews
 ```
 
 See [Registry governance](17_REGISTRY_GOVERNANCE.md).
