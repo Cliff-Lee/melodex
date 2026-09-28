@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import zipfile
 from pathlib import Path
 
@@ -271,3 +272,103 @@ def test_metadata_service_uses_extension_artwork_before_caa(tmp_path: Path):
     assert result["source"] == "org.example.art"
     assert result["attribution"] == "Example Artist"
     assert result["license"] == "CC BY 4.0"
+
+
+def test_extension_does_not_inherit_arbitrary_parent_secrets(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("MELODEX_TEST_SECRET", "do-not-forward")
+    package = tmp_path / "env.mdxplugin"
+    descriptor = {
+        "schema_version": "0.1",
+        "extension_id": "org.example.env",
+        "name": "Env",
+        "entrypoints": {"python": "plugin.py"},
+        "contracts": [
+            {
+                "capability": "metadata",
+                "contract_version": "0.1",
+                "method": "metadata.enrich",
+            }
+        ],
+    }
+    plugin = """import json, os, sys
+for line in sys.stdin:
+    req = json.loads(line)
+    result = {
+        "schema_version": "0.1",
+        "capability": "metadata",
+        "subject": (req.get("params") or {})["subject"],
+        "fields": {
+            "secret": {"value": os.getenv("MELODEX_TEST_SECRET", "missing")},
+            "extension_id": {"value": os.getenv("MELODEX_EXTENSION_ID", "")},
+        },
+    }
+    print(json.dumps({"jsonrpc": "2.0", "id": req["id"], "result": result}), flush=True)
+"""
+    with zipfile.ZipFile(package, "w") as archive:
+        archive.writestr("capabilities.json", json.dumps(descriptor))
+        archive.writestr("plugin.py", plugin)
+
+    broker = CapabilityBroker(tmp_path / "data")
+    try:
+        broker.install_package(package)
+        result = broker.enrich_metadata(
+            {"entity_type": "track", "hints": {"title": "Test"}}
+        )
+        assert result["fields"]["secret"]["value"] == "missing"
+        assert result["fields"]["extension_id"]["value"] == "org.example.env"
+    finally:
+        broker.close()
+
+
+def test_extension_health_tracks_success_and_redacted_failure(tmp_path: Path):
+    package = tmp_path / "health.mdxplugin"
+    descriptor = {
+        "schema_version": "0.1",
+        "extension_id": "org.example.health",
+        "name": "Health",
+        "entrypoints": {"python": "plugin.py"},
+        "contracts": [
+            {
+                "capability": "metadata",
+                "contract_version": "0.1",
+                "method": "metadata.enrich",
+            }
+        ],
+    }
+    plugin = """import json, sys
+for line in sys.stdin:
+    req = json.loads(line)
+    title = ((req.get("params") or {}).get("subject") or {}).get("hints", {}).get("title")
+    if title == "Fail":
+        print(json.dumps({"jsonrpc": "2.0", "id": req["id"], "error": {"code": -32000, "message": "API_KEY=super-secret"}}), flush=True)
+    else:
+        result = {"schema_version": "0.1", "capability": "metadata", "subject": (req.get("params") or {})["subject"], "fields": {}}
+        print(json.dumps({"jsonrpc": "2.0", "id": req["id"], "result": result}), flush=True)
+"""
+    with zipfile.ZipFile(package, "w") as archive:
+        archive.writestr("capabilities.json", json.dumps(descriptor))
+        archive.writestr("plugin.py", plugin)
+
+    broker = CapabilityBroker(tmp_path / "data")
+    try:
+        broker.install_package(package)
+        broker.enrich_metadata({"entity_type": "track", "hints": {"title": "OK"}})
+        health = broker.list_extensions()[0]["health"]
+        assert health["status"] == "ok"
+        assert health["calls"] == 1
+        assert health["successes"] == 1
+        assert health["failures"] == 0
+
+        result = broker.enrich_metadata(
+            {"entity_type": "track", "hints": {"title": "Fail"}}
+        )
+        assert result["errors"]
+        health = broker.list_extensions()[0]["health"]
+        assert health["status"] == "error"
+        assert health["calls"] == 2
+        assert health["successes"] == 1
+        assert health["failures"] == 1
+        assert health["last_error"] == "call_error"
+        assert "super-secret" not in json.dumps(health)
+    finally:
+        broker.close()
