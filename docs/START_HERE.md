@@ -28,13 +28,13 @@ It shows the actual application and covers:
 ## The shortest possible introduction
 
 1. Install Melodex.
-2. Open **My music**.
-3. Press **Add folder…**.
-4. Select your music folder.
-5. Open **Play for Me**.
+2. Open **Sources**.
+3. Press **Add local folder…** and select your music folder.
+4. Open **My music** to confirm the tracks were indexed.
+5. Open **Play for me**.
 6. Choose a session length.
 7. Set **Familiar ↔ Surprising**.
-8. Press **Build this journey**.
+8. Press **▶ Build this journey**.
 
 That is enough to start.
 
@@ -42,11 +42,11 @@ Everything involving Jamendo, third-party providers, Provider Bridge or an LLM i
 
 ## Five controls worth knowing
 
-- **Play for Me** — build a listening session.
+- **Play for me** — build a listening session.
 - **Flow queue** — resequence the upcoming queue.
 - **Keep** — tell Melodex this belongs in your taste.
 - **♥** — strong positive feedback.
-- **••• → Save Moment** — remember the exact point in a song.
+- **••• → Save a moment** — remember the exact point in a song.
 
 ## Want to understand the idea?
 
