@@ -1,4 +1,4 @@
-# Complete Melodex Documentation Index
+# Complete Documentation Index
 
 This page is intentionally exhaustive. For a shorter route by goal, use the [documentation home](README.md).
 
