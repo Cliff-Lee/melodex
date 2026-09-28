@@ -1,13 +1,15 @@
 # Privacy
 
-Melodex is designed to be local-first, but “local-first” does not mean “no network activity” and it does not mean every local secret is currently stored in an OS credential vault.
+Melodex is designed to be local-first, but **local-first does not mean no network activity**, and it does not mean every local secret is currently stored in an operating-system credential vault.
+
+This page describes the current implementation rather than an intended future state.
 
 ## Stored locally
 
 Melodex stores local application state including:
 
 - music folder locations;
-- Flow analysis/fingerprints;
+- Flow analysis and fingerprints;
 - listening history;
 - completion and skip events;
 - Love / Keep feedback;
@@ -16,23 +18,25 @@ Melodex stores local application state including:
 - provider configuration;
 - installed-plugin provenance;
 - Plugin Directory cache/download state;
-- LLM endpoint/model configuration.
+- LLM endpoint and model configuration.
 
-### LLM API key storage
+## LLM API key storage
 
 **Current implementation:** if you enter an LLM API key in **Ask Melodex → Connect LLM**, the key is stored in Melodex's local SQLite preferences database.
 
-It is not committed to Git or intentionally sent anywhere except the configured model endpoint, but it is **not currently protected by the operating system's credential vault**.
+It is not committed to Git and Melodex does not intentionally send it anywhere except the configured model endpoint.
 
-Anyone/process that can read your Melodex application-data directory may therefore be able to read that key.
+However, it is **not currently protected by the operating system's credential vault**.
 
-Moving third-party credentials to an OS-backed credential broker is a trust-roadmap item.
+A user or process that can read your Melodex application-data directory may therefore be able to read that key.
+
+Moving third-party credentials to an OS-backed credential/configuration broker is a trust-roadmap item.
 
 ## What Ask Melodex sends
 
-Nothing is sent to a configured LLM until you submit a prompt.
+Nothing is sent to a configured LLM until you submit an Ask Melodex prompt.
 
-For the current desktop GUI, the request context can include:
+For the current desktop GUI, the model request can include:
 
 ```text
 current track
@@ -44,23 +48,23 @@ up to 10 saved Vibes
 your current prompt
 ```
 
-The current GUI does **not** send prior chat history to the model between Ask Melodex requests.
+The current GUI does **not** send prior Ask Melodex chat history between requests.
 
 Provider passwords, provider playback cookies, Bridge tokens, MCP tokens and local filesystem paths are not intentionally added to this model context.
 
-If you use a remote model service, that service receives the prompt/context over the network and its own privacy/retention policy applies.
+If you use a remote model service, that service receives the prompt/context over the network and its own privacy and retention policies apply.
 
 A local Ollama endpoint can keep model inference on your own machine.
 
 ## Other network activity
 
-Network access can also occur when you deliberately use features that require it, for example:
+Melodex can use the network when you deliberately use features that require it, for example:
 
-- searching/browsing an online music provider;
+- searching or browsing an online music provider;
 - opening **Explore plugins…** and refreshing/downloading from the Plugin Directory;
-- metadata/artwork enrichment using configured/built-in network sources;
-- connecting to a remote/OpenWebUI/OpenAI-compatible LLM endpoint;
-- using Provider Bridge/MCP across a LAN.
+- metadata or artwork enrichment that uses a network source;
+- connecting to OpenWebUI, OpenAI or another remote model endpoint;
+- using Provider Bridge or MCP across a LAN.
 
 Local-file playback itself does not require those services.
 
@@ -70,7 +74,7 @@ The desktop app starts a loopback-only authenticated control bridge for local in
 
 If you explicitly enable LAN access, devices that can reach the Bridge and possess its bearer token can access the exposed API/source operations.
 
-The Bridge state file contains the current token and is written with user-only file permissions (`0600`) where the operating system supports them.
+The Bridge state file contains the current bearer token and is written with user-only file permissions (`0600`) where the operating system supports them.
 
 Treat the token like a password.
 
@@ -78,12 +82,18 @@ Treat the token like a password.
 
 The HTTP MCP token is also stored locally and written with `0600` where supported.
 
-Do not paste Bridge/MCP tokens into model prompts, screenshots, public logs or issue reports.
+Do not paste Bridge or MCP tokens into model prompts, screenshots, public logs or issue reports.
 
 ## Third-party plugins
 
-Desktop `.mdxprovider` and `.mdxplugin` packages are executable third-party code.
+Desktop `.mdxprovider` and `.mdxplugin` packages can contain executable third-party code.
 
-Process separation improves failure isolation but is not a complete OS sandbox. A plugin can have the current user's OS permissions unless stronger platform sandboxing is configured.
+Process separation improves crash and failure isolation, but it is **not a complete operating-system sandbox**. A plugin can have the current user's OS permissions unless stronger platform sandboxing is configured.
 
-See [Status, stability and trust](developers/00_STATUS_AND_STABILITY.md) and [Security](../SECURITY.md).
+Declared plugin permissions are transparency/review metadata today; they should not be read as universal OS-level enforcement.
+
+See:
+
+- [Status, stability and trust](developers/00_STATUS_AND_STABILITY.md)
+- [Permissions and security](developers/07_PERMISSIONS_SECURITY.md)
+- [Security](../SECURITY.md)
