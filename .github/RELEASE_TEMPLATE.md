@@ -2,6 +2,8 @@
 
 **Don't shuffle. Flow.**
 
+> Release tag, `VERSION`, desktop package metadata, Windows installer metadata and Android `versionName` must all match this release version.
+
 ## Downloads
 
 | Platform | File |
@@ -26,6 +28,14 @@
 - Moments
 - Optional LLM integration
 - Source-neutral provider architecture
+
+## Verification
+
+- [ ] `python scripts/version_check.py --release-tag v<version>` passed
+- [ ] desktop tests passed
+- [ ] Provider SDK tests passed
+- [ ] documentation/ecosystem/release checks passed
+- [ ] release asset filenames match the installation documentation
 
 ## Notes
 
