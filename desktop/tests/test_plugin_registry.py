@@ -137,7 +137,7 @@ def test_package_download_verifies_sha_and_size(tmp_path: Path):
 
 
 def test_package_download_rejects_hash_mismatch(tmp_path: Path):
-    payload = b"changed-package"
+    payload = b"changed-package!"
     entry = _entry(b"expected-package")
     client = PluginRegistryClient(tmp_path, session=FakeSession(payload=payload))
     with pytest.raises(RuntimeError, match="SHA-256 mismatch"):
