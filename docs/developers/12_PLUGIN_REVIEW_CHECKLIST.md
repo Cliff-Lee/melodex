@@ -48,3 +48,13 @@ Use this before listing an extension in the Melodex registry.
 - [ ] Normalization tests
 - [ ] Schema/protocol tests
 - [ ] Live tests isolated and optional
+
+
+## Transparency wording
+
+- [ ] Documentation distinguishes implemented / preview / experimental / planned behavior.
+- [ ] Declared permissions are not described as universal OS enforcement.
+- [ ] Registry SHA-256 verification is not described as publisher signing.
+- [ ] `reviewed` status is not presented as a guarantee of every upstream media item's rights/safety.
+- [ ] Manual installation is clearly distinguished from registry-verified installation.
+- [ ] Compatibility/version claims match the current SDK/protocol status page.

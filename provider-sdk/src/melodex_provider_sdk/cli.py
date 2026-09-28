@@ -51,6 +51,22 @@ _TEMPLATE_LICENSE = (
     "Choose and include a license appropriate for your provider before distribution.\n"
 )
 
+_TEMPLATE_SOURCE_POLICY = """# Source Policy
+
+Document the upstream source before publishing this provider.
+
+- Source/API:
+- Official/documented access method:
+- Authentication:
+- Rate limits:
+- Data/media rights:
+- Attribution:
+- Caching:
+- Offline/download rules:
+- Commercial restrictions:
+- Per-item rights or licence fields:
+"""
+
 _TEMPLATE_PROVIDER = r'''from __future__ import annotations
 
 import json
@@ -122,8 +138,12 @@ def command_init(args: argparse.Namespace) -> int:
     provider_text = _TEMPLATE_PROVIDER.replace("org.example.provider", args.id)
     provider_text = provider_text.replace("Example Provider", args.name)
     (target / "provider.py").write_text(provider_text, encoding="utf-8")
-    (target / "README.md").write_text(_TEMPLATE_README, encoding="utf-8")
+    readme_text = _TEMPLATE_README.replace("Example Melodex Provider", args.name)
+    (target / "README.md").write_text(readme_text, encoding="utf-8")
     (target / "LICENSE").write_text(_TEMPLATE_LICENSE, encoding="utf-8")
+    (target / "SOURCE_POLICY.md").write_text(
+        _TEMPLATE_SOURCE_POLICY, encoding="utf-8"
+    )
     (target / "vendor").mkdir(exist_ok=True)
     print(f"Created provider skeleton: {target}")
     return 0
@@ -216,7 +236,7 @@ def command_doctor(args: argparse.Namespace) -> int:
         return 1
     print("✓ manifest valid")
 
-    for name in ("README.md", "LICENSE"):
+    for name in ("README.md", "LICENSE", "SOURCE_POLICY.md"):
         print(f"✓ {name} present" if (root / name).is_file() else f"! {name} missing")
 
     entries = dict(manifest.get("entrypoints") or {})
@@ -292,7 +312,7 @@ def command_doctor(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="melodex-provider")
-    parser.add_argument("--version", action="version", version="%(prog)s 0.4.0")
+    parser.add_argument("--version", action="version", version="%(prog)s 0.5.0")
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_init = sub.add_parser("init", help="create a provider skeleton")

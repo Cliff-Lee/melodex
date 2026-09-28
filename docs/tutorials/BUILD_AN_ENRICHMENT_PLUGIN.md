@@ -17,14 +17,25 @@ From the Melodex repository:
 
 ```bash
 cd provider-sdk
+python3 -m venv .venv
+source .venv/bin/activate
 python -m pip install -e '.[dev]'
 ```
 
-This installs two developer CLIs:
+Windows PowerShell:
+
+```powershell
+py -m venv .venv
+.venv\Scripts\Activate.ps1
+python -m pip install -e '.[dev]'
+```
+
+This installs three developer CLIs:
 
 ```text
 melodex-provider
 melodex-extension
+melodex-registry
 ```
 
 ## 2. Create one small extension
@@ -148,7 +159,7 @@ In Melodex:
 
 ```text
 Sources
-→ Power tools
+→ Show power tools
 → Install .mdxplugin…
 ```
 
@@ -176,3 +187,8 @@ Keep live-network tests optional because upstream outages and rate limits are no
 - [Capability reference](../developers/05_CAPABILITY_REFERENCE.md)
 - [Capability Broker](../developers/16_CAPABILITY_BROKER.md)
 - [Composition and provenance](../developers/06_COMPOSITION_AND_PROVENANCE.md)
+
+
+For the shortest possible route, see [Build something in 5 minutes](../DEVELOPER_QUICKSTART.md).
+
+The v0.1 enrichment contracts are usable today but deliberately still experimental. See [Status, stability and trust](../developers/00_STATUS_AND_STABILITY.md) before depending on them as a long-term compatibility promise.

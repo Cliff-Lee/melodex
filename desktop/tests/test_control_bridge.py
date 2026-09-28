@@ -11,12 +11,16 @@ from melodex.control_client import MelodexControlClient
 class Info:
     id: str
     name: str
+    version: str = "1.0.0"
     description: str = ""
     capabilities: list[str] = None
+    permissions: dict = None
 
     def __post_init__(self):
         if self.capabilities is None:
             self.capabilities = ["search", "playback"]
+        if self.permissions is None:
+            self.permissions = {"network_hosts": []}
 
 
 class FakeProvider:
@@ -31,6 +35,17 @@ class FakeManager:
 
     def provider_order(self):
         return ["local", "web"]
+
+    def installation_record(self, plugin_id):
+        if plugin_id == "web":
+            return {
+                "id": "web",
+                "method": "registry",
+                "registry_verified": True,
+                "package_sha256": "abc",
+                "version": "1.0.0",
+            }
+        return {}
 
     def search(self, query, provider_id="all", limit=50):
         return [{"provider_id": "web", "track_id": "1", "artist": "Example", "title": query, "stream_url": "https://example.invalid/a.mp3"}]
@@ -88,7 +103,10 @@ def test_control_bridge_and_client(tmp_path: Path):
     try:
         client = MelodexControlClient.from_state(state, timeout=3)
         assert client.health()["control"] is True
-        assert client.providers()[0]["id"] == "local"
+        providers = client.providers()
+        assert providers[0]["id"] == "local"
+        assert providers[1]["installation"]["registry_verified"] is True
+        assert providers[1]["permissions"]["network_hosts"] == []
         assert client.search("Needle")[0]["title"] == "Needle"
         resolved = client.resolve("Artist", "Track")
         assert resolved["provider_id"] == "web"

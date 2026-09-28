@@ -32,9 +32,19 @@ Public OpenAPI 3.1 description. It contains API structure, not credentials.
 
 Lists connected playback/catalog sources in resolver-priority order.
 
+Where available, provider rows also include:
+
+```text
+version
+declared permissions
+installation provenance
+```
+
+The provenance record can distinguish registry-verified installs from manual local packages.
+
 ### `GET /v1/extensions`
 
-Lists installed capability extensions, declared contracts and current enabled/preference state.
+Lists installed capability extensions, declared contracts, enabled/preference state, declared permissions and installation provenance where available.
 
 ### `GET /v1/search`
 

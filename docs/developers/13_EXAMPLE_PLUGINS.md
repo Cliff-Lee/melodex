@@ -65,7 +65,7 @@ melodex-extension doctor examples/ecosystem/wikimedia_artwork
 melodex-extension pack examples/ecosystem/wikimedia_artwork
 ```
 
-Install the generated `.mdxplugin` from Melodex → Sources → Power tools.
+Install the generated `.mdxplugin` locally from **Melodex → Sources → Show power tools**. The same reference integrations are also available as registry-verified packages through **Sources → Explore plugins…**.
 
 ## Why not an official lyrics example yet?
 

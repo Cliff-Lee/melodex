@@ -1,5 +1,8 @@
 # 2. Source UX — simple by default, deep on demand
 
+> **Design-target note:** this file records UX principles and target flows. It is not a pixel-accurate description of the current desktop UI. Current users install/discover community packages through **Sources → Explore plugins…** or use manual install in power tools.
+
+
 ## 2.1 First run
 
 The first-run question should be:
@@ -59,7 +62,7 @@ Add music source
 [ Developer tools… ]
 ```
 
-## 2.4 Installing a desktop provider
+## 2.4 Installing a desktop provider — trust-sheet design target
 
 Double-clicking a `.mdxprovider` file opens a trust sheet:
 
@@ -83,7 +86,7 @@ It cannot access:
 [Cancel]                         [Add Source]
 ```
 
-Permissions are derived from the manifest. Domain access outside declared hosts is denied by default where technically enforceable and visibly warned otherwise.
+Permissions are derived from the manifest. Today they are primarily transparency/review metadata; universal OS-level host/filesystem enforcement is not implemented. A future trust sheet should distinguish declared permissions from actually enforced restrictions.
 
 ## 2.5 Bridge pairing
 

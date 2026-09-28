@@ -18,6 +18,9 @@
 
 ## Developer start pages
 
+- [5-minute developer quickstart](DEVELOPER_QUICKSTART.md)
+- [Status, stability and trust](developers/00_STATUS_AND_STABILITY.md)
+- [Ecosystem architecture](developers/01_ECOSYSTEM_ARCHITECTURE.md)
 - [Develop with Melodex](DEVELOPERS.md)
 - [Developer ecosystem](developers/README.md)
 - [Community](COMMUNITY.md)

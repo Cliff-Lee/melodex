@@ -6,6 +6,14 @@ The ecosystem goal is simple:
 
 > An extension should be able to contribute one useful capability without having to become an entire music service.
 
+## Start fast
+
+Want a working scaffold first? Use the **[5-minute developer quickstart](../DEVELOPER_QUICKSTART.md)**.
+
+Want the exact maturity/security picture? Read **[Status, stability and trust](00_STATUS_AND_STABILITY.md)**.
+
+For the canonical system map, see **[Ecosystem architecture](01_ECOSYSTEM_ARCHITECTURE.md)**.
+
 ## Start by goal
 
 | Goal | Read |

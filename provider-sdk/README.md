@@ -7,7 +7,11 @@ A source-neutral provider protocol and developer SDK for **Melodex**.
 
 ## Status
 
-**SDK v0.4.0 / MPP 1.0 preview.** v0.4 adds registry validation and package-integrity tooling on top of the provider and capability-extension SDK.
+**SDK v0.5.0 / MPP 1.0 preview.**
+
+The SDK/tooling is usable today, but the package remains 0.x and MPP 1.0 is still a **preview compatibility target**, not a frozen final protocol.
+
+For the project's exact implemented/experimental/planned security and stability picture, see [Status, stability and trust](../docs/developers/00_STATUS_AND_STABILITY.md).
 
 Melodex now has two package types:
 
@@ -16,7 +20,11 @@ Melodex now has two package types:
 .mdxplugin     identity/metadata/artwork/lyrics extensions
 ```
 
-## Quick start
+## Fastest start
+
+If you are new to the ecosystem, use the **[5-minute developer quickstart](../docs/DEVELOPER_QUICKSTART.md)**.
+
+## Provider quick start
 
 ```bash
 python -m venv .venv
@@ -69,9 +77,9 @@ QMediaPlayer
 
 ## Provider doctor
 
-`melodex-provider doctor` checks the manifest, package shape and, for Python
-entrypoints, `provider.info`, `provider.health`, `catalog.search`, and
-`playback.resolve`.
+`melodex-provider doctor` checks the manifest, README, licence, `SOURCE_POLICY.md` and, for Python entrypoints, `provider.info`, `provider.health`, `catalog.search`, and `playback.resolve`.
+
+The generated provider scaffold includes all three documentation files so a first-time developer starts from the same public-release expectations used by the registry.
 
 ## Vendored dependencies
 

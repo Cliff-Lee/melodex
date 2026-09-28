@@ -71,7 +71,7 @@ def openapi_document() -> dict[str, Any]:
                 "get": {
                     "operationId": "melodexExtensions",
                     "tags": ["catalog"],
-                    "description": "List installed capability extensions and their enabled/preference state.",
+                    "description": "List installed capability extensions, enabled/preference state, declared permissions and installation provenance.",
                     "responses": {"200": {"description": "Capability extension list"}, "401": error},
                 }
             },
@@ -79,6 +79,7 @@ def openapi_document() -> dict[str, Any]:
                 "get": {
                     "operationId": "melodexProviders",
                     "tags": ["catalog"],
+                    "description": "List music providers in resolver-priority order, including version, declared permissions and installation provenance where available.",
                     "responses": {"200": {"description": "Provider list"}, "401": error},
                 }
             },

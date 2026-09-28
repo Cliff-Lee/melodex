@@ -1,5 +1,8 @@
 # 1. Architecture
 
+> **Current-status note:** this document began as the provider-neutral migration design. The architecture now exists in the public desktop app, but some package/module names below are historical design sketches. For the canonical current map, use [Ecosystem architecture](../../docs/developers/01_ECOSYSTEM_ARCHITECTURE.md).
+
+
 ## 1.1 Product boundary
 
 Melodex Core is responsible for:
@@ -26,7 +29,7 @@ Providers never control the GUI, Flow engine, user-state database, or LLM action
 
 ## 1.2 Core modules
 
-Proposed package layout:
+Original proposed package layout (useful as design context, not a literal current tree):
 
 ```text
 melodex/
@@ -47,7 +50,7 @@ melodex/
     source_bridge.py    # generic range-aware local playback bridge
 ```
 
-This replaces the current coupling where the player and streaming bridge depend directly on one service client.
+This provider-neutral separation is now the basis of the current public desktop architecture.
 
 ## 1.3 Melodex Provider Protocol (MPP)
 
@@ -143,7 +146,7 @@ Melodex GUI
    │
 ProviderManager
    │ JSON-RPC over stdio
-Sandboxed provider process
+Separate provider process
    │
 Remote/local service
 ```
@@ -152,7 +155,7 @@ Benefits:
 
 - provider crash cannot crash Melodex;
 - language-neutral implementation;
-- permissions can be enforced centrally;
+- permission declarations can be surfaced/reviewed centrally; stronger OS enforcement remains planned;
 - easy developer debugging;
 - no imported third-party code inside the GUI process.
 

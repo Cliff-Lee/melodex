@@ -1,6 +1,6 @@
-# Public release checklist
+# Provider SDK release checklist
 
-Before making the repository public:
+Before publishing a Provider SDK / registry release:
 
 - [ ] Run `python scripts/release_check.py`.
 - [ ] Run `pytest` and `ruff check .`.
@@ -13,4 +13,6 @@ Before making the repository public:
 - [ ] Confirm screenshots/assets, if added, are owned or licensed for redistribution.
 - [ ] Check that `.github/workflows/ci.yml` passes on Linux, macOS, and Windows.
 - [ ] Enable GitHub Private vulnerability reporting if desired.
-- [ ] Tag the first preview release only after the repository URL and documentation are final.
+- [ ] Confirm `CHANGELOG.md`, SDK version strings, registry schema/docs and compatibility notes are current.
+- [ ] Run `python ../scripts/docs_check.py` and `python ../scripts/ecosystem_check.py` from the repository checkout.
+- [ ] Tag the release only after CI is green.

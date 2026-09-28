@@ -31,7 +31,7 @@ SHA-256
 compatibility
 ```
 
-The point is not merely convenience. The directory makes the trust boundary visible before third-party code is installed.
+The point is not merely convenience. The directory makes the trust boundary visible before third-party code is installed and records evidence about how new installs reached the machine.
 
 ## Package types
 
@@ -52,11 +52,41 @@ SHA-256 digest
 package size
 ```
 
-Melodex downloads to a temporary file, enforces a 25 MB registry package limit, verifies the exact byte count and SHA-256, and only then passes the package to the appropriate installer.
+Melodex downloads to a temporary file, enforces a 25 MB registry package limit, verifies the exact byte count and SHA-256, then checks that the package-declared plugin ID/version match the registry entry before the install is recorded as registry verified.
 
 A changed or corrupted package is rejected.
 
 SHA-256 proves that the downloaded bytes match the bytes named by the registry. It is **not** the same as publisher identity/signing. Cryptographic publisher signatures remain future work.
+
+## Installation provenance
+
+For new installs Melodex records:
+
+```text
+plugin ID
+kind
+version
+install time
+manual vs registry method
+package name
+package byte size
+local package SHA-256
+registry SHA-256 (when applicable)
+registry verification result
+publisher/source metadata (when applicable)
+```
+
+A registry install whose downloaded bytes matched the registry is shown as **registry verified**.
+
+A manual install records its local hash but is **not** called registry verified.
+
+Existing plugins installed before provenance tracking may show their origin as unknown.
+
+## Update awareness
+
+When a registry entry has a higher version than the installed plugin, the directory marks it as **UPDATE** and offers an explicit user-initiated update.
+
+Melodex does not silently auto-update third-party code.
 
 ## Cache and outages
 

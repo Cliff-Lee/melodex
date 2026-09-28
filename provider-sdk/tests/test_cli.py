@@ -13,7 +13,10 @@ def test_cli_init_validate_pack(tmp_path):
     assert main(["init", str(provider), "--id", "org.example.test", "--name", "Test Provider"]) == 0
     manifest = json.loads((provider / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["id"] == "org.example.test"
+    assert (provider / "SOURCE_POLICY.md").is_file()
+    assert "# Test Provider" in (provider / "README.md").read_text(encoding="utf-8")
     assert main(["validate", str(provider), "--schema", str(SCHEMA)]) == 0
+    assert main(["doctor", str(provider), "--schema", str(SCHEMA)]) == 0
 
     output = tmp_path / "test.mdxprovider"
     assert main(["pack", str(provider), "-o", str(output), "--schema", str(SCHEMA)]) == 0
@@ -21,4 +24,5 @@ def test_cli_init_validate_pack(tmp_path):
         names = set(archive.namelist())
     assert "manifest.json" in names
     assert "README.md" in names
+    assert "SOURCE_POLICY.md" in names
     assert "LICENSE" in names

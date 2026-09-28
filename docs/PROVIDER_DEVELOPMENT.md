@@ -1,4 +1,6 @@
-# Writing a Melodex provider
+# Writing a Melodex Provider
+
+Want the shortest route? Start with the **[5-minute developer quickstart](DEVELOPER_QUICKSTART.md)**.
 
 The complete SDK is in [`../provider-sdk`](../provider-sdk).
 
@@ -32,3 +34,8 @@ Start with:
 
 The public SDK remains source-neutral and does not include access-control bypass,
 DRM circumvention, CAPTCHA solving or credentials.
+
+
+## Before depending on a contract
+
+Read [Status, stability and trust](developers/00_STATUS_AND_STABILITY.md). MPP is implemented and usable, but the SDK is still 0.x and the current `protocol_version: "1.0"` remains a preview compatibility target.

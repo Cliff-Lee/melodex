@@ -23,8 +23,8 @@ This is a **Melodex convenience endpoint**, not an OpenAI-standard discovery rou
 
 ```text
 melodex_status
-melodex_sources
-melodex_extensions
+melodex_sources      # source/version/permission/install metadata
+melodex_extensions   # capability/permission/install metadata
 melodex_search
 melodex_resolve
 melodex_resolution_candidates
@@ -63,3 +63,10 @@ melodex-openai-tools call melodex_search \
 ## Architecture rule
 
 Models get a stable high-level vocabulary. They should not need to know which provider is installed, how provider authentication works, where local files live, or which playback URL is temporary.
+
+
+## Trust/provenance visibility
+
+`melodex_sources` and `melodex_extensions` expose installation metadata when available.
+
+This lets an AI/controller distinguish a registry-verified install from a manual/older install without receiving provider credentials or private package contents.

@@ -1,14 +1,17 @@
-# 3. Platform matrix
+# 3. Platform Matrix
+
+> **Architecture-target note:** this matrix describes the intended cross-platform provider model, not a promise that every listed client/build is currently shipped. The public repository currently includes the desktop app and Android Bridge-client path; iOS remains design/planned work.
+
 
 ## 3.1 Recommended support model
 
 | Capability | macOS | Windows | Linux | Android | iOS |
 |---|---|---|---|---|---|
-| Built-in providers | Yes | Yes | Yes | Yes | Yes |
+| Built-in/provider architecture target | Yes | Yes | Yes | Yes | Planned |
 | Local folders | Yes | Yes | Yes | Scoped storage | Files/iCloud scope |
-| Install executable provider bundle | Yes | Yes | Yes | No in store build | No |
+| Install executable provider bundle | Desktop-supported | Desktop-supported | Source/desktop target | No in store build | No |
 | Connect Provider Bridge | Yes | Yes | Yes | Yes | Yes |
-| Provider development mode | Yes | Yes | Yes | Via Bridge | Via Bridge |
+| Provider development mode | Yes | Yes | Yes | Via Bridge | Planned via Bridge |
 | OS credential vault | Keychain | Credential Manager | Secret Service/KWallet | Keystore | Keychain |
 | Background audio | Yes | Yes | Yes | MediaSession | AVAudioSession |
 

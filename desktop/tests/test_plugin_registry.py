@@ -150,3 +150,18 @@ def test_registry_marks_newer_plugin_incompatible():
     compatible, reason = PluginRegistryClient.compatibility(entry)
     assert compatible is False
     assert "Requires Melodex 99.0.0" in reason
+
+
+def test_registry_update_detection():
+    entry = _entry()
+    entry["version"] = "1.2.0"
+    assert PluginRegistryClient.update_available(entry, "1.1.9") is True
+    assert PluginRegistryClient.update_available(entry, "1.2.0") is False
+    assert PluginRegistryClient.update_available(entry, "2.0.0") is False
+
+
+def test_registry_validation_rejects_kind_format_mismatch():
+    data = _registry()
+    data["plugins"][0]["kind"] = "provider"
+    errors = validate_registry(data)
+    assert any("mdxprovider" in error for error in errors)

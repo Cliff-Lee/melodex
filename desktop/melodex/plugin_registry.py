@@ -40,7 +40,7 @@ class RegistryResult:
         }
 
 
-def _version_tuple(value: str) -> tuple[int, ...]:
+def version_tuple(value: str) -> tuple[int, ...]:
     parts: list[int] = []
     for raw in re.split(r"[.+-]", str(value or "")):
         match = re.match(r"^(\d+)", raw)
@@ -104,6 +104,15 @@ def validate_registry(data: Any) -> list[str]:
         fmt = str(distribution.get("format") or "")
         if fmt not in {"mdxprovider", "mdxplugin"}:
             errors.append(f"{prefix}.distribution.format is invalid")
+        kind = str(raw.get("kind") or "")
+        if kind == "provider" and fmt != "mdxprovider":
+            errors.append(
+                f"{prefix}.distribution.format must be mdxprovider for providers"
+            )
+        if kind == "enrichment" and fmt != "mdxplugin":
+            errors.append(
+                f"{prefix}.distribution.format must be mdxplugin for enrichment"
+            )
         package_url = distribution.get("package_url")
         sha256 = distribution.get("sha256")
         if package_url:
@@ -211,12 +220,18 @@ class PluginRegistryClient:
     def compatibility(entry: dict[str, Any]) -> tuple[bool, str]:
         compatibility = dict(entry.get("compatibility") or {})
         minimum = str(compatibility.get("melodex_min") or "").strip()
-        if minimum and _version_tuple(MELODEX_VERSION) < _version_tuple(minimum):
+        if minimum and version_tuple(MELODEX_VERSION) < version_tuple(minimum):
             return (
                 False,
                 f"Requires Melodex {minimum} or newer; this build is {MELODEX_VERSION}.",
             )
         return True, ""
+
+    @staticmethod
+    def update_available(entry: dict[str, Any], installed_version: str) -> bool:
+        remote = version_tuple(str(entry.get("version") or "0"))
+        local = version_tuple(str(installed_version or "0"))
+        return remote > local
 
     @staticmethod
     def filter_plugins(

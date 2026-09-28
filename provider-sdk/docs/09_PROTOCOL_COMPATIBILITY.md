@@ -1,6 +1,6 @@
 # 9. Protocol compatibility and versioning
 
-The repository is currently an SDK/protocol **preview**. Package version `0.x` does not promise wire compatibility between minor releases.
+The repository is currently an SDK/protocol **preview**. SDK package version `0.x` does not promise compatibility between every minor release, and the current MPP `protocol_version: "1.0"` identifier should not yet be read as a frozen final 1.0 contract.
 
 ## Manifest versus protocol version
 
@@ -28,9 +28,6 @@ Provider metadata returns a `capabilities` array. Melodex must check capabilitie
 
 ## Compatibility testing
 
-Before 1.0, the project should add a conformance runner that can point at either:
+Current tooling includes `validate` plus `doctor` smoke tests for local provider packages.
 
-- a local JSON-RPC provider process; or
-- an HTTP Provider Bridge endpoint.
-
-The runner should validate schemas, error handling, pagination, authentication requirements, playback policy, and timeout behavior.
+Before a stable 1.0 commitment, the project still needs a fuller conformance runner that can validate schemas, error handling, pagination, authentication requirements, playback policy, timeouts and compatibility fixtures across releases.

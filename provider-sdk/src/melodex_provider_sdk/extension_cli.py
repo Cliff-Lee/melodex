@@ -209,7 +209,7 @@ def command_pack(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="melodex-extension")
-    parser.add_argument("--version", action="version", version="%(prog)s 0.4.0")
+    parser.add_argument("--version", action="version", version="%(prog)s 0.5.0")
     sub = parser.add_subparsers(dest="command", required=True)
     p = sub.add_parser("init", help="create a capability extension skeleton")
     p.add_argument("directory")

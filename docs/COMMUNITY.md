@@ -2,6 +2,12 @@
 
 Melodex should be a project where people can contribute **small useful pieces**. You do not need to become a Melodex Core developer.
 
+## Start small
+
+If you want to try building something immediately, use the **[5-minute developer quickstart](DEVELOPER_QUICKSTART.md)**.
+
+You do not need to understand Melodex Core first.
+
 ## Ways to contribute
 
 ### Build a provider
@@ -86,3 +92,18 @@ Never post API keys, passwords, cookies, Melodex Bridge tokens, MCP tokens or pr
 Small PRs are welcome. Explain what changed, why it is useful, how it was tested, documentation impact, and source-policy implications when relevant.
 
 See [CONTRIBUTING.md](../CONTRIBUTING.md), [Plugin Directory](PLUGIN_DIRECTORY.md), and [Registry governance](developers/17_REGISTRY_GOVERNANCE.md).
+
+
+## Transparency matters
+
+Community trust depends on accurate labels.
+
+Please distinguish:
+
+- implemented vs planned;
+- preview/experimental vs stable;
+- declared permissions vs OS-enforced restrictions;
+- registry-verified bytes vs signed publisher identity;
+- project review status vs legal/content endorsement.
+
+See [Status, stability and trust](developers/00_STATUS_AND_STABILITY.md).

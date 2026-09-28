@@ -9,6 +9,7 @@ def test_openapi_has_control_surface():
         "/health",
         "/openapi.json",
         "/v1/providers",
+        "/v1/extensions",
         "/v1/search",
         "/v1/resolve",
         "/v1/resolve-candidates",
@@ -27,6 +28,7 @@ def test_openai_tool_dialects_cover_same_names():
     response_names = {item["name"] for item in RESPONSES_TOOLS}
     assert chat_names == response_names
     assert "melodex_search" in chat_names
+    assert "melodex_extensions" in chat_names
     assert "melodex_play" in chat_names
 
 

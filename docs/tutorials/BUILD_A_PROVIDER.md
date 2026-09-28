@@ -34,9 +34,12 @@ hello-provider/
 ├── manifest.json
 ├── provider.py
 ├── README.md
+├── SOURCE_POLICY.md
 ├── LICENSE
 └── vendor/
 ```
+
+The generated provider already speaks MPP and returns a demo search/playback shape, so you can run the checks before writing any source-specific code.
 
 ## 3. Implement the current MPP methods
 
@@ -113,7 +116,19 @@ Result:
 hello-provider.mdxprovider
 ```
 
-## 8. Before publishing
+## 8. Install your local package
+
+In desktop Melodex:
+
+```text
+Sources
+→ Show power tools
+→ Install .mdxprovider…
+```
+
+Manual installs record the local package hash, but are not described as registry-verified.
+
+## 9. Before publishing
 
 Add a `SOURCE_POLICY.md` explaining:
 
@@ -127,3 +142,12 @@ Add a `SOURCE_POLICY.md` explaining:
 - commercial restrictions.
 
 Then read [Source and rights policy](../developers/11_SOURCE_AND_RIGHTS_POLICY.md).
+
+
+## Publish later, not first
+
+You do not need to understand the registry to start developing.
+
+Once the provider works locally, follow [Publish a community plugin](ADD_PLUGIN_TO_REGISTRY.md). The public directory path adds source/review metadata plus SHA-256 package verification.
+
+For the shortest possible route, see [Build something in 5 minutes](../DEVELOPER_QUICKSTART.md).

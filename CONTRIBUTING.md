@@ -2,6 +2,8 @@
 
 Thanks for helping build Melodex.
 
+If your goal is to build a provider or enrichment plugin, start with the **[5-minute developer quickstart](docs/DEVELOPER_QUICKSTART.md)** rather than reading the whole repository.
+
 The project welcomes small focused contributions. You do not need to understand the whole player before contributing.
 
 ## Choose your contribution path
@@ -57,6 +59,7 @@ melodex-registry verify-packages registry/registry.json --packages registry/pack
 Repository checks:
 
 ```bash
+python scripts/docs_check.py
 python scripts/release_check.py
 ```
 
@@ -92,3 +95,10 @@ Keep PRs focused. Explain:
 - External metadata/artwork should retain provenance where practical.
 
 See [Community](docs/COMMUNITY.md) for non-code contribution paths.
+
+
+## Truth over polish
+
+If documentation claims a feature is enforced/stable/shipped when the code does not support that claim, treat the mismatch as a bug.
+
+Use [Status, stability and trust](docs/developers/00_STATUS_AND_STABILITY.md) as the canonical maturity/security summary.

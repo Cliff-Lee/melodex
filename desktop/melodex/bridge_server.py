@@ -183,13 +183,38 @@ class ProviderBridge:
                     if u.path == "/v1/openai/tools":
                         return self._send(200, OPENAI_FUNCTION_TOOLS)
                     if u.path == "/v1/extensions":
-                        return self._send(200, {"extensions": bridge.manager.extensions()})
+                        extensions = []
+                        for row in bridge.manager.extensions():
+                            item = dict(row)
+                            plugin_id = str(item.get("id") or "")
+                            item["installation"] = (
+                                bridge.manager.installation_record(plugin_id)
+                                if hasattr(bridge.manager, "installation_record")
+                                else {}
+                            )
+                            extensions.append(item)
+                        return self._send(200, {"extensions": extensions})
                     if u.path == "/v1/providers":
                         order = bridge.manager.provider_order() if hasattr(bridge.manager, "provider_order") else list(bridge.manager.providers)
                         providers = []
                         for rank, pid in enumerate(order, start=1):
                             p = bridge.manager.providers[pid]
-                            providers.append({"id": p.info.id, "name": p.info.name, "description": p.info.description, "capabilities": p.info.capabilities, "priority": rank})
+                            providers.append(
+                                {
+                                    "id": p.info.id,
+                                    "name": p.info.name,
+                                    "version": p.info.version,
+                                    "description": p.info.description,
+                                    "capabilities": p.info.capabilities,
+                                    "permissions": p.info.permissions,
+                                    "priority": rank,
+                                    "installation": (
+                                        bridge.manager.installation_record(pid)
+                                        if hasattr(bridge.manager, "installation_record")
+                                        else {}
+                                    ),
+                                }
+                            )
                         return self._send(200, {"providers": providers})
                     if u.path == "/v1/search":
                         text = q.get("q", [""])[0]

@@ -287,7 +287,14 @@ class MainWindow(QMainWindow):
                 status = f"{count} STREAM" if count == 1 else f"{count} STREAMS"
                 kind = "BUILT-IN"
             else:
-                status = "INSTALLED"
+                installation = self.providers.installation_record(pid)
+                status = (
+                    "REGISTRY VERIFIED"
+                    if installation.get("registry_verified")
+                    else "MANUAL"
+                    if installation.get("method") == "manual"
+                    else "INSTALLED"
+                )
                 kind = "PROVIDER"
             item=QListWidgetItem(
                 f"{name}    ·    {kind}    ·    {status}\n{p.info.description}"
@@ -301,9 +308,19 @@ class MainWindow(QMainWindow):
             self.sources_list.addItem(heading)
             for extension in extensions:
                 capabilities = ", ".join(extension.get("capabilities") or []) or "no capabilities"
-                status = "ENABLED" if extension.get("enabled", True) else "DISABLED"
+                enabled_status = "ENABLED" if extension.get("enabled", True) else "DISABLED"
+                installation = self.providers.installation_record(
+                    str(extension.get("id") or "")
+                )
+                trust_status = (
+                    "REGISTRY VERIFIED"
+                    if installation.get("registry_verified")
+                    else "MANUAL"
+                    if installation.get("method") == "manual"
+                    else "INSTALLED"
+                )
                 item = QListWidgetItem(
-                    f"{extension.get('name') or extension.get('id')}    ·    EXTENSION    ·    {status}\n"
+                    f"{extension.get('name') or extension.get('id')}    ·    EXTENSION    ·    {enabled_status}    ·    {trust_status}\n"
                     f"{capabilities} · {extension.get('description') or ''}"
                 )
                 item.setData(Qt.UserRole, "extension:" + str(extension.get("id") or ""))

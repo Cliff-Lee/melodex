@@ -28,11 +28,20 @@ But Melodex is also becoming something broader:
 
 A playback source does not need to become a metadata database. An artwork plugin does not need to know how the queue works. An AI client does not need to know which provider ultimately plays a track.
 
+## Build something in 5 minutes
+
+If you want to develop rather than study the architecture first:
+
+**[→ 5-minute developer quickstart](docs/DEVELOPER_QUICKSTART.md)**
+
+For the precise current state—including what is implemented, preview, experimental, planned, or not sandboxed—see **[Status, stability and trust](docs/developers/00_STATUS_AND_STABILITY.md)**.
+
 ## Choose your path
 
 | I want to… | Start here |
 | --- | --- |
 | Use Melodex as a music player | [5-minute start](docs/START_HERE.md) |
+| Build something quickly | [5-minute developer quickstart](docs/DEVELOPER_QUICKSTART.md) |
 | Build a music source / playback provider | [Provider tutorial](docs/tutorials/BUILD_A_PROVIDER.md) |
 | Add metadata, identity, artwork or lyrics | [Enrichment tutorial](docs/tutorials/BUILD_AN_ENRICHMENT_PLUGIN.md) |
 | Control Melodex from another app | [REST/OpenAPI tutorial](docs/tutorials/CONTROL_MELODEX_WITH_REST.md) |
@@ -44,24 +53,29 @@ A playback source does not need to become a metadata database. An artwork plugin
 
 ## The developer platform
 
-Melodex deliberately separates four integration layers:
+Melodex separates discovery/distribution from runtime capabilities and external control:
 
 ```text
-                           MELODEX
-                              │
-              ┌───────────────┼────────────────┐
-              │               │                │
-            MPP          REST / OpenAPI        MCP
-      music providers     app control        AI tools
-              │               │                │
-              └───────────────┼────────────────┘
-                              │
-                       resolver + player
-                              │
-                              ▼
-                   optional model backends
-             OpenAI / OpenWebUI / Ollama / custom
+                         Plugin Directory
+                               │
+                  Registry + verified packages
+                               │
+             ┌─────────────────┴─────────────────┐
+             │                                   │
+       .mdxprovider                         .mdxplugin
+             │                                   │
+      Provider Manager                    Capability Broker
+             │                                   │
+        catalog/playback             identity/metadata/artwork/lyrics
+             └─────────────────┬─────────────────┘
+                               ▼
+                    resolver + player + Flow
+                               ▲
+                               │
+                REST / OpenAPI / MCP / OpenAI
 ```
+
+The [ecosystem architecture](docs/developers/01_ECOSYSTEM_ARCHITECTURE.md) gives the detailed map.
 
 ### 1. MPP — music-source providers
 
@@ -98,11 +112,14 @@ A running desktop app exposes an authenticated local control API for searching, 
 Key operations include:
 
 ```text
+GET  /openapi.json
 GET  /v1/providers
+GET  /v1/extensions
 GET  /v1/search
 GET  /v1/resolve
 GET  /v1/resolve-candidates
 GET  /v1/status
+GET  /v1/openai/tools
 
 POST /v1/play
 POST /v1/queue
@@ -122,6 +139,7 @@ Examples:
 ```text
 melodex_search
 melodex_resolve
+melodex_extensions
 melodex_play
 melodex_queue
 melodex_playback
