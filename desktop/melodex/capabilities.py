@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from .process_env import scrubbed_child_env
+from .plugin_config import PluginConfigBroker, normalise_configuration
 
 
 _METHODS = {
@@ -48,6 +49,7 @@ class ExtensionInfo:
     description: str = ""
     contracts: list[ExtensionContract] = field(default_factory=list)
     permissions: dict[str, Any] = field(default_factory=dict)
+    configuration: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def capabilities(self) -> list[str]:
@@ -62,6 +64,7 @@ class ExtensionInfo:
             "capabilities": self.capabilities,
             "contracts": [item.as_dict() for item in self.contracts],
             "permissions": dict(self.permissions),
+            "configuration": list(self.configuration),
         }
 
 
@@ -109,6 +112,10 @@ def validate_descriptor(descriptor: dict[str, Any]) -> list[str]:
     permissions = descriptor.get("permissions")
     if permissions is not None and not isinstance(permissions, dict):
         errors.append("permissions must be an object when present")
+    try:
+        normalise_configuration(descriptor.get("configuration"))
+    except ValueError as exc:
+        errors.append(str(exc))
     return errors
 
 
@@ -128,6 +135,7 @@ class ExternalExtension:
         self._stdout: queue.Queue[str | None] = queue.Queue()
         self._stderr: deque[str] = deque(maxlen=30)
         self._health_lock = threading.Lock()
+        self._config: dict[str, Any] = {}
         self._health: dict[str, Any] = {
             "status": "idle",
             "calls": 0,
@@ -156,7 +164,12 @@ class ExternalExtension:
             description=str(self.descriptor.get("description") or ""),
             contracts=contracts,
             permissions=dict(self.descriptor.get("permissions") or {}),
+            configuration=normalise_configuration(self.descriptor.get("configuration")),
         )
+
+    def configure(self, settings: dict[str, Any]) -> None:
+        with self._lock:
+            self._config = dict(settings or {})
 
     def contract(self, capability: str) -> ExtensionContract | None:
         return next(
@@ -262,11 +275,14 @@ class ExternalExtension:
             proc = self._ensure()
             self._seq += 1
             request_id = self._seq
+            request_params = dict(params)
+            if self._config:
+                request_params["_melodex_config"] = dict(self._config)
             request = {
                 "jsonrpc": "2.0",
                 "id": request_id,
                 "method": contract.method,
-                "params": dict(params),
+                "params": request_params,
             }
             assert proc.stdin
             try:
@@ -457,13 +473,19 @@ class ExtensionInstaller:
 class CapabilityBroker:
     """Discover, route and merge experimental enrichment capabilities."""
 
-    def __init__(self, data_dir: Path):
+    def __init__(self, data_dir: Path, config_broker: PluginConfigBroker | None = None):
         self.data_dir = Path(data_dir)
+        self.config_broker = config_broker or PluginConfigBroker(self.data_dir)
         self.installer = ExtensionInstaller(self.data_dir / "extensions")
         self.settings_path = self.data_dir / "extension-settings.json"
         self.settings = self._load_settings()
         self.extensions: dict[str, ExternalExtension] = {}
         for extension in self.installer.load_installed():
+            extension.configure(
+                self.config_broker.values(
+                    extension.info.id, extension.info.configuration
+                )
+            )
             self.extensions[extension.info.id] = extension
 
     def _load_settings(self) -> dict[str, Any]:
@@ -543,6 +565,11 @@ class CapabilityBroker:
         folder = self.installer.install(path)
         descriptor = json.loads((folder / "capabilities.json").read_text("utf-8"))
         extension = ExternalExtension(folder, descriptor)
+        extension.configure(
+            self.config_broker.values(
+                extension.info.id, extension.info.configuration
+            )
+        )
         previous = self.extensions.get(extension.info.id)
         if previous:
             previous.close()
@@ -555,6 +582,10 @@ class CapabilityBroker:
             extension.close()
         changed = self.installer.remove(extension_id)
         if changed:
+            if extension is not None:
+                self.config_broker.remove(
+                    extension_id, extension.info.configuration
+                )
             self._enabled_map().pop(extension_id, None)
             for capability, ids in list(self._preference_map().items()):
                 self._preference_map()[capability] = [
@@ -570,6 +601,9 @@ class CapabilityBroker:
         ):
             info = extension.info.as_dict()
             info["enabled"] = self.enabled(extension.info.id)
+            info["configuration_status"] = self.config_broker.status(
+                extension.info.id, extension.info.configuration
+            )
             info["health"] = extension.health()
             info["preferred_for"] = [
                 capability
