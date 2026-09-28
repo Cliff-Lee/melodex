@@ -7,9 +7,15 @@ A source-neutral provider protocol and developer SDK for **Melodex**.
 
 ## Status
 
-**SDK v0.2.0 / MPP 1.0 preview.** v0.2 keeps v0.1 providers compatible and adds
-support for difficult-but-authorized web sources: request headers, cookies,
-redirects, expiring URLs, refreshable resources and vendored Python dependencies.
+**SDK v0.3.0 / MPP 1.0 preview.** v0.3 keeps MPP provider development intact and
+adds tooling for the experimental v0.1 capability-extension ecosystem.
+
+Melodex now has two package types:
+
+```text
+.mdxprovider   catalog/playback providers
+.mdxplugin     identity/metadata/artwork/lyrics extensions
+```
 
 ## Quick start
 
@@ -21,6 +27,15 @@ melodex-provider init my-provider
 melodex-provider validate my-provider
 melodex-provider doctor my-provider
 melodex-provider pack my-provider
+```
+
+Capability extension:
+
+```bash
+melodex-extension init my-artwork --capability artwork
+melodex-extension validate my-artwork
+melodex-extension doctor my-artwork
+melodex-extension pack my-artwork
 ```
 
 ## Clean core, messy edge
@@ -69,6 +84,9 @@ Complex HTML parsers can be vendored per provider.
 - [Legal reference sources](docs/12_LEGAL_REFERENCE_SOURCES.md)
 - [OpenAPI mapping](spec/openapi.yaml)
 - [JSON-RPC mapping](spec/mpp-jsonrpc.md)
+- [Experimental capability contracts](spec/extensions/v0.1/README.md)
+- [Capability Broker](../docs/developers/16_CAPABILITY_BROKER.md)
+- [Build an enrichment plugin](../docs/tutorials/BUILD_AN_ENRICHMENT_PLUGIN.md)
 
 ## Source neutrality
 

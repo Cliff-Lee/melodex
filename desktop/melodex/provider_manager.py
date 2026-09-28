@@ -7,6 +7,7 @@ from typing import Any
 from .provider import MusicProvider, ProviderInstaller
 from .providers import JamendoProvider, LocalFilesProvider, UserStreamsProvider
 from .resolver import UniversalResolver
+from .capabilities import CapabilityBroker, ExtensionInfo
 
 
 class ProviderManager:
@@ -24,6 +25,7 @@ class ProviderManager:
         for provider in self.installer.load_installed():
             self.providers[provider.info.id] = provider
         self.resolver = UniversalResolver(self)
+        self.capabilities = CapabilityBroker(self.data_dir)
 
     def _load_settings(self) -> dict[str, Any]:
         try:
@@ -168,11 +170,29 @@ class ProviderManager:
     def clear_resolution_blocklist(self) -> None:
         self.resolver.unblock_all()
 
+    def install_extension(self, path: Path) -> ExtensionInfo:
+        return self.capabilities.install_package(path)
+
+    def remove_extension(self, extension_id: str) -> bool:
+        return self.capabilities.remove(extension_id)
+
+    def extensions(self) -> list[dict[str, Any]]:
+        return self.capabilities.list_extensions()
+
+    def set_extension_enabled(self, extension_id: str, enabled: bool) -> None:
+        self.capabilities.set_enabled(extension_id, enabled)
+
+    def set_capability_preference(
+        self, capability: str, extension_ids: list[str]
+    ) -> list[str]:
+        return self.capabilities.set_preference(capability, extension_ids)
+
     def local_catalog(self) -> list[dict[str, Any]]:
         provider = self.providers["local"]
         return provider.tracks if isinstance(provider, LocalFilesProvider) else []
 
     def close(self) -> None:
+        self.capabilities.close()
         for provider in self.providers.values():
             close = getattr(provider, "close", None)
             if callable(close):

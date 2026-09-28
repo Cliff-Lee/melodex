@@ -33,12 +33,15 @@ The roadmap has two parallel goals:
 - OpenAPI contract for the local control API
 - OpenAI function-tool schemas
 - example community plugins
+- desktop Capability Broker for identity, metadata, artwork and lyrics
+- `.mdxplugin` install/enable/disable/remove flow
+- `melodex-extension` init/validate/doctor/pack tooling
 
 ## Next — platform
 
-- implement the Capability Broker in Melodex Core
-- install/discover enrichment extensions
-- user-configurable preferred capability providers
+- richer user-configurable preferred capability-provider UI
+- capability health/diagnostics UI
+- remote plugin-directory discovery and install
 - plugin directory UI
 - registry review/signing metadata
 - signed provider packages

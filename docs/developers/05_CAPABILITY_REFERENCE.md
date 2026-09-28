@@ -1,6 +1,10 @@
 # Capability Reference
 
+Melodex has two extension layers.
+
 ## Current MPP provider capabilities
+
+MPP providers supply catalogs and authorized playback access.
 
 | Capability | Status | Purpose |
 | --- | --- | --- |
@@ -15,7 +19,11 @@
 | `recommendations` | implemented | Provider-side recommendations |
 | `auth` | implemented | Provider authentication |
 
-## Experimental enrichment contracts
+Packages use `.mdxprovider`.
+
+## Experimental enrichment capabilities
+
+These contracts now have a runnable desktop Capability Broker but remain **v0.1 experimental**.
 
 | Capability | Method | Purpose |
 | --- | --- | --- |
@@ -23,6 +31,8 @@
 | metadata | `metadata.enrich` | Add sourced structured fields |
 | artwork | `artwork.lookup` | Return sourced visual assets |
 | lyrics | `lyrics.lookup` | Return sourced lyrics |
+
+Packages use `.mdxplugin`.
 
 ## Capability independence
 
@@ -39,6 +49,18 @@ lyrics(track_identity) -> LyricsResult
 ```
 
 A service may expose multiple capabilities, but the interfaces should remain independently replaceable where practical.
+
+## Extension process
+
+Current Python extensions:
+
+```text
+Melodex
+  ↕ JSON-RPC over stdin/stdout
+extension process
+```
+
+This isolates crashes/timeouts from the player. It is not yet a full security sandbox.
 
 ## Future directions
 

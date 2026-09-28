@@ -109,7 +109,7 @@ class RichMetadataService:
     _mb_lock = threading.Lock()
     _mb_last_request = 0.0
 
-    def __init__(self, data_dir: Path, session: requests.Session | None = None):
+    def __init__(self, data_dir: Path, session: requests.Session | None = None, capability_broker: Any | None = None):
         self.data_dir = Path(data_dir)
         self.cache_dir = self.data_dir / "metadata-cache"
         self.json_cache = self.cache_dir / "json"
@@ -117,6 +117,7 @@ class RichMetadataService:
         self.json_cache.mkdir(parents=True, exist_ok=True)
         self.art_cache.mkdir(parents=True, exist_ok=True)
         self.session = session or requests.Session()
+        self.capability_broker = capability_broker
         self.session.headers.update({"User-Agent": _USER_AGENT, "Accept": "application/json"})
 
     # ---------------------------- cache / HTTP
@@ -632,6 +633,44 @@ class RichMetadataService:
             downloaded = self._download_artwork(supplied)
             if downloaded:
                 return {"path": str(downloaded), "source": str(track.get("provider_id") or "provider") + " artwork", "source_url": supplied}
+
+        broker = self.capability_broker
+        if broker is not None:
+            try:
+                subject = broker.entity_ref(track, identity.as_dict())
+                result = broker.lookup_artwork(
+                    subject,
+                    roles=["cover", "thumbnail", "other"],
+                    max_results=8,
+                )
+                for asset in list(result.get("assets") or []):
+                    if not isinstance(asset, dict):
+                        continue
+                    url = str(asset.get("url") or "")
+                    downloaded = self._download_artwork(url)
+                    if not downloaded:
+                        continue
+                    provenance = (
+                        dict(asset.get("provenance") or {})
+                        if isinstance(asset.get("provenance"), dict)
+                        else {}
+                    )
+                    extension_id = str(
+                        provenance.get("source_extension_id")
+                        or asset.get("_extension_id")
+                        or "extension"
+                    )
+                    return {
+                        "path": str(downloaded),
+                        "source": extension_id,
+                        "source_url": str(provenance.get("source_url") or url),
+                        "attribution": str(provenance.get("attribution") or ""),
+                        "license": str(provenance.get("license") or ""),
+                        "provenance": provenance,
+                    }
+            except Exception:
+                pass
+
         for kind, mbid in (("release-group", identity.release_group_mbid), ("release", identity.release_mbid)):
             if not mbid:
                 continue
@@ -661,21 +700,116 @@ class RichMetadataService:
         )
 
     def enrich_identity(self, track: dict[str, Any]) -> dict[str, Any]:
-        """Fast first stage: local lyrics plus MusicBrainz identity only."""
+        """Fast first stage: local data, capability extensions, then built-in identity."""
         track = dict(track or {})
-        out: dict[str, Any] = {"track_key": track_key(track), "track": track, "errors": []}
+        out: dict[str, Any] = {
+            "track_key": track_key(track),
+            "track": track,
+            "errors": [],
+            "ecosystem": {},
+        }
         out["lyrics"] = self.local_lyrics(track)
-        try:
-            identity = self.identify(track)
-            out["identity"] = identity.as_dict()
-        except Exception as exc:
-            identity = MetadataIdentity(
-                artist=str(track.get("artist") or ""),
-                title=str(track.get("title") or ""),
-                album=str(track.get("album") or ""),
-            )
-            out["identity"] = identity.as_dict()
-            out["errors"].append(f"MusicBrainz match: {exc}")
+        broker = self.capability_broker
+        identity_data: dict[str, Any] | None = None
+
+        if broker is not None:
+            try:
+                identity_result = broker.resolve_identity(
+                    broker.entity_ref(track), max_candidates=5
+                )
+                out["ecosystem"]["identity"] = identity_result
+                candidates = [
+                    x
+                    for x in list(identity_result.get("candidates") or [])
+                    if isinstance(x, dict)
+                ]
+                if identity_result.get("status") == "matched" and candidates:
+                    identity_data = broker.legacy_identity(track, candidates[0])
+            except Exception as exc:
+                out["ecosystem"]["identity"] = {"errors": [str(exc)]}
+
+        if identity_data is None:
+            try:
+                identity_data = self.identify(track).as_dict()
+            except Exception as exc:
+                identity_data = MetadataIdentity(
+                    artist=str(track.get("artist") or ""),
+                    title=str(track.get("title") or ""),
+                    album=str(track.get("album") or ""),
+                ).as_dict()
+                out["errors"].append(f"MusicBrainz match: {exc}")
+
+        if broker is not None:
+            try:
+                subject = broker.entity_ref(track, identity_data)
+                metadata_result = broker.enrich_metadata(
+                    subject,
+                    requested_fields=["title", "artist", "album", "year"],
+                )
+                out["ecosystem"]["metadata"] = metadata_result
+                fields = dict(metadata_result.get("fields") or {})
+                for field_name in ("title", "artist", "album"):
+                    sourced = fields.get(field_name)
+                    if isinstance(sourced, dict) and sourced.get("value") not in (None, ""):
+                        identity_data[field_name] = str(sourced.get("value"))
+                year = fields.get("year")
+                if (
+                    not identity_data.get("date")
+                    and isinstance(year, dict)
+                    and year.get("value") not in (None, "")
+                ):
+                    identity_data["date"] = str(year.get("value"))
+            except Exception as exc:
+                out["ecosystem"]["metadata"] = {"errors": [str(exc)]}
+
+            if not str((out.get("lyrics") or {}).get("text") or "").strip():
+                try:
+                    lyrics_result = broker.lookup_lyrics(
+                        broker.entity_ref(track, identity_data),
+                        kinds=["synchronized", "plain"],
+                    )
+                    out["ecosystem"]["lyrics"] = lyrics_result
+                    entries = [
+                        x
+                        for x in list(lyrics_result.get("entries") or [])
+                        if isinstance(x, dict)
+                    ]
+                    if entries:
+                        entry = entries[0]
+                        rows = []
+                        for raw in list(entry.get("lines") or []):
+                            if not isinstance(raw, dict):
+                                continue
+                            rows.append(
+                                {
+                                    "time_ms": int(raw.get("start_ms") or 0),
+                                    "text": str(raw.get("text") or ""),
+                                }
+                            )
+                        text_value = str(entry.get("text") or "").strip()
+                        if not text_value and rows:
+                            text_value = "\n".join(
+                                row["text"] for row in rows if row["text"]
+                            )
+                        provenance = (
+                            dict(entry.get("provenance") or {})
+                            if isinstance(entry.get("provenance"), dict)
+                            else {}
+                        )
+                        out["lyrics"] = {
+                            "text": text_value,
+                            "synced": rows,
+                            "source": str(
+                                provenance.get("source_extension_id")
+                                or entry.get("_extension_id")
+                                or "extension"
+                            ),
+                            "provenance": provenance,
+                        }
+                except Exception as exc:
+                    out["ecosystem"]["lyrics"] = {"errors": [str(exc)]}
+
+        out["identity"] = identity_data
         return out
 
     def enrich_artwork(self, track: dict[str, Any], identity: dict[str, Any]) -> dict[str, Any]:

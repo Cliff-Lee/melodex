@@ -33,18 +33,18 @@ Teaches public-domain media, projects/books as albums, sections as tracks and pr
 
 ## MusicBrainz Enrichment
 
-**Layer:** experimental capability extension
+**Layer:** experimental v0.1 capability extension, runnable through the Capability Broker
 
 ```text
 identity.resolve
 metadata.enrich
 ```
 
-Teaches weak metadata -> canonical identity, MusicBrainz IDs, match evidence and field-level provenance.
+Teaches weak metadata → canonical identity, MusicBrainz IDs, match evidence and field-level provenance.
 
 ## Wikimedia Commons Artwork
 
-**Layer:** experimental capability extension
+**Layer:** experimental v0.1 capability extension, runnable through the Capability Broker
 
 ```text
 artwork.lookup
@@ -52,6 +52,21 @@ artwork.lookup
 
 Teaches artwork as an independent capability and preservation of per-file licence/attribution.
 
+## Running an example as an installed extension
+
+Copy an example to a working folder, validate it, then package it:
+
+```bash
+cd provider-sdk
+python -m pip install -e '.[dev]'
+
+melodex-extension validate examples/ecosystem/wikimedia_artwork
+melodex-extension doctor examples/ecosystem/wikimedia_artwork
+melodex-extension pack examples/ecosystem/wikimedia_artwork
+```
+
+Install the generated `.mdxplugin` from Melodex → Sources → Power tools.
+
 ## Why not an official lyrics example yet?
 
-A public lyrics endpoint does not automatically imply redistribution rights. The first reference lyrics extension should use a source whose API and content rights are sufficiently clear for a public example.
+A public lyrics endpoint does not automatically imply redistribution rights. The first public reference lyrics extension should use a source whose API access and content rights are sufficiently clear for a reusable example.

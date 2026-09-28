@@ -1,6 +1,20 @@
 {
   "schema_version": "0.1",
   "extension_id": "org.melodex.example.musicbrainz",
+  "name": "MusicBrainz Enrichment Example",
+  "version": "0.1.0",
+  "publisher": "Melodex examples",
+  "description": "Canonical identity and metadata enrichment using the MusicBrainz Web Service.",
+  "permissions": {
+    "network_hosts": [
+      "musicbrainz.org"
+    ],
+    "local_files": false,
+    "browser_auth": false
+  },
+  "entrypoints": {
+    "python": "plugin.py"
+  },
   "contracts": [
     {
       "capability": "identity",

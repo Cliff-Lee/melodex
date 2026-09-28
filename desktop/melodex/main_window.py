@@ -53,7 +53,7 @@ class MainWindow(QMainWindow):
         self.flow = FlowEngine(self.data_dir / "flow.sqlite3")
         self.mind = MindEngine(self.state, self.flow)
         self.llm = LLMClient()
-        self.metadata = RichMetadataService(self.data_dir)
+        self.metadata = RichMetadataService(self.data_dir, capability_broker=self.providers.capabilities)
         self.bridge: ProviderBridge | None = None
         self.current_history_id = 0
         self.current_track_started = 0.0
@@ -226,13 +226,16 @@ class MainWindow(QMainWindow):
         power=QVBoxLayout(self.source_power_panel); power.setContentsMargins(0,4,0,0); power.setSpacing(8)
         provider_row=QHBoxLayout()
         inst=QPushButton("Install .mdxprovider…"); inst.clicked.connect(self._install_provider)
+        ext=QPushButton("Install .mdxplugin…"); ext.clicked.connect(self._install_extension)
         bridge=QPushButton("Provider Bridge…"); bridge.clicked.connect(self._bridge_dialog)
-        provider_row.addWidget(inst); provider_row.addWidget(bridge); provider_row.addStretch(1)
+        provider_row.addWidget(inst); provider_row.addWidget(ext); provider_row.addWidget(bridge); provider_row.addStretch(1)
         power.addLayout(provider_row)
         priority=QHBoxLayout()
         up=QPushButton("Prefer source ↑"); down=QPushButton("Prefer source ↓")
+        toggle_ext=QPushButton("Enable / disable extension"); toggle_ext.clicked.connect(self._toggle_extension)
+        remove_ext=QPushButton("Remove extension"); remove_ext.clicked.connect(self._remove_extension)
         up.clicked.connect(lambda:self._move_source(-1)); down.clicked.connect(lambda:self._move_source(1))
-        priority.addWidget(up); priority.addWidget(down); priority.addStretch(1); power.addLayout(priority)
+        priority.addWidget(up); priority.addWidget(down); priority.addWidget(toggle_ext); priority.addWidget(remove_ext); priority.addStretch(1); power.addLayout(priority)
         self.source_power_panel.setVisible(self.power_toggle.isChecked())
         l.addWidget(self.source_power_panel)
 
@@ -249,8 +252,8 @@ class MainWindow(QMainWindow):
 
     def _show_home(self):
         self._refresh_library(); self._refresh_sources(); self._refresh_taste()
-        count=len(self.providers.local_catalog()); src=len(self.providers.providers)
-        self.home_status.setText(f"{count:,} local tracks · {src} connected sources · Flow {'ready' if self.flow.analysis_available else 'works with metadata; install ffmpeg for deep analysis'}")
+        count=len(self.providers.local_catalog()); src=len(self.providers.providers); ext=len(self.providers.extensions())
+        self.home_status.setText(f"{count:,} local tracks · {src} connected sources · {ext} extension{'s' if ext != 1 else ''} · Flow {'ready' if self.flow.analysis_available else 'works with metadata; install ffmpeg for deep analysis'}")
 
     def _power_changed(self, _):
         enabled = self.power_toggle.isChecked()
@@ -289,6 +292,20 @@ class MainWindow(QMainWindow):
             )
             item.setData(Qt.UserRole,pid)
             self.sources_list.addItem(item)
+        extensions = self.providers.extensions()
+        if extensions:
+            heading = QListWidgetItem("CAPABILITY EXTENSIONS")
+            heading.setFlags(heading.flags() & ~Qt.ItemIsSelectable)
+            self.sources_list.addItem(heading)
+            for extension in extensions:
+                capabilities = ", ".join(extension.get("capabilities") or []) or "no capabilities"
+                status = "ENABLED" if extension.get("enabled", True) else "DISABLED"
+                item = QListWidgetItem(
+                    f"{extension.get('name') or extension.get('id')}    ·    EXTENSION    ·    {status}\n"
+                    f"{capabilities} · {extension.get('description') or ''}"
+                )
+                item.setData(Qt.UserRole, "extension:" + str(extension.get("id") or ""))
+                self.sources_list.addItem(item)
         self._refresh_source_combo()
 
     def _move_source(self, delta):
@@ -415,6 +432,75 @@ class MainWindow(QMainWindow):
         try:
             p=self.providers.install_package(Path(path)); QMessageBox.information(self,"Provider installed",f"Installed {p.info.name}"); self._refresh_sources()
         except Exception as exc: QMessageBox.critical(self,"Could not install provider",str(exc))
+
+    def _install_extension(self):
+        path,_=QFileDialog.getOpenFileName(
+            self,
+            "Install capability extension",
+            filter="Melodex Extension (*.mdxplugin *.zip)",
+        )
+        if not path:
+            return
+        try:
+            info=self.providers.install_extension(Path(path))
+            QMessageBox.information(
+                self,
+                "Extension installed",
+                f"Installed {info.name}\n\nCapabilities: {', '.join(info.capabilities)}",
+            )
+            self._refresh_sources()
+        except Exception as exc:
+            QMessageBox.critical(self,"Could not install extension",str(exc))
+
+    def _selected_extension_id(self) -> str:
+        item=self.sources_list.currentItem()
+        if not item:
+            return ""
+        value=str(item.data(Qt.UserRole) or "")
+        return value.split(":",1)[1] if value.startswith("extension:") else ""
+
+    def _toggle_extension(self):
+        extension_id=self._selected_extension_id()
+        if not extension_id:
+            self.statusBar().showMessage("Select a capability extension first",2500)
+            return
+        extension=next(
+            (x for x in self.providers.extensions() if str(x.get("id") or "") == extension_id),
+            None,
+        )
+        if not extension:
+            return
+        enabled=not bool(extension.get("enabled",True))
+        self.providers.set_extension_enabled(extension_id,enabled)
+        self._refresh_sources()
+        self.statusBar().showMessage(
+            f"{extension.get('name') or extension_id} {'enabled' if enabled else 'disabled'}",
+            3000,
+        )
+
+    def _remove_extension(self):
+        extension_id=self._selected_extension_id()
+        if not extension_id:
+            self.statusBar().showMessage("Select a capability extension first",2500)
+            return
+        extension=next(
+            (x for x in self.providers.extensions() if str(x.get("id") or "") == extension_id),
+            {},
+        )
+        name=str(extension.get("name") or extension_id)
+        answer=QMessageBox.question(
+            self,
+            "Remove extension",
+            f"Remove {name}?\n\nThis deletes the installed extension from Melodex. "
+            "It does not delete the original .mdxplugin file.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if answer != QMessageBox.Yes:
+            return
+        if self.providers.remove_extension(extension_id):
+            self._refresh_sources()
+            self.statusBar().showMessage(f"Removed {name}",3000)
 
     def _stream_prompt(self, existing: dict[str, Any] | None = None):
         existing = existing or {}

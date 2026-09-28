@@ -67,6 +67,14 @@ def openapi_document() -> dict[str, Any]:
                     "responses": {"200": {"description": "OpenAPI 3.1 document"}},
                 }
             },
+            "/v1/extensions": {
+                "get": {
+                    "operationId": "melodexExtensions",
+                    "tags": ["catalog"],
+                    "description": "List installed capability extensions and their enabled/preference state.",
+                    "responses": {"200": {"description": "Capability extension list"}, "401": error},
+                }
+            },
             "/v1/providers": {
                 "get": {
                     "operationId": "melodexProviders",

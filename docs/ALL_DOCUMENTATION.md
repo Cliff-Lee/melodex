@@ -34,6 +34,7 @@
 - [Build an Enrichment Plugin](tutorials/BUILD_AN_ENRICHMENT_PLUGIN.md)
 - [Capability Reference](developers/05_CAPABILITY_REFERENCE.md)
 - [Composition and Provenance](developers/06_COMPOSITION_AND_PROVENANCE.md)
+- [Capability Broker](developers/16_CAPABILITY_BROKER.md)
 
 ### Application / API development
 - [Control Melodex with REST](tutorials/CONTROL_MELODEX_WITH_REST.md)

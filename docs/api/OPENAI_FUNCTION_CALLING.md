@@ -24,6 +24,7 @@ This is a **Melodex convenience endpoint**, not an OpenAI-standard discovery rou
 ```text
 melodex_status
 melodex_sources
+melodex_extensions
 melodex_search
 melodex_resolve
 melodex_resolution_candidates

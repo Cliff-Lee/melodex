@@ -1,10 +1,10 @@
 # Publishing and the Plugin Registry
 
-## Distribution should stay decentralized
+## Distribution stays decentralized
 
-Plugin authors should be able to host source code and releases in their own repositories.
+Plugin authors can host source and releases in their own repositories.
 
-Melodex's registry should be an **index**, not the only hosting platform.
+Melodex's registry is an **index**, not the only hosting platform.
 
 A registry entry can point to:
 
@@ -14,6 +14,20 @@ release/package URL
 homepage
 documentation
 issue tracker
+```
+
+## Package formats
+
+```text
+.mdxprovider   catalog/playback providers
+.mdxplugin     capability extensions
+```
+
+Build them with:
+
+```bash
+melodex-provider pack .
+melodex-extension pack .
 ```
 
 ## Suggested registry statuses
@@ -26,7 +40,7 @@ deprecated
 blocked
 ```
 
-`reviewed` should mean the extension passed Melodex technical/source-policy checks. It does not mean Melodex guarantees the upstream service or every item it contains.
+`reviewed` means the extension passed Melodex technical/source-policy checks. It does not mean Melodex guarantees the upstream service or every item it contains.
 
 ## Useful registry metadata
 
@@ -48,20 +62,25 @@ review status
 
 ## Discovery UI
 
-A future Melodex UI can group extensions by capability:
+Melodex can increasingly group extensions by capability:
 
 ```text
 Playback
   Radio Browser
 
-Metadata
+Identity / metadata
   MusicBrainz
 
 Artwork
   Wikimedia Commons
 
+Lyrics
+  ...
+
 AI / automation
   ...
 ```
+
+The desktop Sources page already lists installed capability extensions. A searchable remote registry/directory remains future work.
 
 See [Publish a community plugin](../tutorials/ADD_PLUGIN_TO_REGISTRY.md).

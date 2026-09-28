@@ -182,6 +182,8 @@ class ProviderBridge:
                         return self._send(200, openapi_document())
                     if u.path == "/v1/openai/tools":
                         return self._send(200, OPENAI_FUNCTION_TOOLS)
+                    if u.path == "/v1/extensions":
+                        return self._send(200, {"extensions": bridge.manager.extensions()})
                     if u.path == "/v1/providers":
                         order = bridge.manager.provider_order() if hasattr(bridge.manager, "provider_order") else list(bridge.manager.providers)
                         providers = []

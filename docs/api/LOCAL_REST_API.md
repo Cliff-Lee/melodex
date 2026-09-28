@@ -30,7 +30,11 @@ Public OpenAPI 3.1 description. It contains API structure, not credentials.
 
 ### `GET /v1/providers`
 
-Lists connected sources in resolver-priority order.
+Lists connected playback/catalog sources in resolver-priority order.
+
+### `GET /v1/extensions`
+
+Lists installed capability extensions, declared contracts and current enabled/preference state.
 
 ### `GET /v1/search`
 
