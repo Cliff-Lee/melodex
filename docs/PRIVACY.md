@@ -50,7 +50,9 @@ your current prompt
 
 The current GUI does **not** send prior Ask Melodex chat history between requests.
 
-Provider passwords, provider playback cookies, Bridge tokens, MCP tokens and local filesystem paths are not intentionally added to this model context.
+Track data is reduced through a positive allowlist before it enters model context. Melodex keeps only safe descriptive fields such as title, artist, album, duration, provider label and limited recent-history timing/completion metadata.
+
+Provider-local track IDs, absolute filesystem paths, playback URLs, request headers, cookies, refresh tokens, Bridge tokens, MCP tokens and API keys are excluded from track context.
 
 If you use a remote model service, that service receives the prompt/context over the network and its own privacy and retention policies apply.
 
