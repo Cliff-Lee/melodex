@@ -92,11 +92,14 @@ class PluginDirectoryDialog(QDialog):
         actions = QHBoxLayout()
         self.install_button = QPushButton("Install")
         self.source_button = QPushButton("View source")
+        self.review_button = QPushButton("View review")
         close_button = QPushButton("Close")
         self.install_button.setEnabled(False)
         self.source_button.setEnabled(False)
+        self.review_button.setEnabled(False)
         actions.addWidget(self.install_button)
         actions.addWidget(self.source_button)
+        actions.addWidget(self.review_button)
         actions.addStretch(1)
         actions.addWidget(close_button)
         layout.addLayout(actions)
@@ -108,6 +111,7 @@ class PluginDirectoryDialog(QDialog):
         self.refresh_button.clicked.connect(lambda: self.load_registry(force=True))
         self.install_button.clicked.connect(self._install_selected)
         self.source_button.clicked.connect(self._open_source)
+        self.review_button.clicked.connect(self._open_review)
         close_button.clicked.connect(self.accept)
 
         self.load_registry(force=False)
@@ -247,6 +251,7 @@ class PluginDirectoryDialog(QDialog):
             self.details.setPlainText("No registry entries match these filters.")
             self.install_button.setEnabled(False)
             self.source_button.setEnabled(False)
+            self.review_button.setEnabled(False)
 
     def _show_details(self) -> None:
         entry = self._selected()
@@ -254,10 +259,12 @@ class PluginDirectoryDialog(QDialog):
             self.details.clear()
             self.install_button.setEnabled(False)
             self.source_button.setEnabled(False)
+            self.review_button.setEnabled(False)
             return
 
         distribution = dict(entry.get("distribution") or {})
         source = dict(entry.get("source") or {})
+        review = dict(entry.get("review") or {})
         capabilities = ", ".join(str(x) for x in entry.get("capabilities") or []) or "—"
         permissions = (
             "\n".join("• " + str(x) for x in entry.get("permissions") or [])
@@ -309,7 +316,9 @@ class PluginDirectoryDialog(QDialog):
             f"Size: {distribution.get('size_bytes') or 'not supplied'} bytes\n"
             f"SHA-256: {sha256 or 'not supplied'}\n"
             f"Source policy: {entry.get('source_policy') or 'not supplied'}\n"
-            f"Repository: {source.get('repository') or 'not supplied'}"
+            f"Repository: {source.get('repository') or 'not supplied'}\n"
+            f"Last registry review: {review.get('last_reviewed_at') or 'not supplied'}\n"
+            f"Review record: {review.get('record') or 'not supplied'}"
         )
         self.details.setPlainText(text)
 
@@ -326,6 +335,7 @@ class PluginDirectoryDialog(QDialog):
             "Update" if update_available else "Reinstall" if installed else "Install"
         )
         self.source_button.setEnabled(bool(source.get("repository")))
+        self.review_button.setEnabled(bool(review.get("record")))
 
     def _install_selected(self) -> None:
         entry = self._selected()
@@ -402,5 +412,12 @@ class PluginDirectoryDialog(QDialog):
         entry = self._selected()
         source = dict(entry.get("source") or {})
         url = str(source.get("repository") or "")
+        if url:
+            QDesktopServices.openUrl(QUrl(url))
+
+    def _open_review(self) -> None:
+        entry = self._selected()
+        review = dict(entry.get("review") or {})
+        url = str(review.get("record") or "")
         if url:
             QDesktopServices.openUrl(QUrl(url))
