@@ -69,9 +69,15 @@ For precise maturity/security status, use [Status, stability and trust](develope
 
 ## I want to contribute to Melodex itself
 
+Start with **[Your First Melodex Contribution](FIRST_CONTRIBUTION.md)** if you are new to the repository.
+
+Then use:
+
 - [Contributing](../CONTRIBUTING.md)
 - [Community](COMMUNITY.md)
 - [Build from source](BUILD_FROM_SOURCE.md)
+- [Code of Conduct](../CODE_OF_CONDUCT.md)
+- [Support](../SUPPORT.md)
 - [Security](../SECURITY.md)
 - [Roadmap](../ROADMAP.md)
 - [Release process](RELEASING.md)
