@@ -2,6 +2,8 @@
 
 You do **not** need Python, Git, Android Studio, or any developer tools if you install a release build.
 
+> **Tagged releases vs `main`:** the files below are produced by the release workflows. Documentation on `main` can describe newer development features than the latest downloadable release. See [Releases, `main`, and version numbers](RELEASES_AND_MAIN.md).
+
 Download the latest release from:
 
 **https://github.com/Cliff-Lee/melodex/releases/latest**

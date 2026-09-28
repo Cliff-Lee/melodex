@@ -2,6 +2,8 @@
 
 **Don't shuffle. Flow.**
 
+> Repository documentation follows current `main`; tagged binaries can lag behind it. See [Releases, `main`, and version numbers](RELEASES_AND_MAIN.md).
+
 Melodex is a local-first music player that turns your library and connected sources into continuous, personalised listening journeys.
 
 ## Start here
@@ -46,6 +48,7 @@ Melodex is a local-first music player that turns your library and connected sour
 ## Development
 
 - [Build from source](BUILD_FROM_SOURCE.md)
+- [Releases, `main`, and version numbers](RELEASES_AND_MAIN.md)
 - [Release process](RELEASING.md)
 - [Contributing](../CONTRIBUTING.md)
 - [Security](../SECURITY.md)
