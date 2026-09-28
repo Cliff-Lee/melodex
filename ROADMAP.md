@@ -47,15 +47,16 @@ The roadmap has two parallel goals:
 - scrubbed third-party process environments
 - declared plugin configuration broker with secret-store support
 - playback-gateway host allowlist checks for provider HTTP(S) resources
+- canonical first-contribution/community onboarding path
+- append-only registry review history tied to package versions/hashes
+- redacted desktop diagnostics export for support
 
 ## Next — trust and platform
 
 - richer authentication flows beyond declared configuration (for example browser/OAuth hand-off);
 - richer user-configurable preferred capability-provider UI;
 - provider health and diagnostics UI;
-- redacted diagnostic export;
 - stronger permission-policy enforcement where practical;
-- registry review history;
 - signed provider/plugin packages;
 - verified-publisher keyring / revocation;
 - generated API-client examples.
