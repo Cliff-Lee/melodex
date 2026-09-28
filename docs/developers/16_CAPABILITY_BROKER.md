@@ -71,6 +71,14 @@ Installed extensions live in Melodex's application-data `extensions/` directory.
 
 The broker discovers `capabilities.json`, validates the declared v0.1 contracts and starts the process only when a capability is needed.
 
+## Configuration
+
+A capability extension may declare `string`, `secret` and `boolean` configuration fields in `capabilities.json`.
+
+Melodex builds the Sources configuration dialog from that declaration and brokers only those declared values to the extension. Runtime requests include configured values under the reserved `_melodex_config` parameter.
+
+Secret values use the system credential store when available, with a session-only fallback if secure persistent storage is unavailable. Secret values are not stored in the normal JSON configuration file.
+
 ## Preferences
 
 Users can enable/disable extensions independently. Core also stores per-capability preference order.
@@ -126,4 +134,4 @@ The v0.1 extension process boundary provides failure isolation, **not a complete
 
 Capability-extension subprocesses receive a scrubbed environment rather than Melodex's complete parent environment. This reduces accidental inheritance of unrelated secrets but does not stop code from exercising the current user's normal operating-system permissions.
 
-Declared permissions are review/UI metadata today. Only install extensions you trust. Stronger permission enforcement, explicit credential brokerage and publisher signing remain roadmap work.
+Declared permissions remain primarily review/UI metadata. Configuration brokerage and child-environment scrubbing reduce unnecessary secret exposure, but extension code still runs with the current user's operating-system permissions. Only install extensions you trust. Broader OS permission enforcement and publisher signing remain roadmap work.
