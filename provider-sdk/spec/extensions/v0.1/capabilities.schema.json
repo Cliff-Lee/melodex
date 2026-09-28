@@ -4,18 +4,34 @@
   "title": "Melodex capability extension descriptor v0.1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "extension_id", "contracts"],
+  "required": [
+    "schema_version",
+    "extension_id",
+    "contracts"
+  ],
   "properties": {
-    "schema_version": {"const": "0.1"},
+    "schema_version": {
+      "const": "0.1"
+    },
     "extension_id": {
       "type": "string",
       "minLength": 3,
       "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{2,127}$"
     },
-    "name": {"type": "string", "minLength": 1},
-    "version": {"type": "string", "minLength": 1},
-    "publisher": {"type": "string"},
-    "description": {"type": "string"},
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "publisher": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
     "permissions": {
       "type": "object",
       "additionalProperties": false,
@@ -23,24 +39,49 @@
         "network_hosts": {
           "type": "array",
           "uniqueItems": true,
-          "items": {"type": "string", "minLength": 1}
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
         },
-        "local_files": {"type": "boolean"},
-        "browser_auth": {"type": "boolean"}
+        "local_files": {
+          "type": "boolean"
+        },
+        "browser_auth": {
+          "type": "boolean"
+        }
       }
     },
     "entrypoints": {
       "type": "object",
-      "additionalProperties": {"type": "string"},
+      "additionalProperties": {
+        "type": "string"
+      },
       "properties": {
-        "python": {"type": "string"},
-        "executable": {"type": "string"},
-        "macos-arm64": {"type": "string"},
-        "macos-x86_64": {"type": "string"},
-        "windows-x86_64": {"type": "string"},
-        "windows-arm64": {"type": "string"},
-        "linux-x86_64": {"type": "string"},
-        "linux-arm64": {"type": "string"}
+        "python": {
+          "type": "string"
+        },
+        "executable": {
+          "type": "string"
+        },
+        "macos-arm64": {
+          "type": "string"
+        },
+        "macos-x86_64": {
+          "type": "string"
+        },
+        "windows-x86_64": {
+          "type": "string"
+        },
+        "windows-arm64": {
+          "type": "string"
+        },
+        "linux-x86_64": {
+          "type": "string"
+        },
+        "linux-arm64": {
+          "type": "string"
+        }
       }
     },
     "contracts": {
@@ -49,13 +90,24 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["capability", "contract_version", "method"],
+        "required": [
+          "capability",
+          "contract_version",
+          "method"
+        ],
         "properties": {
           "capability": {
             "type": "string",
-            "enum": ["identity", "metadata", "artwork", "lyrics"]
+            "enum": [
+              "identity",
+              "metadata",
+              "artwork",
+              "lyrics"
+            ]
           },
-          "contract_version": {"const": "0.1"},
+          "contract_version": {
+            "const": "0.1"
+          },
           "method": {
             "type": "string",
             "enum": [
@@ -64,6 +116,45 @@
               "artwork.lookup",
               "lyrics.lookup"
             ]
+          }
+        }
+      }
+    },
+    "configuration": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "key",
+          "label",
+          "type"
+        ],
+        "properties": {
+          "key": {
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9._-]{0,63}$"
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "string",
+              "secret",
+              "boolean"
+            ]
+          },
+          "required": {
+            "type": "boolean",
+            "default": false
+          },
+          "help": {
+            "type": "string",
+            "maxLength": 300
           }
         }
       }
