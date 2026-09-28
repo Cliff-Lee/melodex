@@ -144,7 +144,7 @@ def review_validation_errors(
 
     expected_decision = {
         "example": "example-baseline",
-        "community": "community-accepted",
+        "community": "community-intake",
         "reviewed": "reviewed",
         "deprecated": "deprecated",
         "blocked": "blocked",
