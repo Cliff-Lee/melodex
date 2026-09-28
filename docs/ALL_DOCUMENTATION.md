@@ -86,6 +86,7 @@
 ## Build and release
 
 - [Build from source](BUILD_FROM_SOURCE.md)
+- [Releases, `main`, and version numbers](RELEASES_AND_MAIN.md)
 - [Releasing](RELEASING.md)
 
 ## Trust and security
