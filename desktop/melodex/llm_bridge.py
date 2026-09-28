@@ -8,6 +8,35 @@ from typing import Any
 import requests
 
 
+def llm_track_summary(track: dict[str, Any] | None) -> dict[str, Any]:
+    """Return only track metadata intentionally allowed into model context."""
+    if not isinstance(track, dict):
+        return {}
+
+    out: dict[str, Any] = {}
+    for key in ("title", "artist", "album", "provider_id", "source", "genre"):
+        value = track.get(key)
+        if value not in (None, ""):
+            out[key] = str(value)
+
+    genres = track.get("genres")
+    if isinstance(genres, list):
+        out["genres"] = [str(value) for value in genres[:12] if str(value).strip()]
+
+    for key in ("year", "duration", "duration_ms"):
+        value = track.get(key)
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            out[key] = value
+
+    played_at = track.get("_played_at")
+    if isinstance(played_at, (int, float)) and not isinstance(played_at, bool):
+        out["_played_at"] = played_at
+    if "_completed" in track:
+        out["_completed"] = bool(track.get("_completed"))
+
+    return out
+
+
 SYSTEM_PROMPT = r"""You are the optional intelligence layer inside Melodex, a desktop music player.
 Your job is to help the listener choose, understand, sequence, and control music. Be concise and musical.
 
