@@ -43,3 +43,8 @@ Use `N/A` when this does not apply.
 ## Screenshots / notes
 
 Add screenshots, logs, API payloads or implementation notes when they help reviewers.
+
+## Documentation navigation
+
+- [ ] New public docs are linked from the appropriate existing router rather than creating a competing start page.
+- [ ] User-facing instructions use current UI labels where practical.

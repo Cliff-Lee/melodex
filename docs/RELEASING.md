@@ -54,6 +54,7 @@ At minimum:
 
 ```bash
 python scripts/docs_check.py
+python scripts/navigation_check.py
 python scripts/ecosystem_check.py
 python scripts/version_check.py
 python scripts/release_check.py
