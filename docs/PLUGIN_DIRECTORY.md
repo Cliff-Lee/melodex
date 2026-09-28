@@ -52,7 +52,7 @@ SHA-256 digest
 package size
 ```
 
-Melodex downloads to a temporary file, enforces a 25 MB registry package limit, verifies the exact byte count and SHA-256, then checks that the package-declared plugin ID/version match the registry entry before the install is recorded as registry verified.
+Melodex downloads to a temporary file, enforces a 25 MB registry package limit, verifies the exact byte count and SHA-256, then checks that the package-declared plugin ID/version match the registry entry before the install is recorded as **registry-verified**.
 
 A changed or corrupted package is rejected.
 
@@ -76,9 +76,9 @@ registry verification result
 publisher/source metadata (when applicable)
 ```
 
-A registry install whose downloaded bytes matched the registry is shown as **registry verified**.
+A registry install whose downloaded bytes matched the registry is shown as **registry-verified**.
 
-A manual install records its local hash but is **not** called registry verified.
+A manual install records its local hash but is **not** called registry-verified.
 
 Existing plugins installed before provenance tracking may show their origin as unknown.
 
