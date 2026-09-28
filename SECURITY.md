@@ -33,11 +33,11 @@ This provenance improves transparency and update diagnostics; it is not a sandbo
 
 ## Process environment
 
-Current provider/extension subprocesses inherit the Melodex process environment.
+Third-party provider and capability-extension subprocesses are started with a scrubbed environment rather than inheriting the complete Melodex process environment.
 
-Do not start Melodex with unrelated secrets exported into its environment.
+Melodex forwards only a small set of ordinary operating-system/runtime variables plus the package identity and package-local Python path. Arbitrary parent API keys, tokens, cookies, provider credentials and parent `PYTHONPATH` values are not forwarded by default.
 
-Environment scrubbing plus an explicit third-party credential broker are trust-roadmap items.
+This reduces accidental secret exposure; it is **not** an operating-system sandbox. An explicit third-party credential/configuration broker remains a roadmap item for integrations that legitimately need user-supplied secrets.
 
 ## Credentials
 
