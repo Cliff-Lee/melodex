@@ -50,7 +50,7 @@ your current prompt
 
 The current GUI does **not** send prior Ask Melodex chat history between requests.
 
-Track data is reduced through a positive allowlist before it enters model context. Melodex keeps only safe descriptive fields such as title, artist, album, duration, provider label and limited recent-history timing/completion metadata.
+Track data is reduced through a positive allowlist before it enters model context. Melodex keeps only allowlisted descriptive fields such as title, artist, album, duration, provider label and limited recent-history timing/completion metadata.
 
 Provider-local track IDs, absolute filesystem paths, playback URLs, request headers, cookies, refresh tokens, Bridge tokens, MCP tokens and API keys are excluded from track context.
 
