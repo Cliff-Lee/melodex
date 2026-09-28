@@ -41,6 +41,37 @@ def _track_text(t: dict[str, Any]) -> str:
     return f"{artist} — {title}" + (f"   ·   {source}" if source else "")
 
 
+def _llm_track_summary(track: dict[str, Any] | None) -> dict[str, Any]:
+    """Return only metadata intentionally allowed into model context."""
+    if not isinstance(track, dict):
+        return {}
+
+    out: dict[str, Any] = {}
+    text_fields = ("title", "artist", "album", "provider_id", "source", "genre")
+    for key in text_fields:
+        value = track.get(key)
+        if value not in (None, ""):
+            out[key] = str(value)
+
+    genres = track.get("genres")
+    if isinstance(genres, list):
+        out["genres"] = [str(value) for value in genres[:12] if str(value).strip()]
+
+    for key in ("year", "duration", "duration_ms"):
+        value = track.get(key)
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            out[key] = value
+
+    # Recent-listening context may add these safe history fields.
+    played_at = track.get("_played_at")
+    if isinstance(played_at, (int, float)) and not isinstance(played_at, bool):
+        out["_played_at"] = played_at
+    if "_completed" in track:
+        out["_completed"] = bool(track.get("_completed"))
+
+    return out
+
+
 class MainWindow(QMainWindow):
     externalCommand = Signal(str, object, object)
 
@@ -861,7 +892,22 @@ class MainWindow(QMainWindow):
             self.state.set_text("llm_provider",provider.currentText()); self.state.set_text("llm_endpoint",endpoint.text().strip()); self.state.set_text("llm_model",model.text().strip()); self.state.set_text("llm_api_key",key.text().strip())
 
     def _llm_context(self):
-        return {"current_track":self.current_track,"queue":self.player.queue[self.player.index:self.player.index+12] if self.player.index>=0 else [],"current_page":self.current_page,"taste":self.state.taste_summary(),"recent":self.state.recent_tracks(15),"vibes":self.state.vibes(10)}
+        queue = (
+            self.player.queue[self.player.index:self.player.index + 12]
+            if self.player.index >= 0
+            else []
+        )
+        return {
+            "current_track": _llm_track_summary(self.current_track),
+            "queue": [_llm_track_summary(track) for track in queue],
+            "current_page": self.current_page,
+            "taste": self.state.taste_summary(),
+            "recent": [
+                _llm_track_summary(track)
+                for track in self.state.recent_tracks(15)
+            ],
+            "vibes": self.state.vibes(10),
+        }
 
     def _ask(self):
         prompt=self.ask_box.text().strip();
