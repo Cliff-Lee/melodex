@@ -16,6 +16,8 @@
 
 # Melodex
 
+> **Development documentation:** this README follows the current `main` branch. Downloadable GitHub Releases are tagged snapshots and may lag behind `main`. See [Releases, `main`, and version numbers](docs/RELEASES_AND_MAIN.md).
+
 ## Don't shuffle. Flow.
 
 Melodex is a source-neutral music player that tries to make listening sessions **go somewhere**.
@@ -187,6 +189,8 @@ See [Source and rights policy](docs/developers/11_SOURCE_AND_RIGHTS_POLICY.md).
 ## Download
 
 You do **not** need Python or Git to use release builds.
+
+If a feature described elsewhere in this repository is missing from your installed build, check [Releases, `main`, and version numbers](docs/RELEASES_AND_MAIN.md): current documentation can describe work added after the latest tagged binary.
 
 - [Latest release](https://github.com/Cliff-Lee/melodex/releases/latest)
 - [macOS installation](docs/INSTALL_MACOS.md)
