@@ -12,7 +12,9 @@ Double-click a result to play it. Use **Add selected to queue** to keep your cur
 
 ## My music
 
-Add one or more folders. Melodex scans supported audio formats and reads tags where available.
+Use **Sources → Add local folder…** to add one or more folders. Melodex scans supported audio formats and reads tags where available.
+
+The **My music** page also has an **Add folder…** shortcut to the same picker, then becomes the main place to browse your indexed local library.
 
 ## Flow queue
 
