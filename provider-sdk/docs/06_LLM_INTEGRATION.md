@@ -62,7 +62,7 @@ If `source` is omitted, Melodex searches globally.
 
 ## 6.4 Why this is better than provider tools in the LLM
 
-If every provider is exposed directly to the model, the prompt/tool surface becomes unstable and leaks infrastructure details. A single Melodex music API gives the model stable semantics and lets the resolver choose lawful/available sources.
+If every provider is exposed directly to the model, the prompt/tool surface becomes unstable and leaks infrastructure details. A single Melodex music API gives the model consistent high-level semantics and lets the resolver choose lawful/available sources.
 
 ## 6.5 OpenWebUI / Ollama
 
