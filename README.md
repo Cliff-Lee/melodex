@@ -10,7 +10,7 @@
   <a href="https://github.com/Cliff-Lee/melodex/releases/latest"><strong>Download</strong></a> ·
   <a href="docs/START_HERE.md">Start here</a> ·
   <a href="docs/DEVELOPERS.md">Developers</a> ·
-  <a href="docs/COMMUNITY.md">Community</a> ·
+  <a href="docs/FIRST_CONTRIBUTION.md">Contribute</a> ·
   <a href="docs/README.md">Documentation</a>
 </p>
 
@@ -51,7 +51,8 @@ For the precise current state—including what is implemented, preview, experime
 | Use Melodex from an OpenAI application | [OpenAI function tutorial](docs/tutorials/USE_OPENAI_FUNCTIONS.md) |
 | Browse/install community extensions | [Plugin Directory](docs/PLUGIN_DIRECTORY.md) |
 | Publish a community plugin | [Registry tutorial](docs/tutorials/ADD_PLUGIN_TO_REGISTRY.md) |
-| Contribute code, docs, testing or ideas | [Community guide](docs/COMMUNITY.md) |
+| Make a first contribution to this repository | [First contribution](docs/FIRST_CONTRIBUTION.md) |
+| Explore other community contribution paths | [Community guide](docs/COMMUNITY.md) |
 
 ## The developer platform
 
@@ -176,7 +177,9 @@ You do not need to understand the whole Melodex codebase to contribute.
 - Build another app? Use REST/OpenAPI.
 - Don't code? Help with testing, documentation, accessibility, translations, source research or UX.
 
-See [Community](docs/COMMUNITY.md).
+New to the repository? Start with **[Your First Melodex Contribution](docs/FIRST_CONTRIBUTION.md)**.
+
+See [Community](docs/COMMUNITY.md) for the wider set of contribution paths.
 
 ## Source-neutral and rights-aware
 
@@ -213,7 +216,7 @@ provider-sdk/  provider SDK, schemas and examples
 docs/          user and developer documentation
 ```
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a PR.
+For the shortest repository-onboarding path, read [Your First Melodex Contribution](docs/FIRST_CONTRIBUTION.md), then [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Licence
 
