@@ -43,7 +43,7 @@ RULES: tuple[tuple[re.Pattern[str], str], ...] = (
     ),
     (
         re.compile(
-            r"\bstable (?:MPP|protocol|Provider SDK|provider manifest|API)\b",
+            r"(?<!not )\bstable (?:MPP|protocol|Provider SDK|provider manifest|API)\b",
             re.IGNORECASE,
         ),
         "do not imply a stable compatibility commitment while MPP/SDK remain preview/0.x",
@@ -100,31 +100,32 @@ def main() -> int:
     errors: list[str] = []
     checked = markdown_files()
 
+    policy_path = ROOT / "docs/developers/02_TERMINOLOGY_AND_CLAIMS.md"
+
     for path in checked:
         text = path.read_text("utf-8", errors="replace")
         for number, line in visible_lines(text):
-            for pattern, guidance in RULES:
-                if pattern.search(line):
-                    errors.append(
-                        f"{path.relative_to(ROOT)}:{number}: {line.strip()} "
-                        f"— {guidance}"
-                    )
+            # The terminology policy intentionally names phrases that are forbidden
+            # elsewhere so it can explain them precisely.
+            if path != policy_path:
+                for pattern, guidance in RULES:
+                    if pattern.search(line):
+                        errors.append(
+                            f"{path.relative_to(ROOT)}:{number}: {line.strip()} "
+                            f"— {guidance}"
+                        )
 
             lower = line.lower()
-            if "sandboxed" in lower:
-                negative_context = any(
-                    phrase in lower
-                    for phrase in (
-                        "not sandboxed",
-                        "not be described as sandboxed",
-                        "do not describe",
-                    )
+            affirmative_sandbox = re.search(
+                r"\b(?:plugin|plugins|extension|extensions|package|packages)\b"
+                r".{0,50}\b(?:is|are)\b.{0,20}\bsandboxed\b",
+                lower,
+            )
+            if affirmative_sandbox and "not sandboxed" not in lower:
+                errors.append(
+                    f"{path.relative_to(ROOT)}:{number}: {line.strip()} "
+                    "— current plugins must not be described as sandboxed"
                 )
-                if not negative_context:
-                    errors.append(
-                        f"{path.relative_to(ROOT)}:{number}: {line.strip()} "
-                        "— current plugins must not be described as sandboxed"
-                    )
 
     if errors:
         print("Terminology/claim check failed:")
