@@ -19,13 +19,13 @@ This page is intentionally exhaustive. For a shorter route by goal, use the [doc
 - [Windows](INSTALL_WINDOWS.md)
 - [Android](INSTALL_ANDROID.md)
 
-## Developer start pages
+## Developer entry points
 
 - [5-minute developer quickstart](DEVELOPER_QUICKSTART.md)
 - [Status, stability and trust](developers/00_STATUS_AND_STABILITY.md)
 - [Ecosystem architecture](developers/01_ECOSYSTEM_ARCHITECTURE.md)
-- [Develop with Melodex](DEVELOPERS.md)
-- [Developer ecosystem](developers/README.md)
+- [Developer Gateway](DEVELOPERS.md)
+- [Developer Reference Index](developers/README.md)
 - [Community](COMMUNITY.md)
 - [Plugin Directory](PLUGIN_DIRECTORY.md)
 - [Provider SDK](../provider-sdk/README.md)
