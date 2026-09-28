@@ -50,6 +50,15 @@ Use this before listing an extension in the Melodex registry.
 - [ ] Live tests isolated and optional
 
 
+## Registry review record
+
+- [ ] Matching `registry/reviews/<plugin-id>.json` exists.
+- [ ] Latest event version matches the registry version.
+- [ ] Latest event package SHA-256 matches the registry package.
+- [ ] Decision matches the registry status (`community-intake`, `reviewed`, etc.).
+- [ ] Reviewer, summary, checks and limitations describe the actual review outcome.
+- [ ] Existing historical events were not rewritten without a documented correction reason.
+
 ## Transparency wording
 
 - [ ] Documentation distinguishes implemented / preview / experimental / planned behavior.
