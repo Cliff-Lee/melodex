@@ -87,6 +87,16 @@ current playable resource
 
 Do not use a temporary CDN URL as track identity.
 
+If your provider needs a user-entered token or setting, declare it in `manifest.json` rather than embedding it:
+
+```json
+"configuration": [
+  {"key": "api_token", "label": "API token", "type": "secret", "required": true}
+]
+```
+
+Read [Build a provider](tutorials/BUILD_A_PROVIDER.md) for the runtime access pattern.
+
 Package it:
 
 ```bash

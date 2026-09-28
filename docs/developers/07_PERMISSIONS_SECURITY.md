@@ -59,17 +59,41 @@ Do not describe current third-party plugins as sandboxed.
 
 ## Process environment
 
-Current subprocess launchers inherit the Melodex process environment before adding their protocol/runtime variables.
+Provider and capability-extension subprocesses start with a **scrubbed child environment**.
 
-That means unrelated secrets exported into Melodex's environment could also be visible to a third-party process.
+Melodex forwards a small allowlist of ordinary operating-system/runtime variables plus the package identity and package-local Python path. Arbitrary parent API keys, tokens, cookies and unrelated credentials are not forwarded by default.
 
-Until environment scrubbing plus an explicit credential broker is implemented:
+This reduces accidental secret inheritance. It is still **not** an operating-system sandbox.
 
-- do not launch Melodex with unrelated secrets exported into its environment;
-- do not depend on secret environment variables as the public provider-authentication design;
-- never put secrets in manifests, descriptors, registry entries or provenance.
+## Declared configuration broker
 
-Environment isolation/credential brokering is a trust-roadmap item.
+Providers and capability extensions can declare configuration fields in their package metadata:
+
+```json
+{
+  "configuration": [
+    {"key": "api_token", "label": "API token", "type": "secret", "required": true},
+    {"key": "region", "label": "Region", "type": "string"},
+    {"key": "use_preview", "label": "Use preview API", "type": "boolean"}
+  ]
+}
+```
+
+Supported field types are `string`, `secret` and `boolean`.
+
+The Sources page builds the configuration UI from those declarations. At runtime, Melodex sends only declared values to that plugin under the reserved `_melodex_config` request parameter.
+
+Non-secret values are stored in Melodex's application-data configuration file. Secret values are stored in the operating-system credential store when a usable keyring backend is available. If secure persistent storage is unavailable, secrets fall back to **session-only memory** rather than being written to ordinary JSON.
+
+A plugin declaration is not itself permission to read arbitrary Melodex settings or environment variables.
+
+## Limited host enforcement
+
+Provider `network_hosts` declarations are still **not a process-wide network sandbox**.
+
+One narrower boundary is enforced today: when an external provider returns an HTTP(S) playback resource, the Playback Gateway checks the initial playback host and every redirect against the provider's declared `network_hosts`.
+
+That prevents Melodex's own playback proxy from forwarding provider-supplied headers/cookies to undeclared playback hosts. It does **not** stop the plugin process itself from making other network connections with the current user's OS permissions.
 
 ## Secrets never belong in normalized objects
 

@@ -44,10 +44,13 @@ The roadmap has two parallel goals:
 - Plugin Directory update awareness
 - 5-minute developer quickstart + explicit status/stability/trust documentation
 - CI documentation-link integrity checks
+- scrubbed third-party process environments
+- declared plugin configuration broker with secret-store support
+- playback-gateway host allowlist checks for provider HTTP(S) resources
 
 ## Next — trust and platform
 
-- explicit credential/configuration broker for third-party providers;
+- richer authentication flows beyond declared configuration (for example browser/OAuth hand-off);
 - richer user-configurable preferred capability-provider UI;
 - provider health and diagnostics UI;
 - redacted diagnostic export;

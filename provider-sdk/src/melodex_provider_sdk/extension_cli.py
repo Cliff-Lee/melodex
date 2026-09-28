@@ -85,6 +85,7 @@ import sys
 def respond(request):
     method = request.get("method")
     params = request.get("params") or {{}}
+    config = params.get("_melodex_config") or {{}}
     if method != {method!r}:
         raise RuntimeError(f"Unsupported method: {{method}}")
     return {body}
@@ -119,6 +120,7 @@ def command_init(args: argparse.Namespace) -> int:
         "publisher": "Your Name or Organisation",
         "description": f"Example Melodex {capability} capability extension.",
         "permissions": {"network_hosts": [], "local_files": False, "browser_auth": False},
+        "configuration": [],
         "entrypoints": {"python": "plugin.py"},
         "contracts": [{"capability": capability, "contract_version": "0.1", "method": METHODS[capability]}],
     }

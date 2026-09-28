@@ -6,7 +6,7 @@ source .venv-build/bin/activate
 python -m pip install --upgrade pip
 pip install -r requirements-build.txt
 rm -rf build dist
-pyinstaller --noconfirm --windowed --name Melodex --icon ../assets/icon.png --add-data "melodex/assets/melodex-mark.png:melodex/assets" --collect-all PySide6 run.py
+pyinstaller --noconfirm --windowed --name Melodex --icon ../assets/icon.png --add-data "melodex/assets/melodex-mark.png:melodex/assets" --collect-all PySide6 --collect-all keyring run.py
 mkdir -p dist/release
 cp -R dist/Melodex.app dist/release/ 2>/dev/null || true
 if command -v hdiutil >/dev/null && [ -d dist/Melodex.app ]; then

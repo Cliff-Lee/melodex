@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from .process_env import scrubbed_child_env
+from .plugin_config import normalise_configuration
 
 
 @dataclass(slots=True)
@@ -24,6 +25,7 @@ class ProviderInfo:
     description: str = ""
     capabilities: list[str] = field(default_factory=list)
     permissions: dict[str, Any] = field(default_factory=dict)
+    configuration: list[dict[str, Any]] = field(default_factory=list)
 
 
 class MusicProvider(ABC):
@@ -53,9 +55,11 @@ class ExternalProvider(MusicProvider):
     def __init__(self, folder: Path, manifest: dict[str, Any]):
         self.folder = Path(folder)
         self.manifest = dict(manifest)
+        normalise_configuration(self.manifest.get("configuration"))
         self._lock = threading.RLock()
         self._seq = 0
         self._proc: subprocess.Popen[str] | None = None
+        self._config: dict[str, Any] = {}
 
     @property
     def info(self) -> ProviderInfo:
@@ -66,6 +70,7 @@ class ExternalProvider(MusicProvider):
             description=str(self.manifest.get("description", "")),
             capabilities=list(self.manifest.get("capabilities", [])),
             permissions=dict(self.manifest.get("permissions", {})),
+            configuration=normalise_configuration(self.manifest.get("configuration")),
         )
 
     def _platform_entrypoint_key(self) -> str:
@@ -113,12 +118,19 @@ class ExternalProvider(MusicProvider):
         )
         return self._proc
 
+    def configure(self, settings: dict[str, Any]) -> None:
+        with self._lock:
+            self._config = dict(settings or {})
+
     def _rpc(self, method: str, params: dict[str, Any] | None = None) -> Any:
         with self._lock:
             proc = self._ensure()
             self._seq += 1
             rid = self._seq
-            request = {"jsonrpc": "2.0", "id": rid, "method": method, "params": params or {}}
+            request_params = dict(params or {})
+            if self._config:
+                request_params["_melodex_config"] = dict(self._config)
+            request = {"jsonrpc": "2.0", "id": rid, "method": method, "params": request_params}
             assert proc.stdin and proc.stdout
             proc.stdin.write(json.dumps(request, ensure_ascii=False) + "\n")
             proc.stdin.flush()
@@ -221,6 +233,7 @@ class ProviderInstaller:
         pid = str(manifest.get("id", "")).strip()
         if not pid or ".." in pid or "/" in pid or "\\" in pid:
             raise ValueError("Invalid provider id")
+        normalise_configuration(manifest.get("configuration"))
         return manifest_name, manifest
 
     def install(self, package: Path) -> Path:

@@ -33,9 +33,12 @@ Melodex is intentionally developing in public. Some surfaces are implemented and
 | Installation provenance ledger | **Implemented** | Records manual vs registry install, version, time and package hash for new installs |
 | Plugin update detection | **Implemented** | Directory can identify a newer registry version; updates remain user-initiated |
 | Registry status labels | **Implemented** | `example/community/reviewed/deprecated/blocked`; labels are project metadata, not cryptographic proof |
-| Declared plugin permissions | **Implemented** | Visible metadata/review contract |
+| Declared plugin permissions | **Implemented** | Visible metadata/review contract; not universal OS enforcement |
+| Declared plugin configuration broker | **Implemented / Preview** | Schema-driven `string`/`secret`/`boolean` configuration; only declared values are brokered to the plugin |
+| Secret configuration storage | **Implemented** | System credential store when available; otherwise session-only memory rather than plaintext JSON |
+| Playback-host allowlist enforcement | **Implemented** | Playback Gateway checks external provider HTTP(S) playback URLs and redirects against declared hosts; this is not process-wide network isolation |
 | OS-enforced plugin network/filesystem sandbox | **Not implemented** | Provider/extension processes still run with the current user's OS permissions |
-| Child-process environment scrubbing | **Not implemented** | Current subprocesses inherit the Melodex process environment; do not launch Melodex with unrelated exported secrets |
+| Child-process environment scrubbing | **Implemented** | Third-party subprocesses receive a small allowlist plus package identity/runtime paths, not the complete parent environment |
 | Publisher signatures / verified-publisher keyring | **Planned** | SHA-256 is integrity, not signing |
 | Full provider health/diagnostic UI | **Planned** | CLI doctor and runtime errors exist; richer UI is future work |
 | Automatic plugin updates | **Not implemented** | Deliberately no silent update mechanism |
@@ -97,7 +100,7 @@ browser authentication
 LAN discovery
 ```
 
-Today these declarations support transparency, UI, review and future enforcement.
+These declarations support transparency, UI and review. A narrow playback-host allowlist is enforced by the Playback Gateway for external provider HTTP(S) playback resources and redirects.
 
 They should **not** be described as universal OS-level enforcement. Desktop provider/extension processes run outside the GUI process, which improves failure isolation, but they still execute with the current user's operating-system permissions unless the OS/container environment adds stronger sandboxing.
 

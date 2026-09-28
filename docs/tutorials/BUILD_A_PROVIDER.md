@@ -97,14 +97,49 @@ Example:
 }
 ```
 
-## 6. Validate and test
+## 6. Declare configuration when needed
+
+Do not put API keys or user credentials directly in `manifest.json`.
+
+If the provider needs user-supplied configuration, declare the fields:
+
+```json
+"configuration": [
+  {
+    "key": "api_token",
+    "label": "API token",
+    "type": "secret",
+    "required": true,
+    "help": "Create a token in the upstream service."
+  },
+  {
+    "key": "region",
+    "label": "Region",
+    "type": "string"
+  }
+]
+```
+
+Supported types are `string`, `secret` and `boolean`.
+
+Melodex builds a generic configuration dialog from this declaration. During a JSON-RPC call, configured values are available in:
+
+```python
+params = request.get("params") or {}
+config = params.get("_melodex_config") or {}
+token = config.get("api_token")
+```
+
+Only declared values are brokered. Secret fields use the system credential store when available and are not written to the ordinary plugin-config JSON file.
+
+## 7. Validate and test
 
 ```bash
 melodex-provider validate hello-provider
 melodex-provider doctor hello-provider
 ```
 
-## 7. Package
+## 8. Package
 
 ```bash
 melodex-provider pack hello-provider
@@ -116,7 +151,7 @@ Result:
 hello-provider.mdxprovider
 ```
 
-## 8. Install your local package
+## 9. Install your local package
 
 In desktop Melodex:
 
@@ -128,7 +163,7 @@ Sources
 
 Manual installs record the local package hash, but are not described as registry-verified.
 
-## 9. Before publishing
+## 10. Before publishing
 
 Add a `SOURCE_POLICY.md` explaining:
 

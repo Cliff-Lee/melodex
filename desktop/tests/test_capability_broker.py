@@ -371,3 +371,53 @@ for line in sys.stdin:
         assert "super-secret" not in json.dumps(health)
     finally:
         broker.close()
+
+
+def test_extension_receives_brokered_configuration(tmp_path: Path):
+    folder = tmp_path / "extension"
+    folder.mkdir()
+    descriptor = {
+        "schema_version": "0.1",
+        "extension_id": "org.example.config",
+        "name": "Config",
+        "configuration": [
+            {"key": "api_token", "label": "API token", "type": "secret"}
+        ],
+        "entrypoints": {"python": "plugin.py"},
+        "contracts": [
+            {
+                "capability": "metadata",
+                "contract_version": "0.1",
+                "method": "metadata.enrich",
+            }
+        ],
+    }
+    plugin = """import json, sys
+for line in sys.stdin:
+    req = json.loads(line)
+    params = req.get("params") or {}
+    config = params.get("_melodex_config") or {}
+    result = {
+        "schema_version": "0.1",
+        "capability": "metadata",
+        "subject": params["subject"],
+        "fields": {"token": {"value": config.get("api_token", "missing")}},
+    }
+    print(json.dumps({"jsonrpc": "2.0", "id": req["id"], "result": result}), flush=True)
+"""
+    (folder / "capabilities.json").write_text(json.dumps(descriptor), "utf-8")
+    (folder / "plugin.py").write_text(plugin, "utf-8")
+    extension = ExternalExtension(folder, descriptor)
+    extension.configure({"api_token": "brokered-secret"})
+    try:
+        result = extension.call(
+            "metadata",
+            {
+                "schema_version": "0.1",
+                "capability": "metadata",
+                "subject": {"entity_type": "track"},
+            },
+        )
+        assert result["fields"]["token"]["value"] == "brokered-secret"
+    finally:
+        extension.close()

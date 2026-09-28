@@ -235,10 +235,11 @@ class MainWindow(QMainWindow):
         power.addLayout(provider_row)
         priority=QHBoxLayout()
         up=QPushButton("Prefer source ↑"); down=QPushButton("Prefer source ↓")
+        configure=QPushButton("Configure selected…"); configure.clicked.connect(self._configure_selected_plugin)
         toggle_ext=QPushButton("Enable / disable extension"); toggle_ext.clicked.connect(self._toggle_extension)
         remove_ext=QPushButton("Remove extension"); remove_ext.clicked.connect(self._remove_extension)
         up.clicked.connect(lambda:self._move_source(-1)); down.clicked.connect(lambda:self._move_source(1))
-        priority.addWidget(up); priority.addWidget(down); priority.addWidget(toggle_ext); priority.addWidget(remove_ext); priority.addStretch(1); power.addLayout(priority)
+        priority.addWidget(up); priority.addWidget(down); priority.addWidget(configure); priority.addWidget(toggle_ext); priority.addWidget(remove_ext); priority.addStretch(1); power.addLayout(priority)
         self.source_power_panel.setVisible(self.power_toggle.isChecked())
         l.addWidget(self.source_power_panel)
 
@@ -296,6 +297,12 @@ class MainWindow(QMainWindow):
                     if installation.get("method") == "manual"
                     else "INSTALLED"
                 )
+                if p.info.configuration:
+                    config_status = self.providers.plugin_config.status(
+                        pid, p.info.configuration
+                    )
+                    if not config_status.get("ready", True):
+                        status += " · CONFIG NEEDED"
                 kind = "PROVIDER"
             item=QListWidgetItem(
                 f"{name}    ·    {kind}    ·    {status}\n{p.info.description}"
@@ -320,6 +327,9 @@ class MainWindow(QMainWindow):
                     if installation.get("method") == "manual"
                     else "INSTALLED"
                 )
+                config_status = dict(extension.get("configuration_status") or {})
+                if config_status.get("declared") and not config_status.get("ready", True):
+                    trust_status += " · CONFIG NEEDED"
                 health = dict(extension.get("health") or {})
                 runtime_status = str(health.get("status") or "idle").upper()
                 failure_count = int(health.get("failures") or 0)
@@ -487,6 +497,102 @@ class MainWindow(QMainWindow):
             self._refresh_sources()
         except Exception as exc:
             QMessageBox.critical(self,"Could not install extension",str(exc))
+
+    def _selected_plugin_id(self) -> str:
+        item=self.sources_list.currentItem()
+        if not item:
+            return ""
+        value=str(item.data(Qt.UserRole) or "")
+        if value.startswith("extension:"):
+            return value.split(":",1)[1]
+        return value if value not in {"local", "jamendo", "streams"} else ""
+
+    def _configure_selected_plugin(self):
+        plugin_id=self._selected_plugin_id()
+        if not plugin_id:
+            self.statusBar().showMessage("Select an installed provider or extension first",3000)
+            return
+        try:
+            info=self.providers.plugin_configuration(plugin_id)
+        except Exception as exc:
+            QMessageBox.warning(self,"Plugin configuration",str(exc))
+            return
+        fields=list(info.get("fields") or [])
+        if not fields:
+            QMessageBox.information(
+                self,
+                "Plugin configuration",
+                f"{info.get('name') or plugin_id} does not declare any configuration fields.",
+            )
+            return
+
+        dialog=QDialog(self)
+        dialog.setWindowTitle(f"Configure {info.get('name') or plugin_id}")
+        layout=QVBoxLayout(dialog)
+        intro=QLabel(
+            "Melodex sends only the values declared by this plugin. "
+            "Secret fields are stored in the system credential store when available."
+        )
+        intro.setWordWrap(True); layout.addWidget(intro)
+        form=QFormLayout(); layout.addLayout(form)
+        current=dict(info.get("values") or {})
+        status=dict(info.get("status") or {})
+        configured=dict(status.get("configured") or {})
+        widgets: dict[str, tuple[dict[str, Any], QWidget]] = {}
+        for field in fields:
+            key=str(field.get("key") or "")
+            label=str(field.get("label") or key)
+            if field.get("required"):
+                label += " *"
+            field_type=str(field.get("type") or "string")
+            if field_type == "boolean":
+                widget=QCheckBox()
+                widget.setChecked(bool(current.get(key, False)))
+            else:
+                widget=QLineEdit()
+                if field_type == "secret":
+                    widget.setEchoMode(QLineEdit.EchoMode.Password)
+                    widget.setPlaceholderText(
+                        "Stored — leave blank to keep" if configured.get(key) else "Enter secret"
+                    )
+                else:
+                    widget.setText(str(current.get(key) or ""))
+                help_text=str(field.get("help") or "")
+                if help_text:
+                    widget.setToolTip(help_text)
+            widgets[key]=(field,widget)
+            form.addRow(label,widget)
+        storage=str(status.get("secret_storage") or "")
+        if any(str(field.get("type")) == "secret" for field in fields):
+            note=QLabel(f"Secret storage: {storage or 'unavailable'}")
+            note.setWordWrap(True); layout.addWidget(note)
+        buttons=QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(dialog.accept); buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        if dialog.exec() != QDialog.Accepted:
+            return
+
+        changes: dict[str, Any] = {}
+        for key,(field,widget) in widgets.items():
+            field_type=str(field.get("type") or "string")
+            if field_type == "boolean":
+                assert isinstance(widget,QCheckBox)
+                changes[key]=widget.isChecked()
+            else:
+                assert isinstance(widget,QLineEdit)
+                text=widget.text()
+                changes[key]=None if field_type == "secret" and not text else text
+        try:
+            updated=self.providers.set_plugin_configuration(plugin_id,changes)
+        except Exception as exc:
+            QMessageBox.critical(self,"Could not save configuration",str(exc))
+            return
+        self._refresh_sources()
+        if updated.get("ready",True):
+            self.statusBar().showMessage("Plugin configuration updated",3000)
+        else:
+            missing=", ".join(str(x) for x in updated.get("missing_required") or [])
+            self.statusBar().showMessage(f"Configuration saved · required values missing: {missing}",5000)
 
     def _selected_extension_id(self) -> str:
         item=self.sources_list.currentItem()

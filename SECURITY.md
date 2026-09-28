@@ -8,7 +8,7 @@ Desktop `.mdxprovider` and `.mdxplugin` packages contain executable third-party 
 
 Melodex runs them out-of-process, which improves crash/failure isolation, but they still run with the operating-system permissions of the current user unless additional OS sandboxing is configured.
 
-Declared plugin permissions are currently transparency/review metadata, not universal OS-level enforcement.
+Declared plugin permissions are not universal OS-level enforcement. Melodex does enforce a narrower provider playback-host allowlist in its HTTP(S) Playback Gateway, including redirect checks.
 
 Install third-party code only from publishers/sources you trust.
 
@@ -37,7 +37,15 @@ Third-party provider and capability-extension subprocesses are started with a sc
 
 Melodex forwards only a small set of ordinary operating-system/runtime variables plus the package identity and package-local Python path. Arbitrary parent API keys, tokens, cookies, provider credentials and parent `PYTHONPATH` values are not forwarded by default.
 
-This reduces accidental secret exposure; it is **not** an operating-system sandbox. An explicit third-party credential/configuration broker remains a roadmap item for integrations that legitimately need user-supplied secrets.
+This reduces accidental secret exposure; it is **not** an operating-system sandbox.
+
+## Plugin configuration and credentials
+
+Third-party providers and capability extensions may declare `string`, `secret` and `boolean` configuration fields.
+
+Melodex brokers only declared values to that plugin at runtime. Secret fields use the operating-system credential store when a usable keyring backend is available. If secure persistent storage is unavailable, secret values are kept in session memory rather than written to ordinary JSON configuration.
+
+This is configuration brokerage, not a general OAuth/session vault and not a sandbox.
 
 ## Credentials
 

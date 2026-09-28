@@ -111,3 +111,41 @@ for line in sys.stdin:
         assert item["artist"] == "org.example.env"
     finally:
         provider.close()
+
+
+def test_external_provider_receives_only_brokered_configuration(tmp_path: Path):
+    code = """import json, sys
+for line in sys.stdin:
+    req = json.loads(line)
+    params = req.get("params") or {}
+    config = params.get("_melodex_config") or {}
+    result = {
+        "items": [{
+            "provider_track_id": "1",
+            "title": config.get("api_token", "missing"),
+            "artist": str(config.get("region", "missing")),
+        }]
+    }
+    print(json.dumps({"jsonrpc": "2.0", "id": req["id"], "result": result}), flush=True)
+"""
+    (tmp_path / "provider.py").write_text(code, "utf-8")
+    manifest = {
+        "id": "org.example.config",
+        "name": "Config",
+        "version": "1",
+        "capabilities": ["search"],
+        "permissions": {"network_hosts": []},
+        "configuration": [
+            {"key": "api_token", "label": "API token", "type": "secret"},
+            {"key": "region", "label": "Region", "type": "string"},
+        ],
+        "entrypoints": {"python": "provider.py"},
+    }
+    provider = ExternalProvider(tmp_path, manifest)
+    provider.configure({"api_token": "brokered-secret", "region": "eu"})
+    try:
+        item = provider.search("x", 1)[0]
+        assert item["title"] == "brokered-secret"
+        assert item["artist"] == "eu"
+    finally:
+        provider.close()

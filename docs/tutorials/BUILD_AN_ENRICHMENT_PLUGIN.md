@@ -89,6 +89,16 @@ my-artwork/
 
 Keep permissions honest and minimal.
 
+If the extension needs user-supplied settings or a credential, add a `configuration` array:
+
+```json
+"configuration": [
+  {"key": "api_token", "label": "API token", "type": "secret", "required": true}
+]
+```
+
+Melodex renders the configuration UI automatically. Configured values arrive with each call under `params["_melodex_config"]`. Secrets use the system credential store when available, with session-only memory as the safe fallback when secure persistent storage is unavailable.
+
 ## 4. Receive an EntityRef
 
 Melodex calls the extension with normalized identity/hints:
