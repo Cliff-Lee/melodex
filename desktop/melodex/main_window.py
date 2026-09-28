@@ -21,7 +21,7 @@ from .flow import FlowEngine
 from .mind import MindEngine
 from .user_state import UserState
 from .player import FlowPlayer
-from .llm_bridge import LLMClient, LLMSettings
+from .llm_bridge import LLMClient, LLMSettings, llm_track_summary
 from .bridge_server import ProviderBridge
 from .playlist_io import load_playlist, save_playlist
 from .metadata import RichMetadataService
@@ -40,36 +40,6 @@ def _track_text(t: dict[str, Any]) -> str:
     source = str(t.get("provider_id") or "")
     return f"{artist} — {title}" + (f"   ·   {source}" if source else "")
 
-
-def _llm_track_summary(track: dict[str, Any] | None) -> dict[str, Any]:
-    """Return only metadata intentionally allowed into model context."""
-    if not isinstance(track, dict):
-        return {}
-
-    out: dict[str, Any] = {}
-    text_fields = ("title", "artist", "album", "provider_id", "source", "genre")
-    for key in text_fields:
-        value = track.get(key)
-        if value not in (None, ""):
-            out[key] = str(value)
-
-    genres = track.get("genres")
-    if isinstance(genres, list):
-        out["genres"] = [str(value) for value in genres[:12] if str(value).strip()]
-
-    for key in ("year", "duration", "duration_ms"):
-        value = track.get(key)
-        if isinstance(value, (int, float)) and not isinstance(value, bool):
-            out[key] = value
-
-    # Recent-listening context may add these safe history fields.
-    played_at = track.get("_played_at")
-    if isinstance(played_at, (int, float)) and not isinstance(played_at, bool):
-        out["_played_at"] = played_at
-    if "_completed" in track:
-        out["_completed"] = bool(track.get("_completed"))
-
-    return out
 
 
 class MainWindow(QMainWindow):
@@ -898,12 +868,12 @@ class MainWindow(QMainWindow):
             else []
         )
         return {
-            "current_track": _llm_track_summary(self.current_track),
-            "queue": [_llm_track_summary(track) for track in queue],
+            "current_track": llm_track_summary(self.current_track),
+            "queue": [llm_track_summary(track) for track in queue],
             "current_page": self.current_page,
             "taste": self.state.taste_summary(),
             "recent": [
-                _llm_track_summary(track)
+                llm_track_summary(track)
                 for track in self.state.recent_tracks(15)
             ],
             "vibes": self.state.vibes(10),
