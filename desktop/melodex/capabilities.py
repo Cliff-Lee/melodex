@@ -15,6 +15,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from .process_env import scrubbed_child_env
+
 
 _METHODS = {
     "identity": "identity.resolve",
@@ -125,6 +127,15 @@ class ExternalExtension:
         self._proc: subprocess.Popen[str] | None = None
         self._stdout: queue.Queue[str | None] = queue.Queue()
         self._stderr: deque[str] = deque(maxlen=30)
+        self._health_lock = threading.Lock()
+        self._health: dict[str, Any] = {
+            "status": "idle",
+            "calls": 0,
+            "successes": 0,
+            "failures": 0,
+            "consecutive_failures": 0,
+            "last_error": "",
+        }
 
     @property
     def info(self) -> ExtensionInfo:
@@ -198,13 +209,14 @@ class ExternalExtension:
             return self._proc
         self._stdout = queue.Queue()
         self._stderr.clear()
-        env = {**os.environ, "MELODEX_EXTENSION_ID": self.info.id}
+        env = scrubbed_child_env(
+            identifier_key="MELODEX_EXTENSION_ID",
+            identifier=self.info.id,
+        )
         paths = [str(self.folder)]
         vendor = self.folder / "vendor"
         if vendor.is_dir():
             paths.insert(0, str(vendor))
-        if env.get("PYTHONPATH"):
-            paths.append(env["PYTHONPATH"])
         env["PYTHONPATH"] = os.pathsep.join(paths)
         self._proc = subprocess.Popen(
             self._command(),
@@ -235,7 +247,7 @@ class ExternalExtension:
         except subprocess.TimeoutExpired:
             proc.kill()
 
-    def call(
+    def _call_once(
         self,
         capability: str,
         params: dict[str, Any],
@@ -305,6 +317,51 @@ class ExternalExtension:
                     )
                     raise RuntimeError(str(message or "Extension error"))
                 return response.get("result")
+
+    @staticmethod
+    def _diagnostic_error(exc: Exception) -> str:
+        text = str(exc).casefold()
+        if "timed out" in text:
+            return "timeout"
+        if "non-json" in text:
+            return "protocol_error"
+        if "stopped" in text or "broken pipe" in text:
+            return "process_error"
+        return "call_error"
+
+    def health(self) -> dict[str, Any]:
+        with self._health_lock:
+            health = dict(self._health)
+        health["process_running"] = bool(
+            self._proc is not None and self._proc.poll() is None
+        )
+        return health
+
+    def call(
+        self,
+        capability: str,
+        params: dict[str, Any],
+        timeout: float | None = None,
+    ) -> Any:
+        with self._health_lock:
+            self._health["calls"] += 1
+            self._health["status"] = "running"
+        try:
+            result = self._call_once(capability, params, timeout=timeout)
+        except Exception as exc:
+            with self._health_lock:
+                self._health["failures"] += 1
+                self._health["consecutive_failures"] += 1
+                self._health["status"] = "error"
+                self._health["last_error"] = self._diagnostic_error(exc)
+            raise
+        else:
+            with self._health_lock:
+                self._health["successes"] += 1
+                self._health["consecutive_failures"] = 0
+                self._health["status"] = "ok"
+                self._health["last_error"] = ""
+            return result
 
     def close(self) -> None:
         with self._lock:
@@ -513,6 +570,7 @@ class CapabilityBroker:
         ):
             info = extension.info.as_dict()
             info["enabled"] = self.enabled(extension.info.id)
+            info["health"] = extension.health()
             info["preferred_for"] = [
                 capability
                 for capability in _METHODS
