@@ -71,7 +71,7 @@ def openapi_document() -> dict[str, Any]:
                 "get": {
                     "operationId": "melodexExtensions",
                     "tags": ["catalog"],
-                    "description": "List installed capability extensions, enabled/preference state, declared permissions and installation provenance.",
+                    "description": "List installed capability extensions, enabled/preference state, declared permissions, installation provenance and redacted runtime health.",
                     "responses": {"200": {"description": "Capability extension list"}, "401": error},
                 }
             },
