@@ -108,7 +108,7 @@ def _review_record(payload: bytes) -> dict:
             {
                 "reviewed_at": "2026-09-29T00:00:00Z",
                 "reviewer": "Example project",
-                "decision": "community-accepted",
+                "decision": "community-intake",
                 "version": "1.0.0",
                 "package_sha256": hashlib.sha256(payload).hexdigest(),
                 "summary": "Community intake review.",
@@ -145,7 +145,7 @@ def test_review_history_rejects_hash_or_status_drift():
     record = _review_record(payload)
     record["events"][-1]["decision"] = "reviewed"
     errors = review_validation_errors(data, [record])
-    assert any("community-accepted" in error for error in errors)
+    assert any("community-intake" in error for error in errors)
 
 
 def test_registry_cli_validate_reviews(tmp_path: Path):
