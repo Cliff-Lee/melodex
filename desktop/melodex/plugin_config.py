@@ -115,9 +115,40 @@ class _SystemKeyringSecretStore:
             return
 
 
+
+class _ResilientSecretStore:
+    """Use the system keyring when possible, with session memory as fallback."""
+
+    mode = "system-keyring (session fallback)"
+
+    def __init__(self, primary: _SecretStore) -> None:
+        self._primary = primary
+        self._fallback = _MemorySecretStore()
+
+    def get(self, plugin_id: str, key: str) -> str | None:
+        try:
+            value = self._primary.get(plugin_id, key)
+        except Exception:
+            value = None
+        return value if value is not None else self._fallback.get(plugin_id, key)
+
+    def set(self, plugin_id: str, key: str, value: str) -> None:
+        try:
+            self._primary.set(plugin_id, key, value)
+            self._fallback.delete(plugin_id, key)
+        except Exception:
+            self._fallback.set(plugin_id, key, value)
+
+    def delete(self, plugin_id: str, key: str) -> None:
+        try:
+            self._primary.delete(plugin_id, key)
+        except Exception:
+            pass
+        self._fallback.delete(plugin_id, key)
+
 def _default_secret_store() -> _SecretStore:
     try:
-        return _SystemKeyringSecretStore()
+        return _ResilientSecretStore(_SystemKeyringSecretStore())
     except Exception:
         return _MemorySecretStore()
 
