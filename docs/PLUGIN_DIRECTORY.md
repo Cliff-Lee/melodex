@@ -76,7 +76,7 @@ registry verification result
 publisher/source metadata (when applicable)
 ```
 
-A registry install whose downloaded bytes matched the registry is shown as **registry-verified**.
+A registry install is shown as **registry-verified** only after package byte size/SHA-256 and package-declared ID/version match the registry entry.
 
 A manual install records its local hash but is **not** called registry-verified.
 
