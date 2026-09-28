@@ -98,7 +98,7 @@ class RichNowPlayingWidget(QWidget):
         duration = float(self.track.get("duration") or 0)
         duration_text = f"{int(duration)//60}:{int(duration)%60:02d}" if duration > 0 else ""
         self.facts.setText(" · ".join(x for x in (provider, duration_text) if x))
-        self.progress.setText("Identifying with MusicBrainz…")
+        self.progress.setText("Identifying track and checking capability extensions…")
         self.links.clear(); self.art_source.clear(); self.artist_photo_credit.clear(); self._set_art(""); self._set_artist_photo(""); self._empty_tabs()
         key = track_key(request_track)
         if not key:
@@ -138,15 +138,32 @@ class RichNowPlayingWidget(QWidget):
             self._apply_identity(payload)
             identity = payload.get("identity") if isinstance(payload.get("identity"), dict) else {}
             self._identity = dict(identity)
-            if not identity.get("recording_mbid"):
-                self.progress.setText("No confident MusicBrainz match — showing local metadata")
-                return
             request_track = dict(self.track)
             ident = dict(identity)
-            self._run_stage(key, "artwork", lambda: self.metadata.enrich_artwork(request_track, ident))
-            self._run_stage(key, "artist", lambda: self.metadata.enrich_artist(ident))
-            self._run_stage(key, "credits", lambda: self.metadata.enrich_credits(ident))
-            self._run_stage(key, "discography", lambda: self.metadata.enrich_discography(ident))
+            # Artwork capability extensions can work from provider identity/hints
+            # even when no MusicBrainz match exists.
+            self._run_stage(
+                key,
+                "artwork",
+                lambda: self.metadata.enrich_artwork(request_track, ident),
+            )
+            if identity.get("artist_mbid"):
+                self._run_stage(
+                    key, "artist", lambda: self.metadata.enrich_artist(ident)
+                )
+                self._run_stage(
+                    key,
+                    "discography",
+                    lambda: self.metadata.enrich_discography(ident),
+                )
+            if identity.get("recording_mbid"):
+                self._run_stage(
+                    key, "credits", lambda: self.metadata.enrich_credits(ident)
+                )
+            if not identity.get("recording_mbid"):
+                self.progress.setText(
+                    "No MusicBrainz recording match — extension/local enrichment still active"
+                )
             self._update_progress()
             return
 

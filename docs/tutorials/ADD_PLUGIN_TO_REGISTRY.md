@@ -48,9 +48,18 @@ For MPP providers:
 ```bash
 melodex-provider validate .
 melodex-provider doctor .
+melodex-provider pack .
 ```
 
-Also run your own fixture tests.
+For capability extensions:
+
+```bash
+melodex-extension validate .
+melodex-extension doctor .
+melodex-extension pack .
+```
+
+Also run your own fixture tests. Publish the resulting `.mdxprovider` or `.mdxplugin` from your own repository/release page.
 
 ## 6. Registry metadata
 

@@ -99,6 +99,10 @@ class MelodexControlClient:
         result = self._request("GET", "/v1/providers") or {}
         return list(result.get("providers") or [])
 
+    def extensions(self) -> list[dict[str, Any]]:
+        result = self._request("GET", "/v1/extensions") or {}
+        return list(result.get("extensions") or [])
+
     def search(self, query: str, provider: str = "all", limit: int = 20) -> list[dict[str, Any]]:
         result = self._request("GET", "/v1/search", params={"q": query, "provider": provider, "limit": max(1, min(100, int(limit)))}) or {}
         return list(result.get("items") or [])

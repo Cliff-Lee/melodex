@@ -26,6 +26,11 @@ _FUNCTIONS: list[dict[str, Any]] = [
         "parameters": _obj({}, []),
     },
     {
+        "name": "melodex_extensions",
+        "description": "List installed Melodex capability extensions for identity, metadata, artwork and lyrics.",
+        "parameters": _obj({}, []),
+    },
+    {
         "name": "melodex_search",
         "description": "Search connected Melodex sources for tracks.",
         "parameters": _obj(
@@ -169,6 +174,8 @@ def execute_tool(client: Any, name: str, arguments: dict[str, Any] | None = None
         return client.status()
     if name == "melodex_sources":
         return client.providers()
+    if name == "melodex_extensions":
+        return client.extensions()
     if name == "melodex_search":
         provider = str(args.get("provider") or "all")
         limit = int(args.get("limit") or 20)

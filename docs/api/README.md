@@ -65,3 +65,5 @@ Read [MCP and OpenWebUI](MCP_AND_OPENWEBUI.md).
 | Use OpenAI as Ask Melodex's model | Responses API |
 | Use Ollama locally | Ollama `/api/chat` |
 | Build a music-source integration | MPP Provider SDK |
+| Build identity/metadata/artwork/lyrics enrichment | Capability Broker + `melodex-extension` |
+| Inspect installed enrichment capabilities | REST `GET /v1/extensions` or `melodex_extensions` tool |
