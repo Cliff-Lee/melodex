@@ -85,3 +85,29 @@ def test_external_provider_preserves_empty_host_policy(tmp_path: Path):
     )
     assert "_playback_allowed_hosts" in merged
     assert merged["_playback_allowed_hosts"] == []
+
+
+def test_external_provider_does_not_inherit_arbitrary_parent_secrets(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("MELODEX_TEST_SECRET", "do-not-forward")
+    code = """import json, os, sys
+for line in sys.stdin:
+    req = json.loads(line)
+    result = {"items": [{"provider_track_id": "1", "title": os.getenv("MELODEX_TEST_SECRET", "missing"), "artist": os.getenv("MELODEX_PROVIDER_ID", "")}]}
+    print(json.dumps({"jsonrpc": "2.0", "id": req["id"], "result": result}), flush=True)
+"""
+    (tmp_path / "provider.py").write_text(code, "utf-8")
+    manifest = {
+        "id": "org.example.env",
+        "name": "Env",
+        "version": "1",
+        "capabilities": ["search"],
+        "permissions": {"network_hosts": []},
+        "entrypoints": {"python": "provider.py"},
+    }
+    provider = ExternalProvider(tmp_path, manifest)
+    try:
+        item = provider.search("x", 1)[0]
+        assert item["title"] == "missing"
+        assert item["artist"] == "org.example.env"
+    finally:
+        provider.close()

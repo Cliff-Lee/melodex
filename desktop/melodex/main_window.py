@@ -320,8 +320,16 @@ class MainWindow(QMainWindow):
                     if installation.get("method") == "manual"
                     else "INSTALLED"
                 )
+                health = dict(extension.get("health") or {})
+                runtime_status = str(health.get("status") or "idle").upper()
+                failure_count = int(health.get("failures") or 0)
+                health_text = (
+                    f"{runtime_status}"
+                    if not failure_count
+                    else f"{runtime_status} · {failure_count} failure{'s' if failure_count != 1 else ''}"
+                )
                 item = QListWidgetItem(
-                    f"{extension.get('name') or extension.get('id')}    ·    EXTENSION    ·    {enabled_status}    ·    {trust_status}\n"
+                    f"{extension.get('name') or extension.get('id')}    ·    EXTENSION    ·    {enabled_status}    ·    {trust_status}    ·    {health_text}\n"
                     f"{capabilities} · {extension.get('description') or ''}"
                 )
                 item.setData(Qt.UserRole, "extension:" + str(extension.get("id") or ""))
