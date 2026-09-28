@@ -70,3 +70,44 @@ def test_extension_cli_init_validate_doctor_pack(tmp_path: Path):
     assert "capabilities.json" in names
     assert "plugin.py" in names
     assert "SOURCE_POLICY.md" in names
+
+
+def test_extension_descriptor_accepts_declared_configuration():
+    descriptor = {
+        "schema_version": "0.1",
+        "extension_id": "org.example.configured",
+        "configuration": [
+            {
+                "key": "api_token",
+                "label": "API token",
+                "type": "secret",
+                "required": True,
+            }
+        ],
+        "contracts": [
+            {
+                "capability": "metadata",
+                "contract_version": "0.1",
+                "method": "metadata.enrich",
+            }
+        ],
+    }
+    assert validation_errors(descriptor) == []
+
+
+def test_extension_descriptor_rejects_invalid_configuration_key():
+    descriptor = {
+        "schema_version": "0.1",
+        "extension_id": "org.example.badconfig",
+        "configuration": [
+            {"key": "../token", "label": "Token", "type": "secret"}
+        ],
+        "contracts": [
+            {
+                "capability": "metadata",
+                "contract_version": "0.1",
+                "method": "metadata.enrich",
+            }
+        ],
+    }
+    assert validation_errors(descriptor)
