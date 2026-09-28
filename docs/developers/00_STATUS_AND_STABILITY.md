@@ -1,6 +1,6 @@
 # Status, Stability and Trust
 
-This page is the project's **truth table**.
+This page is the project's **truth table**. For wording such as *registry-verified*, *reviewed*, *built into the app*, *project-maintained reference*, and *sandbox*, also use [Terminology and claim policy](02_TERMINOLOGY_AND_CLAIMS.md).
 
 Melodex is intentionally developing in public. Some surfaces are implemented and usable today; some are preview/experimental; some are design targets. Documentation should not blur those categories.
 
