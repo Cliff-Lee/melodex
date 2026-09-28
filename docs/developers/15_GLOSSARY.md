@@ -1,5 +1,7 @@
 # Developer Glossary
 
+For trust/maturity wording rules, see [Terminology and claim policy](02_TERMINOLOGY_AND_CLAIMS.md).
+
 **Capability** — one thing an extension can do, such as playback or artwork lookup.
 
 **Canonical identity** — cross-provider identity such as a MusicBrainz recording ID or ISRC.
