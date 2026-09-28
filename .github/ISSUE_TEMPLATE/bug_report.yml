@@ -57,10 +57,15 @@ body:
     validations:
       required: true
   - type: textarea
+    id: diagnostics
+    attributes:
+      label: Redacted diagnostics
+      description: For desktop source/plugin problems, Sources → Show power tools → Export diagnostics… can create a support JSON. Review it before attaching or pasting relevant parts.
+  - type: textarea
     id: logs
     attributes:
       label: Relevant logs
-      description: Remove credentials, tokens and personal paths before posting.
+      description: Remove credentials, tokens, private URLs and personal paths before posting.
       render: shell
   - type: checkboxes
     id: checks
