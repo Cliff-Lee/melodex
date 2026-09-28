@@ -19,8 +19,12 @@ This page is intentionally exhaustive. For a shorter route by goal, use the [doc
 - [Windows](INSTALL_WINDOWS.md)
 - [Android](INSTALL_ANDROID.md)
 
-## Developer entry points
+## Contributor and developer entry points
 
+- [Your First Melodex Contribution](FIRST_CONTRIBUTION.md)
+- [Contributing](../CONTRIBUTING.md)
+- [Code of Conduct](../CODE_OF_CONDUCT.md)
+- [Support](../SUPPORT.md)
 - [5-minute developer quickstart](DEVELOPER_QUICKSTART.md)
 - [Status, stability and trust](developers/00_STATUS_AND_STABILITY.md)
 - [Ecosystem architecture](developers/01_ECOSYSTEM_ARCHITECTURE.md)

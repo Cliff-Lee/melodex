@@ -2,6 +2,8 @@
 
 Thanks for helping build Melodex.
 
+If this is your first contribution to the repository, start with **[Your First Melodex Contribution](docs/FIRST_CONTRIBUTION.md)**.
+
 If your goal is to build a provider or enrichment plugin, start with the **[5-minute developer quickstart](docs/DEVELOPER_QUICKSTART.md)** rather than reading the whole repository.
 
 The project welcomes small focused contributions. You do not need to understand the whole player before contributing.
@@ -69,6 +71,7 @@ cd provider-sdk
 pytest -q tests
 melodex-registry validate registry/registry.json
 melodex-registry verify-packages registry/registry.json --packages registry/packages
+melodex-registry validate-reviews registry/registry.json --reviews registry/reviews
 ```
 
 Repository checks:
@@ -112,7 +115,7 @@ Keep PRs focused. Explain:
 - Playback permission does not automatically imply download permission.
 - External metadata/artwork should retain provenance where practical.
 
-See [Community](docs/COMMUNITY.md) for non-code contribution paths.
+See [Community](docs/COMMUNITY.md) for non-code contribution paths and [Code of Conduct](CODE_OF_CONDUCT.md) for participation expectations.
 
 
 ## Truth over polish

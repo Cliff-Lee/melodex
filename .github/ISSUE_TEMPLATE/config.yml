@@ -1,4 +1,4 @@
-blank_issues_enabled: true
+blank_issues_enabled: false
 contact_links:
   - name: Start here
     url: https://github.com/Cliff-Lee/melodex/blob/main/docs/START_HERE.md
@@ -6,6 +6,9 @@ contact_links:
   - name: Developer start page
     url: https://github.com/Cliff-Lee/melodex/blob/main/docs/DEVELOPERS.md
     about: Providers, plugins, REST/OpenAPI, MCP and OpenAI integrations.
+  - name: First contribution
+    url: https://github.com/Cliff-Lee/melodex/blob/main/docs/FIRST_CONTRIBUTION.md
+    about: A small, practical path for contributing to the repository.
   - name: Community guide
     url: https://github.com/Cliff-Lee/melodex/blob/main/docs/COMMUNITY.md
     about: Ways to contribute even if you do not know the whole codebase.

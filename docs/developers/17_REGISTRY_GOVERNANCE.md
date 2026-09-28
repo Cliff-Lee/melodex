@@ -40,6 +40,7 @@ package byte size
 compatibility
 declared permissions
 SOURCE_POLICY link
+review record link
 ```
 
 The source repository should contain enough information for reviewers/users to understand what the extension does.
@@ -60,7 +61,53 @@ melodex-registry verify-packages \
   --packages registry/packages
 ```
 
-CI also checks the canonical registry/package set.
+Validate review history too:
+
+```bash
+melodex-registry validate-reviews \
+  registry/registry.json \
+  --reviews registry/reviews
+```
+
+CI checks the canonical registry/package set and its review records.
+
+## Review records
+
+Every canonical registry entry has an append-only JSON record under:
+
+```text
+provider-sdk/registry/reviews/<plugin-id>.json
+```
+
+The registry entry links to that file and records the date of the latest event.
+
+Each event identifies:
+
+- review timestamp and reviewer;
+- decision;
+- plugin version;
+- package SHA-256 when an installable package exists;
+- checks performed;
+- a short summary;
+- explicit limitations.
+
+The latest event must match the exact version and package hash currently published by the registry.
+
+Decision vocabulary maps to registry status:
+
+```text
+example      → example-baseline
+community    → community-intake
+reviewed     → reviewed
+deprecated   → deprecated
+blocked      → blocked
+```
+
+A `community-intake` event records that the entry passed the registry intake needed for listing. It does **not** mean the plugin has the stronger `reviewed` status.
+
+Review files are append-only in normal operation: a new release or status decision appends a new event rather than rewriting an older event.
+
+A contributor may propose the review-record change in the same PR, but the final reviewer identity/summary should reflect the actual registry review outcome before merge. Contributors should not self-promote an entry to `reviewed`.
 
 ## Review questions
 
@@ -93,7 +140,7 @@ deprecated
 
 `blocked` is for entries that should no longer be offered to users, for example because of a serious security, integrity or policy problem.
 
-Status changes should be made through a visible registry PR with a reason.
+Status changes should be made through a visible registry PR with a reason and a matching appended review event.
 
 ## Updating a release
 
@@ -106,8 +153,9 @@ For a new release:
 3. update `package_url` when appropriate;
 4. calculate the new SHA-256 and size;
 5. update compatibility/permissions if needed;
-6. run registry validation;
-7. open a PR.
+6. append a review event for the new version/hash and update `review.last_reviewed_at`;
+7. run registry and review-history validation;
+8. open a PR.
 
 ## Rights review
 

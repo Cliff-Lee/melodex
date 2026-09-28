@@ -33,6 +33,7 @@ Melodex is intentionally developing in public. Some surfaces are implemented and
 | Installation provenance ledger | **Implemented** | Records manual vs registry install, version, time and package hash for new installs |
 | Plugin update detection | **Implemented** | Directory can identify a newer registry version; updates remain user-initiated |
 | Registry status labels | **Implemented** | `example/community/reviewed/deprecated/blocked`; labels are project metadata, not cryptographic proof |
+| Registry review history | **Implemented** | Append-only per-plugin review records are tied to the current version/package SHA-256 and validated in CI; review is still not publisher signing or legal endorsement |
 | Declared plugin permissions | **Implemented** | Visible metadata/review contract; not universal OS enforcement |
 | Declared plugin configuration broker | **Implemented / Preview** | Schema-driven `string`/`secret`/`boolean` configuration; only declared values are brokered to the plugin |
 | Secret configuration storage | **Implemented** | System credential store when available; otherwise session-only memory rather than plaintext JSON |
@@ -40,7 +41,8 @@ Melodex is intentionally developing in public. Some surfaces are implemented and
 | OS-enforced plugin network/filesystem sandbox | **Not implemented** | Provider/extension processes still run with the current user's OS permissions |
 | Child-process environment scrubbing | **Implemented** | Third-party subprocesses receive a small allowlist plus package identity/runtime paths, not the complete parent environment |
 | Publisher signatures / verified-publisher keyring | **Planned** | SHA-256 is integrity, not signing |
-| Full provider health/diagnostic UI | **Planned** | CLI doctor and runtime errors exist; richer UI is future work |
+| Redacted diagnostics export | **Implemented** | Sources can export support JSON without plugin config values, credentials, local library paths, stream/playback URLs, headers or cookies; users should still review before sharing |
+| Full provider health/diagnostic UI | **Planned** | Extension health and diagnostic export exist; richer provider-level live diagnostics remain future work |
 | Automatic plugin updates | **Not implemented** | Deliberately no silent update mechanism |
 | REST control API | **Implemented** | Authenticated local/LAN control surface |
 | OpenAPI discovery | **Implemented** | `GET /openapi.json` |
@@ -78,9 +80,9 @@ It does **not** mean:
 
 ### Reviewed registry entry
 
-Means the project applied its current technical/source-policy review process.
+Means the project applied its current technical/source-policy review process. The registry links to an append-only review record whose latest event identifies the reviewed plugin version and package SHA-256.
 
-It is still not a warranty or endorsement of every result from an upstream service.
+It is still not publisher signing, a warranty, or a legal/content endorsement of every result from an upstream service.
 
 ### Signed publisher
 

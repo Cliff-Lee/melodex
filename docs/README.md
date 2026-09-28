@@ -20,6 +20,7 @@ Then use:
 
 - [FAQ](FAQ.md) for common questions;
 - [Troubleshooting](TROUBLESHOOTING.md) when something is not working;
+- [Support](../SUPPORT.md) when you need to report a problem;
 - [Why Melodex?](WHY_MELODEX.md) for the design idea behind Flow and taste memory.
 
 ## I want to install Melodex
@@ -69,9 +70,15 @@ For precise maturity/security status, use [Status, stability and trust](develope
 
 ## I want to contribute to Melodex itself
 
+Start with **[Your First Melodex Contribution](FIRST_CONTRIBUTION.md)** if you are new to the repository.
+
+Then use:
+
 - [Contributing](../CONTRIBUTING.md)
 - [Community](COMMUNITY.md)
 - [Build from source](BUILD_FROM_SOURCE.md)
+- [Code of Conduct](../CODE_OF_CONDUCT.md)
+- [Support](../SUPPORT.md)
 - [Security](../SECURITY.md)
 - [Roadmap](../ROADMAP.md)
 - [Release process](RELEASING.md)

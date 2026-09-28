@@ -97,6 +97,16 @@ def validate_registry(data: Any) -> list[str]:
         if not isinstance(source, dict) or not str(source.get("repository") or ""):
             errors.append(f"{prefix}.source.repository is required")
 
+        review = raw.get("review")
+        if not isinstance(review, dict):
+            errors.append(f"{prefix}.review is required")
+        else:
+            record_url = str(review.get("record") or "").strip()
+            if not record_url or urlparse(record_url).scheme != "https":
+                errors.append(f"{prefix}.review.record must use HTTPS")
+            if not str(review.get("last_reviewed_at") or "").strip():
+                errors.append(f"{prefix}.review.last_reviewed_at is required")
+
         distribution = raw.get("distribution")
         if not isinstance(distribution, dict):
             errors.append(f"{prefix}.distribution is required")

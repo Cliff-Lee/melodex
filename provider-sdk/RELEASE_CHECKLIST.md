@@ -14,5 +14,8 @@ Before publishing a Provider SDK / registry release:
 - [ ] Check that `.github/workflows/ci.yml` passes on Linux, macOS, and Windows.
 - [ ] Enable GitHub Private vulnerability reporting if desired.
 - [ ] Confirm `CHANGELOG.md`, SDK version strings, registry schema/docs and compatibility notes are current.
+- [ ] Run `melodex-registry validate registry/registry.json`.
+- [ ] Run `melodex-registry verify-packages registry/registry.json --packages registry/packages`.
+- [ ] Run `melodex-registry validate-reviews registry/registry.json --reviews registry/reviews` and confirm each current version/hash has a matching latest review event.
 - [ ] Run `python ../scripts/docs_check.py` and `python ../scripts/ecosystem_check.py` from the repository checkout.
 - [ ] Tag the release only after CI is green.

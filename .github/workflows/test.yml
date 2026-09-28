@@ -25,3 +25,6 @@ jobs:
         run: |
           pip install -e provider-sdk
           pytest -q provider-sdk/tests
+          melodex-registry validate provider-sdk/registry/registry.json
+          melodex-registry verify-packages provider-sdk/registry/registry.json --packages provider-sdk/registry/packages
+          melodex-registry validate-reviews provider-sdk/registry/registry.json --reviews provider-sdk/registry/reviews

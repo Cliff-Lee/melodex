@@ -29,6 +29,8 @@ package format
 package size
 SHA-256
 compatibility
+last registry review date
+linked review record
 ```
 
 The point is not merely convenience. The directory makes the trust boundary visible before third-party code is installed and records evidence about how new installs reached the machine.
@@ -41,6 +43,14 @@ The point is not merely convenience. The directory makes the trust boundary visi
 ```
 
 Both are installed through their existing isolated provider/extension runtimes.
+
+## Review records
+
+Each canonical registry entry links to an append-only review record. In the desktop directory, select an entry and use **View review** to open it.
+
+The latest review event is tied to the registry's current plugin version and package SHA-256. This makes status changes inspectable, but it does not turn a review into publisher signing or a legal/content endorsement.
+
+`community` entries have a `community-intake` event; only entries whose current event/status is `reviewed` should be described as reviewed.
 
 ## Package verification
 

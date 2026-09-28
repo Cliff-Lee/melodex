@@ -7,7 +7,7 @@ A source-neutral provider protocol and developer SDK for **Melodex**.
 
 ## Status
 
-**SDK v0.5.0 / MPP 1.0 preview.**
+**SDK v0.6.0 / MPP 1.0 preview.**
 
 The SDK/tooling is usable today, but the package remains 0.x and MPP 1.0 is still a **preview compatibility target**, not a frozen final protocol.
 
@@ -51,6 +51,7 @@ Registry maintenance:
 melodex-registry validate registry/registry.json
 melodex-registry summary registry/registry.json
 melodex-registry verify-packages registry/registry.json --packages registry/packages
+melodex-registry validate-reviews registry/registry.json --reviews registry/reviews
 ```
 
 ## Clean core, messy edge
@@ -119,6 +120,7 @@ Complex HTML parsers can be vendored per provider.
 - [Build an enrichment plugin](../docs/tutorials/BUILD_AN_ENRICHMENT_PLUGIN.md)
 - [Plugin Directory](../docs/PLUGIN_DIRECTORY.md)
 - [Registry governance](../docs/developers/17_REGISTRY_GOVERNANCE.md)
+- Registry review records: `registry/reviews/`
 
 ## Source neutrality
 

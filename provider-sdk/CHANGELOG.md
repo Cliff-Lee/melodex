@@ -4,6 +4,16 @@ All notable changes to the public Melodex Provider SDK are documented here.
 
 The SDK package is still 0.x. MPP `protocol_version: "1.0"` is a preview wire-contract identifier, not yet a frozen 1.0 compatibility commitment.
 
+## [0.6.0] - 2026-09-29
+
+### Added / changed
+
+- Provider and capability descriptors can declare `string`, `secret` and `boolean` configuration fields for Melodex's configuration broker.
+- Registry entries now link append-only review records tied to the current plugin version and package SHA-256.
+- Added `melodex-registry validate-reviews` and review-record schemas.
+- Registry validation/CI now checks review-history alignment in addition to package integrity.
+- Publishing/governance documentation now distinguishes `community-intake` from the stronger `reviewed` status.
+
 ## [0.5.0] - 2026-09-28
 
 ### Added / changed

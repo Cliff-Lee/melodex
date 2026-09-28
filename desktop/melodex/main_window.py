@@ -27,6 +27,7 @@ from .playlist_io import load_playlist, save_playlist
 from .metadata import RichMetadataService
 from .rich_now_playing import RichNowPlayingWidget
 from .plugin_directory import PluginDirectoryDialog
+from .diagnostics import write_diagnostics
 
 
 class WorkerSignals(QObject):
@@ -231,7 +232,8 @@ class MainWindow(QMainWindow):
         inst=QPushButton("Install .mdxprovider…"); inst.clicked.connect(self._install_provider)
         ext=QPushButton("Install .mdxplugin…"); ext.clicked.connect(self._install_extension)
         bridge=QPushButton("Provider Bridge…"); bridge.clicked.connect(self._bridge_dialog)
-        provider_row.addWidget(inst); provider_row.addWidget(ext); provider_row.addWidget(bridge); provider_row.addStretch(1)
+        diagnostics=QPushButton("Export diagnostics…"); diagnostics.clicked.connect(self._export_diagnostics)
+        provider_row.addWidget(inst); provider_row.addWidget(ext); provider_row.addWidget(bridge); provider_row.addWidget(diagnostics); provider_row.addStretch(1)
         power.addLayout(provider_row)
         priority=QHBoxLayout()
         up=QPushButton("Prefer source ↑"); down=QPushButton("Prefer source ↓")
@@ -471,6 +473,32 @@ class MainWindow(QMainWindow):
             parent=self,
         )
         dialog.exec()
+
+    def _export_diagnostics(self):
+        filename,_=QFileDialog.getSaveFileName(
+            self,
+            "Export redacted diagnostics",
+            "melodex-diagnostics.json",
+            "JSON files (*.json)",
+        )
+        if not filename:
+            return
+        path=Path(filename)
+        if path.suffix.lower() != ".json":
+            path=path.with_suffix(".json")
+        try:
+            write_diagnostics(path,self.providers)
+        except Exception as exc:
+            QMessageBox.critical(self,"Could not export diagnostics",str(exc))
+            return
+        QMessageBox.information(
+            self,
+            "Diagnostics exported",
+            f"Saved redacted diagnostics to:\n{path}\n\n"
+            "The export is designed to omit credentials, local library paths, "
+            "stream URLs and playback secrets. Review the file before sharing it.",
+        )
+        self.statusBar().showMessage(f"Exported {path.name}",4000)
 
     def _install_provider(self):
         path,_=QFileDialog.getOpenFileName(self,"Install provider",filter="Melodex Provider (*.mdxprovider *.zip)")

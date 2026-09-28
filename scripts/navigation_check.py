@@ -19,17 +19,22 @@ def main() -> int:
     developer_gateway = read("docs/DEVELOPERS.md")
     developer_reference = read("docs/developers/README.md")
     complete_index = read("docs/ALL_DOCUMENTATION.md")
+    first_contribution = read("docs/FIRST_CONTRIBUTION.md")
+    support = read("SUPPORT.md")
     ui = read("desktop/melodex/main_window.py")
 
     # One obvious docs front door from the project landing page.
     if '<a href="docs/README.md">Documentation</a>' not in root_readme:
         errors.append("README top navigation must point Documentation to docs/README.md")
+    if '<a href="docs/FIRST_CONTRIBUTION.md">Contribute</a>' not in root_readme:
+        errors.append("README top navigation must point Contribute to docs/FIRST_CONTRIBUTION.md")
 
     # Friendly docs home should route to the canonical audience entry points.
     for link in (
         "START_HERE.md",
         "DEVELOPERS.md",
         "ALL_DOCUMENTATION.md",
+        "FIRST_CONTRIBUTION.md",
     ):
         if link not in docs_home:
             errors.append(f"docs/README.md must link to {link}")
@@ -54,6 +59,13 @@ def main() -> int:
     if "../DEVELOPERS.md" not in developer_reference:
         errors.append("developer reference index must link back to the Developer Gateway")
 
+    if "contribute **to the melodex repository**" not in first_contribution.lower():
+        errors.append(
+            "docs/FIRST_CONTRIBUTION.md must identify itself as repository contribution onboarding"
+        )
+    if "export diagnostics…" not in support.lower():
+        errors.append("SUPPORT.md must document the redacted diagnostics export")
+
     # First-use instructions intentionally use the source-management route.
     canonical_first_use_labels = (
         "Sources",
@@ -77,6 +89,7 @@ def main() -> int:
         "Install .mdxprovider…",
         "Install .mdxplugin…",
         "Provider Bridge…",
+        "Export diagnostics…",
     ):
         if label not in ui:
             errors.append(f"expected current Sources UI label is missing: {label!r}")

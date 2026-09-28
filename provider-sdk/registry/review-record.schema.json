@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://melodex.example/schema/registry-review-record-v0.1.json",
+  "title": "Melodex registry review record v0.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "plugin_id",
+    "events"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "0.1"
+    },
+    "plugin_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{2,127}$"
+    },
+    "events": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "reviewed_at",
+          "reviewer",
+          "decision",
+          "version",
+          "package_sha256",
+          "summary",
+          "checks",
+          "limitations"
+        ],
+        "properties": {
+          "reviewed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "reviewer": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "decision": {
+            "type": "string",
+            "enum": [
+              "example-baseline",
+              "community-intake",
+              "reviewed",
+              "deprecated",
+              "blocked",
+              "reinstated"
+            ]
+          },
+          "version": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40
+          },
+          "package_sha256": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[0-9a-fA-F]{64}$"
+          },
+          "summary": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "checks": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "registry_schema",
+              "package_integrity",
+              "manifest_descriptor",
+              "permissions",
+              "source_policy",
+              "tests",
+              "rights_notes"
+            ],
+            "properties": {
+              "registry_schema": {
+                "type": "boolean"
+              },
+              "package_integrity": {
+                "type": "boolean"
+              },
+              "manifest_descriptor": {
+                "type": "boolean"
+              },
+              "permissions": {
+                "type": "boolean"
+              },
+              "source_policy": {
+                "type": "boolean"
+              },
+              "tests": {
+                "type": "boolean"
+              },
+              "rights_notes": {
+                "type": "boolean"
+              }
+            }
+          },
+          "limitations": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            }
+          }
+        }
+      }
+    }
+  }
+}

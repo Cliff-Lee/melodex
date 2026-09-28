@@ -4,69 +4,157 @@
   "title": "Melodex Plugin Registry v0.1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "plugins"],
+  "required": [
+    "schema_version",
+    "plugins"
+  ],
   "properties": {
-    "schema_version": {"const": "0.1"},
-    "updated_at": {"type": ["string", "null"], "format": "date-time"},
+    "schema_version": {
+      "const": "0.1"
+    },
+    "updated_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
     "plugins": {
       "type": "array",
       "items": {
         "type": "object",
         "additionalProperties": false,
         "required": [
-          "id", "name", "version", "kind", "status", "capabilities",
-          "license", "source", "distribution", "compatibility", "permissions"
+          "id",
+          "name",
+          "version",
+          "kind",
+          "status",
+          "capabilities",
+          "license",
+          "source",
+          "distribution",
+          "compatibility",
+          "permissions",
+          "review"
         ],
         "properties": {
           "id": {
             "type": "string",
             "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{2,127}$"
           },
-          "name": {"type": "string", "minLength": 1},
-          "publisher": {"type": "string"},
-          "version": {"type": "string", "minLength": 1},
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "publisher": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string",
+            "minLength": 1
+          },
           "kind": {
             "type": "string",
-            "enum": ["provider", "enrichment", "tool"]
+            "enum": [
+              "provider",
+              "enrichment",
+              "tool"
+            ]
           },
           "status": {
             "type": "string",
-            "enum": ["example", "community", "reviewed", "deprecated", "blocked"]
+            "enum": [
+              "example",
+              "community",
+              "reviewed",
+              "deprecated",
+              "blocked"
+            ]
           },
-          "description": {"type": "string"},
+          "description": {
+            "type": "string"
+          },
           "capabilities": {
             "type": "array",
             "uniqueItems": true,
-            "items": {"type": "string"}
+            "items": {
+              "type": "string"
+            }
           },
-          "license": {"type": "string"},
+          "license": {
+            "type": "string"
+          },
           "source": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["repository"],
+            "required": [
+              "repository"
+            ],
             "properties": {
-              "repository": {"type": "string", "format": "uri"},
-              "homepage": {"type": ["string", "null"], "format": "uri"},
-              "documentation": {"type": ["string", "null"], "format": "uri"},
-              "issues": {"type": ["string", "null"], "format": "uri"}
+              "repository": {
+                "type": "string",
+                "format": "uri"
+              },
+              "homepage": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uri"
+              },
+              "documentation": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uri"
+              },
+              "issues": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uri"
+              }
             }
           },
           "distribution": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["package_url", "format", "sha256", "size_bytes"],
+            "required": [
+              "package_url",
+              "format",
+              "sha256",
+              "size_bytes"
+            ],
             "properties": {
-              "package_url": {"type": ["string", "null"], "format": "uri"},
+              "package_url": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uri"
+              },
               "format": {
                 "type": "string",
-                "enum": ["mdxprovider", "mdxplugin"]
+                "enum": [
+                  "mdxprovider",
+                  "mdxplugin"
+                ]
               },
               "sha256": {
-                "type": ["string", "null"],
+                "type": [
+                  "string",
+                  "null"
+                ],
                 "pattern": "^[0-9a-fA-F]{64}$"
               },
               "size_bytes": {
-                "type": ["integer", "null"],
+                "type": [
+                  "integer",
+                  "null"
+                ],
                 "minimum": 1,
                 "maximum": 26214400
               }
@@ -76,20 +164,55 @@
             "type": "object",
             "additionalProperties": false,
             "properties": {
-              "melodex_min": {"type": ["string", "null"]},
-              "mpp": {"type": ["string", "null"]},
+              "melodex_min": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "mpp": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
               "contracts": {
                 "type": "object",
-                "additionalProperties": {"type": "string"}
+                "additionalProperties": {
+                  "type": "string"
+                }
               }
             }
           },
           "permissions": {
             "type": "array",
-            "items": {"type": "string"}
+            "items": {
+              "type": "string"
+            }
           },
           "source_policy": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "review": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "record",
+              "last_reviewed_at"
+            ],
+            "properties": {
+              "record": {
+                "type": "string",
+                "format": "uri"
+              },
+              "last_reviewed_at": {
+                "type": "string",
+                "format": "date-time"
+              }
+            }
           }
         }
       }
