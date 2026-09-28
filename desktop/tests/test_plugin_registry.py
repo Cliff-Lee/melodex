@@ -30,6 +30,10 @@ def _entry(payload: bytes = b"plugin-bytes") -> dict:
         "compatibility": {"melodex_min": "0.1.0", "mpp": None, "contracts": {"metadata": "0.1"}},
         "permissions": ["network:example.org"],
         "source_policy": "https://example.org/policy",
+        "review": {
+            "record": "https://example.org/reviews/org.example.demo.json",
+            "last_reviewed_at": "2026-09-29T00:00:00Z",
+        },
     }
 
 
@@ -165,3 +169,17 @@ def test_registry_validation_rejects_kind_format_mismatch():
     data["plugins"][0]["kind"] = "provider"
     errors = validate_registry(data)
     assert any("mdxprovider" in error for error in errors)
+
+
+def test_registry_validation_requires_review_metadata():
+    data = _registry()
+    data["plugins"][0].pop("review")
+    errors = validate_registry(data)
+    assert any(".review is required" in error for error in errors)
+
+
+def test_registry_validation_requires_https_review_record():
+    data = _registry()
+    data["plugins"][0]["review"]["record"] = "http://example.org/review.json"
+    errors = validate_registry(data)
+    assert any("review.record must use HTTPS" in error for error in errors)
