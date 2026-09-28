@@ -46,7 +46,7 @@ Do not commit model credentials to Git or provider packages.
 
 The model receives Melodex system instructions, the compact current context and the current prompt. The current desktop Ask Melodex UI passes no prior conversation history between requests.
 
-Provider credentials, playback cookies and Bridge/MCP tokens should never be placed in model context.
+Track objects are reduced through the same positive allowlist used by Ask Melodex. Absolute local paths, provider-local IDs, playback URLs, request headers, cookies, refresh tokens, Bridge/MCP tokens and API keys are excluded from track context.
 
 ## Tool calling is separate
 
