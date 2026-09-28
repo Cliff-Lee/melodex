@@ -1,6 +1,8 @@
-# Develop with Melodex
+# Developer Gateway
 
-You do not need to understand the entire player to build something useful.
+Use this page to decide **which Melodex interface fits what you want to build**.
+
+You do not need to understand the entire player first. Once you choose a path, move to its focused tutorial rather than reading the whole developer reference.
 
 ## Fastest route
 
@@ -62,15 +64,14 @@ See the [canonical ecosystem architecture](developers/01_ECOSYSTEM_ARCHITECTURE.
 - an MCP client example;
 - documentation for a source's permissions and rights model.
 
-## Deep reference
+## Need deeper reference?
+
+Use the **[developer reference index](developers/README.md)** when you need architecture, capability contracts, permissions/security, testing, registry governance, review checklists or the glossary.
+
+Key truth/reference pages:
 
 - [Status, stability and trust](developers/00_STATUS_AND_STABILITY.md)
 - [Ecosystem architecture](developers/01_ECOSYSTEM_ARCHITECTURE.md)
-- [Developer ecosystem](developers/README.md)
 - [Provider SDK](../provider-sdk/README.md)
-- [MCP control](MCP_CONTROL.md)
-- [Universal resolver](UNIVERSAL_RESOLVER.md)
-- [Source and rights policy](developers/11_SOURCE_AND_RIGHTS_POLICY.md)
-- [Plugin Directory](PLUGIN_DIRECTORY.md)
-- [Registry governance](developers/17_REGISTRY_GOVERNANCE.md)
-- [Community](COMMUNITY.md)
+
+For contribution paths rather than interface documentation, use [Community](COMMUNITY.md).
