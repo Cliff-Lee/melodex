@@ -27,3 +27,20 @@ melodex-provider validate path/to/provider
 ## LLM connection fails
 
 Check endpoint, model name and API key. For OpenWebUI in Docker, ensure the endpoint is reachable from the machine running Melodex.
+
+
+## A third-party provider or extension is failing
+
+Open **Sources** and check whether the plugin shows **CONFIG NEEDED**, a disabled state, or an extension health error.
+
+For a support report, use:
+
+```text
+Sources
+→ Show power tools
+→ Export diagnostics…
+```
+
+The export is designed to omit credentials, local library paths, stream/playback URLs, headers and cookies. Review it before sharing.
+
+See [Support](../SUPPORT.md) for what to include in an issue.
