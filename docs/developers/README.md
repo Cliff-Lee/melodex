@@ -12,6 +12,7 @@ If you want a working scaffold immediately, use the [5-minute developer quicksta
 | --- | --- |
 | What exists today vs preview/experimental/planned | [Status, stability and trust](00_STATUS_AND_STABILITY.md) |
 | Canonical system map and code locations | [Ecosystem architecture](01_ECOSYSTEM_ARCHITECTURE.md) |
+| Trust/maturity wording | [Terminology and claim policy](02_TERMINOLOGY_AND_CLAIMS.md) |
 | Terminology | [Glossary](15_GLOSSARY.md) |
 
 ## Capability extensions
