@@ -19,11 +19,33 @@ def _schema() -> dict[str, Any]:
     return json.loads(text)
 
 
+def _review_schema() -> dict[str, Any]:
+    text = resources.files("melodex_provider_sdk").joinpath(
+        "schemas/review-record-v0.1.json"
+    ).read_text(encoding="utf-8")
+    return json.loads(text)
+
+
 def load_registry(path: str | Path) -> dict[str, Any]:
     data = json.loads(Path(path).read_text(encoding="utf-8"))
     if not isinstance(data, dict):
         raise ValueError("registry must contain a JSON object")
     return data
+
+
+def load_review_records(path: str | Path) -> list[dict[str, Any]]:
+    root = Path(path)
+    if not root.is_dir():
+        raise ValueError(f"review directory not found: {root}")
+    records: list[dict[str, Any]] = []
+    for file in sorted(root.glob("*.json")):
+        data = json.loads(file.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            raise ValueError(f"review record must be a JSON object: {file}")
+        record = dict(data)
+        record["_path"] = str(file)
+        records.append(record)
+    return records
 
 
 def validation_errors(data: dict[str, Any]) -> list[str]:
@@ -70,6 +92,137 @@ def validation_errors(data: dict[str, Any]) -> list[str]:
                     f"plugins.{index}.distribution.size_bytes: required for installable packages"
                 )
     return out
+
+
+def review_validation_errors(
+    registry: dict[str, Any],
+    records: list[dict[str, Any]],
+) -> list[str]:
+    errors: list[str] = []
+    validator = Draft202012Validator(_review_schema())
+    by_id: dict[str, dict[str, Any]] = {}
+
+    for record_index, raw in enumerate(records):
+        clean = {key: value for key, value in raw.items() if key != "_path"}
+        for error in sorted(
+            validator.iter_errors(clean), key=lambda err: list(err.path)
+        ):
+            where = ".".join(str(part) for part in error.path)
+            prefix = f"records.{record_index}"
+            errors.append(
+                f"{prefix}.{where}: {error.message}"
+                if where
+                else f"{prefix}: {error.message}"
+            )
+
+        plugin_id = str(raw.get("plugin_id") or "")
+        if not plugin_id:
+            continue
+        if plugin_id in by_id:
+            errors.append(f"duplicate review record for {plugin_id!r}")
+            continue
+        by_id[plugin_id] = raw
+
+        events = [event for event in raw.get("events") or [] if isinstance(event, dict)]
+        previous = ""
+        for event_index, event in enumerate(events):
+            timestamp = str(event.get("reviewed_at") or "")
+            if previous and timestamp and timestamp < previous:
+                errors.append(
+                    f"{plugin_id}: events are not chronological at index {event_index}"
+                )
+            previous = timestamp or previous
+
+    plugins = {
+        str(raw.get("id") or ""): raw
+        for raw in registry.get("plugins") or []
+        if isinstance(raw, dict)
+    }
+    unknown = sorted(set(by_id) - set(plugins))
+    for plugin_id in unknown:
+        errors.append(f"review record references unknown plugin {plugin_id!r}")
+
+    expected_decision = {
+        "example": "example-baseline",
+        "community": "community-accepted",
+        "reviewed": "reviewed",
+        "deprecated": "deprecated",
+        "blocked": "blocked",
+    }
+    for plugin_id, plugin in plugins.items():
+        record = by_id.get(plugin_id)
+        if record is None:
+            errors.append(f"{plugin_id}: review record is required")
+            continue
+        events = [event for event in record.get("events") or [] if isinstance(event, dict)]
+        if not events:
+            errors.append(f"{plugin_id}: review record has no events")
+            continue
+        latest = events[-1]
+        version = str(plugin.get("version") or "")
+        if str(latest.get("version") or "") != version:
+            errors.append(
+                f"{plugin_id}: latest review version {latest.get('version')!r} "
+                f"!= registry version {version!r}"
+            )
+
+        distribution = dict(plugin.get("distribution") or {})
+        registry_hash = str(distribution.get("sha256") or "").lower()
+        review_hash = str(latest.get("package_sha256") or "").lower()
+        if registry_hash and review_hash != registry_hash:
+            errors.append(
+                f"{plugin_id}: latest review SHA-256 does not match registry package"
+            )
+        if not registry_hash and latest.get("package_sha256") not in (None, ""):
+            errors.append(
+                f"{plugin_id}: review has a package SHA-256 but registry has no package hash"
+            )
+
+        status = str(plugin.get("status") or "")
+        expected = expected_decision.get(status)
+        if expected and str(latest.get("decision") or "") != expected:
+            errors.append(
+                f"{plugin_id}: latest review decision must be {expected!r} "
+                f"for registry status {status!r}"
+            )
+
+        review_meta = dict(plugin.get("review") or {})
+        latest_at = str(latest.get("reviewed_at") or "")
+        if str(review_meta.get("last_reviewed_at") or "") != latest_at:
+            errors.append(
+                f"{plugin_id}: review.last_reviewed_at does not match latest review event"
+            )
+        record_url = str(review_meta.get("record") or "")
+        expected_name = f"{plugin_id}.json"
+        if record_url and not urlparse(record_url).path.endswith("/" + expected_name):
+            errors.append(
+                f"{plugin_id}: review.record should point to {expected_name}"
+            )
+
+    return errors
+
+
+def command_validate_reviews(args: argparse.Namespace) -> int:
+    try:
+        registry = load_registry(args.registry)
+        records = load_review_records(args.reviews)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+    registry_errors = validation_errors(registry)
+    review_errors = review_validation_errors(registry, records)
+    errors = registry_errors + review_errors
+    if errors:
+        print("Registry review history is invalid:")
+        for error in errors:
+            print(f"  - {error}")
+        return 1
+    print(
+        f"Registry review history is valid: "
+        f"{len(registry.get('plugins') or [])} entries, {len(records)} records"
+    )
+    return 0
 
 
 def command_validate(args: argparse.Namespace) -> int:
@@ -179,6 +332,14 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("summary", help="print compact registry contents")
     p.add_argument("registry")
     p.set_defaults(func=command_summary)
+
+    p = sub.add_parser(
+        "validate-reviews",
+        help="validate registry review records against current entries",
+    )
+    p.add_argument("registry")
+    p.add_argument("--reviews", required=True)
+    p.set_defaults(func=command_validate_reviews)
     return parser
 
 
