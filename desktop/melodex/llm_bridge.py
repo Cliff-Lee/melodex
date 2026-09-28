@@ -7,6 +7,8 @@ from typing import Any
 
 import requests
 
+from . import __version__ as MELODEX_VERSION
+
 
 SYSTEM_PROMPT = r"""You are the optional intelligence layer inside Melodex, a desktop music player.
 Your job is to help the listener choose, understand, sequence, and control music. Be concise and musical.
@@ -68,7 +70,7 @@ class LLMClient:
     def __init__(self, timeout: float = 75.0):
         self.timeout = float(timeout)
         self.session = requests.Session()
-        self.session.headers.update({"User-Agent": "Melodex/15"})
+        self.session.headers.update({"User-Agent": f"Melodex/{MELODEX_VERSION}"})
 
     @staticmethod
     def default_endpoint(provider: str) -> str:

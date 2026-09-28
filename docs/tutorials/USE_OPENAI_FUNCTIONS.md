@@ -9,9 +9,13 @@ The platform is designed around stable actions such as:
 ```text
 melodex_status
 melodex_sources
+melodex_extensions
 melodex_search
 melodex_resolve
 melodex_resolution_candidates
+melodex_prefer_match
+melodex_wrong_match
+melodex_reset_match_memory
 melodex_play
 melodex_queue
 melodex_playback
@@ -51,3 +55,6 @@ Melodex's resolver chooses the actual installed provider.
 The built-in Ask Melodex interface can itself use OpenAI-compatible model endpoints. That outbound model connection is separate from exposing Melodex operations as tools to your own application.
 
 See [OpenAI compatibility](../api/OPENAI_COMPATIBILITY.md).
+
+
+The same high-level action vocabulary is also exposed through MCP; choose the transport that best fits your client rather than learning a second Melodex action model.

@@ -28,20 +28,13 @@ But Melodex is also becoming something broader:
 
 A playback source does not need to become a metadata database. An artwork plugin does not need to know how the queue works. An AI client does not need to know which provider ultimately plays a track.
 
-## Build something in 5 minutes
-
-If you want to develop rather than study the architecture first:
-
-**[→ 5-minute developer quickstart](docs/DEVELOPER_QUICKSTART.md)**
-
-For the precise current state—including what is implemented, preview, experimental, planned, or not sandboxed—see **[Status, stability and trust](docs/developers/00_STATUS_AND_STABILITY.md)**.
-
 ## Choose your path
 
 | I want to… | Start here |
 | --- | --- |
-| Use Melodex as a music player | [5-minute start](docs/START_HERE.md) |
-| Build something quickly | [5-minute developer quickstart](docs/DEVELOPER_QUICKSTART.md) |
+| **Use Melodex as a music player** | [5-minute user start](docs/START_HERE.md) |
+| **Install a release build** | [Installation chooser](docs/INSTALL.md) |
+| **Build a plugin quickly** | [5-minute developer quickstart](docs/DEVELOPER_QUICKSTART.md) |
 | Build a music source / playback provider | [Provider tutorial](docs/tutorials/BUILD_A_PROVIDER.md) |
 | Add metadata, identity, artwork or lyrics | [Enrichment tutorial](docs/tutorials/BUILD_AN_ENRICHMENT_PLUGIN.md) |
 | Control Melodex from another app | [REST/OpenAPI tutorial](docs/tutorials/CONTROL_MELODEX_WITH_REST.md) |
@@ -51,6 +44,14 @@ For the precise current state—including what is implemented, preview, experime
 | Publish a community plugin | [Registry tutorial](docs/tutorials/ADD_PLUGIN_TO_REGISTRY.md) |
 | Contribute code, docs, testing or ideas | [Community guide](docs/COMMUNITY.md) |
 
+### Building something?
+
+You do not need to understand the player internals first.
+
+**[→ Build a provider or enrichment plugin in 5 minutes](docs/DEVELOPER_QUICKSTART.md)**
+
+For exact maturity/security claims, use **[Status, stability and trust](docs/developers/00_STATUS_AND_STABILITY.md)**. For the full system map, use **[Ecosystem architecture](docs/developers/01_ECOSYSTEM_ARCHITECTURE.md)**.
+
 ## The developer platform
 
 Melodex separates discovery/distribution from runtime capabilities and external control:
@@ -58,7 +59,7 @@ Melodex separates discovery/distribution from runtime capabilities and external 
 ```text
                          Plugin Directory
                                │
-                  Registry + verified packages
+                  Registry + integrity-verified packages
                                │
              ┌─────────────────┴─────────────────┐
              │                                   │
@@ -160,7 +161,7 @@ The ecosystem is being developed with small examples built around documented, le
 | MusicBrainz | canonical identity + metadata provenance |
 | Wikimedia Commons | artwork + per-file licence/attribution |
 
-The examples are designed to be copied, studied and changed. All four are also published as hash-verified packages in the built-in [Plugin Directory](docs/PLUGIN_DIRECTORY.md).
+The examples are designed to be copied, studied and changed. All four are also published as registry hash-verified packages in the built-in [Plugin Directory](docs/PLUGIN_DIRECTORY.md).
 
 ## Community philosophy
 

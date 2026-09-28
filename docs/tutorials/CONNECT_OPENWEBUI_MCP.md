@@ -59,7 +59,7 @@ extra_hosts:
 
 ## What the model can do
 
-The MCP server exposes high-level tools for search, resolution, playback, queueing, Flow, feedback and Moments.
+The MCP server exposes high-level tools for source/extension inspection, search, resolution, resolver-memory correction, playback, queueing, Flow, feedback and Moments.
 
 It does not give the model arbitrary filesystem access.
 

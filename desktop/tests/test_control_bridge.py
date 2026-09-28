@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import urllib.error
+import urllib.request
+import urllib.parse
 
 from melodex.bridge_server import ProviderBridge
 from melodex.control_client import MelodexControlClient
@@ -56,7 +59,18 @@ class FakeManager:
     def resolve(self, track):
         if track.get("provider_id") == "local":
             return {"provider_id": "local", "track_id": str(self.media), "artist": "Local", "title": "Song", "local_path": str(self.media)}
-        return {"provider_id": "web", "track_id": "1", "artist": track.get("artist", "Example"), "title": track.get("title", "Song"), "album": track.get("album", ""), "stream_url": "https://example.invalid/a.mp3"}
+        return {
+            "provider_id": "web",
+            "track_id": "1",
+            "artist": track.get("artist", "Example"),
+            "title": track.get("title", "Song"),
+            "album": track.get("album", ""),
+            "stream_url": "https://example.invalid/a.mp3",
+            "headers": {"Authorization": "Bearer provider-secret"},
+            "cookies": {"session": "secret-cookie"},
+            "refresh_token": "provider-refresh-secret",
+            "_playback_allowed_hosts": ["example.invalid"],
+        }
 
     def resolve_playlist(self, tracks):
         return {"requested": len(tracks), "tracks": [self.resolve(x) for x in tracks], "unresolved": []}
@@ -107,10 +121,24 @@ def test_control_bridge_and_client(tmp_path: Path):
         assert providers[0]["id"] == "local"
         assert providers[1]["installation"]["registry_verified"] is True
         assert providers[1]["permissions"]["network_hosts"] == []
-        assert client.search("Needle")[0]["title"] == "Needle"
+        search_item = client.search("Needle")[0]
+        assert search_item["title"] == "Needle"
+        assert "stream_url" not in search_item
+
         resolved = client.resolve("Artist", "Track")
         assert resolved["provider_id"] == "web"
-        assert "local_path" not in resolved
+        assert resolved["stream_url"].startswith(
+            f"http://127.0.0.1:{bridge.port}/v1/media?"
+        )
+        assert "example.invalid" not in resolved["stream_url"]
+        for sensitive in (
+            "local_path",
+            "headers",
+            "cookies",
+            "refresh_token",
+            "_playback_allowed_hosts",
+        ):
+            assert sensitive not in resolved
         inspected = client.resolve_candidates("Artist", "Track")
         assert inspected["candidates"][0]["score"] == 0.97
         candidate = inspected["candidates"][0]["track"]
@@ -147,3 +175,42 @@ def test_client_follows_bridge_restart(tmp_path: Path):
         assert client.health()["ok"] is True
     finally:
         second.stop()
+
+
+def test_query_token_is_media_only(tmp_path: Path):
+    media = tmp_path / "song.mp3"
+    media.write_bytes(b"0123456789")
+    bridge = ProviderBridge(
+        FakeManager(media),
+        "127.0.0.1",
+        0,
+        token="secret",
+        controller=FakeController(),
+    )
+    bridge.start()
+    try:
+        base = f"http://127.0.0.1:{bridge.port}"
+
+        with urllib.request.urlopen(base + "/health", timeout=3) as response:
+            assert response.status == 200
+
+        try:
+            urllib.request.urlopen(
+                base + "/v1/providers?token=secret",
+                timeout=3,
+            )
+            assert False, "query token must not authenticate catalog/control routes"
+        except urllib.error.HTTPError as exc:
+            assert exc.code == 401
+
+        media_url = (
+            base
+            + "/v1/media?provider=local&id="
+            + urllib.parse.quote(str(media))
+            + "&token=secret"
+        )
+        with urllib.request.urlopen(media_url, timeout=3) as response:
+            assert response.status == 200
+            assert response.read() == b"0123456789"
+    finally:
+        bridge.stop()

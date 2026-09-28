@@ -14,6 +14,8 @@ Want the exact maturity/security picture? Read **[Status, stability and trust](0
 
 For the canonical system map, see **[Ecosystem architecture](01_ECOSYSTEM_ARCHITECTURE.md)**.
 
+For the rules that keep public claims/navigation consistent, see **[Documentation policy](02_DOCUMENTATION_POLICY.md)**.
+
 ## Start by goal
 
 | Goal | Read |

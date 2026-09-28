@@ -4,13 +4,21 @@ Melodex is a general-purpose music player, sequencing engine, and provider frame
 
 ## What the public project ships
 
-The public Melodex repository includes only:
+The public Melodex repository includes source-neutral Core plus documented legal/open reference integrations, currently including:
 
 - local-file playback for media you control or are permitted to use;
-- a Jamendo reference integration using Jamendo's documented public API and a user-supplied developer client ID;
-- the source-neutral Melodex Provider Protocol (MPP) and Provider SDK;
-- Provider Bridge support for authorized remote/LAN access;
+- user-defined streams;
+- Jamendo reference integration using its documented API and a user-supplied client ID;
+- Radio Browser reference provider;
+- LibriVox public-domain audiobook reference provider;
+- MusicBrainz identity/metadata enrichment;
+- Wikimedia Commons artwork enrichment;
+- an optional Internet Archive reference provider for public/unrestricted material;
+- the source-neutral Melodex Provider Protocol (MPP), capability-extension contracts and Provider SDK;
+- Provider Bridge support for authorized local/LAN access;
 - optional LLM integrations for playlist and player control.
+
+The presence of a reference integration is not a blanket claim that every item exposed by the upstream service has the same rights. Per-item rights/licence metadata and upstream terms still matter.
 
 ## What the public project does not ship
 
@@ -32,7 +40,11 @@ Melodex maintainers may decline links, packages, instructions, issues, or pull r
 
 ## Security
 
-A desktop `.mdxprovider` package contains executable third-party code. Review the publisher, requested permissions, and source code where available before installation. See `SECURITY.md` and the Provider SDK trust model for more detail.
+Desktop `.mdxprovider` and `.mdxplugin` packages can contain executable third-party code. Review the publisher, declared permissions and source code where available before installation.
+
+Registry SHA-256 verification proves package-byte integrity relative to registry metadata; it is not publisher signing or a sandbox.
+
+See `SECURITY.md` and the Provider SDK trust model for more detail.
 
 ## LLM privacy
 

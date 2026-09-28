@@ -2,7 +2,7 @@
 
 ## 6.1 Rule: the LLM never talks directly to providers
 
-The existing Melodex v15 constrained-action model should remain the boundary.
+Melodex's current high-level application-action boundary should remain the boundary. External AI integrations use REST/OpenAPI, MCP, or OpenAI function schemas; models do not call provider internals directly.
 
 ```text
 LLM
@@ -32,33 +32,31 @@ The context may include a compact source summary:
 
 Do not expose provider credentials, raw signed playback URLs or provider implementation details.
 
-## 6.3 Recommended LLM actions
+## 6.3 Current external AI actions
 
-Keep the high-level vocabulary:
+The public MCP/OpenAI tool vocabulary uses names such as:
 
-- `search_music`
-- `play_track`
-- `queue_track`
-- `make_session`
-- `flow_queue`
-- `save_moment`
-- `stay_here`
-- `import_playlist`
-- `open_view`
+- `melodex_status`
+- `melodex_sources`
+- `melodex_extensions`
+- `melodex_search`
+- `melodex_resolve`
+- `melodex_resolution_candidates`
+- `melodex_prefer_match`
+- `melodex_wrong_match`
+- `melodex_reset_match_memory`
+- `melodex_play`
+- `melodex_queue`
+- `melodex_playback`
+- `melodex_seek`
+- `melodex_volume`
+- `melodex_flow`
+- `melodex_feedback`
+- `melodex_save_moment`
 
-Optional advanced action:
+The built-in Ask Melodex UI has its own constrained internal action vocabulary. That is an implementation detail of the in-app assistant, not the public external-tool contract.
 
-```json
-{
-  "action": "search_music",
-  "args": {
-    "query": "...",
-    "source": "home-server"
-  }
-}
-```
-
-If `source` is omitted, Melodex searches globally.
+For external integrations, source selection is an optional argument to `melodex_search`. If no provider is chosen, Melodex searches globally.
 
 ## 6.4 Why this is better than provider tools in the LLM
 
@@ -66,9 +64,9 @@ If every provider is exposed directly to the model, the prompt/tool surface beco
 
 ## 6.5 OpenWebUI / Ollama
 
-The existing Melodex OpenAPI bridge should expose high-level commands only. Provider management endpoints should not be exposed to an LLM by default.
+The Melodex REST/OpenAPI and MCP surfaces expose high-level commands only. Provider management endpoints should not be exposed to an LLM by default.
 
-A separate user-approved admin tool could later expose:
+A future user-approved admin surface could expose:
 
 - list source status;
 - reconnect a source;

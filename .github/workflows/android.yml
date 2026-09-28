@@ -17,6 +17,17 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify app version
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            python scripts/version_check.py --release-tag "$GITHUB_REF_NAME"
+          else
+            python scripts/version_check.py
+          fi
       - uses: android-actions/setup-android@v4
         with:
           packages: 'platform-tools'

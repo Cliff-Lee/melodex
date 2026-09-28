@@ -34,7 +34,7 @@ The ordinary Melodex player does **not** require MCP, so this dependency stays o
 
 ## OpenWebUI (recommended on the Ubuntu AI workstation)
 
-OpenWebUI v0.6.31+ supports native MCP using Streamable HTTP. Start Melodex first, then from `desktop` run:
+Current OpenWebUI documentation supports native MCP using Streamable HTTP. Start Melodex first, then from `desktop` run:
 
 ```bash
 python -m melodex.mcp_server --transport streamable-http --host 0.0.0.0 --port 8787

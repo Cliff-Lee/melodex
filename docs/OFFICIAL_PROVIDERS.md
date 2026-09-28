@@ -1,8 +1,10 @@
-# Official providers
+# First-party Reference Providers
 
-Melodex keeps the desktop core source-neutral. Optional official providers are
-reference integrations built on the same public MPP interface available to
-third-party developers.
+Melodex keeps desktop Core source-neutral.
+
+This page documents provider implementations maintained in the Melodex repository but **not built into Core**. They use the same public MPP interface available to third-party developers.
+
+“First-party reference” means maintained as a Melodex example/integration. It is not a claim that Melodex owns, endorses, or grants rights in the upstream service or media.
 
 ## Internet Archive
 

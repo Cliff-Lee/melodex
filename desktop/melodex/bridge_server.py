@@ -11,6 +11,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Callable
 
+from . import __version__ as MELODEX_VERSION
+
 
 class ProviderBridge:
     """Authenticated bridge for providers plus optional playback/control actions.
@@ -66,7 +68,20 @@ class ProviderBridge:
     @staticmethod
     def _public_track(track: dict[str, Any]) -> dict[str, Any]:
         out = dict(track)
-        out.pop("local_path", None)
+        # Public control/API responses must not expose provider playback request
+        # state or raw upstream playback locations.
+        for key in (
+            "local_path",
+            "stream_url",
+            "url",
+            "headers",
+            "cookies",
+            "refresh_token",
+            "_playback_allowed_hosts",
+            "request_headers",
+            "authorization",
+        ):
+            out.pop(key, None)
         return out
 
     def _control(self, action: str, args: dict[str, Any] | None = None) -> Any:
@@ -78,7 +93,7 @@ class ProviderBridge:
         bridge = self
 
         class Handler(BaseHTTPRequestHandler):
-            server_version = "MelodexBridge/0.2"
+            server_version = f"MelodexBridge/{MELODEX_VERSION}"
 
             def log_message(self, *_args):
                 return
@@ -92,8 +107,14 @@ class ProviderBridge:
                 if u.path in {"/health", "/openapi.json"}:
                     return True
                 auth = self.headers.get("Authorization", "")
-                query_token = q.get("token", [""])[0]
-                return auth == f"Bearer {bridge.token}" or secrets.compare_digest(query_token, bridge.token)
+                if auth == f"Bearer {bridge.token}":
+                    return True
+                if u.path == "/v1/media":
+                    query_token = q.get("token", [""])[0]
+                    return bool(query_token) and secrets.compare_digest(
+                        query_token, bridge.token
+                    )
+                return False
 
             def _send(self, code: int, payload: Any, ctype: str = "application/json"):
                 body = payload if isinstance(payload, (bytes, bytearray)) else json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -158,13 +179,19 @@ class ProviderBridge:
                         remaining -= len(chunk)
 
             def _remote_track(self, resolved: dict[str, Any]) -> dict[str, Any]:
-                if not resolved.get("local_path"):
-                    return bridge._public_track(resolved)
-                host = self.headers.get("Host") or f"127.0.0.1:{bridge.port}"
-                pid = str(resolved.get("provider_id") or "local")
-                tid = str(resolved.get("track_id") or "")
-                media_q = urllib.parse.urlencode({"provider": pid, "id": tid, "token": bridge.token})
                 out = bridge._public_track(resolved)
+                pid = str(resolved.get("provider_id") or "").strip()
+                tid = str(
+                    resolved.get("track_id")
+                    or resolved.get("provider_track_id")
+                    or ""
+                ).strip()
+                if not pid or not tid:
+                    return out
+                host = self.headers.get("Host") or f"127.0.0.1:{bridge.port}"
+                media_q = urllib.parse.urlencode(
+                    {"provider": pid, "id": tid, "token": bridge.token}
+                )
                 out["stream_url"] = f"http://{host}/v1/media?{media_q}"
                 return out
 

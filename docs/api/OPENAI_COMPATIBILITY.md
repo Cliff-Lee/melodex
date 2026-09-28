@@ -44,7 +44,7 @@ Do not commit model credentials to Git or provider packages.
 
 ## What Ask Melodex sends
 
-The model receives the Melodex system instructions, compact current context, recent conversation and current prompt.
+The model receives Melodex system instructions, the compact current context and the current prompt. The current desktop Ask Melodex UI passes no prior conversation history between requests.
 
 Provider credentials, playback cookies and Bridge/MCP tokens should never be placed in model context.
 
@@ -53,3 +53,10 @@ Provider credentials, playback cookies and Bridge/MCP tokens should never be pla
 Ask Melodex's outbound model connection is different from exposing Melodex's application actions as tools.
 
 See [OpenAI function calling](OPENAI_FUNCTION_CALLING.md).
+
+
+## Local API-key storage
+
+In the current desktop implementation, an LLM API key entered through the GUI is stored in the local Melodex SQLite preferences database rather than an OS credential vault.
+
+This is a documented current limitation; do not treat the local application-data directory as secret-proof storage.

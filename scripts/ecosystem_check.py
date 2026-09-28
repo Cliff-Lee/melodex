@@ -45,6 +45,19 @@ def main() -> int:
 
     registry = json.loads((SDK / "registry/registry.json").read_text("utf-8"))
     example = json.loads((SDK / "registry/example-registry.json").read_text("utf-8"))
+
+    for entry in list(registry.get("plugins") or []):
+        if not isinstance(entry, dict):
+            continue
+        if str(entry.get("kind") or "") != "enrichment":
+            continue
+        minimum = str((entry.get("compatibility") or {}).get("melodex_min") or "")
+        parts = tuple(int(x) for x in re.findall(r"\d+", minimum)[:3]) if minimum else (0,)
+        parts = parts + (0,) * (3 - len(parts))
+        if parts < (0, 3, 0):
+            errors.append(
+                f"enrichment registry entry {entry.get('id')!r} must require Melodex 0.3.0 or newer"
+            )
     if registry != example:
         errors.append(
             "registry/example-registry.json no longer mirrors canonical registry.json"
@@ -54,7 +67,9 @@ def main() -> int:
         ROOT / "docs/DEVELOPER_QUICKSTART.md",
         ROOT / "docs/developers/00_STATUS_AND_STABILITY.md",
         ROOT / "docs/developers/01_ECOSYSTEM_ARCHITECTURE.md",
+        ROOT / "docs/developers/02_DOCUMENTATION_POLICY.md",
         ROOT / "docs/developers/07_PERMISSIONS_SECURITY.md",
+        ROOT / "docs/RELEASES_AND_MAIN.md",
         ROOT / "docs/PLUGIN_DIRECTORY.md",
     )
     for path in required_docs:
@@ -66,9 +81,30 @@ def main() -> int:
         "docs/DEVELOPER_QUICKSTART.md",
         "docs/developers/00_STATUS_AND_STABILITY.md",
         "docs/developers/01_ECOSYSTEM_ARCHITECTURE.md",
+        "docs/RELEASES_AND_MAIN.md",
     ):
         if required_link not in readme:
             errors.append(f"README does not surface {required_link}")
+
+    openai_text = (ROOT / "desktop/melodex/openai_tools.py").read_text("utf-8")
+    mcp_text = (ROOT / "desktop/melodex/mcp_server.py").read_text("utf-8")
+    openai_names = set(re.findall(r'"name": "(melodex_[a-z_]+)"', openai_text))
+    mcp_names = set(re.findall(r'@mcp\.tool\(name="(melodex_[a-z_]+)"', mcp_text))
+    if openai_names != mcp_names:
+        errors.append(
+            "MCP/OpenAI high-level tool names differ: "
+            f"OpenAI-only={sorted(openai_names - mcp_names)}, "
+            f"MCP-only={sorted(mcp_names - openai_names)}"
+        )
+
+    start_here = (ROOT / "docs/START_HERE.md").read_text("utf-8")
+    for phrase in ("Sources", "Add local folder…", "Play for me", "Build this journey"):
+        if phrase not in start_here:
+            errors.append(f"Start Here is missing current UI phrase: {phrase}")
+
+    privacy = (ROOT / "docs/PRIVACY.md").read_text("utf-8")
+    if "SQLite preferences database" not in privacy:
+        errors.append("Privacy documentation no longer discloses current LLM API-key storage")
 
     return fail(errors)
 

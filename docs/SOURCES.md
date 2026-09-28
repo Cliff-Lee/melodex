@@ -8,19 +8,25 @@ Melodex is source-neutral. A source is any provider that can search/browse music
 
 Your own local audio files. No network access required.
 
+### User Streams
+
+User-defined radio/stream URLs stored in Melodex. Playback naturally uses the network endpoint you add.
+
 ### Jamendo reference provider
 
 A real online example using the public Jamendo API. You supply your own developer client ID. Melodex keeps Jamendo attribution and licence metadata with each result.
 
 Jamendo's API has its own terms and licence requirements; review them before publishing an application that uses it.
 
-## Plugin Directory on desktop
+## Optional reference/community plugins
 
-Use **Sources → Explore plugins…** to browse the registry.
+These are separate from built-in Core sources.
+
+Use **Sources → Explore plugins…** to browse the registry on Melodex builds that include the Plugin Directory.
 
 The directory shows publisher, status, licence, capabilities, permissions, compatibility, source repository and package verification data before installation.
 
-Installable packages are downloaded over HTTPS and must match the registry SHA-256 and byte size.
+Installable packages are downloaded over HTTPS and must match the registry SHA-256 and byte size. Registry installation also checks that the package-declared ID/version match the registry entry.
 
 ## Manual third-party installation
 

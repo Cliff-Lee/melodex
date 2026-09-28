@@ -1,39 +1,45 @@
-# Uploading this repository to GitHub
+# Provider SDK Repository Location
 
-This folder is already laid out as a Git repository root.
+The Melodex Provider SDK currently lives inside the main Melodex repository:
 
-## Option A — GitHub website
-
-1. Create a new empty repository on GitHub, for example `melodex-provider-sdk`.
-2. Do **not** ask GitHub to pre-create a README, license, or `.gitignore` because they are already included here.
-3. Upload the contents of this folder, preserving folders such as `.github`, `docs`, `spec`, `src`, `tests`, and `examples`.
-
-For a repository with many files, Git command line or GitHub Desktop is usually easier than browser upload.
-
-## Option B — command line
-
-From this folder:
-
-```bash
-git init
-git add .
-git commit -m "Initial public Melodex Provider SDK"
-git branch -M main
-git remote add origin https://github.com/YOUR-ACCOUNT/melodex-provider-sdk.git
-git push -u origin main
+```text
+https://github.com/Cliff-Lee/melodex
+└── provider-sdk/
 ```
 
-## Recommended GitHub settings
+The older idea of uploading this directory as a separate `melodex-provider-sdk` repository is not the current publishing workflow.
 
-After the first push:
+## Contributing to the SDK
 
-- enable **Issues**;
-- enable **Private vulnerability reporting** under Security;
-- optionally enable branch protection/rules for `main` after CI is confirmed working;
-- require the `test` workflow before merge;
-- add topics such as `music`, `media-server`, `openapi`, `plugin-system`, `python`, and `llm`;
-- keep Actions permissions at the least privilege needed by the included workflows.
+Work in the main repository and open a pull request.
 
-## Before publishing
+From `provider-sdk/`:
 
-Read `RELEASE_CHECKLIST.md`, especially the secret scan and source-neutrality checks.
+```bash
+python -m pip install -e '.[dev]'
+pytest -q tests
+melodex-registry validate registry/registry.json
+melodex-registry verify-packages registry/registry.json --packages registry/packages
+```
+
+From the repository root also run:
+
+```bash
+python scripts/docs_check.py
+python scripts/ecosystem_check.py
+python scripts/version_check.py
+python scripts/release_check.py
+```
+
+See:
+
+- [Provider SDK README](README.md)
+- [Contributing](CONTRIBUTING.md)
+- [Release checklist](RELEASE_CHECKLIST.md)
+- [Repository-level contributing guide](../CONTRIBUTING.md)
+
+## If the SDK is split into a standalone repository later
+
+That would be an explicit project decision with updated URLs, CI, release/version policy and documentation.
+
+Do not treat historical standalone-repository examples as current instructions.

@@ -1,5 +1,7 @@
 # Install Melodex on macOS
 
+> **Release vs development:** this guide lives on the current `main` branch. The latest tagged binary can lag behind `main`; see [Releases, main, and version numbers](RELEASES_AND_MAIN.md) if a documented feature is missing from your installed build.
+
 This guide is for ordinary users. You do **not** need Python, Homebrew, Terminal, or Xcode when using the release build.
 
 ## 1. Download the correct Mac version
@@ -109,21 +111,21 @@ Your Mac can act as a Provider Bridge for the Android app.
 1. Put the Mac and Android phone on the same trusted Wi-Fi network.
 2. In desktop Melodex open **Sources → Provider Bridge…**.
 3. When asked whether phones/computers on your LAN may connect, choose **Yes**.
-4. Melodex starts the Bridge on port `8766` and shows a bearer token.
+4. Melodex enables LAN access and shows the Bridge's current port and bearer token. The port is chosen by the running app; do not assume it is 8766.
 5. Find the Mac's local IP address:
    - **System Settings → Network → Wi-Fi → Details**, then look for **IP Address**.
 6. On Android, enter a Bridge URL in this form:
 
-   `http://MAC-IP-ADDRESS:8766`
+   `http://MAC-IP-ADDRESS:DISPLAYED-PORT`
 
    Example:
 
-   `http://192.168.1.42:8766`
+   `http://192.168.1.42:54321`
 
 7. Enter the bearer token shown by desktop Melodex.
 8. Tap **Connect**.
 
-Treat the token like a password. The current preview creates a new token when the Bridge is restarted.
+Treat the token like a password. Melodex keeps it while the current app session changes Bridge bind mode; after quitting/relaunching Melodex, use the newly displayed port/token.
 
 See the full [Android guide](INSTALL_ANDROID.md).
 
@@ -172,8 +174,8 @@ Use the **right-click → Open** method described above.
 - both devices must be on the same LAN/Wi-Fi;
 - start the Provider Bridge with **LAN access = Yes**;
 - use the Mac's LAN IP, not `127.0.0.1` or `localhost`;
-- check that the URL ends in `:8766`;
-- re-copy the current token if the Bridge was restarted;
+- check that the URL uses the exact port currently displayed by Melodex;
+- after relaunching Melodex, re-copy the current port and token;
 - if macOS asks whether Melodex may accept incoming connections, allow it on your trusted local network.
 
 ### I want to run the source code instead

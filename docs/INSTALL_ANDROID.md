@@ -1,5 +1,7 @@
 # Install Melodex on Android
 
+> **Release vs development:** this guide lives on the current `main` branch. The latest tagged binary can lag behind `main`; see [Releases, main, and version numbers](RELEASES_AND_MAIN.md) if a documented feature is missing from your installed build.
+
 ## Important: how the Android version works
 
 The current Android app is a **Melodex Provider Bridge client**. It does not yet act as a full standalone desktop-style Melodex installation.
@@ -73,8 +75,10 @@ On the Mac/Windows computer:
    **Allow phones/computers on your LAN to connect?**
 
 5. Choose **Yes**.
-6. Melodex starts the Bridge on port `8766`.
-7. Keep the displayed **Bearer token** available — you will enter it on Android.
+6. Melodex enables LAN access and shows the Bridge's **current port** and **Bearer token**.
+7. Keep both values available — you will enter them on Android.
+
+The port is chosen by the running desktop app and is **not guaranteed to be 8766**. Always use the port Melodex displays.
 
 The token is a password for this Bridge session. Do not post it publicly.
 
@@ -126,11 +130,11 @@ You will see fields for **Bridge URL** and **Bridge token**.
 
 Enter:
 
-`http://COMPUTER-IP:8766`
+`http://COMPUTER-IP:DISPLAYED-PORT`
 
 For example:
 
-`http://192.168.1.42:8766`
+`http://192.168.1.42:54321`
 
 ### Bridge token
 
@@ -151,6 +155,12 @@ A successful connection should show:
 
 The Android preview intentionally keeps the interface simple while the richer Flow/taste UI is developed.
 
+### Current remote-playback boundary
+
+The Bridge can serve local files and ordinary remote stream URLs. Providers whose playback requires private per-request headers/cookies are **not yet fully proxied through the LAN Bridge**; those providers may work on desktop but fail when Android asks the Bridge to play them.
+
+This is a current implementation limitation, not something the Android client can fix by changing its URL/token.
+
 ## 8. If Android cannot connect
 
 Work through these checks in order.
@@ -169,11 +179,11 @@ Try a normal home/private LAN if possible.
 
 It must look like:
 
-`http://192.168.x.x:8766`
+`http://192.168.x.x:DISPLAYED-PORT`
 
 or
 
-`http://10.x.x.x:8766`
+`http://10.x.x.x:DISPLAYED-PORT`
 
 Do not use:
 
@@ -184,7 +194,7 @@ Do not use:
 
 ### D. Check the token
 
-The current preview generates a new bearer token when the Provider Bridge is restarted. If you closed/restarted Melodex or restarted the Bridge, copy the new token.
+The Bridge keeps the same token while the current desktop app session switches between loopback/LAN modes. After quitting and relaunching Melodex, use the newly displayed token/port rather than assuming an older value is still valid.
 
 ### E. Check Windows Firewall
 
@@ -198,7 +208,7 @@ If macOS asks whether Melodex may accept incoming network connections, allow it 
 
 From the Android browser, while on the same LAN, try:
 
-`http://COMPUTER-IP:8766/health`
+`http://COMPUTER-IP:DISPLAYED-PORT/health`
 
 For example:
 
@@ -214,7 +224,7 @@ The Provider Bridge is intended for a **trusted local network**.
 
 - Treat the bearer token like a password.
 - Do not post screenshots containing the token.
-- Do not directly expose port `8766` to the public internet.
+- Do not directly expose the displayed Bridge port to the public internet.
 - For remote access, use an HTTPS reverse proxy or trusted VPN rather than raw port forwarding.
 
 ## 10. Updating Android

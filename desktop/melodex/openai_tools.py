@@ -68,6 +68,79 @@ _FUNCTIONS: list[dict[str, Any]] = [
         ),
     },
     {
+        "name": "melodex_prefer_match",
+        "description": "Remember one specific resolver candidate as the preferred match for one requested song.",
+        "parameters": _obj(
+            {
+                "requested": _obj(
+                    {
+                        "artist": {"type": "string"},
+                        "title": {"type": "string"},
+                        "album": {"type": ["string", "null"]},
+                    },
+                    ["artist", "title", "album"],
+                ),
+                "candidate": _obj(
+                    {
+                        "provider_id": {"type": "string"},
+                        "track_id": {"type": "string"},
+                        "artist": {"type": "string"},
+                        "title": {"type": "string"},
+                        "album": {"type": ["string", "null"]},
+                    },
+                    ["provider_id", "track_id", "artist", "title", "album"],
+                ),
+            },
+            ["requested", "candidate"],
+        ),
+    },
+    {
+        "name": "melodex_wrong_match",
+        "description": "Block one bad resolver candidate for one requested song without disabling its provider.",
+        "parameters": _obj(
+            {
+                "requested": _obj(
+                    {
+                        "artist": {"type": "string"},
+                        "title": {"type": "string"},
+                        "album": {"type": ["string", "null"]},
+                    },
+                    ["artist", "title", "album"],
+                ),
+                "candidate": _obj(
+                    {
+                        "provider_id": {"type": "string"},
+                        "track_id": {"type": "string"},
+                        "artist": {"type": "string"},
+                        "title": {"type": "string"},
+                        "album": {"type": ["string", "null"]},
+                    },
+                    ["provider_id", "track_id", "artist", "title", "album"],
+                ),
+            },
+            ["requested", "candidate"],
+        ),
+    },
+    {
+        "name": "melodex_reset_match_memory",
+        "description": "Clear remembered preferred/wrong matches for one requested song.",
+        "parameters": _obj(
+            {
+                "requested": {
+                    "type": "object",
+                    "properties": {
+                        "artist": {"type": "string"},
+                        "title": {"type": "string"},
+                        "album": {"type": ["string", "null"]},
+                    },
+                    "required": ["artist", "title", "album"],
+                    "additionalProperties": True,
+                }
+            },
+            ["requested"],
+        ),
+    },
+    {
         "name": "melodex_play",
         "description": "Resolve one requested track, replace the queue with it and start playback.",
         "parameters": _obj(
@@ -189,6 +262,18 @@ def execute_tool(client: Any, name: str, arguments: dict[str, Any] | None = None
             str(args.get("album") or ""),
             int(args.get("limit") or 12),
         )
+    if name == "melodex_prefer_match":
+        return client.prefer_match(
+            dict(args.get("requested") or {}),
+            dict(args.get("candidate") or {}),
+        )
+    if name == "melodex_wrong_match":
+        return client.block_match(
+            dict(args.get("requested") or {}),
+            dict(args.get("candidate") or {}),
+        )
+    if name == "melodex_reset_match_memory":
+        return client.reset_match_memory(dict(args.get("requested") or {}))
     if name == "melodex_play":
         return client.play(str(args["artist"]), str(args["title"]), str(args.get("album") or ""))
     if name == "melodex_queue":

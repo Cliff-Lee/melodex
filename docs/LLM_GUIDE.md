@@ -23,6 +23,14 @@ Open **Ask Melodex → Connect LLM** and provide provider, endpoint, model and o
 
 ## Privacy
 
-Melodex sends a compact context snapshot only when you ask the LLM something. It may include the current track, upcoming queue, taste summary and recent listening. Provider passwords, cookies and bearer tokens are not sent.
+Melodex sends model context only when you submit an Ask Melodex prompt.
 
-A local Ollama model can keep the entire LLM workflow on your machine.
+The current GUI context can include the current track, up to 12 upcoming queue items, current page, taste summary, up to 15 recent tracks and up to 10 saved Vibes.
+
+The current GUI does not persist/send prior Ask Melodex chat history between requests.
+
+Provider passwords, playback cookies, Bridge/MCP tokens and local filesystem paths are not intentionally inserted into model context.
+
+**Current credential-storage limitation:** an LLM API key entered in the GUI is stored in Melodex's local SQLite preferences database, not an OS credential vault. See [Privacy](PRIVACY.md).
+
+A local Ollama model can keep model inference on your machine.

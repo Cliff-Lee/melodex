@@ -1,5 +1,7 @@
 # Install Melodex on Windows
 
+> **Release vs development:** this guide lives on the current `main` branch. The latest tagged binary can lag behind `main`; see [Releases, main, and version numbers](RELEASES_AND_MAIN.md) if a documented feature is missing from your installed build.
+
 This guide is for Windows 10/11 users. You do **not** need Python, Git, PowerShell commands, or developer tools when using the normal installer.
 
 ## 1. Download Melodex
@@ -92,23 +94,23 @@ If you use Melodex only on the PC, you can leave incoming LAN access disabled.
 1. Put the Windows PC and Android phone on the same trusted Wi-Fi/LAN.
 2. In desktop Melodex open **Sources → Provider Bridge…**.
 3. Choose **Yes** when asked whether devices on your LAN may connect.
-4. Copy the bearer token Melodex displays.
+4. Copy the Bridge port and bearer token Melodex displays. The port is chosen by the running app; do not assume it is 8766.
 5. Find the Windows PC's IPv4 address. Either:
    - open **Settings → Network & internet → Wi-Fi/Ethernet → Properties**, or
    - open Command Prompt and run `ipconfig`.
 6. Look for an address such as `192.168.1.42` or `10.0.0.25`.
 7. On Android set the Bridge URL to:
 
-   `http://WINDOWS-IP:8766`
+   `http://WINDOWS-IP:DISPLAYED-PORT`
 
    Example:
 
-   `http://192.168.1.42:8766`
+   `http://192.168.1.42:54321`
 
 8. Enter the current Bridge token.
 9. Tap **Connect**.
 
-Treat the token like a password. The current preview generates a new token when the Bridge is restarted.
+Treat the token like a password. Melodex keeps it while the current app session changes Bridge bind mode; after quitting/relaunching Melodex, use the newly displayed port/token.
 
 See [Install on Android](INSTALL_ANDROID.md).
 
@@ -175,7 +177,7 @@ Check:
 - Provider Bridge was started with LAN access enabled;
 - Windows Firewall allows Melodex on **Private** networks;
 - Android uses the PC's IPv4 address rather than `localhost`;
-- the URL includes port `8766`;
+- the URL uses the exact port currently displayed by Melodex;
 - the token is the current token from this Bridge session.
 
 ### Music does not play

@@ -1,4 +1,8 @@
-# Melodex Documentation
+# Melodex Documentation Index
+
+This is the broader index of maintained user/developer guides. For a shorter route-by-goal page, use [Documentation home](README.md). Code-local READMEs, example source policies and historical release notes remain beside the code/history they describe.
+
+- [Releases, `main`, and version numbers](RELEASES_AND_MAIN.md)
 
 ## Start here
 
@@ -21,6 +25,7 @@
 - [5-minute developer quickstart](DEVELOPER_QUICKSTART.md)
 - [Status, stability and trust](developers/00_STATUS_AND_STABILITY.md)
 - [Ecosystem architecture](developers/01_ECOSYSTEM_ARCHITECTURE.md)
+- [Documentation policy](developers/02_DOCUMENTATION_POLICY.md)
 - [Develop with Melodex](DEVELOPERS.md)
 - [Developer ecosystem](developers/README.md)
 - [Community](COMMUNITY.md)
@@ -86,6 +91,7 @@
 ## Build and release
 
 - [Build from source](BUILD_FROM_SOURCE.md)
+- [Releases, `main`, and version numbers](RELEASES_AND_MAIN.md)
 - [Releasing](RELEASING.md)
 
 ## Trust and security
@@ -93,4 +99,4 @@
 - [Privacy](PRIVACY.md)
 - [Responsible Use](../RESPONSIBLE_USE.md)
 - [API security](api/SECURITY.md)
-- Provider SDK security model: `provider-sdk/docs/05_SECURITY_AND_TRUST.md`
+- [Provider SDK security model](../provider-sdk/docs/05_SECURITY_AND_TRUST.md)

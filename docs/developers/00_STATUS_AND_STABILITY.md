@@ -14,6 +14,12 @@ Melodex is intentionally developing in public. Some surfaces are implemented and
 | **Planned** | Design direction, not something users/developers should assume exists |
 | **Historical** | Useful design/migration record, not current implementation guidance |
 
+## Release context
+
+Repository documentation on `main` describes current development. Tagged release binaries can lag behind `main`.
+
+See [Releases, main, and version numbers](../RELEASES_AND_MAIN.md).
+
 ## Current ecosystem status
 
 | Surface | Current status | Stability / important limitation |
@@ -36,14 +42,16 @@ Melodex is intentionally developing in public. Some surfaces are implemented and
 | Declared plugin permissions | **Implemented** | Visible metadata/review contract |
 | OS-enforced plugin network/filesystem sandbox | **Not implemented** | Provider/extension processes still run with the current user's OS permissions |
 | Child-process environment scrubbing | **Not implemented** | Current subprocesses inherit the Melodex process environment; do not launch Melodex with unrelated exported secrets |
+| LLM API-key OS credential vault | **Not implemented** | GUI-entered LLM API keys are currently stored in the local SQLite preferences database |
 | Publisher signatures / verified-publisher keyring | **Planned** | SHA-256 is integrity, not signing |
 | Full provider health/diagnostic UI | **Planned** | CLI doctor and runtime errors exist; richer UI is future work |
 | Automatic plugin updates | **Not implemented** | Deliberately no silent update mechanism |
 | REST control API | **Implemented** | Authenticated local/LAN control surface |
 | OpenAPI discovery | **Implemented** | `GET /openapi.json` |
 | OpenAI function schemas | **Implemented** | `GET /v1/openai/tools` and `melodex-openai-tools` |
-| MCP control | **Implemented** | Optional external-control path |
+| MCP control | **Implemented** | Optional external-control path; high-level application tool names are kept in parity with OpenAI function tools |
 | Android arbitrary downloaded plugins | **Not supported** | Android uses built-in functionality / Bridge model rather than executing downloaded plugin code |
+| Bridge remote playback with provider-specific headers/cookies | **Partial** | Local files and ordinary remote stream redirects work; provider-specific upstream request-state is not yet fully proxied to LAN/mobile clients |
 | iOS app/plugin runtime | **Planned/design only** | Architecture documentation is not a claim of a shipped iOS app |
 
 ## “Verified” can mean different things

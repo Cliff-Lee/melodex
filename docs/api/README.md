@@ -67,3 +67,10 @@ Read [MCP and OpenWebUI](MCP_AND_OPENWEBUI.md).
 | Build a music-source integration | MPP Provider SDK |
 | Build identity/metadata/artwork/lyrics enrichment | Capability Broker + `melodex-extension` |
 | Inspect installed enrichment capabilities | REST `GET /v1/extensions` or `melodex_extensions` tool |
+
+
+## One application vocabulary, several transports
+
+REST, MCP and OpenAI function schemas are different integration mechanisms, but they should expose the same high-level Melodex concepts wherever practical.
+
+If these surfaces drift, treat that as an API/documentation issue rather than something client authors should work around.

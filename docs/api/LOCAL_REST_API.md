@@ -14,7 +14,7 @@ Except for `/health` and `/openapi.json`, requests require:
 Authorization: Bearer <bridge-token>
 ```
 
-The media endpoint also accepts a query token because some playback engines cannot attach custom headers.
+The media endpoint also accepts a query token because some playback engines cannot attach custom headers. Query-token authentication is restricted to `/v1/media`; other protected endpoints require the Bearer header.
 
 Treat the token like a password.
 
@@ -74,7 +74,7 @@ Current player state.
 
 ### `GET /v1/media`
 
-Streams local media with Range support or redirects to a remote resource.
+Streams local media with Range support or redirects to an ordinary remote resource. Provider-specific upstream request headers/cookies are not yet proxied through this LAN media endpoint.
 
 ### `GET /v1/openai/tools`
 
@@ -117,3 +117,10 @@ Typical HTTP codes: 400, 401, 404 and 500.
 ## Versioning
 
 Breaking API-contract changes should move to a new major API route rather than silently changing `/v1`.
+
+
+## Public response redaction
+
+Catalog/control responses strip local filesystem paths, raw upstream playback URLs, provider request headers/cookies, refresh tokens and internal allowed-host state.
+
+When `/v1/resolve` or `/v1/play` returns a playable track with provider identity, the public `stream_url` points back to the authenticated Bridge media endpoint rather than exposing the upstream playback URL directly.

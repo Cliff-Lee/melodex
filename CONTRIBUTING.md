@@ -34,6 +34,8 @@ Start with `docs/tutorials/ADD_PLUGIN_TO_REGISTRY.md` and `docs/developers/17_RE
 ### Documentation / testing
 Documentation, fixtures and testing improvements are first-class contributions.
 
+Read the [Documentation policy](docs/developers/02_DOCUMENTATION_POLICY.md) before changing canonical status/security/version language.
+
 ## Before coding
 
 For a substantial architectural change, open an issue first. Small fixes, docs and focused tests can usually go directly to a PR.
@@ -60,6 +62,8 @@ Repository checks:
 
 ```bash
 python scripts/docs_check.py
+python scripts/ecosystem_check.py
+python scripts/version_check.py
 python scripts/release_check.py
 ```
 

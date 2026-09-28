@@ -31,7 +31,7 @@
 
 Melodex is still early software. Please report reproducible bugs through GitHub Issues.
 
-For installation help, see the [documentation](https://github.com/Cliff-Lee/melodex/blob/main/docs/START_HERE.md).
+For installation help matching this release, replace `<tag>` below with this release tag and use the tagged documentation:\n\n`https://github.com/Cliff-Lee/melodex/blob/<tag>/docs/START_HERE.md`\n\nThe `main` documentation can describe newer development work.
 
 ## Responsible use
 

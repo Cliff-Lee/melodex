@@ -67,6 +67,46 @@ See:
 
 Melodex is not affiliated with or endorsed by Jamendo.
 
+
+## Radio Browser
+
+Melodex includes a reference provider for the community-maintained Radio Browser directory.
+
+Radio Browser indexes internet-radio station metadata and stream URLs. Individual radio streams are operated by their respective broadcasters; Melodex does not relicense or redistribute those broadcasts.
+
+See:
+- https://www.radio-browser.info/
+- https://api.radio-browser.info/
+
+Melodex is not affiliated with or endorsed by Radio Browser or the individual stations it indexes.
+
+## LibriVox
+
+Melodex includes a reference provider for LibriVox.
+
+LibriVox states that its recordings are released into the public domain in the United States. Copyright status can differ by jurisdiction, and underlying texts may have separate rights considerations outside the United States.
+
+See:
+- https://librivox.org/
+- https://librivox.org/pages/public-domain/
+
+Melodex is not affiliated with or endorsed by LibriVox.
+
+## Internet Archive
+
+The repository contains an optional Internet Archive reference provider.
+
+Internet Archive hosts material with varied rights and access conditions. Melodex's reference provider is intended for public/unrestricted material and does not bypass lending, login, DRM or restricted-item controls.
+
+Rights statements must be evaluated per item; presence on archive.org is not a blanket permission for every use.
+
+See:
+- https://archive.org/
+- https://archive.org/about/terms.php
+- https://archive.org/developers/
+
+Melodex is not affiliated with or endorsed by the Internet Archive.
+
 ## Python and application dependencies
 
 Melodex uses third-party Python/application dependencies such as PySide6, requests, NumPy, mutagen and the optional MCP SDK. Those packages retain their own licences and copyright notices. Refer to each dependency's distribution metadata/upstream repository for its applicable licence.

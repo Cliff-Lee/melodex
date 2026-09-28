@@ -53,5 +53,5 @@ Set `expires_at`. If refresh requires provider state, include an opaque
 
 ## Deliberate boundaries
 
-v0.2 does not provide DRM circumvention, CAPTCHA solving, anti-bot evasion,
-credential harvesting, or access-control bypasses.
+The public SDK does not provide DRM circumvention, CAPTCHA solving, anti-bot
+evasion, credential harvesting, or access-control bypasses.

@@ -134,7 +134,7 @@ Example:
     "size_bytes": 12345
   },
   "compatibility": {
-    "melodex_min": "0.1.0",
+    "melodex_min": "0.3.0",
     "mpp": null,
     "contracts": {
       "artwork": "0.1"
@@ -146,6 +146,8 @@ Example:
   "source_policy": "https://github.com/example/example-artwork/blob/main/SOURCE_POLICY.md"
 }
 ```
+
+The example above is an enrichment plugin, so it uses the app line that first supports `.mdxplugin` capability extensions.
 
 For a playback/catalog provider use:
 

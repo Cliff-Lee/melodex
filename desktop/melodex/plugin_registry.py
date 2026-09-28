@@ -158,7 +158,7 @@ class PluginRegistryClient:
         self.session = session or requests.Session()
         self.timeout = float(timeout)
         self.user_agent = (
-            "Melodex-Plugin-Directory/0.1 "
+            f"Melodex-Plugin-Directory/{MELODEX_VERSION} "
             "(https://github.com/Cliff-Lee/melodex)"
         )
 

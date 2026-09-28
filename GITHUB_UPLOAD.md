@@ -1,57 +1,42 @@
-# Publish Melodex to GitHub
+# Repository and Release Workflow
 
-The intended public repository is:
+Melodex is already public at:
 
 `https://github.com/Cliff-Lee/melodex`
 
-Before publishing, run:
+This file is retained as a short publishing pointer. The old bootstrap instructions for creating the repository and tagging the first release are no longer the normal workflow.
+
+## Contributing changes
+
+Normal development should use a branch and pull request against `main`.
+
+Before proposing a substantial change, run the checks relevant to your work. The full repository checks are:
 
 ```bash
-python3 scripts/release_check.py
+python scripts/docs_check.py
+python scripts/ecosystem_check.py
+python scripts/version_check.py
+python scripts/release_check.py
+
+PYTHONPATH=desktop pytest -q desktop/tests
+pytest -q provider-sdk/tests
 ```
 
-## Fastest method — GitHub CLI
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
-Install/authenticate GitHub CLI once, then from the repository root run:
+## Publishing a tagged release
 
-```bash
-./scripts/publish_github.sh
-```
+Do not copy an old hard-coded tag such as `v0.1.0`.
 
-The script will:
+Follow:
 
-1. run the public-release audit;
-2. initialise Git if necessary;
-3. create the initial commit;
-4. create `Cliff-Lee/melodex` as a public GitHub repository if it does not already exist;
-5. push `main`.
+- [Releasing Melodex](docs/RELEASING.md)
+- [Releases, `main`, and version numbers](docs/RELEASES_AND_MAIN.md)
 
-To publish under a different account/name:
+The release workflows verify that the Git tag matches the application version before producing/attaching supported platform artifacts.
 
-```bash
-./scripts/publish_github.sh YOUR-ACCOUNT YOUR-REPOSITORY
-```
+## Historical bootstrap helper
 
-## Manual Git method
+`scripts/publish_github.sh` was useful while creating the public repository.
 
-Create an empty public repository named `melodex` on GitHub, then:
-
-```bash
-git init
-git add .
-git commit -m "Initial public Melodex release"
-git branch -M main
-git remote add origin https://github.com/Cliff-Lee/melodex.git
-git push -u origin main
-```
-
-## First downloadable release
-
-After GitHub Actions passes:
-
-```bash
-git tag v0.1.0
-git push origin v0.1.0
-```
-
-The release workflows build the supported platform artifacts defined in `.github/workflows/`.
+It is **not** the normal update/release mechanism for the existing repository.

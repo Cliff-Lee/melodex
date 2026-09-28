@@ -103,7 +103,7 @@ Registry entries may declare:
 ```json
 {
   "compatibility": {
-    "melodex_min": "0.1.0",
+    "melodex_min": "0.3.0",
     "mpp": "1.0",
     "contracts": {
       "artwork": "0.1"

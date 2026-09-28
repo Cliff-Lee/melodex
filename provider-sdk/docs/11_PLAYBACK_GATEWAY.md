@@ -30,11 +30,12 @@ provider-supplied headers and cookies are not forwarded to an undeclared host.
 ## Refresh
 
 `expires_at` lets Melodex identify a nearly stale resource. Desktop playback can
-call optional `playback.refresh`; ExternalProvider falls back to
-`playback.resolve` for v0.1 compatibility.
+call optional `playback.refresh`; ExternalProvider falls back to a fresh
+`playback.resolve` when refresh is unavailable.
 
 ## Current boundary
 
-v0.2 primarily targets normal HTTP audio resources. HLS without special request
-state can still be passed directly to the media framework. Protected HLS segment
-rewriting is not part of this release.
+The current gateway primarily targets ordinary authorized HTTP audio resources.
+HLS that needs no special per-segment request rewriting can be handed to the media
+framework. DRM/access-control circumvention and protected-segment rewriting are
+outside Melodex's public provider architecture.
