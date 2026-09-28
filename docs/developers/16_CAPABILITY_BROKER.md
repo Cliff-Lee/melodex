@@ -77,7 +77,7 @@ Users can enable/disable extensions independently. Core also stores per-capabili
 
 Preference is a merge signal, not permission to return invalid data.
 
-## Failure isolation
+## Failure isolation and health
 
 An extension failure becomes an enrichment error, not a playback failure.
 
@@ -90,6 +90,18 @@ lyrics        unavailable
 ```
 
 The song should continue playing.
+
+Melodex also tracks a small runtime-health record for each installed capability extension:
+
+- current state: `idle`, `running`, `ok` or `error`;
+- total calls, successes and failures;
+- consecutive failures;
+- whether the child process is currently running;
+- the last **redacted error category** such as `timeout`, `protocol_error`, `process_error` or `call_error`.
+
+The Sources page shows this health state, and `GET /v1/extensions` exposes the same non-secret diagnostics.
+
+Plugin-supplied exception messages and stderr are not copied into the public health record.
 
 ## Provenance
 
@@ -112,4 +124,6 @@ evidence
 
 The v0.1 extension process boundary provides failure isolation, **not a complete OS sandbox**.
 
-Declared permissions are review/UI metadata today. Only install extensions you trust. Stronger sandboxing/signing remains roadmap work.
+Capability-extension subprocesses receive a scrubbed environment rather than Melodex's complete parent environment. This reduces accidental inheritance of unrelated secrets but does not stop code from exercising the current user's normal operating-system permissions.
+
+Declared permissions are review/UI metadata today. Only install extensions you trust. Stronger permission enforcement, explicit credential brokerage and publisher signing remain roadmap work.
