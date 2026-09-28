@@ -21,7 +21,7 @@ from .flow import FlowEngine
 from .mind import MindEngine
 from .user_state import UserState
 from .player import FlowPlayer
-from .llm_bridge import LLMClient, LLMSettings
+from .llm_bridge import LLMClient, LLMSettings, llm_track_summary
 from .bridge_server import ProviderBridge
 from .playlist_io import load_playlist, save_playlist
 from .metadata import RichMetadataService
@@ -39,6 +39,7 @@ def _track_text(t: dict[str, Any]) -> str:
     title = str(t.get("title") or "Unknown track")
     source = str(t.get("provider_id") or "")
     return f"{artist} — {title}" + (f"   ·   {source}" if source else "")
+
 
 
 class MainWindow(QMainWindow):
@@ -861,7 +862,22 @@ class MainWindow(QMainWindow):
             self.state.set_text("llm_provider",provider.currentText()); self.state.set_text("llm_endpoint",endpoint.text().strip()); self.state.set_text("llm_model",model.text().strip()); self.state.set_text("llm_api_key",key.text().strip())
 
     def _llm_context(self):
-        return {"current_track":self.current_track,"queue":self.player.queue[self.player.index:self.player.index+12] if self.player.index>=0 else [],"current_page":self.current_page,"taste":self.state.taste_summary(),"recent":self.state.recent_tracks(15),"vibes":self.state.vibes(10)}
+        queue = (
+            self.player.queue[self.player.index:self.player.index + 12]
+            if self.player.index >= 0
+            else []
+        )
+        return {
+            "current_track": llm_track_summary(self.current_track),
+            "queue": [llm_track_summary(track) for track in queue],
+            "current_page": self.current_page,
+            "taste": self.state.taste_summary(),
+            "recent": [
+                llm_track_summary(track)
+                for track in self.state.recent_tracks(15)
+            ],
+            "vibes": self.state.vibes(10),
+        }
 
     def _ask(self):
         prompt=self.ask_box.text().strip();
