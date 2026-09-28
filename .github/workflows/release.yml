@@ -15,6 +15,7 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
       - run: python scripts/docs_check.py
+      - run: python scripts/navigation_check.py
       - run: python scripts/ecosystem_check.py
       - run: python scripts/version_check.py --release-tag "${GITHUB_REF_NAME}"
       - run: python scripts/release_check.py
