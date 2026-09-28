@@ -75,6 +75,21 @@ Melodex Playback Gateway
 QMediaPlayer
 ```
 
+## Declared configuration
+
+Both `.mdxprovider` and `.mdxplugin` packages can declare simple user configuration fields:
+
+```json
+"configuration": [
+  {"key": "api_token", "label": "API token", "type": "secret", "required": true},
+  {"key": "region", "label": "Region", "type": "string"}
+]
+```
+
+The current field types are `string`, `secret` and `boolean`. Melodex renders the configuration UI and supplies only those declared values to the plugin under the reserved `_melodex_config` request parameter.
+
+Do not put actual credentials in manifests, packages, fixtures or registry metadata.
+
 ## Provider doctor
 
 `melodex-provider doctor` checks the manifest, README, licence, `SOURCE_POLICY.md` and, for Python entrypoints, `provider.info`, `provider.health`, `catalog.search`, and `playback.resolve`.
