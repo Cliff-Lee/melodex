@@ -143,7 +143,11 @@ Example:
   "permissions": [
     "network:api.example.org"
   ],
-  "source_policy": "https://github.com/example/example-artwork/blob/main/SOURCE_POLICY.md"
+  "source_policy": "https://github.com/example/example-artwork/blob/main/SOURCE_POLICY.md",
+  "review": {
+    "record": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/registry/reviews/org.example.artwork.json",
+    "last_reviewed_at": "2026-09-29T00:00:00Z"
+  }
 }
 ```
 
@@ -168,6 +172,9 @@ From the Melodex Provider SDK:
 ```bash
 melodex-registry validate registry/registry.json
 melodex-registry summary registry/registry.json
+melodex-registry validate-reviews \
+  registry/registry.json \
+  --reviews registry/reviews
 ```
 
 If package files are stored in the Melodex repository:
@@ -197,9 +204,12 @@ Initial third-party entries normally use:
 
 ```text
 status: community
+latest review decision: community-intake
 ```
 
-A later project review may move an entry to `reviewed`.
+The matching file under `provider-sdk/registry/reviews/<plugin-id>.json` records the version, package SHA-256, checks, reviewer, summary and limitations. The record is append-only: later releases or status changes add events.
+
+A `community-intake` event supports the community listing; it is not the stronger `reviewed` status. A later project review may append a `reviewed` event and move the registry status to `reviewed`.
 
 ## 10. What users see
 
@@ -209,7 +219,7 @@ In:
 Sources → Explore plugins…
 ```
 
-users see the source, publisher, licence, capabilities, permissions, status, package hash and compatibility before installation.
+users see the source, publisher, licence, capabilities, permissions, status, package hash, compatibility and the linked registry review record before installation.
 
 Melodex downloads the package over HTTPS and refuses installation if the bytes do not match the registry SHA-256/size.
 
@@ -222,7 +232,9 @@ For a new version:
 3. update package URL if needed;
 4. update SHA-256 and byte size;
 5. update compatibility/permissions if changed;
-6. validate;
-7. open a registry PR.
+6. append the review event for the new version/hash;
+7. update the registry review timestamp/link if needed;
+8. validate the registry, package and review history;
+9. open a registry PR.
 
 See [Registry governance](../developers/17_REGISTRY_GOVERNANCE.md).
