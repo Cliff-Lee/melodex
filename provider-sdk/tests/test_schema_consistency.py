@@ -17,3 +17,20 @@ def test_json_schemas_are_valid_schemas():
         path = ROOT / name if name.startswith("registry/") else ROOT / "spec" / name
         schema = json.loads(path.read_text(encoding="utf-8"))
         Draft202012Validator.check_schema(schema)
+
+
+def test_registry_schema_copies_match():
+    pairs = [
+        (
+            ROOT / "registry" / "plugin-registry.schema.json",
+            ROOT / "src" / "melodex_provider_sdk" / "schemas" / "plugin-registry-v0.1.json",
+        ),
+        (
+            ROOT / "registry" / "review-record.schema.json",
+            ROOT / "src" / "melodex_provider_sdk" / "schemas" / "review-record-v0.1.json",
+        ),
+    ]
+    for public, bundled in pairs:
+        assert json.loads(public.read_text("utf-8")) == json.loads(
+            bundled.read_text("utf-8")
+        )
