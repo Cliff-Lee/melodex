@@ -39,6 +39,7 @@ Use `N/A` when this does not apply.
 - [ ] External metadata/artwork provenance is preserved where relevant.
 - [ ] Registry package URL, SHA-256 and byte size match the published package where applicable.
 - [ ] Registry permissions and compatibility metadata are accurate where applicable.
+- [ ] Trust/maturity wording follows the terminology policy (`registry-verified`, `reviewed`, `preview`, `experimental`, `planned`, etc.).
 
 ## Screenshots / notes
 
