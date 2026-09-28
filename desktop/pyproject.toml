@@ -15,6 +15,7 @@ mcp = ["mcp>=2,<3"]
 [project.scripts]
 melodex = "melodex.app:main"
 melodex-mcp = "melodex.mcp_server:main"
+melodex-openai-tools = "melodex.openai_tools:main"
 
 [tool.setuptools]
 packages = ["melodex", "melodex.providers"]

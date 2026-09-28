@@ -1,0 +1,134 @@
+{
+  "schema_version": "0.1",
+  "plugins": [
+    {
+      "id": "org.melodex.example.radio-browser",
+      "name": "Radio Browser Example",
+      "version": "0.1.0",
+      "kind": "provider",
+      "status": "example",
+      "description": "Free/open community radio index example provider.",
+      "capabilities": [
+        "search",
+        "track",
+        "playback"
+      ],
+      "license": "MIT",
+      "source": {
+        "repository": "https://github.com/Cliff-Lee/melodex",
+        "homepage": "https://www.radio-browser.info/"
+      },
+      "distribution": {
+        "package_url": null,
+        "format": "mdxprovider"
+      },
+      "compatibility": {
+        "melodex_min": null,
+        "mpp": "1.0",
+        "contracts": {}
+      },
+      "permissions": [
+        "network:radio-browser"
+      ],
+      "source_policy": "docs/developers/11_SOURCE_AND_RIGHTS_POLICY.md#radio-browser"
+    },
+    {
+      "id": "org.melodex.example.librivox",
+      "name": "LibriVox Example",
+      "version": "0.1.0",
+      "kind": "provider",
+      "status": "example",
+      "description": "Public-domain audiobook example provider.",
+      "capabilities": [
+        "search",
+        "track",
+        "playback",
+        "offline"
+      ],
+      "license": "MIT",
+      "source": {
+        "repository": "https://github.com/Cliff-Lee/melodex",
+        "homepage": "https://librivox.org/"
+      },
+      "distribution": {
+        "package_url": null,
+        "format": "mdxprovider"
+      },
+      "compatibility": {
+        "melodex_min": null,
+        "mpp": "1.0",
+        "contracts": {}
+      },
+      "permissions": [
+        "network:librivox.org",
+        "network:archive.org",
+        "offline_downloads"
+      ],
+      "source_policy": "docs/developers/11_SOURCE_AND_RIGHTS_POLICY.md#librivox"
+    },
+    {
+      "id": "org.melodex.example.musicbrainz",
+      "name": "MusicBrainz Enrichment Example",
+      "version": "0.1.0",
+      "kind": "enrichment",
+      "status": "example",
+      "description": "Experimental identity and metadata extension.",
+      "capabilities": [
+        "identity",
+        "metadata"
+      ],
+      "license": "MIT",
+      "source": {
+        "repository": "https://github.com/Cliff-Lee/melodex",
+        "homepage": "https://musicbrainz.org/"
+      },
+      "distribution": {
+        "package_url": null,
+        "format": "experimental"
+      },
+      "compatibility": {
+        "melodex_min": null,
+        "mpp": null,
+        "contracts": {
+          "identity": "0.1",
+          "metadata": "0.1"
+        }
+      },
+      "permissions": [
+        "network:musicbrainz.org"
+      ],
+      "source_policy": "docs/developers/11_SOURCE_AND_RIGHTS_POLICY.md#musicbrainz"
+    },
+    {
+      "id": "org.melodex.example.wikimedia-commons",
+      "name": "Wikimedia Commons Artwork Example",
+      "version": "0.1.0",
+      "kind": "enrichment",
+      "status": "example",
+      "description": "Experimental artwork extension preserving per-file licence/attribution.",
+      "capabilities": [
+        "artwork"
+      ],
+      "license": "MIT",
+      "source": {
+        "repository": "https://github.com/Cliff-Lee/melodex",
+        "homepage": "https://commons.wikimedia.org/"
+      },
+      "distribution": {
+        "package_url": null,
+        "format": "experimental"
+      },
+      "compatibility": {
+        "melodex_min": null,
+        "mpp": null,
+        "contracts": {
+          "artwork": "0.1"
+        }
+      },
+      "permissions": [
+        "network:commons.wikimedia.org"
+      ],
+      "source_policy": "docs/developers/11_SOURCE_AND_RIGHTS_POLICY.md#wikimedia-commons"
+    }
+  ]
+}

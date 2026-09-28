@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://melodex.example/schema/extensions/v0.1/lyrics-response.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "capability", "subject", "entries"],
+  "properties": {
+    "schema_version": {"const": "0.1"},
+    "capability": {"const": "lyrics"},
+    "subject": {"$ref": "common.schema.json#/$defs/EntityRef"},
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "language", "provenance"],
+        "properties": {
+          "kind": {"type": "string", "enum": ["plain", "synchronized", "translated"]},
+          "language": {"type": "string", "minLength": 2},
+          "translation_of_language": {"type": ["string", "null"]},
+          "text": {"type": "string"},
+          "lines": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["start_ms", "text"],
+              "properties": {
+                "start_ms": {"type": "integer", "minimum": 0},
+                "end_ms": {"type": ["integer", "null"], "minimum": 0},
+                "text": {"type": "string"}
+              }
+            }
+          },
+          "copyright_notice": {"type": ["string", "null"]},
+          "provenance": {"$ref": "common.schema.json#/$defs/Provenance"}
+        },
+        "anyOf": [{"required": ["text"]}, {"required": ["lines"]}]
+      }
+    },
+    "cache": {"$ref": "common.schema.json#/$defs/CacheDirective"}
+  }
+}

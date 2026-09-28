@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "org.melodex.example.librivox",
+  "name": "LibriVox Example",
+  "version": "0.1.0",
+  "publisher": "Melodex examples",
+  "protocol_version": "1.0",
+  "description": "Public-domain audiobook provider using the official LibriVox API. Search titles or authors such as Odyssey, Austen or Dickens.",
+  "capabilities": [
+    "search",
+    "track",
+    "playback",
+    "offline"
+  ],
+  "permissions": {
+    "network_hosts": [
+      "librivox.org",
+      "www.archive.org",
+      "archive.org"
+    ],
+    "offline_downloads": true,
+    "local_files": false,
+    "browser_auth": false,
+    "lan_discovery": false
+  },
+  "entrypoints": {
+    "python": "provider.py"
+  }
+}

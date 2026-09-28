@@ -1,0 +1,34 @@
+name: Community / newcomer question
+description: Ask where to start contributing or propose a small community improvement
+title: "[Community]: "
+labels: ["community"]
+body:
+  - type: dropdown
+    id: interest
+    attributes:
+      label: What are you interested in?
+      options:
+        - Building a provider
+        - Metadata / artwork / lyrics plugin
+        - REST / OpenAPI
+        - MCP / AI integration
+        - Desktop app
+        - Android app
+        - Documentation
+        - Testing
+        - Design / UX
+        - Not sure yet
+    validations:
+      required: true
+  - type: textarea
+    id: background
+    attributes:
+      label: What would you like to work on?
+      description: No need for a complete plan. Tell us what sounds interesting.
+    validations:
+      required: true
+  - type: textarea
+    id: experience
+    attributes:
+      label: Relevant experience
+      description: Optional. Beginners are welcome.

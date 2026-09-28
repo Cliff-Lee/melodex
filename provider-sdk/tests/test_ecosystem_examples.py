@@ -1,0 +1,81 @@
+from __future__ import annotations
+
+import importlib.util
+import json
+import os
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+EXAMPLES = ROOT / "examples" / "ecosystem"
+
+
+def _load(name: str, path: Path):
+    spec = importlib.util.spec_from_file_location(name, path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_radio_browser_example_with_fixture(monkeypatch):
+    monkeypatch.setenv("MELODEX_EXAMPLE_FIXTURES", "1")
+    module = _load("radio_browser_example", EXAMPLES / "radio_browser_provider" / "provider.py")
+    result = module.respond({"method": "catalog.search", "params": {"query": "jazz", "limit": 3}})
+    assert result["items"][0]["title"] == "Demo Jazz Radio"
+    track_id = result["items"][0]["provider_track_id"]
+    play = module.respond({"method": "playback.resolve", "params": {"provider_track_id": track_id}})
+    assert play["url"].endswith("jazz.mp3")
+    assert play["seekable"] is False
+
+
+def test_librivox_example_with_fixture(monkeypatch):
+    monkeypatch.setenv("MELODEX_EXAMPLE_FIXTURES", "1")
+    module = _load("librivox_example", EXAMPLES / "librivox_provider" / "provider.py")
+    result = module.respond({"method": "catalog.search", "params": {"query": "Odyssey", "limit": 3}})
+    assert len(result["items"]) == 2
+    track_id = result["items"][0]["provider_track_id"]
+    play = module.respond(
+        {"method": "playback.resolve", "params": {"provider_track_id": track_id, "purpose": "offline"}}
+    )
+    assert play["cache_policy"] == "offline_allowed"
+    assert play["url"].endswith(".mp3")
+
+
+def test_musicbrainz_enrichment_with_fixture(monkeypatch):
+    monkeypatch.setenv("MELODEX_EXAMPLE_FIXTURES", "1")
+    module = _load("musicbrainz_example", EXAMPLES / "musicbrainz_enrichment" / "plugin.py")
+    subject = {
+        "entity_type": "track",
+        "hints": {"title": "Night Signals", "artist": "Demo Artist", "duration_ms": 241000},
+    }
+    identity = module.identity_resolve({"subject": subject, "max_candidates": 5})
+    assert identity["status"] == "matched"
+    mbid = identity["candidates"][0]["canonical_ids"]["musicbrainz_recording_id"]
+    metadata = module.metadata_enrich(
+        {"subject": {"entity_type": "track", "canonical_ids": {"musicbrainz_recording_id": mbid}}}
+    )
+    assert metadata["fields"]["title"]["value"] == "Night Signals"
+    assert metadata["fields"]["title"]["provenance"]["source_extension_id"]
+
+
+def test_wikimedia_artwork_with_fixture(monkeypatch):
+    monkeypatch.setenv("MELODEX_EXAMPLE_FIXTURES", "1")
+    module = _load("wikimedia_example", EXAMPLES / "wikimedia_artwork" / "plugin.py")
+    result = module.artwork_lookup(
+        {"subject": {"entity_type": "artist", "hints": {"name": "Demo Artist"}}, "max_results": 5}
+    )
+    asset = result["assets"][0]
+    assert asset["role"] == "portrait"
+    assert "CC BY-SA" in (asset["provenance"]["license"] or "")
+    assert asset["provenance"]["attribution"]
+
+
+def test_registry_references_all_examples():
+    registry = json.loads((ROOT / "registry" / "example-registry.json").read_text(encoding="utf-8"))
+    ids = {row["id"] for row in registry["plugins"]}
+    assert {
+        "org.melodex.example.radio-browser",
+        "org.melodex.example.librivox",
+        "org.melodex.example.musicbrainz",
+        "org.melodex.example.wikimedia-commons",
+    }.issubset(ids)
