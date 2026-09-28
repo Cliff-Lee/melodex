@@ -1,6 +1,6 @@
 {
   "schema_version": "0.1",
-  "updated_at": "2026-09-28T00:00:00Z",
+  "updated_at": "2026-09-29T00:00:00Z",
   "plugins": [
     {
       "id": "org.melodex.example.radio-browser",
@@ -35,7 +35,11 @@
       "permissions": [
         "network:*.api.radio-browser.info"
       ],
-      "source_policy": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/radio_browser_provider/SOURCE_POLICY.md"
+      "source_policy": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/radio_browser_provider/SOURCE_POLICY.md",
+      "review": {
+        "record": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/registry/reviews/org.melodex.example.radio-browser.json",
+        "last_reviewed_at": "2026-09-29T00:00:00Z"
+      }
     },
     {
       "id": "org.melodex.example.librivox",
@@ -73,7 +77,11 @@
         "network:archive.org",
         "offline_downloads"
       ],
-      "source_policy": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/librivox_provider/SOURCE_POLICY.md"
+      "source_policy": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/librivox_provider/SOURCE_POLICY.md",
+      "review": {
+        "record": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/registry/reviews/org.melodex.example.librivox.json",
+        "last_reviewed_at": "2026-09-29T00:00:00Z"
+      }
     },
     {
       "id": "org.melodex.example.musicbrainz",
@@ -110,7 +118,11 @@
       "permissions": [
         "network:musicbrainz.org"
       ],
-      "source_policy": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/musicbrainz_enrichment/SOURCE_POLICY.md"
+      "source_policy": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/musicbrainz_enrichment/SOURCE_POLICY.md",
+      "review": {
+        "record": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/registry/reviews/org.melodex.example.musicbrainz.json",
+        "last_reviewed_at": "2026-09-29T00:00:00Z"
+      }
     },
     {
       "id": "org.melodex.example.wikimedia-commons",
@@ -146,7 +158,11 @@
         "network:commons.wikimedia.org",
         "network:upload.wikimedia.org"
       ],
-      "source_policy": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/wikimedia_artwork/SOURCE_POLICY.md"
+      "source_policy": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/wikimedia_artwork/SOURCE_POLICY.md",
+      "review": {
+        "record": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/registry/reviews/org.melodex.example.wikimedia-commons.json",
+        "last_reviewed_at": "2026-09-29T00:00:00Z"
+      }
     }
   ]
 }
