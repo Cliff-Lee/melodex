@@ -47,10 +47,9 @@ The roadmap has two parallel goals:
 
 ## Next — trust and platform
 
-- child-process environment scrubbing;
 - explicit credential/configuration broker for third-party providers;
 - richer user-configurable preferred capability-provider UI;
-- capability/provider health and diagnostics UI;
+- provider health and diagnostics UI;
 - redacted diagnostic export;
 - stronger permission-policy enforcement where practical;
 - registry review history;
