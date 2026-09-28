@@ -109,7 +109,7 @@ def test_broker_failure_isolation(tmp_path: Path):
     result = broker.lookup_artwork(subject)
     assert len(result["assets"]) == 1
     assert result["assets"][0]["_extension_id"] == "org.example.good"
-    assert any("network down" in error for error in result["errors"])
+    assert any("call_error" in error for error in result["errors"])
 
 
 def test_extension_package_installs_and_runs(tmp_path: Path):
