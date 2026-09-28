@@ -33,7 +33,7 @@ The desktop app still allows manual file installation in power mode. Manual inst
 
 The UI should make provenance explicit:
 
-> This provider was installed from a file and is not reviewed by Melodex.
+> This provider was installed from a file and is not registry-reviewed by Melodex.
 
 The user must confirm requested permissions.
 

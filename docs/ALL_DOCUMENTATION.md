@@ -79,6 +79,7 @@ This page is intentionally exhaustive. For a shorter route by goal, use the [doc
 
 ## Developer reference
 
+- [Terminology and claim policy](developers/02_TERMINOLOGY_AND_CLAIMS.md)
 - [Permissions and security](developers/07_PERMISSIONS_SECURITY.md)
 - [Testing plugins](developers/08_TESTING.md)
 - [Publishing and registry](developers/10_PUBLISHING_REGISTRY.md)

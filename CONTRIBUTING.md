@@ -117,6 +117,8 @@ See [Community](docs/COMMUNITY.md) for non-code contribution paths.
 
 ## Truth over polish
 
-If documentation claims a feature is enforced/stable/shipped when the code does not support that claim, treat the mismatch as a bug.
+If documentation claims a feature is verified, reviewed, stable, sandboxed, built in, shipped, signed, secure, or otherwise stronger than the code supports, treat the mismatch as a bug.
+
+Use [Terminology and claim policy](docs/developers/02_TERMINOLOGY_AND_CLAIMS.md) for canonical wording.
 
 Use [Status, stability and trust](docs/developers/00_STATUS_AND_STABILITY.md) as the canonical maturity/security summary.

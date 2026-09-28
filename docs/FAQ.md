@@ -6,8 +6,10 @@ No. Flow, Play for Me, taste memory and local playback work without one.
 ## Does Melodex include a music subscription?
 No. Melodex plays music from sources you connect.
 
-## What sources ship with it?
+## What sources are built into the desktop app?
 Local Files and the Jamendo reference provider. Jamendo requires your own developer client ID.
+
+Additional project-maintained examples and community packages may be available through the repository or Plugin Directory; that does not mean they are built into the application.
 
 ## Can I add my own provider?
 Yes on desktop through MPP v1 `.mdxprovider` packages. See the Provider SDK.

@@ -20,7 +20,7 @@ The **My music** page also has an **Add folder…** shortcut to the same picker,
 
 Flow is not random shuffle. It evaluates the current queue and, when local audio is available, analyses BPM, key, loudness, energy, onset density, timbre, intro/outro mixability and ending type. It chooses an order designed to make the next track feel intentional.
 
-If audio analysis is unavailable, Flow falls back to metadata-safe ordering rather than pretending it knows more than it does.
+If audio analysis is unavailable, Flow falls back to metadata-only ordering rather than pretending it knows more than it does.
 
 ## Play for me
 

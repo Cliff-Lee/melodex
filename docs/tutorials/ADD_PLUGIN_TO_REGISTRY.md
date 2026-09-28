@@ -66,7 +66,7 @@ Also run your fixture/unit tests.
 Answer:
 
 - Which upstream API/source is used?
-- Is it documented/official?
+- Is the access method documented by the upstream service, or otherwise explicitly permitted?
 - What authentication is required?
 - What rate limits apply?
 - What may be cached?
@@ -178,7 +178,7 @@ melodex-registry verify-packages \
   --packages registry/packages
 ```
 
-Community packages hosted elsewhere are verified by Melodex when the user installs them.
+Community packages hosted elsewhere become **registry-verified installs** only when the downloaded byte size/SHA-256 and package-declared ID/version match the registry entry.
 
 ## 9. Open a registry PR
 

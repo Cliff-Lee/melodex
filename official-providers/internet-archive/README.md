@@ -1,6 +1,6 @@
 # Internet Archive provider for Melodex
 
-An official reference `.mdxprovider` that searches and plays publicly accessible
+A project-maintained reference `.mdxprovider` that searches and plays publicly accessible
 audio from the Internet Archive.
 
 ## What it demonstrates

@@ -60,7 +60,7 @@ Melodex separates discovery/distribution from runtime capabilities and external 
 ```text
                          Plugin Directory
                                │
-                  Registry + verified packages
+                  Registry + registry-verified packages
                                │
              ┌─────────────────┴─────────────────┐
              │                                   │
@@ -162,7 +162,7 @@ The ecosystem is being developed with small examples built around documented, le
 | MusicBrainz | canonical identity + metadata provenance |
 | Wikimedia Commons | artwork + per-file licence/attribution |
 
-The examples are designed to be copied, studied and changed. All four are also published as hash-verified packages in the built-in [Plugin Directory](docs/PLUGIN_DIRECTORY.md).
+The examples are designed to be copied, studied and changed. All four are also published as registry-verified example packages in the desktop [Plugin Directory](docs/PLUGIN_DIRECTORY.md).
 
 ## Community philosophy
 

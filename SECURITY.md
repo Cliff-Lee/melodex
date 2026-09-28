@@ -26,7 +26,7 @@ Cryptographic publisher identity/signatures are planned but not implemented.
 
 For new installs, Melodex records whether a package came from:
 
-- the registry (hash verified); or
+- the registry (registry-verified against size/SHA-256 and package ID/version); or
 - a manual file (local hash recorded, not registry-verified).
 
 This provenance improves transparency and update diagnostics; it is not a sandbox.

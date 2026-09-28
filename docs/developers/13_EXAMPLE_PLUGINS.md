@@ -67,6 +67,6 @@ melodex-extension pack examples/ecosystem/wikimedia_artwork
 
 Install the generated `.mdxplugin` locally from **Melodex → Sources → Show power tools**. The same reference integrations are also available as registry-verified packages through **Sources → Explore plugins…**.
 
-## Why not an official lyrics example yet?
+## Why not a project-maintained lyrics reference yet?
 
 A public lyrics endpoint does not automatically imply redistribution rights. The first public reference lyrics extension should use a source whose API access and content rights are sufficiently clear for a reusable example.
