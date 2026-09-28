@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from melodex.main_window import _llm_track_summary
+from melodex.llm_bridge import llm_track_summary
 
 
 def test_llm_track_summary_excludes_paths_tokens_urls_and_ids():
@@ -21,7 +21,7 @@ def test_llm_track_summary_excludes_paths_tokens_urls_and_ids():
         "api_key": "secret",
     }
 
-    summary = _llm_track_summary(track)
+    summary = llm_track_summary(track)
 
     assert summary == {
         "provider_id": "local",
@@ -43,7 +43,7 @@ def test_llm_track_summary_keeps_safe_recent_history_metadata():
         "_history_id": 99,
     }
 
-    assert _llm_track_summary(track) == {
+    assert llm_track_summary(track) == {
         "title": "Track",
         "artist": "Artist",
         "_played_at": 123456.0,
