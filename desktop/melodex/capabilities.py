@@ -685,7 +685,9 @@ class CapabilityBroker:
                         f"{extension.info.name}: returned a non-object response"
                     )
             except Exception as exc:
-                errors.append(f"{extension.info.name}: {exc}")
+                classifier = getattr(extension, "_diagnostic_error", None)
+                category = classifier(exc) if callable(classifier) else "call_error"
+                errors.append(f"{extension.info.name}: {category}")
         return results, errors
 
     def resolve_identity(
