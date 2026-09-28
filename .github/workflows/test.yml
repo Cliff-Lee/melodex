@@ -17,6 +17,7 @@ jobs:
       - run: PYTHONPATH=desktop pytest -q desktop/tests
       - run: python scripts/docs_check.py
       - run: python scripts/ecosystem_check.py
+      - run: python scripts/version_check.py
       - run: python scripts/release_check.py
       - name: Provider SDK tests
         run: |
