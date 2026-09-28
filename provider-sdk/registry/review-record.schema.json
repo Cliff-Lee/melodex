@@ -47,7 +47,7 @@
             "type": "string",
             "enum": [
               "example-baseline",
-              "community-accepted",
+              "community-intake",
               "reviewed",
               "deprecated",
               "blocked",
