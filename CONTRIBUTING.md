@@ -24,6 +24,11 @@ Use REST/OpenAPI, MCP or OpenAI function tools.
 
 Start with `docs/DEVELOPERS.md`.
 
+### Plugin registry
+Publish your provider/extension independently, then propose a registry entry.
+
+Start with `docs/tutorials/ADD_PLUGIN_TO_REGISTRY.md` and `docs/developers/17_REGISTRY_GOVERNANCE.md`.
+
 ### Documentation / testing
 Documentation, fixtures and testing improvements are first-class contributions.
 
@@ -45,6 +50,8 @@ Provider SDK:
 ```bash
 cd provider-sdk
 pytest -q tests
+melodex-registry validate registry/registry.json
+melodex-registry verify-packages registry/registry.json --packages registry/packages
 ```
 
 Repository checks:

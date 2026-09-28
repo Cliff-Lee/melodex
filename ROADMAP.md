@@ -36,14 +36,16 @@ The roadmap has two parallel goals:
 - desktop Capability Broker for identity, metadata, artwork and lyrics
 - `.mdxplugin` install/enable/disable/remove flow
 - `melodex-extension` init/validate/doctor/pack tooling
+- registry-backed Plugin Directory in the desktop app
+- SHA-256 verified remote package installation
+- canonical registry with installable legal/open reference packages
+- `melodex-registry` validate/verify tooling
 
 ## Next — platform
 
 - richer user-configurable preferred capability-provider UI
 - capability health/diagnostics UI
-- remote plugin-directory discovery and install
-- plugin directory UI
-- registry review/signing metadata
+- registry review workflow and richer signing metadata
 - signed provider packages
 - richer provider permission UI
 - generated API-client examples

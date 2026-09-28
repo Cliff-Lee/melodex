@@ -81,6 +81,17 @@ AI / automation
   ...
 ```
 
-The desktop Sources page already lists installed capability extensions. A searchable remote registry/directory remains future work.
+The desktop Sources page now includes **Explore plugins…**, backed by the canonical registry. Installable entries are downloaded over HTTPS and verified against registry SHA-256/size metadata before the existing provider/extension installer sees them.
 
 See [Publish a community plugin](../tutorials/ADD_PLUGIN_TO_REGISTRY.md).
+
+
+## Registry tooling
+
+```bash
+melodex-registry validate registry/registry.json
+melodex-registry summary registry/registry.json
+melodex-registry verify-packages registry/registry.json --packages registry/packages
+```
+
+See [Registry governance](17_REGISTRY_GOVERNANCE.md).

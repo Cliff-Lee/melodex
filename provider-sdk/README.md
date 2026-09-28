@@ -7,8 +7,7 @@ A source-neutral provider protocol and developer SDK for **Melodex**.
 
 ## Status
 
-**SDK v0.3.0 / MPP 1.0 preview.** v0.3 keeps MPP provider development intact and
-adds tooling for the experimental v0.1 capability-extension ecosystem.
+**SDK v0.4.0 / MPP 1.0 preview.** v0.4 adds registry validation and package-integrity tooling on top of the provider and capability-extension SDK.
 
 Melodex now has two package types:
 
@@ -36,6 +35,14 @@ melodex-extension init my-artwork --capability artwork
 melodex-extension validate my-artwork
 melodex-extension doctor my-artwork
 melodex-extension pack my-artwork
+```
+
+Registry maintenance:
+
+```bash
+melodex-registry validate registry/registry.json
+melodex-registry summary registry/registry.json
+melodex-registry verify-packages registry/registry.json --packages registry/packages
 ```
 
 ## Clean core, messy edge
@@ -87,6 +94,8 @@ Complex HTML parsers can be vendored per provider.
 - [Experimental capability contracts](spec/extensions/v0.1/README.md)
 - [Capability Broker](../docs/developers/16_CAPABILITY_BROKER.md)
 - [Build an enrichment plugin](../docs/tutorials/BUILD_AN_ENRICHMENT_PLUGIN.md)
+- [Plugin Directory](../docs/PLUGIN_DIRECTORY.md)
+- [Registry governance](../docs/developers/17_REGISTRY_GOVERNANCE.md)
 
 ## Source neutrality
 

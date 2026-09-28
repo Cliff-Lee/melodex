@@ -16,6 +16,14 @@ Know a good metadata, identity or artwork source? Build exactly that capability.
 
 Start with [Build an enrichment plugin](tutorials/BUILD_AN_ENRICHMENT_PLUGIN.md).
 
+### Publish to the Plugin Directory
+
+Package your provider or capability extension, host the release in your own repository, and propose a registry entry.
+
+Melodex verifies package SHA-256 before installation.
+
+Start with [Publish a community plugin](tutorials/ADD_PLUGIN_TO_REGISTRY.md).
+
 ### Build on the API
 
 Create a CLI controller, phone remote, Stream Deck integration, home-automation bridge, generated client or accessibility interface.
@@ -77,4 +85,4 @@ Never post API keys, passwords, cookies, Melodex Bridge tokens, MCP tokens or pr
 
 Small PRs are welcome. Explain what changed, why it is useful, how it was tested, documentation impact, and source-policy implications when relevant.
 
-See [CONTRIBUTING.md](../CONTRIBUTING.md).
+See [CONTRIBUTING.md](../CONTRIBUTING.md), [Plugin Directory](PLUGIN_DIRECTORY.md), and [Registry governance](developers/17_REGISTRY_GOVERNANCE.md).

@@ -37,6 +37,8 @@ Use `N/A` when this does not apply.
 - [ ] Playback permission is not assumed to mean download permission.
 - [ ] Relevant tests and documentation have been updated.
 - [ ] External metadata/artwork provenance is preserved where relevant.
+- [ ] Registry package URL, SHA-256 and byte size match the published package where applicable.
+- [ ] Registry permissions and compatibility metadata are accurate where applicable.
 
 ## Screenshots / notes
 

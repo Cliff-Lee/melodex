@@ -8,6 +8,7 @@ from .provider import MusicProvider, ProviderInstaller
 from .providers import JamendoProvider, LocalFilesProvider, UserStreamsProvider
 from .resolver import UniversalResolver
 from .capabilities import CapabilityBroker, ExtensionInfo
+from .plugin_registry import PluginRegistryClient, RegistryResult
 
 
 class ProviderManager:
@@ -26,6 +27,7 @@ class ProviderManager:
             self.providers[provider.info.id] = provider
         self.resolver = UniversalResolver(self)
         self.capabilities = CapabilityBroker(self.data_dir)
+        self.registry = PluginRegistryClient(self.data_dir)
 
     def _load_settings(self) -> dict[str, Any]:
         try:
@@ -172,6 +174,39 @@ class ProviderManager:
 
     def install_extension(self, path: Path) -> ExtensionInfo:
         return self.capabilities.install_package(path)
+
+    def plugin_registry(self, force: bool = False) -> RegistryResult:
+        return self.registry.fetch(force=force)
+
+    def download_registry_entry(self, entry: dict[str, Any]) -> Path:
+        return self.registry.download_package(dict(entry or {}))
+
+    def install_downloaded_registry_entry(
+        self, entry: dict[str, Any], package: Path
+    ) -> dict[str, Any]:
+        entry = dict(entry or {})
+        fmt = str((entry.get("distribution") or {}).get("format") or "")
+        if fmt == "mdxprovider":
+            provider = self.install_package(Path(package))
+            return {
+                "id": provider.info.id,
+                "name": provider.info.name,
+                "kind": "provider",
+                "package": str(package),
+            }
+        if fmt == "mdxplugin":
+            info = self.install_extension(Path(package))
+            return {
+                "id": info.id,
+                "name": info.name,
+                "kind": "enrichment",
+                "package": str(package),
+            }
+        raise RuntimeError(f"Unsupported registry package format: {fmt}")
+
+    def install_registry_entry(self, entry: dict[str, Any]) -> dict[str, Any]:
+        package = self.download_registry_entry(entry)
+        return self.install_downloaded_registry_entry(entry, package)
 
     def remove_extension(self, extension_id: str) -> bool:
         return self.capabilities.remove(extension_id)
