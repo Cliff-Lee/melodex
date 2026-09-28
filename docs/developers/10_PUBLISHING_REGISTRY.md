@@ -40,7 +40,7 @@ deprecated
 blocked
 ```
 
-`reviewed` means the extension passed Melodex technical/source-policy checks. It does not mean Melodex guarantees the upstream service or every item it contains.
+`reviewed` means the registry entry passed the project's current technical/source-policy review. It does not mean every line of plugin code was audited or that Melodex guarantees the upstream service or every item it contains.
 
 ## Useful registry metadata
 
@@ -81,7 +81,7 @@ AI / automation
   ...
 ```
 
-The desktop Sources page now includes **Explore plugins…**, backed by the canonical registry. Installable entries are downloaded over HTTPS and verified against registry SHA-256/size metadata before the existing provider/extension installer sees them.
+The desktop Sources page now includes **Explore plugins…**, backed by the canonical registry. Installable entries are downloaded over HTTPS, checked against registry byte-size/SHA-256 metadata, and checked for package ID/version agreement before the install is recorded as registry-verified.
 
 See [Publish a community plugin](../tutorials/ADD_PLUGIN_TO_REGISTRY.md).
 
