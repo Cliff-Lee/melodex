@@ -86,34 +86,20 @@ git commit -m "release: v0.3.0"
 git push origin main
 ```
 
-Wait for the `main` checks/builds to finish successfully.
+When a strict release version such as `0.3.0` reaches `main`, the **Release** workflow:
 
-## 5. Tag the exact release commit
+1. runs the release checks and test suites again;
+2. verifies the release tag name against all application-version surfaces;
+3. creates or verifies the exact `v0.3.0` tag at that commit;
+4. creates the GitHub Release and uploads the source archive;
+5. dispatches desktop and Android workflows against that exact commit;
+6. attaches their assets to the same GitHub Release.
 
-```bash
-git tag v0.3.0
-git push origin v0.3.0
-```
+Ordinary development versions such as `0.3.1.dev0` do **not** create a release.
 
-The tag-triggered workflows verify:
+A manually pushed `v*` tag remains a fallback path, and tag-triggered workflows still validate tag/version agreement before packaging.
 
-```text
-tag
-==
-VERSION
-==
-desktop package version
-==
-Python app version
-==
-Windows installer version
-==
-Android versionName
-```
-
-before release packaging proceeds.
-
-## 6. Expected release assets
+## 5. Expected release assets
 
 The current workflows produce:
 
@@ -127,7 +113,7 @@ The current workflows produce:
 
 Code signing/notarisation credentials are optional repository secrets. A preview release may therefore contain unsigned artifacts; platform installation docs must describe the actual signing situation.
 
-## 7. Return `main` to development mode
+## 6. Return `main` to development mode
 
 After the release, choose the next development target.
 
