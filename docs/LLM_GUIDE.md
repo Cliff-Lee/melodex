@@ -29,7 +29,7 @@ The current GUI context can include the current track, up to 12 upcoming queue i
 
 The current GUI does not persist/send prior Ask Melodex chat history between requests.
 
-Provider passwords, playback cookies, Bridge/MCP tokens and local filesystem paths are not intentionally inserted into model context.
+Track dictionaries are reduced through a positive allowlist before model submission. Absolute local paths, provider-local track IDs, playback URLs, request headers, cookies, refresh tokens, Bridge/MCP tokens and API keys are excluded from track context.
 
 **Current credential-storage limitation:** an LLM API key entered in the GUI is stored in Melodex's local SQLite preferences database, not an OS credential vault. See [Privacy](PRIVACY.md).
 
