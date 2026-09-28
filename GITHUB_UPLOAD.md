@@ -1,57 +1,14 @@
-# Publish Melodex to GitHub
+# Historical GitHub Publication Notes
 
-The intended public repository is:
+This file records the original repository-publication workflow.
 
-`https://github.com/Cliff-Lee/melodex`
+The Melodex repository is already public, so these are **not** the current release instructions.
 
-Before publishing, run:
+For current releases use:
 
-```bash
-python3 scripts/release_check.py
-```
+- [Release process](docs/RELEASING.md)
+- [Releases, `main`, and version numbers](docs/RELEASES_AND_MAIN.md)
 
-## Fastest method — GitHub CLI
+Before any public release, current CI checks documentation, ecosystem consistency, application-version consistency and release safety.
 
-Install/authenticate GitHub CLI once, then from the repository root run:
-
-```bash
-./scripts/publish_github.sh
-```
-
-The script will:
-
-1. run the public-release audit;
-2. initialise Git if necessary;
-3. create the initial commit;
-4. create `Cliff-Lee/melodex` as a public GitHub repository if it does not already exist;
-5. push `main`.
-
-To publish under a different account/name:
-
-```bash
-./scripts/publish_github.sh YOUR-ACCOUNT YOUR-REPOSITORY
-```
-
-## Manual Git method
-
-Create an empty public repository named `melodex` on GitHub, then:
-
-```bash
-git init
-git add .
-git commit -m "Initial public Melodex release"
-git branch -M main
-git remote add origin https://github.com/Cliff-Lee/melodex.git
-git push -u origin main
-```
-
-## First downloadable release
-
-After GitHub Actions passes:
-
-```bash
-git tag v0.1.0
-git push origin v0.1.0
-```
-
-The release workflows build the supported platform artifacts defined in `.github/workflows/`.
+The original first-release instructions used `v0.1.0`; keep that only as historical context, not as a template for future releases.
