@@ -4,13 +4,15 @@ This is the fastest way to understand Melodex.
 
 ## 1. Add your music
 
-Open **My music**.
+Open **Sources** and choose **Add local folder…**.
+
+Select a folder containing music you are authorised to play. Melodex indexes the files in place; it does not need to move your originals.
+
+Then open **My music**.
 
 ![Empty My Music screen](images/my-music-empty.png)
 
-Choose **Add folder…** and select a folder containing music you are authorised to play.
-
-Melodex indexes the files in place. It does not need to move your original music.
+**My music** also has an **Add folder…** shortcut to the same folder picker. The Sources route is used throughout the documentation because it is also where online sources, streams and plugins are managed.
 
 ## 2. Browse your library
 
@@ -25,11 +27,11 @@ You can use Melodex as a normal player: select a track, play it, add things to t
 The interesting part starts when you let Melodex help shape the session.
 
 <a id="play-for-me"></a>
-## 3. Play for Me
+## 3. Play for me
 
-![Play for Me](images/play-for-me.png)
+![Play for me](images/play-for-me.png)
 
-**Play for Me** asks three simple questions:
+**Play for me** asks three simple questions:
 
 1. What kind of session do you want?
 2. How long should it be?
@@ -85,18 +87,22 @@ A future version of this tour will show the same queue **before and after Flow**
 
 Sometimes the thing you want to remember is not a whole song.
 
-Use **Save Moment** to remember an exact playback position: a bass entrance, lyric, solo, breakdown or transition.
+Press **•••** in the player bar and use **Save a moment** to remember an exact playback position: a bass entrance, lyric, solo, breakdown or transition.
 
 ## 8. Music sources
 
 ![Music Sources](images/sources.png)
 
-The public version exposes a source-neutral system:
+The **Sources** page is the single place to manage where music and enrichment come from.
 
-- **This computer** — your local files.
-- **Jamendo** — the public reference provider.
-- **Install `.mdxprovider`** — compatible desktop providers.
-- **Provider Bridge** — authenticated access for other devices such as Android.
+Its normal controls include:
+
+- **Add local folder…** — add music from this computer;
+- **Jamendo settings…** — configure the built-in reference provider;
+- **User Streams…** — add direct streams or stream playlists;
+- **Explore plugins…** — browse the Plugin Directory.
+
+Turn on **Show power tools** only when you need manual `.mdxprovider` / `.mdxplugin` installation, Provider Bridge, source priority or other advanced controls.
 
 Melodex's queue, taste and Flow systems sit above those sources.
 
