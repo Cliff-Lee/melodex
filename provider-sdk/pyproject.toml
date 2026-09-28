@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "melodex-provider-sdk"
-version = "0.3.0"
+version = "0.4.0"
 description = "Reference SDK and protocol files for the source-neutral Melodex Provider Protocol"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -37,6 +37,7 @@ dev = [
 [project.scripts]
 melodex-provider = "melodex_provider_sdk.cli:main"
 melodex-extension = "melodex_provider_sdk.extension_cli:main"
+melodex-registry = "melodex_provider_sdk.registry_cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

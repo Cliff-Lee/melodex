@@ -14,11 +14,19 @@ A real online example using the public Jamendo API. You supply your own develope
 
 Jamendo's API has its own terms and licence requirements; review them before publishing an application that uses it.
 
-## Third-party providers on desktop
+## Plugin Directory on desktop
 
-Use **Sources → Install `.mdxprovider`**. Melodex runs external providers out-of-process using MPP v1.
+Use **Sources → Explore plugins…** to browse the registry.
 
-Before installing a provider, review its publisher, permissions and source code when available.
+The directory shows publisher, status, licence, capabilities, permissions, compatibility, source repository and package verification data before installation.
+
+Installable packages are downloaded over HTTPS and must match the registry SHA-256 and byte size.
+
+## Manual third-party installation
+
+Power tools still allow direct installation of `.mdxprovider` and `.mdxplugin` files.
+
+Before installing any third-party code, review its publisher, permissions and source code when available.
 
 ## Android
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import platform
+import shutil
 import subprocess
 import sys
 import threading
@@ -199,32 +200,66 @@ class ProviderInstaller:
         self.providers_dir = Path(providers_dir)
         self.providers_dir.mkdir(parents=True, exist_ok=True)
 
+    @staticmethod
+    def _manifest_from_archive(zf: zipfile.ZipFile) -> tuple[str, dict[str, Any]]:
+        manifest_name = next(
+            (
+                name
+                for name in zf.namelist()
+                if name.rstrip("/").endswith("manifest.json")
+            ),
+            None,
+        )
+        if not manifest_name:
+            raise ValueError("Provider package has no manifest.json")
+        manifest = json.loads(zf.read(manifest_name))
+        if not isinstance(manifest, dict):
+            raise ValueError("manifest.json must contain a JSON object")
+        pid = str(manifest.get("id", "")).strip()
+        if not pid or ".." in pid or "/" in pid or "\\" in pid:
+            raise ValueError("Invalid provider id")
+        return manifest_name, manifest
+
     def install(self, package: Path) -> Path:
         package = Path(package)
         if package.suffix.lower() not in {".mdxprovider", ".zip"}:
             raise ValueError("Provider packages must use .mdxprovider")
         with zipfile.ZipFile(package) as zf:
-            names = zf.namelist()
-            manifest_name = next(
-                (name for name in names if name.rstrip("/").endswith("manifest.json")), None
-            )
-            if not manifest_name:
-                raise ValueError("Provider package has no manifest.json")
-            manifest = json.loads(zf.read(manifest_name))
-            pid = str(manifest.get("id", "")).strip()
-            if not pid or ".." in pid or "/" in pid or "\\" in pid:
-                raise ValueError("Invalid provider id")
+            manifest_name, manifest = self._manifest_from_archive(zf)
+            pid = str(manifest["id"])
             dest = self.providers_dir / pid
             if dest.exists():
-                import shutil
-
                 shutil.rmtree(dest)
             dest.mkdir(parents=True)
+
+            prefix = Path(manifest_name).parent
             for member in zf.infolist():
-                target = (dest / member.filename).resolve()
-                if not str(target).startswith(str(dest.resolve())):
+                source = Path(member.filename)
+                try:
+                    relative = (
+                        source.relative_to(prefix)
+                        if str(prefix) != "."
+                        else source
+                    )
+                except ValueError:
+                    continue
+                if not relative.parts or relative.name == "":
+                    continue
+                unix_mode = (member.external_attr >> 16) & 0o170000
+                if unix_mode == 0o120000:
+                    raise ValueError("Symlinks are not allowed in provider packages")
+                target = (dest / relative).resolve()
+                if not target.is_relative_to(dest.resolve()):
                     raise ValueError("Unsafe path in provider package")
-                zf.extract(member, dest)
+                if member.is_dir():
+                    target.mkdir(parents=True, exist_ok=True)
+                    continue
+                target.parent.mkdir(parents=True, exist_ok=True)
+                with zf.open(member) as source_file, target.open("wb") as output:
+                    shutil.copyfileobj(source_file, output)
+
+            if not (dest / "manifest.json").is_file():
+                raise ValueError("Provider package did not install manifest.json")
         return dest
 
     def load_installed(self) -> list[ExternalProvider]:

@@ -26,6 +26,7 @@ from .bridge_server import ProviderBridge
 from .playlist_io import load_playlist, save_playlist
 from .metadata import RichMetadataService
 from .rich_now_playing import RichNowPlayingWidget
+from .plugin_directory import PluginDirectoryDialog
 
 
 class WorkerSignals(QObject):
@@ -219,7 +220,8 @@ class MainWindow(QMainWindow):
         local=QPushButton("Add local folder…"); local.clicked.connect(self._choose_music_folder)
         jam=QPushButton("Jamendo settings…"); jam.clicked.connect(self._jamendo_settings)
         streams=QPushButton("User Streams…"); streams.clicked.connect(self._user_streams_dialog)
-        row.addWidget(local); row.addWidget(jam); row.addWidget(streams)
+        directory=QPushButton("Explore plugins…"); directory.clicked.connect(self._plugin_directory)
+        row.addWidget(local); row.addWidget(jam); row.addWidget(streams); row.addWidget(directory)
         row.addStretch(1); l.addLayout(row)
 
         self.source_power_panel = QWidget()
@@ -425,6 +427,14 @@ class MainWindow(QMainWindow):
         value,ok=QInputDialog.getText(self,"Jamendo reference provider","Your Jamendo developer client ID:",text=str(self.providers.settings.get("jamendo_client_id","")))
         if ok:
             self.providers.set_jamendo_client_id(value.strip()); self.statusBar().showMessage("Jamendo source updated",3000)
+
+    def _plugin_directory(self):
+        dialog=PluginDirectoryDialog(
+            self.providers,
+            on_installed=self._refresh_sources,
+            parent=self,
+        )
+        dialog.exec()
 
     def _install_provider(self):
         path,_=QFileDialog.getOpenFileName(self,"Install provider",filter="Melodex Provider (*.mdxprovider *.zip)")

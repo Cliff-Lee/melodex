@@ -19,10 +19,16 @@ body:
     validations:
       required: true
   - type: input
+    id: repository
+    attributes:
+      label: Extension repository
+      description: Link to the public source repository if it already exists.
+      placeholder: https://github.com/example/example-plugin
+  - type: input
     id: source
     attributes:
-      label: Source / service
-      description: Name the upstream API, service, archive or system.
+      label: Upstream source / service
+      description: Name the API, service, archive or system the extension integrates.
     validations:
       required: true
   - type: textarea
@@ -36,9 +42,14 @@ body:
     id: access
     attributes:
       label: API / access method
-      description: Link or describe the documented access method if known.
+      description: Link or describe the documented access method, authentication and rate limit if known.
     validations:
       required: true
+  - type: textarea
+    id: permissions
+    attributes:
+      label: Expected permissions
+      description: Network hosts, local file access, browser authentication, offline downloads, or other access.
   - type: textarea
     id: rights
     attributes:
@@ -46,3 +57,8 @@ body:
       description: What is known about API terms, media/data rights, attribution, caching/download and commercial restrictions?
     validations:
       required: true
+  - type: textarea
+    id: package
+    attributes:
+      label: Package / registry information
+      description: If ready, include the .mdxprovider/.mdxplugin release URL, version, SHA-256 and byte size.

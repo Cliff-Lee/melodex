@@ -38,6 +38,7 @@ A playback source does not need to become a metadata database. An artwork plugin
 | Control Melodex from another app | [REST/OpenAPI tutorial](docs/tutorials/CONTROL_MELODEX_WITH_REST.md) |
 | Connect OpenWebUI or another MCP client | [MCP tutorial](docs/tutorials/CONNECT_OPENWEBUI_MCP.md) |
 | Use Melodex from an OpenAI application | [OpenAI function tutorial](docs/tutorials/USE_OPENAI_FUNCTIONS.md) |
+| Browse/install community extensions | [Plugin Directory](docs/PLUGIN_DIRECTORY.md) |
 | Publish a community plugin | [Registry tutorial](docs/tutorials/ADD_PLUGIN_TO_REGISTRY.md) |
 | Contribute code, docs, testing or ideas | [Community guide](docs/COMMUNITY.md) |
 
@@ -77,7 +78,7 @@ Start with [Build a provider](docs/tutorials/BUILD_A_PROVIDER.md) or read the [P
 
 ### 2. Capability extensions
 
-Melodex is extending beyond monolithic source plugins. Experimental contracts let small extensions contribute:
+Melodex now has a runnable **Capability Broker** for small enrichment extensions. The v0.1 contracts are still experimental, but `.mdxplugin` packages can be installed and composed today:
 
 ```text
 identity.resolve
@@ -88,7 +89,7 @@ lyrics.lookup
 
 The aim is composition: playback from one source, canonical identity from another, artwork from another, and lyrics from another — while retaining provenance.
 
-Start with [Build an enrichment plugin](docs/tutorials/BUILD_AN_ENRICHMENT_PLUGIN.md).
+Install extensions through **Sources → Explore plugins…**, or start with [Build an enrichment plugin](docs/tutorials/BUILD_AN_ENRICHMENT_PLUGIN.md).
 
 ### 3. REST + OpenAPI
 
@@ -141,7 +142,7 @@ The ecosystem is being developed with small examples built around documented, le
 | MusicBrainz | canonical identity + metadata provenance |
 | Wikimedia Commons | artwork + per-file licence/attribution |
 
-The examples are designed to be copied, studied and changed.
+The examples are designed to be copied, studied and changed. All four are also published as hash-verified packages in the built-in [Plugin Directory](docs/PLUGIN_DIRECTORY.md).
 
 ## Community philosophy
 

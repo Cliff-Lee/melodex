@@ -15,7 +15,9 @@ The ecosystem goal is simple:
 | Understand capabilities | [Capability reference](05_CAPABILITY_REFERENCE.md) |
 | Understand how extensions cooperate | [Composition and provenance](06_COMPOSITION_AND_PROVENANCE.md) |
 | Test an extension | [Testing](08_TESTING.md) |
+| Browse/install extensions | [Plugin Directory](../PLUGIN_DIRECTORY.md) |
 | Publish/discover extensions | [Registry](10_PUBLISHING_REGISTRY.md) |
+| Understand registry review/governance | [Registry governance](17_REGISTRY_GOVERNANCE.md) |
 | Check source/API suitability | [Source and rights policy](11_SOURCE_AND_RIGHTS_POLICY.md) |
 | Review a community plugin | [Review checklist](12_PLUGIN_REVIEW_CHECKLIST.md) |
 | Study reference extensions | [Example plugins](13_EXAMPLE_PLUGINS.md) |
@@ -45,7 +47,7 @@ auth
 
 Desktop providers communicate through JSON-RPC over stdin/stdout.
 
-### 3. Capability extension — experimental
+### 3. Capability extension — experimental contracts, runnable broker
 
 Experimental contracts:
 

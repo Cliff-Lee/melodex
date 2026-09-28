@@ -21,6 +21,7 @@
 - [Develop with Melodex](DEVELOPERS.md)
 - [Developer ecosystem](developers/README.md)
 - [Community](COMMUNITY.md)
+- [Plugin Directory](PLUGIN_DIRECTORY.md)
 - [Provider SDK](../provider-sdk/README.md)
 - [API platform](api/README.md)
 
@@ -75,6 +76,7 @@
 - [Permissions and security](developers/07_PERMISSIONS_SECURITY.md)
 - [Testing plugins](developers/08_TESTING.md)
 - [Publishing and registry](developers/10_PUBLISHING_REGISTRY.md)
+- [Registry governance](developers/17_REGISTRY_GOVERNANCE.md)
 - [Plugin review checklist](developers/12_PLUGIN_REVIEW_CHECKLIST.md)
 - [Glossary](developers/15_GLOSSARY.md)
 

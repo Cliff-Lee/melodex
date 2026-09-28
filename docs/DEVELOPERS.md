@@ -11,6 +11,7 @@ You do not need to understand the entire player to build something useful.
 | A mobile/desktop/web controller | **REST + OpenAPI** | [Control Melodex with REST](tutorials/CONTROL_MELODEX_WITH_REST.md) |
 | An OpenWebUI / AI integration | **MCP** | [Connect OpenWebUI](tutorials/CONNECT_OPENWEBUI_MCP.md) |
 | An OpenAI tool integration | **Function calling** | [Use OpenAI functions](tutorials/USE_OPENAI_FUNCTIONS.md) |
+| Browse/install extensions | **Plugin Directory** | [Plugin Directory](PLUGIN_DIRECTORY.md) |
 | A community-distributed extension | **Registry** | [Publish a plugin](tutorials/ADD_PLUGIN_TO_REGISTRY.md) |
 
 ## Architecture at a glance
@@ -56,4 +57,6 @@ You do not need to understand the entire player to build something useful.
 - [MCP control](MCP_CONTROL.md)
 - [Universal resolver](UNIVERSAL_RESOLVER.md)
 - [Source and rights policy](developers/11_SOURCE_AND_RIGHTS_POLICY.md)
+- [Plugin Directory](PLUGIN_DIRECTORY.md)
+- [Registry governance](developers/17_REGISTRY_GOVERNANCE.md)
 - [Community](COMMUNITY.md)
