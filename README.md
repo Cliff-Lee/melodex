@@ -11,7 +11,7 @@
   <a href="docs/START_HERE.md">Start here</a> ·
   <a href="docs/DEVELOPERS.md">Developers</a> ·
   <a href="docs/COMMUNITY.md">Community</a> ·
-  <a href="docs/ALL_DOCUMENTATION.md">Documentation</a>
+  <a href="docs/README.md">Documentation</a>
 </p>
 
 # Melodex
