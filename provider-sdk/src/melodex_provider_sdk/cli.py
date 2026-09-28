@@ -107,7 +107,7 @@ def respond(request):
             "seekable": True,
             "cache_policy": "none",
         }
-    raise RuntimeError(f"Unsupported method: {method}; params={params}; configured={bool(config)}")
+    raise RuntimeError(f"Unsupported method: {method}; configured={bool(config)}")
 
 
 for line in sys.stdin:
