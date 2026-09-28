@@ -13,6 +13,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from .process_env import scrubbed_child_env
+
 
 @dataclass(slots=True)
 class ProviderInfo:
@@ -90,13 +92,14 @@ class ExternalProvider(MusicProvider):
     def _ensure(self) -> subprocess.Popen[str]:
         if self._proc and self._proc.poll() is None:
             return self._proc
-        env = {**os.environ, "MELODEX_PROVIDER_ID": self.info.id}
+        env = scrubbed_child_env(
+            identifier_key="MELODEX_PROVIDER_ID",
+            identifier=self.info.id,
+        )
         paths = [str(self.folder)]
         vendor = self.folder / "vendor"
         if vendor.is_dir():
             paths.insert(0, str(vendor))
-        if env.get("PYTHONPATH"):
-            paths.append(env["PYTHONPATH"])
         env["PYTHONPATH"] = os.pathsep.join(paths)
         self._proc = subprocess.Popen(
             self._command(),
