@@ -66,7 +66,7 @@ Also run your fixture/unit tests.
 Answer:
 
 - Which upstream API/source is used?
-- Is it documented/official?
+- Is the access method documented by the upstream service, or otherwise explicitly permitted?
 - What authentication is required?
 - What rate limits apply?
 - What may be cached?
