@@ -1,0 +1,11 @@
+{
+  "schema_version": "0.1",
+  "extension_id": "org.melodex.example.wikimedia-commons",
+  "contracts": [
+    {
+      "capability": "artwork",
+      "contract_version": "0.1",
+      "method": "artwork.lookup"
+    }
+  ]
+}

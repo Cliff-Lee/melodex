@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://melodex.example/schema/extensions/v0.1/capabilities.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "extension_id",
+    "contracts"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "0.1"
+    },
+    "extension_id": {
+      "type": "string",
+      "minLength": 3
+    },
+    "contracts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "capability",
+          "contract_version",
+          "method"
+        ],
+        "properties": {
+          "capability": {
+            "type": "string",
+            "enum": [
+              "identity",
+              "metadata",
+              "artwork",
+              "lyrics"
+            ]
+          },
+          "contract_version": {
+            "const": "0.1"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "identity.resolve",
+              "metadata.enrich",
+              "artwork.lookup",
+              "lyrics.lookup"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

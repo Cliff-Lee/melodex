@@ -1,0 +1,22 @@
+name: Documentation improvement
+description: Report unclear, missing or incorrect documentation
+title: "[Docs]: "
+labels: ["documentation"]
+body:
+  - type: input
+    id: page
+    attributes:
+      label: Page / topic
+      placeholder: docs/tutorials/BUILD_A_PROVIDER.md
+    validations:
+      required: true
+  - type: textarea
+    id: issue
+    attributes:
+      label: What is unclear or missing?
+    validations:
+      required: true
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: Suggested improvement

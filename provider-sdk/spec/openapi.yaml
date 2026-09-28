@@ -1,10 +1,11 @@
 openapi: 3.1.0
 info:
   title: Melodex Provider Protocol
-  version: 0.1.0
+  version: 0.2.0
   description: >-
     Source-neutral HTTP mapping for the Melodex Provider Protocol (MPP).
-    This preview specification may change before a 1.0 compatibility guarantee.
+    SDK v0.2 adds optional refreshable playback resources while retaining
+    compatibility with v0.1 providers.
 servers:
   - url: https://provider.example.test
 security:
@@ -120,6 +121,26 @@ paths:
         '400': {$ref: '#/components/responses/Error'}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '404': {$ref: '#/components/responses/Error'}
+  /v1/playback/refresh:
+    post:
+      operationId: refreshPlayback
+      description: Optional refresh for expired or nearly-expired resources.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlaybackRefreshRequest'
+      responses:
+        '200':
+          description: Refreshed playable resource
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaybackResource'
+        '400': {$ref: '#/components/responses/Error'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/Error'}
 components:
   securitySchemes:
     BearerAuth:
@@ -222,7 +243,14 @@ components:
       required: [provider_track_id, purpose]
       properties:
         provider_track_id: {type: string, minLength: 1}
+        track_id: {type: string}
         purpose: {type: string, enum: [stream, prefetch, offline]}
+    PlaybackRefreshRequest:
+      allOf:
+        - {$ref: '#/components/schemas/PlaybackRequest'}
+        - type: object
+          properties:
+            refresh_token: {type: [string, 'null']}
     PlaybackResource:
       type: object
       required: [kind, url, headers, seekable, cache_policy]
@@ -232,10 +260,17 @@ components:
         headers:
           type: object
           additionalProperties: {type: string}
+        cookies:
+          type: object
+          additionalProperties: {type: string}
         mime_type: {type: [string, 'null']}
         expires_at: {type: [string, 'null'], format: date-time}
         seekable: {type: boolean}
-        cache_policy: {type: string, enum: [none, session, temporary, offline_allowed]}
+        cache_policy:
+          type: string
+          enum: [none, session, temporary, offline_allowed]
+        refresh_token: {type: [string, 'null']}
+        request_timeout_seconds: {type: number, minimum: 1, maximum: 120}
     ErrorEnvelope:
       type: object
       required: [error]
@@ -246,6 +281,14 @@ components:
           properties:
             code:
               type: string
-              enum: [AUTH_REQUIRED, NOT_FOUND, RATE_LIMITED, TEMPORARY_FAILURE, UNSUPPORTED, PERMISSION_DENIED, PLAYBACK_EXPIRED, INVALID_REQUEST]
+              enum:
+                - AUTH_REQUIRED
+                - NOT_FOUND
+                - RATE_LIMITED
+                - TEMPORARY_FAILURE
+                - UNSUPPORTED
+                - PERMISSION_DENIED
+                - PLAYBACK_EXPIRED
+                - INVALID_REQUEST
             message: {type: string}
             retryable: {type: boolean}

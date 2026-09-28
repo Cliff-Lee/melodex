@@ -1,19 +1,19 @@
 # MPP local-process mapping (JSON-RPC over stdio)
 
-Desktop `.mdxprovider` bundles may run as child processes. The semantic operations are the same as the HTTP/OpenAPI mapping, but messages are carried as newline-delimited JSON-RPC 2.0 on standard input/output.
+Desktop `.mdxprovider` bundles may run as child processes. Semantic operations
+match the HTTP/OpenAPI mapping, using newline-delimited JSON-RPC 2.0.
 
 ## Transport rules
 
-- stdin: requests from Melodex to the provider;
-- stdout: protocol responses only;
-- stderr: human-readable provider logs;
+- stdin carries requests from Melodex;
+- stdout contains protocol responses only;
+- stderr is for human-readable logs;
 - UTF-8, one complete JSON object per line;
-- providers must not write banners or debug text to stdout;
-- Melodex may terminate a provider after a request timeout or malformed protocol output.
+- providers must not write banners or debug text to stdout.
 
 ## Method mapping
 
-| MPP semantic method | JSON-RPC method | HTTP equivalent |
+| Semantic method | JSON-RPC method | HTTP equivalent |
 |---|---|---|
 | provider.info | `provider.info` | `GET /v1/provider` |
 | provider.health | `provider.health` | `GET /v1/health` |
@@ -22,25 +22,11 @@ Desktop `.mdxprovider` bundles may run as child processes. The semantic operatio
 | catalog.get_album | `catalog.get_album` | `GET /v1/albums/{id}` |
 | catalog.get_artist | `catalog.get_artist` | `GET /v1/artists/{id}` |
 | playback.resolve | `playback.resolve` | `POST /v1/playback/resolve` |
+| playback.refresh | `playback.refresh` | `POST /v1/playback/refresh` |
 
-## Example
+`playback.refresh` is optional in SDK v0.2. If it is absent, Melodex falls back
+to a fresh `playback.resolve` call. This keeps v0.1 providers compatible.
 
-Request:
-
-```json
-{"jsonrpc":"2.0","id":1,"method":"catalog.search","params":{"query":"example","types":["track"],"limit":25,"cursor":null}}
-```
-
-Response:
-
-```json
-{"jsonrpc":"2.0","id":1,"result":{"items":[],"next_cursor":null}}
-```
-
-Error:
-
-```json
-{"jsonrpc":"2.0","id":1,"error":{"code":-32001,"message":"Sign-in required","data":{"mpp_code":"AUTH_REQUIRED","retryable":false}}}
-```
-
-The JSON-RPC transport itself does not grant additional permissions. The provider manifest and Melodex trust model remain authoritative.
+A playback resource may include `headers`, `cookies`, `expires_at`,
+`refresh_token`, `seekable`, `mime_type`, `cache_policy`, and
+`request_timeout_seconds`.

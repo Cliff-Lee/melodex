@@ -1,0 +1,456 @@
+from __future__ import annotations
+
+import html
+import threading
+from pathlib import Path
+from typing import Any, Callable
+
+from PySide6.QtCore import QObject, Qt, Signal
+from PySide6.QtGui import QColor, QImage, QPixmap
+from PySide6.QtWidgets import (
+    QHBoxLayout, QLabel, QTabWidget, QTextBrowser, QVBoxLayout, QWidget
+)
+
+from .metadata import RichMetadataService, track_key
+
+
+class _MetadataSignals(QObject):
+    stage = Signal(str, str, object)
+
+
+def _escape(value: Any) -> str:
+    return html.escape(str(value or ""))
+
+
+class RichNowPlayingWidget(QWidget):
+    """Progressively enriched Now Playing view.
+
+    Identity is deliberately emitted first. Artwork, artist data, credits,
+    discography and album thumbnails are independent follow-up stages so slow
+    network enrichment never leaves the whole page looking unidentified.
+    """
+
+    def __init__(self, metadata: RichMetadataService, parent=None):
+        super().__init__(parent)
+        self.metadata = metadata
+        self.track: dict[str, Any] = {}
+        self.bundle: dict[str, Any] = {}
+        self.synced: list[dict[str, Any]] = []
+        self._lyric_index = -2
+        self._identity: dict[str, Any] = {}
+        self._pending: set[str] = set()
+        self._signals = _MetadataSignals(self)
+        self._signals.stage.connect(self._stage_loaded)
+        self._build()
+
+    def _build(self) -> None:
+        outer = QVBoxLayout(self); outer.setContentsMargins(0, 8, 0, 0); outer.setSpacing(16)
+        hero = QHBoxLayout(); hero.setSpacing(24); outer.addLayout(hero)
+        self.art = QLabel("♫"); self.art.setAlignment(Qt.AlignCenter); self.art.setFixedSize(350, 350)
+        self.art.setStyleSheet("background:#181b20;border:1px solid #303640;border-radius:18px;font-size:90px;color:#596270")
+        hero.addWidget(self.art, 0, Qt.AlignTop)
+        right = QVBoxLayout(); right.setSpacing(8); hero.addLayout(right, 1)
+        self.title = QLabel("Nothing playing"); self.title.setWordWrap(True); self.title.setStyleSheet("font-size:34px;font-weight:750")
+        self.artist = QLabel(""); self.artist.setWordWrap(True); self.artist.setStyleSheet("font-size:21px;color:#c8ccd2")
+        self.album = QLabel(""); self.album.setWordWrap(True); self.album.setStyleSheet("font-size:15px;color:#aab0ba")
+        self.facts = QLabel(""); self.facts.setWordWrap(True); self.facts.setStyleSheet("color:#8f96a1")
+        self.progress = QLabel(""); self.progress.setWordWrap(True); self.progress.setStyleSheet("color:#7eb4ff;font-size:12px")
+        self.links = QLabel(""); self.links.setOpenExternalLinks(True); self.links.setWordWrap(True)
+        self.artist_photo_thumb = QLabel(""); self.artist_photo_thumb.setAlignment(Qt.AlignCenter); self.artist_photo_thumb.setFixedSize(160, 160)
+        self.artist_photo_thumb.setStyleSheet("background:#15181d;border:1px solid #303640;border-radius:16px;color:#808894")
+        self.artist_photo_credit = QLabel(""); self.artist_photo_credit.setOpenExternalLinks(True); self.artist_photo_credit.setWordWrap(True)
+        self.artist_photo_credit.setMaximumWidth(330); self.artist_photo_credit.setStyleSheet("color:#8f96a1;font-size:10px")
+        right.addWidget(self.title); right.addWidget(self.artist); right.addWidget(self.album); right.addWidget(self.facts)
+        right.addWidget(self.progress); right.addWidget(self.links); right.addWidget(self.artist_photo_thumb, 0, Qt.AlignLeft); right.addWidget(self.artist_photo_credit); right.addStretch(1)
+        self.art_source = QLabel(""); self.art_source.setWordWrap(True); self.art_source.setStyleSheet("color:#777f8a;font-size:11px"); right.addWidget(self.art_source)
+
+        self.tabs = QTabWidget(); outer.addWidget(self.tabs, 1)
+        self.lyrics = QTextBrowser(); self.artist_info = QTextBrowser(); self.releases = QTextBrowser(); self.credits = QTextBrowser(); self.info = QTextBrowser()
+        for browser in (self.lyrics, self.artist_info, self.releases, self.credits, self.info):
+            browser.setOpenExternalLinks(True)
+        self.tabs.addTab(self.lyrics, "Lyrics")
+        self.tabs.addTab(self.artist_info, "Artist")
+        self.tabs.addTab(self.releases, "Releases")
+        self.tabs.addTab(self.credits, "Credits")
+        self.tabs.addTab(self.info, "Info")
+        self._empty_tabs()
+
+    def _empty_tabs(self) -> None:
+        self.lyrics.setHtml("<p style='color:#9097a2'>Checking local embedded lyrics, .lrc and .txt sidecars…</p>")
+        self.artist_info.setHtml("<p style='color:#9097a2'>Artist information will load after MusicBrainz identifies the track.</p>")
+        self.releases.setHtml("<p style='color:#9097a2'>Release history will load independently after the artist is identified.</p>")
+        self.credits.setHtml("<p style='color:#9097a2'>Recording/work credits will load independently after the track is identified.</p>")
+        self.info.setHtml("<p style='color:#9097a2'>Identifying this track with MusicBrainz…</p>")
+
+    # ---------------------------- staged loading
+    def set_track(self, track: dict[str, Any]) -> None:
+        self.track = dict(track or {})
+        request_track = dict(self.track)
+        self.bundle = {}
+        self.synced = []
+        self._lyric_index = -2
+        self._identity = {}
+        self._pending = {"identity"}
+        self.title.setText(str(self.track.get("title") or "Unknown track"))
+        self.artist.setText(str(self.track.get("artist") or "Unknown artist"))
+        self.album.setText(str(self.track.get("album") or ""))
+        provider = str(self.track.get("provider_id") or self.track.get("source") or "")
+        duration = float(self.track.get("duration") or 0)
+        duration_text = f"{int(duration)//60}:{int(duration)%60:02d}" if duration > 0 else ""
+        self.facts.setText(" · ".join(x for x in (provider, duration_text) if x))
+        self.progress.setText("Identifying with MusicBrainz…")
+        self.links.clear(); self.art_source.clear(); self.artist_photo_credit.clear(); self._set_art(""); self._set_artist_photo(""); self._empty_tabs()
+        key = track_key(request_track)
+        if not key:
+            self.progress.setText("Not enough metadata to identify this track")
+            return
+
+        def identify_work() -> None:
+            try:
+                payload = self.metadata.enrich_identity(request_track)
+            except Exception as exc:
+                payload = {"track_key": key, "track": request_track, "identity": {}, "lyrics": {}, "errors": [str(exc)]}
+            self._signals.stage.emit(key, "identity", payload)
+
+        threading.Thread(target=identify_work, daemon=True).start()
+
+    def _run_stage(self, key: str, name: str, fn: Callable[[], object]) -> None:
+        self._pending.add(name)
+
+        def work() -> None:
+            try:
+                payload = fn()
+            except Exception as exc:
+                payload = {"errors": [str(exc)]}
+            self._signals.stage.emit(key, name, payload)
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _stage_loaded(self, key: str, stage: str, payload: object) -> None:
+        if key != track_key(self.track) or not isinstance(payload, dict):
+            return
+        self._pending.discard(stage)
+        errors = [str(x) for x in list(payload.get("errors") or []) if x]
+        if errors:
+            self.bundle.setdefault("errors", []).extend(errors)
+
+        if stage == "identity":
+            self._apply_identity(payload)
+            identity = payload.get("identity") if isinstance(payload.get("identity"), dict) else {}
+            self._identity = dict(identity)
+            if not identity.get("recording_mbid"):
+                self.progress.setText("No confident MusicBrainz match — showing local metadata")
+                return
+            request_track = dict(self.track)
+            ident = dict(identity)
+            self._run_stage(key, "artwork", lambda: self.metadata.enrich_artwork(request_track, ident))
+            self._run_stage(key, "artist", lambda: self.metadata.enrich_artist(ident))
+            self._run_stage(key, "credits", lambda: self.metadata.enrich_credits(ident))
+            self._run_stage(key, "discography", lambda: self.metadata.enrich_discography(ident))
+            self._update_progress()
+            return
+
+        if stage == "artwork":
+            artwork = payload.get("artwork") if isinstance(payload.get("artwork"), dict) else {}
+            self.bundle["artwork"] = artwork
+            self._apply_artwork(artwork)
+
+        elif stage == "artist":
+            artist = payload.get("artist") if isinstance(payload.get("artist"), dict) else {}
+            self.bundle["artist"] = artist
+            self._apply_artist(artist)
+            if artist:
+                self._run_stage(key, "artist photo", lambda: self.metadata.enrich_artist_photo(artist))
+
+        elif stage == "artist photo":
+            photo = payload.get("artist_photo") if isinstance(payload.get("artist_photo"), dict) else {}
+            self.bundle["artist_photo"] = photo
+            self._set_artist_photo(str(photo.get("path") or ""))
+            self._set_artist_photo_credit(photo)
+            artist = self.bundle.get("artist") if isinstance(self.bundle.get("artist"), dict) else {}
+            self.artist_info.setHtml(self._artist_html(artist, photo))
+
+        elif stage == "credits":
+            credits = [x for x in list(payload.get("credits") or []) if isinstance(x, dict)]
+            self.bundle["credits"] = credits
+            self.credits.setHtml(self._credits_html(credits))
+
+        elif stage == "discography":
+            releases = [x for x in list(payload.get("discography") or []) if isinstance(x, dict)]
+            self.bundle["discography"] = releases
+            self.releases.setHtml(self._discography_html(releases))
+            if releases:
+                self._run_stage(key, "release covers", lambda: {"discography": self.metadata.hydrate_discography_covers(releases, 8), "errors": []})
+
+        elif stage == "release covers":
+            releases = [x for x in list(payload.get("discography") or []) if isinstance(x, dict)]
+            self.bundle["discography"] = releases
+            self.releases.setHtml(self._discography_html(releases))
+
+        self._refresh_info()
+        self._update_progress()
+
+    def _apply_identity(self, payload: dict[str, Any]) -> None:
+        identity = payload.get("identity") if isinstance(payload.get("identity"), dict) else {}
+        lyrics = payload.get("lyrics") if isinstance(payload.get("lyrics"), dict) else {}
+        self.bundle["identity"] = dict(identity)
+        self.bundle["lyrics"] = dict(lyrics)
+        if identity.get("title"):
+            self.title.setText(str(identity.get("title")))
+        if identity.get("artist"):
+            self.artist.setText(str(identity.get("artist")))
+        album = str(identity.get("album") or self.track.get("album") or "")
+        date = str(identity.get("date") or "")
+        self.album.setText(" · ".join(x for x in (album, date[:4] if date else "") if x))
+        self._apply_lyrics(lyrics)
+        self._apply_musicbrainz_links(identity)
+        self._refresh_info()
+
+    def _apply_lyrics(self, lyrics: dict[str, Any]) -> None:
+        self.synced = [dict(x) for x in list(lyrics.get("synced") or []) if isinstance(x, dict)]
+        lyric_text = str(lyrics.get("text") or "")
+        lyric_source = str(lyrics.get("source") or "")
+        if self.synced:
+            self._lyric_index = -2
+            self._render_synced(-1)
+        elif lyric_text:
+            self.lyrics.setHtml(f"<div style='font-size:18px;line-height:1.6'>{'<br>'.join(_escape(lyric_text).splitlines())}</div><p style='color:#777'>Source: {_escape(lyric_source)}</p>")
+        else:
+            self.lyrics.setHtml("<p style='color:#9097a2'>No local lyrics found. Add a .lrc or .txt file beside the audio file, or embed lyrics in the audio tags.</p>")
+
+    def _apply_musicbrainz_links(self, identity: dict[str, Any]) -> None:
+        links = []
+        if identity.get("recording_mbid"):
+            links.append(f'<a href="https://musicbrainz.org/recording/{_escape(identity.get("recording_mbid"))}">MusicBrainz recording</a>')
+        if identity.get("artist_mbid"):
+            links.append(f'<a href="https://musicbrainz.org/artist/{_escape(identity.get("artist_mbid"))}">artist</a>')
+        if identity.get("release_mbid"):
+            links.append(f'<a href="https://musicbrainz.org/release/{_escape(identity.get("release_mbid"))}">release</a>')
+        self.links.setText(" · ".join(links))
+
+    def _apply_artwork(self, artwork: dict[str, Any]) -> None:
+        self._set_art(str(artwork.get("path") or ""))
+        source = str(artwork.get("source") or "")
+        self.art_source.setText(("Artwork: " + source) if source else "")
+
+    def _apply_artist(self, artist: dict[str, Any]) -> None:
+        facts = []
+        if artist.get("type"):
+            facts.append(str(artist.get("type")))
+        place = str(artist.get("begin_area") or artist.get("area") or artist.get("country") or "")
+        if place:
+            facts.append(place)
+        genres = [str(x) for x in list(artist.get("genres") or []) if x]
+        if genres:
+            facts.append(" · ".join(genres[:4]))
+        if facts:
+            self.facts.setText("   |   ".join(facts))
+        self.artist_info.setHtml(self._artist_html(artist, self.bundle.get("artist_photo") if isinstance(self.bundle.get("artist_photo"), dict) else {}))
+
+    def _update_progress(self) -> None:
+        identity = self._identity
+        if not identity.get("recording_mbid"):
+            return
+        score = float(identity.get("score") or 0.0)
+        prefix = f"✓ MusicBrainz match {score:.0%}" if score else "✓ MusicBrainz match"
+        if not self._pending:
+            self.progress.setText(prefix + " · enrichment complete")
+            return
+        order = ["artwork", "artist", "artist photo", "credits", "discography", "release covers"]
+        names = [x for x in order if x in self._pending]
+        pretty = ", ".join(names[:3]) + ("…" if len(names) > 3 else "")
+        self.progress.setText(prefix + (f" · loading {pretty}" if pretty else ""))
+
+    def _refresh_info(self) -> None:
+        identity = self.bundle.get("identity") if isinstance(self.bundle.get("identity"), dict) else {}
+        artwork = self.bundle.get("artwork") if isinstance(self.bundle.get("artwork"), dict) else {}
+        photo = self.bundle.get("artist_photo") if isinstance(self.bundle.get("artist_photo"), dict) else {}
+        self.info.setHtml(self._info_html(identity, artwork, photo, self.bundle.get("errors") or []))
+
+    # ---------------------------- visuals / HTML
+    def _set_artist_photo_credit(self, photo: dict[str, Any]) -> None:
+        if not photo or not photo.get("path"):
+            self.artist_photo_credit.clear()
+            return
+        attribution = _escape(photo.get("attribution") or "Wikimedia Commons")
+        description_url = _escape(photo.get("description_url") or "")
+        license_name = _escape(photo.get("license_name") or "")
+        license_url = _escape(photo.get("license_url") or "")
+        source = f'<a href="{description_url}">Commons file</a>' if description_url else "Wikimedia Commons"
+        licence = f'<a href="{license_url}">{license_name}</a>' if license_url and license_name else license_name
+        suffix = f" · {licence}" if licence and licence.casefold() not in attribution.casefold() else ""
+        self.artist_photo_credit.setText(f"Photo: {attribution} · {source}{suffix}")
+
+    def _set_artist_photo(self, path: str) -> None:
+        if path and Path(path).exists():
+            pix = QPixmap(path)
+            if not pix.isNull():
+                self.artist_photo_thumb.setText("")
+                self.artist_photo_thumb.setPixmap(pix.scaled(self.artist_photo_thumb.size(), Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation))
+                return
+        self.artist_photo_thumb.setPixmap(QPixmap())
+        self.artist_photo_thumb.setText("artist photo")
+
+    def _set_art(self, path: str) -> None:
+        if path and Path(path).exists():
+            pix = QPixmap(path)
+            if not pix.isNull():
+                self.art.setText("")
+                self.art.setPixmap(pix.scaled(self.art.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
+                self._apply_accent(QImage(path))
+                return
+        self.art.setPixmap(QPixmap()); self.art.setText("♫")
+        self.setStyleSheet("")
+
+    def _apply_accent(self, image: QImage) -> None:
+        if image.isNull():
+            return
+        small = image.scaled(24, 24, Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
+        r = g = b = count = 0
+        for y in range(small.height()):
+            for x in range(small.width()):
+                c = QColor(small.pixel(x, y)); mx, mn = max(c.red(), c.green(), c.blue()), min(c.red(), c.green(), c.blue())
+                if mx < 28 or (mx - mn < 8 and mx > 220):
+                    continue
+                r += c.red(); g += c.green(); b += c.blue(); count += 1
+        if not count:
+            return
+        accent = QColor(r // count, g // count, b // count)
+        if accent.lightness() < 80:
+            accent = accent.lighter(155)
+        if accent.lightness() > 200:
+            accent = accent.darker(125)
+        dark = QColor(accent); dark = dark.darker(420)
+        self.title.setStyleSheet(f"font-size:34px;font-weight:750;color:{accent.name()}")
+        self.art.setStyleSheet(f"background:#181b20;border:2px solid {accent.name()};border-radius:18px")
+        self.setStyleSheet(f"RichNowPlayingWidget{{background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 {dark.name()},stop:0.48 #101114,stop:1 #101114);border-radius:14px}}")
+
+    def _artist_html(self, artist: dict[str, Any], photo: dict[str, Any] | None = None) -> str:
+        if not artist:
+            return "<p style='color:#9097a2'>No MusicBrainz artist information found.</p>"
+        parts = [f"<h2>{_escape(artist.get('name'))}</h2>"]
+        dis = str(artist.get("disambiguation") or "")
+        if dis:
+            parts.append(f"<p>{_escape(dis)}</p>")
+        details = []
+        if artist.get("type"):
+            details.append(str(artist.get("type")))
+        if artist.get("begin_area"):
+            details.append("From " + str(artist.get("begin_area")))
+        elif artist.get("area"):
+            details.append(str(artist.get("area")))
+        if artist.get("begin"):
+            details.append("Active from " + str(artist.get("begin")))
+        if details:
+            parts.append(f"<p>{_escape(' · '.join(details))}</p>")
+        genres = [str(x) for x in list(artist.get("genres") or []) if x]
+        if genres:
+            parts.append("<p><b>Genres / tags:</b> " + _escape(", ".join(genres)) + "</p>")
+        photo = photo or {}
+        if photo.get("path"):
+            uri = Path(str(photo.get("path"))).resolve().as_uri()
+            caption = _escape(photo.get("attribution") or photo.get("source") or "")
+            description_url = _escape(photo.get("description_url") or "")
+            license_name = _escape(photo.get("license_name") or "")
+            license_url = _escape(photo.get("license_url") or "")
+            parts.append(f'<p><img src="{uri}" width="220"></p>')
+            credit_bits = [caption] if caption else []
+            if description_url:
+                credit_bits.append(f'<a href="{description_url}">Wikimedia Commons file</a>')
+            if license_name:
+                credit_bits.append(f'<a href="{license_url}">{license_name}</a>' if license_url else license_name)
+            if credit_bits:
+                parts.append("<p style='color:#9097a2'>Photo: " + " · ".join(credit_bits) + "</p>")
+        members = [x for x in list(artist.get("members") or []) if isinstance(x, dict)]
+        if members:
+            parts.append("<h3>Members / membership</h3><ul>" + "".join(f"<li>{_escape(x.get('name'))} — {_escape(x.get('type'))}{' (former)' if x.get('ended') else ''}</li>" for x in members) + "</ul>")
+        related = [x for x in list(artist.get("related") or []) if isinstance(x, dict)]
+        if related:
+            parts.append("<h3>Related artists / projects</h3><ul>" + "".join(f"<li>{_escape(x.get('name'))} — {_escape(x.get('type'))}</li>" for x in related[:15]) + "</ul>")
+        links = [x for x in list(artist.get("links") or []) if isinstance(x, dict) and x.get("url")]
+        if links:
+            parts.append("<h3>Links</h3><ul>" + "".join(f'<li><a href="{_escape(x.get("url"))}">{_escape(x.get("type") or "website")}</a></li>' for x in links[:12]) + "</ul>")
+        return "".join(parts)
+
+    @staticmethod
+    def _discography_html(rows: list[dict[str, Any]]) -> str:
+        if not rows:
+            return "<p style='color:#9097a2'>No release groups were returned for this artist.</p>"
+        parts = ["<h2>Release timeline</h2><table cellspacing='10'>"]
+        for row in rows:
+            title = _escape(row.get("title"))
+            year = _escape(row.get("year") or row.get("date") or "")
+            typ = _escape(row.get("primary_type") or "")
+            image = ""
+            path = str(row.get("cover_path") or "")
+            if path and Path(path).exists():
+                image = f'<img src="{Path(path).resolve().as_uri()}" width="58">'
+            else:
+                image = '<span style="color:#66717f">♪</span>'
+            link = f'https://musicbrainz.org/release-group/{_escape(row.get("id"))}' if row.get("id") else ""
+            title_html = f'<a href="{link}">{title}</a>' if link else title
+            parts.append(f"<tr><td width='72'>{image}</td><td><b>{title_html}</b><br><span style='color:#aab0ba'>{year} {('· ' + typ) if typ else ''}</span></td></tr>")
+        parts.append("</table>")
+        return "".join(parts)
+
+    @staticmethod
+    def _credits_html(rows: list[dict[str, Any]]) -> str:
+        if not rows:
+            return "<p style='color:#9097a2'>No structured credits were returned for this recording. MusicBrainz coverage varies by release.</p>"
+        return "<h2>Credits & relationships</h2><ul>" + "".join(f"<li><b>{_escape(x.get('role'))}</b> — {_escape(x.get('name'))}</li>" for x in rows) + "</ul>"
+
+    @staticmethod
+    def _info_html(identity: dict[str, Any], artwork: dict[str, Any], artist_photo: dict[str, Any], errors: list[Any]) -> str:
+        rows = []
+        for label, key in (("Recording MBID", "recording_mbid"), ("Artist MBID", "artist_mbid"), ("Release MBID", "release_mbid"), ("Release-group MBID", "release_group_mbid")):
+            if identity.get(key):
+                rows.append(f"<tr><td><b>{label}</b></td><td>{_escape(identity.get(key))}</td></tr>")
+        if identity.get("score") is not None:
+            rows.append(f"<tr><td><b>Metadata match</b></td><td>{float(identity.get('score') or 0):.0%}</td></tr>")
+        if artwork.get("source"):
+            rows.append(f"<tr><td><b>Artwork</b></td><td>{_escape(artwork.get('source'))}</td></tr>")
+        if artist_photo.get("source"):
+            rows.append(f"<tr><td><b>Artist photo</b></td><td>{_escape(artist_photo.get('source'))}</td></tr>")
+        if artist_photo.get("creator"):
+            rows.append(f"<tr><td><b>Photo creator</b></td><td>{_escape(artist_photo.get('creator'))}</td></tr>")
+        if artist_photo.get("license_name"):
+            licence = _escape(artist_photo.get("license_name"))
+            licence_url = _escape(artist_photo.get("license_url") or "")
+            licence_html = f'<a href="{licence_url}">{licence}</a>' if licence_url else licence
+            rows.append(f"<tr><td><b>Photo licence</b></td><td>{licence_html}</td></tr>")
+        if artist_photo.get("description_url"):
+            rows.append(f'<tr><td><b>Commons source</b></td><td><a href="{_escape(artist_photo.get("description_url"))}">file page</a></td></tr>')
+        if artist_photo.get("wikidata_qid"):
+            rows.append(f"<tr><td><b>Wikidata</b></td><td>{_escape(artist_photo.get('wikidata_qid'))}</td></tr>")
+        body = "<h2>Track identity</h2><table cellspacing='7'>" + "".join(rows) + "</table>" if rows else "<p>No external identity data yet.</p>"
+        if errors:
+            body += "<h3>Enrichment notes</h3><ul>" + "".join(f"<li>{_escape(x)}</li>" for x in errors) + "</ul>"
+        body += "<p style='color:#777'>Online metadata: MusicBrainz. Artist photos: Wikimedia Commons via Wikidata when linked. Cover images: Cover Art Archive or the playback provider. Lyrics: local files/tags only.</p>"
+        return body
+
+    # ---------------------------- synchronized lyrics
+    def set_position(self, position_ms: int) -> None:
+        if not self.synced:
+            return
+        idx = -1
+        for i, row in enumerate(self.synced):
+            if int(row.get("time_ms") or 0) <= int(position_ms):
+                idx = i
+            else:
+                break
+        if idx != self._lyric_index:
+            self._lyric_index = idx
+            self._render_synced(idx)
+
+    def _render_synced(self, current: int) -> None:
+        parts = ["<div style='font-size:18px;line-height:1.65'>"]
+        for i, row in enumerate(self.synced):
+            line = _escape(row.get("text")) or "&nbsp;"
+            if i == current:
+                parts.append(f"<div style='font-size:22px;font-weight:700;color:#ffffff;margin:8px 0'>{line}</div>")
+            elif current >= 0 and abs(i-current) <= 2:
+                parts.append(f"<div style='color:#c7ccd4'>{line}</div>")
+            else:
+                parts.append(f"<div style='color:#7e858f'>{line}</div>")
+        parts.append("</div>")
+        self.lyrics.setHtml("".join(parts))

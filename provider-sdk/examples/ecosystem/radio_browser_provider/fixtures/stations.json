@@ -1,0 +1,19 @@
+[
+  {
+    "stationuuid": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+    "name": "Demo Jazz Radio",
+    "url": "https://stream.example.invalid/listen.pls",
+    "url_resolved": "https://stream.example.invalid/jazz.mp3",
+    "homepage": "https://radio.example.invalid/",
+    "favicon": "https://radio.example.invalid/icon.png",
+    "tags": "jazz,instrumental",
+    "countrycode": "US",
+    "language": "english",
+    "languagecodes": "eng",
+    "codec": "MP3",
+    "bitrate": 128,
+    "hls": 0,
+    "lastcheckok": 1,
+    "votes": 42
+  }
+]

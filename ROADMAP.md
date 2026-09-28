@@ -1,24 +1,67 @@
-# Roadmap
+# Melodex Roadmap
 
-## Public preview
+The roadmap has two parallel goals:
+
+1. make Melodex an excellent local-first music player;
+2. make Melodex a useful open music platform that other developers can extend.
+
+## Current foundation
+
 - macOS and Windows desktop builds
 - Android Bridge client
-- Local Files provider
-- Jamendo reference provider
-- MPP v1 provider installation
-- Flow, Play for Me, taste memory, Moments
+- Local Files and external providers
+- MPP provider installation
+- universal multi-source resolver
+- resolver inspection and per-song match memory
+- Flow
+- Play for Me
+- taste memory
+- Moments
 - optional LLM control
+- local authenticated control bridge
+- MCP control server
+- OpenAI-compatible LLM client
 
-## Next
-- signed provider packages and richer permission UI
-- Navidrome and Jellyfin first-party legal providers
-- improved local-library indexing and artwork cache
+## Ecosystem — current work
+
+- developer documentation portal
+- provider tutorials
+- experimental capability contracts: identity, metadata, artwork and lyrics
+- provenance/merge model
+- plugin registry design
+- legal/open reference providers
+- OpenAPI contract for the local control API
+- OpenAI function-tool schemas
+- example community plugins
+
+## Next — platform
+
+- implement the Capability Broker in Melodex Core
+- install/discover enrichment extensions
+- user-configurable preferred capability providers
+- plugin directory UI
+- registry review/signing metadata
+- signed provider packages
+- richer provider permission UI
+- generated API-client examples
+- clearer extension diagnostics
+- provider/capability health UI
+
+## Next — player
+
+- improved local-library indexing
+- artwork cache
 - more reliable phrase/beat-grid analysis
 - transition preview UI
-- Android queue, Flow commands and taste sync through Bridge
-- optional encrypted multi-device state sync
+- Android queue and Flow controls
+- taste sync through Bridge
 
 ## Later
-- provider directory with review/signing metadata
+
+- optional encrypted multi-device state sync
 - iOS client through Provider Bridge
 - desktop stem-assisted transitions where hardware permits
+- audio-analysis extension capabilities
+- playlist import/export ecosystem
+- scrobbling capability
+- presence/now-playing capability

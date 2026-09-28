@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://melodex.example/schema/extensions/v0.1/metadata-request.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "capability", "subject"],
+  "properties": {
+    "schema_version": {"const": "0.1"},
+    "capability": {"const": "metadata"},
+    "subject": {"$ref": "common.schema.json#/$defs/EntityRef"},
+    "requested_fields": {"type": "array", "uniqueItems": true, "items": {"type": "string"}}
+  }
+}

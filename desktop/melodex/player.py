@@ -1,10 +1,26 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import QObject, QTimer, QUrl, Signal
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
+
+from .playback_gateway import PlaybackGateway
+
+
+def _expired(value: Any, skew_seconds: int = 15) -> bool:
+    text = str(value or "").strip()
+    if not text:
+        return False
+    try:
+        moment = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        if moment.tzinfo is None:
+            moment = moment.replace(tzinfo=timezone.utc)
+        return moment.timestamp() <= datetime.now(timezone.utc).timestamp() + skew_seconds
+    except ValueError:
+        return False
 
 
 class FlowPlayer(QObject):
@@ -14,15 +30,23 @@ class FlowPlayer(QObject):
     queueChanged = Signal(list)
     error = Signal(str)
 
-    def __init__(self, resolver, transition_for=None, parent=None):
+    def __init__(
+        self,
+        resolver,
+        transition_for=None,
+        parent=None,
+        playback_refresher=None,
+    ):
         super().__init__(parent)
         self.resolver = resolver
+        self.playback_refresher = playback_refresher
         self.transition_for = transition_for
+        self.gateway = PlaybackGateway()
         self.players = [QMediaPlayer(self), QMediaPlayer(self)]
         self.outputs = [QAudioOutput(self), QAudioOutput(self)]
-        for p, o in zip(self.players, self.outputs):
-            p.setAudioOutput(o)
-            o.setVolume(1.0)
+        for player, output in zip(self.players, self.outputs):
+            player.setAudioOutput(output)
+            output.setVolume(1.0)
         self.active = 0
         self.queue: list[dict[str, Any]] = []
         self.index = -1
@@ -32,28 +56,81 @@ class FlowPlayer(QObject):
         self._timer.setInterval(100)
         self._timer.timeout.connect(self._tick)
         self._timer.start()
-        for p in self.players:
-            p.errorOccurred.connect(lambda _e, msg: self.error.emit(str(msg)))
+        for player in self.players:
+            player.errorOccurred.connect(lambda _error, msg: self.error.emit(str(msg)))
 
     def set_queue(self, tracks: list[dict[str, Any]], start: int = 0, autoplay: bool = True) -> None:
-        self.queue = [dict(x) for x in tracks]
+        self.queue = [dict(item) for item in tracks]
         self.index = max(0, min(len(self.queue) - 1, start)) if self.queue else -1
         self.queueChanged.emit(self.queue)
         if autoplay and self.index >= 0:
             self._load_index(self.index, play=True)
 
+    def append_queue(self, tracks: list[dict[str, Any]], autoplay: bool = False) -> None:
+        incoming = [dict(item) for item in tracks]
+        if not incoming:
+            return
+        if not self.queue:
+            self.set_queue(incoming, 0, autoplay)
+            return
+        self.queue.extend(incoming)
+        self.queueChanged.emit(self.queue)
+
+    def clear_queue(self) -> None:
+        for player in self.players:
+            player.stop()
+        self.queue = []
+        self.index = -1
+        self._crossfading = False
+        self.queueChanged.emit(self.queue)
+        self.playingChanged.emit(False)
+
+    def stop(self) -> None:
+        for player in self.players:
+            player.stop()
+        self._crossfading = False
+        self.playingChanged.emit(False)
+
+    def close(self) -> None:
+        self.stop()
+        self.gateway.close()
+
     def current_track(self) -> dict[str, Any] | None:
         return dict(self.queue[self.index]) if 0 <= self.index < len(self.queue) else None
 
-    def _media_url(self, track: dict[str, Any]) -> QUrl:
-        resolved = self.resolver(dict(track))
-        self.queue[self.index] = dict(resolved)
+    def status(self) -> dict[str, Any]:
+        player = self.players[self.active]
+        return {
+            "playing": player.playbackState() == QMediaPlayer.PlayingState,
+            "position_ms": int(player.position()),
+            "duration_ms": int(player.duration()),
+            "volume": float(self.outputs[self.active].volume()),
+            "index": int(self.index),
+            "current_track": self.current_track(),
+            "queue": [dict(item) for item in self.queue],
+        }
+
+    def _resolve_for_playback(self, index: int) -> dict[str, Any]:
+        resolved = dict(self.resolver(dict(self.queue[index])))
+        if _expired(resolved.get("expires_at")) and self.playback_refresher:
+            resolved = dict(self.playback_refresher(resolved))
+        self.queue[index] = resolved
+        return resolved
+
+    def _media_url_for(self, resolved: dict[str, Any]) -> QUrl:
         local = str(resolved.get("local_path") or "")
         if local:
             return QUrl.fromLocalFile(str(Path(local)))
         url = str(resolved.get("stream_url") or resolved.get("url") or "")
         if not url:
             raise RuntimeError("This source did not provide a playable stream")
+        needs_gateway = bool(
+            resolved.get("headers")
+            or resolved.get("cookies")
+            or resolved.get("gateway_required")
+        )
+        if needs_gateway:
+            url = self.gateway.register(resolved)
         return QUrl(url)
 
     def _load_index(self, index: int, play: bool = True, deck: int | None = None) -> None:
@@ -61,25 +138,28 @@ class FlowPlayer(QObject):
             return
         self.index = index
         deck = self.active if deck is None else deck
-        p = self.players[deck]
+        player = self.players[deck]
         try:
-            p.setSource(self._media_url(self.queue[index]))
+            resolved = self._resolve_for_playback(index)
+            player.setSource(self._media_url_for(resolved))
             if play:
-                p.play()
+                player.play()
                 self.playingChanged.emit(True)
             self.trackChanged.emit(dict(self.queue[index]))
         except Exception as exc:
             self.error.emit(str(exc))
 
     def play_pause(self) -> None:
-        p = self.players[self.active]
-        if p.playbackState() == QMediaPlayer.PlayingState:
-            p.pause(); self.playingChanged.emit(False)
+        player = self.players[self.active]
+        if player.playbackState() == QMediaPlayer.PlayingState:
+            player.pause()
+            self.playingChanged.emit(False)
         else:
-            if p.source().isEmpty() and self.index >= 0:
+            if player.source().isEmpty() and self.index >= 0:
                 self._load_index(self.index, True)
             else:
-                p.play(); self.playingChanged.emit(True)
+                player.play()
+                self.playingChanged.emit(True)
 
     def next(self) -> None:
         if self.index + 1 < len(self.queue):
@@ -88,11 +168,12 @@ class FlowPlayer(QObject):
             self._load_index(self.index + 1, True)
 
     def previous(self) -> None:
-        p = self.players[self.active]
-        if p.position() > 5000:
-            p.setPosition(0)
+        player = self.players[self.active]
+        if player.position() > 5000:
+            player.setPosition(0)
         elif self.index > 0:
-            p.stop(); self._load_index(self.index - 1, True)
+            player.stop()
+            self._load_index(self.index - 1, True)
 
     def seek(self, ms: int) -> None:
         self.players[self.active].setPosition(max(0, int(ms)))
@@ -121,10 +202,8 @@ class FlowPlayer(QObject):
         self.outputs[next_deck].setVolume(0.0)
         next_index = self.index + 1
         try:
-            resolved = self.resolver(dict(self.queue[next_index]))
-            self.queue[next_index] = dict(resolved)
-            local = str(resolved.get("local_path") or "")
-            url = QUrl.fromLocalFile(local) if local else QUrl(str(resolved.get("stream_url") or ""))
+            resolved = self._resolve_for_playback(next_index)
+            url = self._media_url_for(resolved)
             if url.isEmpty():
                 raise RuntimeError("Next track is not playable")
             self.players[next_deck].setSource(url)
@@ -134,11 +213,11 @@ class FlowPlayer(QObject):
             self.error.emit(str(exc))
 
     def _tick(self) -> None:
-        p = self.players[self.active]
-        duration, pos = p.duration(), p.position()
+        player = self.players[self.active]
+        duration, pos = player.duration(), player.position()
         if duration > 0:
             self.positionChanged.emit(pos, duration)
-        if p.playbackState() != QMediaPlayer.PlayingState:
+        if player.playbackState() != QMediaPlayer.PlayingState:
             return
         if self.index + 1 >= len(self.queue):
             return
@@ -148,7 +227,6 @@ class FlowPlayer(QObject):
             self._begin_crossfade()
         if self._crossfading:
             next_deck = 1 - self.active
-            # approximate fade based on outgoing remaining time
             progress = 1.0 - max(0.0, min(1.0, remaining / max(1, self._transition_ms)))
             self.outputs[self.active].setVolume(max(0.0, 1.0 - progress))
             self.outputs[next_deck].setVolume(min(1.0, progress))
