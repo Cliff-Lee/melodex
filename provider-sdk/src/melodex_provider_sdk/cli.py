@@ -27,6 +27,7 @@ _TEMPLATE_MANIFEST = {
         "browser_auth": False,
         "lan_discovery": False,
     },
+    "configuration": [],
     "entrypoints": {"python": "provider.py"},
 }
 
@@ -84,6 +85,7 @@ TRACK = {
 def respond(request):
     method = request.get("method")
     params = request.get("params") or {}
+    config = params.get("_melodex_config") or {}
     if method == "provider.info":
         return {
             "id": "org.example.provider",
@@ -105,7 +107,7 @@ def respond(request):
             "seekable": True,
             "cache_policy": "none",
         }
-    raise RuntimeError(f"Unsupported method: {method}; params={params}")
+    raise RuntimeError(f"Unsupported method: {method}; params={params}; configured={bool(config)}")
 
 
 for line in sys.stdin:
