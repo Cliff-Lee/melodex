@@ -77,6 +77,13 @@ def validation_errors(data: dict[str, Any]) -> list[str]:
                 f"plugins.{index}.distribution.format: enrichment must use mdxplugin"
             )
 
+        review = dict(raw.get("review") or {})
+        record_url = str(review.get("record") or "")
+        if record_url and urlparse(record_url).scheme != "https":
+            out.append(
+                f"plugins.{index}.review.record: review records must use HTTPS"
+            )
+
         package_url = distribution.get("package_url")
         if package_url:
             if urlparse(str(package_url)).scheme != "https":
