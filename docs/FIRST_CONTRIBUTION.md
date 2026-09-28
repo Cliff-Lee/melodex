@@ -96,7 +96,7 @@ Before committing, check that your change does not accidentally:
 - add credentials, tokens, cookies or private URLs;
 - put source-specific integration logic into Melodex Core without a deliberate reason;
 - describe a plugin as sandboxed when it is not;
-- describe a hash-verified package as a cryptographically verified publisher;
+- describe a registry-verified package/install as proof of cryptographic publisher identity;
 - assume playback permission also grants download/offline permission;
 - discard provenance for external metadata/artwork;
 - introduce copyrighted media purely as a test fixture.
