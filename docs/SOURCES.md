@@ -2,7 +2,7 @@
 
 Melodex is source-neutral. A source is any provider that can search/browse music and resolve a selected track to a playable local file or stream.
 
-## Built in
+## Built into the desktop app
 
 ### This computer
 
@@ -43,6 +43,6 @@ MANUAL
 origin unknown (older install)
 ```
 
-“Registry verified” means package bytes matched registry SHA-256/size metadata. It does not mean publisher signing or full OS sandboxing.
+“REGISTRY VERIFIED” is the UI badge for a **registry-verified** install: package size/SHA-256 and package-declared ID/version matched the registry entry. It does not mean publisher signing or a full OS sandbox.
 
 See [Status, stability and trust](developers/00_STATUS_AND_STABILITY.md).
