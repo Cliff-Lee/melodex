@@ -20,6 +20,7 @@ Then use:
 
 - [FAQ](FAQ.md) for common questions;
 - [Troubleshooting](TROUBLESHOOTING.md) when something is not working;
+- [Support](../SUPPORT.md) when you need to report a problem;
 - [Why Melodex?](WHY_MELODEX.md) for the design idea behind Flow and taste memory.
 
 ## I want to install Melodex
