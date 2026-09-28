@@ -34,6 +34,21 @@ Start with `docs/tutorials/ADD_PLUGIN_TO_REGISTRY.md` and `docs/developers/17_RE
 ### Documentation / testing
 Documentation, fixtures and testing improvements are first-class contributions.
 
+Keep the documentation hierarchy intentional:
+
+```text
+README.md                    project landing page
+docs/README.md               friendly route-by-goal map
+docs/START_HERE.md           first-use path for users
+docs/DEVELOPERS.md           developer gateway / choose an interface
+docs/developers/README.md    deep developer reference index
+docs/ALL_DOCUMENTATION.md    exhaustive index
+```
+
+When adding a new page, link it from the appropriate existing router rather than creating another competing "start here" page.
+
+User-facing instructions should use exact current UI labels where practical.
+
 ## Before coding
 
 For a substantial architectural change, open an issue first. Small fixes, docs and focused tests can usually go directly to a PR.
@@ -60,6 +75,9 @@ Repository checks:
 
 ```bash
 python scripts/docs_check.py
+python scripts/navigation_check.py
+python scripts/ecosystem_check.py
+python scripts/version_check.py
 python scripts/release_check.py
 ```
 
