@@ -2,59 +2,46 @@
 
 **Don't shuffle. Flow.**
 
-Melodex is a local-first music player that turns your library and connected sources into continuous, personalised listening journeys.
+Choose the shortest path for what you are trying to do.
 
-## Start here
+## I want to use Melodex
 
-- [Quick start](START_HERE.md)
-- [5-minute visual tour](VISUAL_TOUR.md)
-- [Why Melodex?](WHY_MELODEX.md)
-- [User guide](USER_GUIDE.md)
+- [Start Here](START_HERE.md)
+- [5-minute Visual Tour](VISUAL_TOUR.md)
+- [User Guide](USER_GUIDE.md)
+- [Install Melodex](INSTALL.md)
+- [Release status — packaged release vs current main](RELEASE_STATUS.md)
 - [FAQ](FAQ.md)
 - [Troubleshooting](TROUBLESHOOTING.md)
 
-## Installation
+## I want to build a provider/plugin
 
-- [Install overview](INSTALL.md)
-- [macOS](INSTALL_MACOS.md)
-- [Windows](INSTALL_WINDOWS.md)
-- [Android](INSTALL_ANDROID.md)
-
-## Optional AI control
-
-- [LLM guide](LLM_GUIDE.md)
-- [Ollama](OLLAMA.md)
-- [OpenWebUI](OPENWEBUI.md)
-
-## Music sources and providers
-
-- [Sources](SOURCES.md)
-- [Provider installation](PROVIDER_INSTALLATION.md)
-- [Provider development](PROVIDER_DEVELOPMENT.md)
-- [Jamendo reference provider](JAMENDO_REFERENCE_PROVIDER.md)
-- [Provider SDK](../provider-sdk/)
-
-## Develop / extend Melodex
-
-- [5-minute developer quickstart](DEVELOPER_QUICKSTART.md)
+- [5-minute Developer Quickstart](DEVELOPER_QUICKSTART.md)
 - [Develop with Melodex](DEVELOPERS.md)
-- [Status, stability and trust](developers/00_STATUS_AND_STABILITY.md)
-- [Ecosystem architecture](developers/01_ECOSYSTEM_ARCHITECTURE.md)
-- [Plugin Directory](PLUGIN_DIRECTORY.md)
+- [Build a Provider](tutorials/BUILD_A_PROVIDER.md)
+- [Build an Enrichment Plugin](tutorials/BUILD_AN_ENRICHMENT_PLUGIN.md)
+- [Publish a Community Plugin](tutorials/ADD_PLUGIN_TO_REGISTRY.md)
 - [Provider SDK](../provider-sdk/README.md)
 
-## Development
+## I want to control Melodex from another app / AI system
 
-- [Build from source](BUILD_FROM_SOURCE.md)
-- [Release process](RELEASING.md)
-- [Contributing](../CONTRIBUTING.md)
+- [API Platform](api/README.md)
+- [Control Melodex with REST](tutorials/CONTROL_MELODEX_WITH_REST.md)
+- [Connect OpenWebUI with MCP](tutorials/CONNECT_OPENWEBUI_MCP.md)
+- [Use OpenAI Function Calling](tutorials/USE_OPENAI_FUNCTIONS.md)
+
+## I care about security, privacy or project governance
+
+- [Status, Stability and Trust](developers/00_STATUS_AND_STABILITY.md)
+- [Privacy](PRIVACY.md)
 - [Security](../SECURITY.md)
-- [Roadmap](../ROADMAP.md)
+- [Responsible Use](../RESPONSIBLE_USE.md)
+- [Governance](../GOVERNANCE.md)
+- [Code of Conduct](../CODE_OF_CONDUCT.md)
+- [Community](COMMUNITY.md)
 
-## Project principles
+## I want the complete map
 
-- Local-first where practical
-- Source-neutral core
-- Optional AI rather than AI dependency
-- Explicit user control over providers and credentials
-- No bundled copyrighted media or access-control circumvention
+See **[All Documentation](ALL_DOCUMENTATION.md)**.
+
+That index also labels implementation notes, historical design records and maintainer-only notes so they are not confused with primary user/developer guidance.

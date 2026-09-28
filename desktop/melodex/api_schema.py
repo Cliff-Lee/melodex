@@ -56,7 +56,7 @@ def openapi_document() -> dict[str, Any]:
                     "operationId": "melodexHealth",
                     "tags": ["system"],
                     "security": [],
-                    "responses": {"200": {"description": "Bridge health"}},
+                    "responses": {"200": {"description": "Bridge health and running Melodex application version"}},
                 }
             },
             "/openapi.json": {

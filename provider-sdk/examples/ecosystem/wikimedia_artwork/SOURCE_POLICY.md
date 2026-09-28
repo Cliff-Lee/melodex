@@ -1,14 +1,27 @@
 # Source Policy — Wikimedia Commons
 
-Source: https://commons.wikimedia.org/
+**Last reviewed:** 2026-09-28
+
+Primary reuse guidance:
+
+- https://www.mediawiki.org/wiki/Wikimedia_APIs/Content_reuse
+- https://commons.wikimedia.org/wiki/Commons:Reusing_content_outside_Wikimedia
 
 Access method: MediaWiki Action API.
 
-The plugin requests image metadata including `extmetadata` so licence and credit
-information can be carried into Melodex provenance.
+The reference extension requests image metadata including `extmetadata` so licence and credit information can be carried into Melodex provenance.
 
-Rights are per-file. The plugin must not assume every file uses the same
-Creative Commons licence or is public domain.
+## Rights are per file
 
-Reusers remain responsible for complying with the licence and other applicable
-rights shown on the file page.
+Wikimedia Commons files do not all use one licence.
+
+The extension therefore preserves, when available:
+
+- file/description source URL;
+- creator/credit;
+- licence name;
+- licence URL.
+
+Reusers remain responsible for complying with the applicable file licence and other relevant rights/restrictions (which can include rights separate from copyright).
+
+Melodex does not relicense Wikimedia content and does not interpret “available on Commons” as a blanket permission for every possible use.

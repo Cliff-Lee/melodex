@@ -1,4 +1,6 @@
-# Melodex 0.1.0 public preview
+# Melodex 0.1.0 Public Preview
+
+> **Historical release note.** This page describes the 0.1.0-era preview and is not a current feature/status reference. See [Release status](docs/RELEASE_STATUS.md) and [Status, stability and trust](docs/developers/00_STATUS_AND_STABILITY.md).
 
 This is the first clean, source-neutral public foundation.
 

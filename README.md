@@ -8,6 +8,7 @@
 
 <p align="center">
   <a href="https://github.com/Cliff-Lee/melodex/releases/latest"><strong>Download</strong></a> ·
+  <a href="docs/RELEASE_STATUS.md">Release status</a> ·
   <a href="docs/START_HERE.md">Start here</a> ·
   <a href="docs/DEVELOPERS.md">Developers</a> ·
   <a href="docs/COMMUNITY.md">Community</a> ·
@@ -27,6 +28,8 @@ But Melodex is also becoming something broader:
 > **An open music platform where independent extensions contribute capabilities and Melodex combines them.**
 
 A playback source does not need to become a metadata database. An artwork plugin does not need to know how the queue works. An AI client does not need to know which provider ultimately plays a track.
+
+> **Source vs release:** documentation normally describes the current `main` branch. The latest packaged release can lag behind `main`. See [Release status](docs/RELEASE_STATUS.md) before assuming a newly documented feature is already in the downloadable build.
 
 ## Build something in 5 minutes
 
@@ -81,12 +84,14 @@ The [ecosystem architecture](docs/developers/01_ECOSYSTEM_ARCHITECTURE.md) gives
 
 Use the Melodex Provider Protocol when you want to connect a music source.
 
-Current provider capabilities include:
+The MPP capability vocabulary includes:
 
 ```text
 search  browse  track  album  artist
 playback  library  offline  recommendations  auth
 ```
+
+A provider advertises only the capabilities it actually implements; not every provider or current UI path supports every capability.
 
 Start with [Build a provider](docs/tutorials/BUILD_A_PROVIDER.md) or read the [Provider SDK](provider-sdk/README.md).
 
@@ -174,7 +179,7 @@ You do not need to understand the whole Melodex codebase to contribute.
 - Build another app? Use REST/OpenAPI.
 - Don't code? Help with testing, documentation, accessibility, translations, source research or UX.
 
-See [Community](docs/COMMUNITY.md).
+See [Community](docs/COMMUNITY.md), [Governance](GOVERNANCE.md), and the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## Source-neutral and rights-aware
 
@@ -187,6 +192,8 @@ See [Source and rights policy](docs/developers/11_SOURCE_AND_RIGHTS_POLICY.md).
 ## Download
 
 You do **not** need Python or Git to use release builds.
+
+The packaged release may be behind the current source tree. Check [Release status](docs/RELEASE_STATUS.md) for the exact distinction.
 
 - [Latest release](https://github.com/Cliff-Lee/melodex/releases/latest)
 - [macOS installation](docs/INSTALL_MACOS.md)

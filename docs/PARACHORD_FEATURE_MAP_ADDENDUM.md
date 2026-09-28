@@ -1,4 +1,7 @@
-# Parachord-inspired roadmap addendum: Rich Now Playing
+# Parachord-inspired Roadmap Addendum: Rich Now Playing
+
+> **Historical stage snapshot.** This page captures what was implemented/planned at one point during Rich Now Playing development. Later work (including Wikimedia artist visuals and release timelines) superseded some unchecked items below. See [Artist visuals](ARTIST_VISUALS.md) and [Status, stability and trust](developers/00_STATUS_AND_STABILITY.md) for current behavior.
+
 
 Implemented in this stage:
 

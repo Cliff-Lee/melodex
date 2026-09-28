@@ -1,47 +1,94 @@
-# Legal reference sources for provider development
+# Legal / Open Reference Sources for Provider Development
 
-These are useful reference categories, not a blanket statement that every file
-or use is permitted. Check current API terms and the rights/licence metadata of
-each item.
+**Last reviewed:** 2026-09-28
+
+These are useful development/reference sources, not a blanket statement that every file, stream, jurisdiction or use is permitted.
+
+Always check current API terms and preserve item-level rights/provenance where relevant.
 
 ## Jamendo
 
-Already used by Melodex as a clean JSON/API reference source with a user-supplied
-client ID and per-track licence/attribution metadata.
+Good for a real JSON music API with user-supplied developer credentials and per-track Creative Commons metadata.
 
-Developer portal: https://developer.jamendo.com/
+Current Jamendo API terms say API content is published under Creative Commons licences, require artist/Jamendo attribution and a backlink, and distinguish non-commercial API use from commercial use.
 
-## Wikimedia Commons audio
+- Developer portal: https://developer.jamendo.com/
+- API terms: https://devportal.jamendo.com/api_terms_of_use
 
-Useful for testing search, file metadata, direct media URLs and per-file licence
-attribution.
+Melodex's built-in Jamendo reference provider intentionally declares no offline-download capability.
 
-API: https://www.mediawiki.org/wiki/API:Main_page
-Reuse guidance: https://commons.wikimedia.org/wiki/Commons:Reusing_content_outside_Wikimedia
+## Radio Browser
 
-## Internet Archive audio
+Useful for live radio directory search and continuous playback.
 
-Useful for heterogeneous item/file metadata and collections with several media
-representations. Rights statements vary by item.
+Radio Browser asks clients to use available mirrors, send a meaningful User-Agent and use its station-click endpoint when a user selects/plays a station.
 
-Developer docs: https://archive.org/developers/
+- API: https://api.radio-browser.info/
+- Documentation: https://docs.radio-browser.info/
+
+The openness of the directory/API does not confer redistribution rights over the programming broadcast by individual stations.
 
 ## LibriVox
 
-Public-domain spoken-word material is useful for long-form audio and chaptered
-catalogues.
+Useful for long-form/chaptered audio.
 
-API: https://librivox.org/api/info
+LibriVox states that its recordings are public domain in the United States and specifically tells users elsewhere to check local copyright status.
+
+Its September 16, 2026 API update asks clients to use bounded/paged requests and separate requests by several seconds.
+
+- Public-domain guidance: https://librivox.org/pages/public-domain/
+- API update: https://librivox.org/2026/09/16/librivox-api-update/
+
+## MusicBrainz
+
+Useful for canonical music identity and structured metadata.
+
+MusicBrainz asks public API clients to use a meaningful User-Agent and normally stay around one request per second per IP.
+
+Core MusicBrainz database data is CC0; supplementary data has separate licensing.
+
+- API: https://musicbrainz.org/doc/MusicBrainz_API
+- Rate limiting: https://musicbrainz.org/doc/MusicBrainz_API/Rate_Limiting
+- Data licensing: https://musicbrainz.org/doc/About/Data_License
+
+## Wikimedia Commons
+
+Useful for artwork/image enrichment and testing per-file provenance.
+
+Commons files do not all share one licence. Reuse should preserve file-level creator/licence/source information and account for non-copyright restrictions where relevant.
+
+- API overview: https://www.mediawiki.org/wiki/API:Main_page
+- Content reuse: https://www.mediawiki.org/wiki/Wikimedia_APIs/Content_reuse
+- Commons reuse guidance: https://commons.wikimedia.org/wiki/Commons:Reusing_content_outside_Wikimedia
+
+## Internet Archive
+
+Useful for heterogeneous item/file metadata and collections with several media representations.
+
+Rights statements vary by item; public availability is not a blanket copyright assertion.
+
+- Developer docs: https://archive.org/developers/
+
+Melodex keeps the current Internet Archive integration source separate from Core rather than treating every archive item as automatically installable/offline-safe.
 
 ## Freesound
 
-Useful for search, tags, previews and Creative Commons licence handling. Check
-API and commercial-use terms for the intended application.
+Potentially useful for search, tags, previews and Creative Commons licence handling.
 
-API docs: https://freesound.org/docs/api/
+It is not currently one of Melodex's canonical installable reference packages.
+
+Review API/commercial-use and per-item licence requirements before building/distributing an integration.
+
+- API docs: https://freesound.org/docs/api/
 
 ## Reproducible testing
 
-Prefer local fixtures that simulate changing HTML, redirects, required Referer
-headers, cookies, Range requests and expiring URLs. This tests the provider
-architecture without embedding service-specific bypass logic in Melodex.
+Prefer local fixtures for unit tests.
+
+Fixtures can simulate changing JSON/HTML/XML, redirects, Referer requirements, cookies, Range requests and expiring URLs without making CI depend on a live upstream service or embedding bypass behavior into Melodex.
+
+## Project rule
+
+“Legal/open reference source” means **we can explain the documented access/rights model used by the example**.
+
+It does not mean Melodex guarantees every possible downstream use in every jurisdiction.

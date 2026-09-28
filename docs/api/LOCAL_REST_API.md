@@ -22,7 +22,7 @@ Treat the token like a password.
 
 ### `GET /health`
 
-Public health check.
+Public health check. It includes the running Melodex application version so clients/support reports can identify the exact source/build version they reached.
 
 ### `GET /openapi.json`
 

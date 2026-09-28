@@ -2,6 +2,8 @@
 
 You do **not** need to understand providers, DSP, APIs, Git or language models to use Melodex.
 
+> The latest packaged release can lag behind current `main`. If a documented feature is missing from your installation, check [Release status](RELEASE_STATUS.md).
+
 ## New to Melodex?
 
 Start with the **[5-minute visual tour](VISUAL_TOUR.md)**.

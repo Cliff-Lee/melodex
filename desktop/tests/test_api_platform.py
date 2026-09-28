@@ -52,6 +52,9 @@ def test_strict_tool_schemas_meet_openai_requirements():
 
 
 class FakeClient:
+    def extensions(self):
+        return [{"id": "org.example.meta", "installation": {"method": "registry"}}]
+
     def search(self, query, provider="all", limit=20):
         return [{"query": query, "provider": provider, "limit": limit}]
 
@@ -61,6 +64,10 @@ class FakeClient:
 
 def test_tool_executor_defaults_and_clamps():
     client = FakeClient()
+    extensions = execute_tool(client, "melodex_extensions", {})
+    assert extensions[0]["id"] == "org.example.meta"
+    assert extensions[0]["installation"]["method"] == "registry"
+
     result = execute_tool(client, "melodex_search", {"query": "ambient", "provider": None, "limit": None})
     assert result[0]["provider"] == "all"
     assert result[0]["limit"] == 20

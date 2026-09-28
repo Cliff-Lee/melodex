@@ -24,18 +24,33 @@ body:
     id: version
     attributes:
       label: Melodex version
-      placeholder: "e.g. v0.1.1"
+      placeholder: "e.g. v0.2.0 packaged release, or main @ <commit SHA>"
+    validations:
+      required: true
+  - type: dropdown
+    id: build_origin
+    attributes:
+      label: How did you install/run Melodex?
+      options:
+        - Packaged GitHub release
+        - Built/run from current main
+        - Built/run from another branch/commit
+        - Not sure
     validations:
       required: true
   - type: dropdown
     id: source
     attributes:
-      label: Music source
+      label: Relevant source / extension
       options:
         - Local Files
+        - User Streams
         - Jamendo
-        - Third-party provider
-        - Provider Bridge
+        - Plugin Directory provider
+        - Manual third-party provider
+        - Capability extension (.mdxplugin)
+        - Provider Bridge / Android
+        - LLM / MCP / OpenAI tools
         - Not source-related
     validations:
       required: true

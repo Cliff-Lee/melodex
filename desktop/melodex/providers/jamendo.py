@@ -5,6 +5,7 @@ import urllib.parse
 import urllib.request
 from typing import Any
 
+from .. import __version__
 from ..provider import MusicProvider, ProviderInfo
 
 
@@ -38,7 +39,7 @@ class JamendoProvider(MusicProvider):
             raise RuntimeError("Add your Jamendo client ID in Sources → Jamendo settings")
         args = {"client_id": self.client_id, "format": "json", **params}
         url = f"{self.API}/{path}/?" + urllib.parse.urlencode(args, doseq=True)
-        req = urllib.request.Request(url, headers={"User-Agent": "Melodex/0.1 (reference provider)"})
+        req = urllib.request.Request(url, headers={"User-Agent": f"Melodex/{__version__} (reference provider)"})
         with urllib.request.urlopen(req, timeout=20) as r:
             return json.load(r)
 

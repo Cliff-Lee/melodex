@@ -36,6 +36,12 @@ extra_hosts:
   - "host.docker.internal:host-gateway"
 ```
 
+## Trust / plugin visibility
+
+MCP exposes both `melodex_sources` and `melodex_extensions`.
+
+Those read-only tools can surface declared permissions and installation provenance without exposing provider credentials.
+
 ## REST/OpenAPI versus MCP
 
 Use MCP for model-driven tool use.

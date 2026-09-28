@@ -1,5 +1,7 @@
 # Install Melodex on macOS
 
+> **Release note:** these instructions install the latest packaged release, which can lag behind current `main`. See [Release status](RELEASE_STATUS.md).
+
 This guide is for ordinary users. You do **not** need Python, Homebrew, Terminal, or Xcode when using the release build.
 
 ## 1. Download the correct Mac version

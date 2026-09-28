@@ -18,6 +18,15 @@ Briefly describe the change and why it is useful.
 
 Describe what you ran or checked.
 
+For repository-wide changes, useful checks include:
+
+```bash
+python scripts/docs_check.py
+python scripts/ecosystem_check.py
+python scripts/api_docs_check.py
+python scripts/release_check.py
+```
+
 ## Source / rights impact
 
 For provider or external-data changes:
@@ -39,6 +48,9 @@ Use `N/A` when this does not apply.
 - [ ] External metadata/artwork provenance is preserved where relevant.
 - [ ] Registry package URL, SHA-256 and byte size match the published package where applicable.
 - [ ] Registry permissions and compatibility metadata are accurate where applicable.
+- [ ] Documentation distinguishes current main, packaged-release availability, experimental/preview status, and planned behavior where relevant.
+- [ ] Security wording distinguishes declared permissions / process isolation from OS-enforced sandboxing.
+- [ ] App/release version metadata and RELEASE_STATUS.md were considered if this changes shipped behavior or release tooling.
 
 ## Screenshots / notes
 

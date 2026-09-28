@@ -1,17 +1,25 @@
 # Source Policy — LibriVox
 
-Source: https://librivox.org/
+**Last reviewed:** 2026-09-28
 
-LibriVox states that its recordings are public domain in the United States and
-welcomes third-party reuse.
+Primary sources:
 
-The official API is used for discovery. Audio section URLs are supplied by
-LibriVox and generally hosted by Internet Archive.
+- https://librivox.org/pages/public-domain/
+- https://librivox.org/2026/09/16/librivox-api-update/
 
-The September 16, 2026 API update:
+LibriVox states that its recordings are public domain in the United States and welcomes third-party reuse.
 
-- caps a request at 500 records;
-- asks developers to page with offsets;
-- asks clients to separate requests by several seconds.
+LibriVox also explicitly warns that public-domain status can differ by country and advises users outside the United States to check the copyright status applicable where they are.
 
-This example uses small limits and never attempts whole-catalog bulk download.
+The official API is used for discovery. Audio section URLs are supplied by LibriVox and are commonly hosted by Internet Archive.
+
+## Current API guidance
+
+LibriVox's September 16, 2026 API update states that:
+
+- the API normally returns 50 records per request;
+- the maximum requested limit is 500 records;
+- full-catalog users should page with offsets (and can use `since` for incremental updates);
+- developers should separate requests by several seconds rather than send bursts.
+
+The reference provider uses small limits, a paced request loop, and does not attempt a whole-catalog bulk download.

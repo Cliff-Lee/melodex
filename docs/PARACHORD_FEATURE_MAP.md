@@ -1,5 +1,8 @@
 # Parachord → Melodex Feature Map
 
+> **Historical comparison / roadmap note.** This document records ideas and implementation snapshots from an earlier development stage. Individual checkboxes can be stale or contradictory as later work landed. It is retained for project history, not as the current feature/status authority. Use [Status, stability and trust](developers/00_STATUS_AND_STABILITY.md), [Ecosystem architecture](developers/01_ECOSYSTEM_ARCHITECTURE.md), and the main [Roadmap](../ROADMAP.md) for current state.
+
+
 This document tracks useful Parachord ideas against the Melodex architecture. The goal is not to clone Parachord; it is to adopt the useful source-neutral capabilities while preserving Melodex's simpler UI, Flow engine, taste memory and AI-first controls.
 
 ## Implemented

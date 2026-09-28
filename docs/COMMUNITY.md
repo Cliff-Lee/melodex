@@ -2,6 +2,8 @@
 
 Melodex should be a project where people can contribute **small useful pieces**. You do not need to become a Melodex Core developer.
 
+The project currently uses lightweight maintainer-led governance. See [Governance](../GOVERNANCE.md) and the [Code of Conduct](../CODE_OF_CONDUCT.md).
+
 ## Start small
 
 If you want to try building something immediately, use the **[5-minute developer quickstart](DEVELOPER_QUICKSTART.md)**.

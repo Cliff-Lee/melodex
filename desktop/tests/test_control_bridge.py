@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from melodex import __version__
 from melodex.bridge_server import ProviderBridge
 from melodex.control_client import MelodexControlClient
 
@@ -102,7 +103,9 @@ def test_control_bridge_and_client(tmp_path: Path):
     bridge.start()
     try:
         client = MelodexControlClient.from_state(state, timeout=3)
-        assert client.health()["control"] is True
+        health = client.health()
+        assert health["control"] is True
+        assert health["melodex_version"] == __version__
         providers = client.providers()
         assert providers[0]["id"] == "local"
         assert providers[1]["installation"]["registry_verified"] is True

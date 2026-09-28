@@ -11,6 +11,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Callable
 
+from . import __version__
+
 
 class ProviderBridge:
     """Authenticated bridge for providers plus optional playback/control actions.
@@ -45,6 +47,7 @@ class ProviderBridge:
         self.state_path.parent.mkdir(parents=True, exist_ok=True)
         payload = {
             "version": 1,
+            "melodex_version": __version__,
             "host": self.host,
             "port": self.port,
             "token": self.token,
@@ -177,7 +180,15 @@ class ProviderBridge:
                 u, q = self._query()
                 try:
                     if u.path == "/health":
-                        return self._send(200, {"ok": True, "service": "melodex-provider-bridge", "control": bool(bridge.controller)})
+                        return self._send(
+                            200,
+                            {
+                                "ok": True,
+                                "service": "melodex-provider-bridge",
+                                "melodex_version": __version__,
+                                "control": bool(bridge.controller),
+                            },
+                        )
                     if u.path == "/openapi.json":
                         return self._send(200, openapi_document())
                     if u.path == "/v1/openai/tools":

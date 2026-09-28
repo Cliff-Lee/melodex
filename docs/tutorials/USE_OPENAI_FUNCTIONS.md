@@ -9,6 +9,7 @@ The platform is designed around stable actions such as:
 ```text
 melodex_status
 melodex_sources
+melodex_extensions
 melodex_search
 melodex_resolve
 melodex_resolution_candidates
@@ -51,3 +52,12 @@ Melodex's resolver chooses the actual installed provider.
 The built-in Ask Melodex interface can itself use OpenAI-compatible model endpoints. That outbound model connection is separate from exposing Melodex operations as tools to your own application.
 
 See [OpenAI compatibility](../api/OPENAI_COMPATIBILITY.md).
+
+
+## Tool-catalog scope
+
+The OpenAI function catalog and MCP intentionally share a high-level vocabulary but are not guaranteed to expose every identical operation.
+
+For example, current MCP also exposes resolver-memory mutation tools. Use the live `GET /v1/openai/tools` response rather than copying a stale function list into a long-lived client.
+
+See [OpenAI function calling](../api/OPENAI_FUNCTION_CALLING.md).

@@ -60,6 +60,8 @@ Repository checks:
 
 ```bash
 python scripts/docs_check.py
+python scripts/ecosystem_check.py
+python scripts/api_docs_check.py
 python scripts/release_check.py
 ```
 
@@ -95,6 +97,8 @@ Keep PRs focused. Explain:
 - External metadata/artwork should retain provenance where practical.
 
 See [Community](docs/COMMUNITY.md) for non-code contribution paths.
+
+Project decision-making is described in [GOVERNANCE.md](GOVERNANCE.md). Participation is covered by the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 
 ## Truth over polish

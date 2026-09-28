@@ -16,6 +16,17 @@ body:
       label: What is unclear or missing?
     validations:
       required: true
+  - type: dropdown
+    id: mismatch
+    attributes:
+      label: Is this a truth/status mismatch?
+      description: For example, docs say shipped/stable/enforced but the code or packaged release differs.
+      options:
+        - "Yes"
+        - "No"
+        - "Not sure"
+    validations:
+      required: true
   - type: textarea
     id: suggestion
     attributes:

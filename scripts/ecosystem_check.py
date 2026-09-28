@@ -23,6 +23,46 @@ def fail(errors: list[str]) -> int:
 def main() -> int:
     errors: list[str] = []
 
+    app_version = (ROOT / "VERSION").read_text("utf-8").strip()
+
+    desktop_pyproject = tomllib.loads(
+        (ROOT / "desktop/pyproject.toml").read_text("utf-8")
+    )
+    desktop_project_version = str(desktop_pyproject["project"]["version"])
+    if desktop_project_version != app_version:
+        errors.append(
+            f"desktop pyproject version {desktop_project_version!r} "
+            f"!= VERSION {app_version!r}"
+        )
+
+    desktop_init = (ROOT / "desktop/melodex/__init__.py").read_text("utf-8")
+    match = re.search(r'__version__\s*=\s*"([^"]+)"', desktop_init)
+    desktop_init_version = match.group(1) if match else ""
+    if desktop_init_version != app_version:
+        errors.append(
+            f"desktop __version__ {desktop_init_version!r} != VERSION {app_version!r}"
+        )
+
+    installer_text = (ROOT / "desktop/installer.iss").read_text("utf-8")
+    match = re.search(r'#define\s+MyAppVersion\s+"([^"]+)"', installer_text)
+    installer_version = match.group(1) if match else ""
+    if installer_version != app_version:
+        errors.append(
+            f"Windows installer version {installer_version!r} != VERSION {app_version!r}"
+        )
+
+    android_text = (ROOT / "android/app/build.gradle.kts").read_text("utf-8")
+    match = re.search(r'versionName\s*=\s*"([^"]+)"', android_text)
+    android_version = match.group(1) if match else ""
+    if android_version != app_version:
+        errors.append(
+            f"Android versionName {android_version!r} != VERSION {app_version!r}"
+        )
+    match = re.search(r"versionCode\s*=\s*(\d+)", android_text)
+    android_code = int(match.group(1)) if match else 0
+    if android_code < 1:
+        errors.append("Android versionCode must be a positive integer")
+
     pyproject = tomllib.loads((SDK / "pyproject.toml").read_text("utf-8"))
     version = str(pyproject["project"]["version"])
 
@@ -56,6 +96,9 @@ def main() -> int:
         ROOT / "docs/developers/01_ECOSYSTEM_ARCHITECTURE.md",
         ROOT / "docs/developers/07_PERMISSIONS_SECURITY.md",
         ROOT / "docs/PLUGIN_DIRECTORY.md",
+        ROOT / "docs/RELEASE_STATUS.md",
+        ROOT / "GOVERNANCE.md",
+        ROOT / "CODE_OF_CONDUCT.md",
     )
     for path in required_docs:
         if not path.is_file():
@@ -66,9 +109,45 @@ def main() -> int:
         "docs/DEVELOPER_QUICKSTART.md",
         "docs/developers/00_STATUS_AND_STABILITY.md",
         "docs/developers/01_ECOSYSTEM_ARCHITECTURE.md",
+        "docs/RELEASE_STATUS.md",
+        "GOVERNANCE.md",
     ):
         if required_link not in readme:
             errors.append(f"README does not surface {required_link}")
+
+    docs_root = ROOT / "docs"
+    docs_index = (docs_root / "ALL_DOCUMENTATION.md").read_text("utf-8")
+    for path in sorted(docs_root.rglob("*.md")):
+        relative = path.relative_to(docs_root).as_posix()
+        if relative == "ALL_DOCUMENTATION.md":
+            continue
+        if relative not in docs_index:
+            errors.append(
+                f"docs/ALL_DOCUMENTATION.md does not index {relative}"
+            )
+
+    sdk_docs_root = SDK / "docs"
+    sdk_docs_index = (sdk_docs_root / "README.md").read_text("utf-8")
+    for path in sorted(sdk_docs_root.glob("*.md")):
+        relative = path.name
+        if relative == "README.md":
+            continue
+        if relative not in sdk_docs_index:
+            errors.append(
+                f"provider-sdk/docs/README.md does not index {relative}"
+            )
+
+    release_status = (ROOT / "docs/RELEASE_STATUS.md").read_text("utf-8")
+    if app_version not in release_status:
+        errors.append(
+            f"docs/RELEASE_STATUS.md does not name current app version {app_version}"
+        )
+
+    contributing = (ROOT / "CONTRIBUTING.md").read_text("utf-8")
+    if "scripts/ecosystem_check.py" not in contributing:
+        errors.append("CONTRIBUTING.md does not document ecosystem_check.py")
+    if "scripts/api_docs_check.py" not in contributing:
+        errors.append("CONTRIBUTING.md does not document api_docs_check.py")
 
     return fail(errors)
 

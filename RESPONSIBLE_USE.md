@@ -1,43 +1,88 @@
-# Responsible use and source policy
+# Responsible Use and Source Policy
 
-Melodex is a general-purpose music player, sequencing engine, and provider framework. It is designed to work with music that a user is authorized to access.
+Melodex is a general-purpose music player, sequencing engine, provider framework and automation surface. It is designed to work with media and services that the user is authorized to access.
 
-## What the public project ships
+## What the public repository contains
 
-The public Melodex repository includes only:
+The current public repository contains, among other things:
 
-- local-file playback for media you control or are permitted to use;
-- a Jamendo reference integration using Jamendo's documented public API and a user-supplied developer client ID;
+- local-file playback;
+- built-in User Streams for URLs/playlists the user explicitly adds;
+- a Jamendo reference provider using Jamendo's documented API and a user-supplied client ID;
+- source code for a first-party/reference Internet Archive provider;
 - the source-neutral Melodex Provider Protocol (MPP) and Provider SDK;
-- Provider Bridge support for authorized remote/LAN access;
-- optional LLM integrations for playlist and player control.
+- the experimental capability-extension framework;
+- a public plugin registry/directory;
+- legal/open reference examples using Radio Browser, LibriVox, MusicBrainz and Wikimedia Commons;
+- Provider Bridge / REST / MCP / OpenAI-function integration surfaces;
+- optional LLM integrations.
 
-## What the public project does not ship
+Not every source/example is installed or enabled by default, and the latest packaged release can lag behind the current `main` branch.
 
-The public repository does not include:
+See [Release status](docs/RELEASE_STATUS.md).
 
-- credentials, private API keys, bearer tokens, cookies, or account secrets;
-- source-specific access-control or DRM circumvention code;
-- provider code intended to obtain media without authorization;
-- undocumented private endpoints copied from third-party services;
-- copyrighted music files or sample libraries that are not redistributable.
+## What the public project does not intentionally provide
 
-## Third-party providers
+The public repository is not intended to contain:
 
-Third-party providers are separate software. Their inclusion in, compatibility with, or mention alongside the Melodex protocol does not mean Melodex endorses a provider or guarantees that its use is permitted.
+- private credentials, API keys, bearer tokens, cookies or account secrets;
+- DRM/access-control circumvention;
+- CAPTCHA/anti-bot bypass tooling;
+- provider code whose purpose is to obtain media without authorization;
+- undocumented private endpoints copied for the purpose of bypassing a service's intended access model;
+- copyrighted music/sample files that the project lacks permission to redistribute.
 
-Provider authors and users are responsible for checking the relevant service terms, licences, permissions, and applicable law. Providers should use documented APIs or other access methods for which they have permission.
+## Third-party providers and extensions
 
-Melodex maintainers may decline links, packages, instructions, issues, or pull requests that add source-specific bypass logic, expose credentials, redistribute copyrighted media without permission, or are primarily intended to facilitate unauthorized access.
+Third-party extensions are separate software.
 
-## Security
+Compatibility with MPP/capability contracts—or presence in a community registry—does not mean Melodex guarantees that:
 
-A desktop `.mdxprovider` package contains executable third-party code. Review the publisher, requested permissions, and source code where available before installation. See `SECURITY.md` and the Provider SDK trust model for more detail.
+- the upstream service permits every possible use;
+- every media item has identical rights;
+- the package is harmless;
+- the project endorses the publisher.
 
-## LLM privacy
+Provider authors and users remain responsible for checking current terms, licences, permissions and applicable law.
 
-LLM support is optional. Melodex should not send provider credentials to an LLM. Users should review their chosen LLM provider's privacy policy before enabling remote model access.
+## Reference/open sources
+
+Reference integrations should document their upstream access/rights assumptions in `SOURCE_POLICY.md`.
+
+Where rights vary per item (for example Wikimedia Commons files or Creative Commons music), provenance/licence metadata should be preserved rather than replaced with a blanket claim.
+
+LibriVox's own public-domain statement is U.S.-specific and explicitly advises users elsewhere to check local copyright status.
+
+## Download/offline is a separate capability
+
+Permission to stream/play something does not automatically imply permission to download or retain it offline.
+
+Providers should expose offline/download behavior only when the upstream source and relevant media rights permit it.
+
+## Registry policy
+
+The registry is a discoverability/trust-metadata layer, not an endorsement marketplace.
+
+Registry review labels are defined in [Registry governance](docs/developers/17_REGISTRY_GOVERNANCE.md).
+
+Project maintainers may decline or block registry entries, code, links or instructions that expose secrets, circumvent controls, redistribute unauthorized media, or cannot explain an appropriate source/access basis.
+
+## Security and privacy
+
+Third-party desktop plugins execute code outside the GUI process but are not currently in a complete OS sandbox.
+
+Review [SECURITY.md](SECURITY.md), [Privacy](docs/PRIVACY.md), and [Status, stability and trust](docs/developers/00_STATUS_AND_STABILITY.md).
+
+## LLM use
+
+LLM support is optional.
+
+Melodex should not place provider credentials, playback cookies, Bridge/MCP tokens or unrelated private data in model context.
+
+Users should review the privacy/retention policy of any remote model service they configure.
 
 ## Reporting concerns
 
-For security-sensitive concerns, follow `SECURITY.md`. For source-policy questions, open an issue without posting credentials, access tokens, copyrighted media, or instructions for bypassing access controls.
+For security-sensitive concerns, follow [SECURITY.md](SECURITY.md).
+
+For source-policy questions, use an issue or pull request without posting credentials, access tokens, copyrighted media, or instructions for bypassing access controls.

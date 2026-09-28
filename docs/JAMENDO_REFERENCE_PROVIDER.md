@@ -1,4 +1,9 @@
-# Jamendo reference provider
+# Jamendo Reference Provider
+
+> **Terms check:** the external Jamendo API terms referenced below were rechecked on 2026-09-28. Upstream terms can change; developers distributing an integration should review the current terms themselves.
+
+API terms: https://devportal.jamendo.com/api_terms_of_use
+
 
 The Jamendo provider exists to demonstrate a real online Melodex source without bundling a proprietary catalogue connector.
 

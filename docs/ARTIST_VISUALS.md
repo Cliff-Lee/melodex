@@ -1,5 +1,8 @@
 # Melodex Artist Visuals
 
+> **Implementation note.** This page describes current artist-photo/discography enrichment. For the exact Wikimedia rights/credit fields retained by current code, see [Wikimedia attribution](WIKIMEDIA_ATTRIBUTION.md).
+
+
 This stage extends Rich Now Playing with two visual/music-knowledge features:
 
 1. **Wikimedia / Wikidata artist photographs**
@@ -48,7 +51,7 @@ The Now Playing page renders this as a release timeline with a compact cover wal
 
 ## Notes
 
-- Wikimedia image licensing metadata is not fully normalised in this first version; Melodex currently stores a simple attribution string and source URL.
+- Wikimedia Commons enrichment now resolves file-level metadata where available, including creator/credit, licence name/URL and the Commons description page. Rights remain per-file; Melodex does not treat all Commons images as one licence.
 - Artist photos are intentionally optional and never block playback.
 - Discography lookups are cached and independent from audio providers.
 

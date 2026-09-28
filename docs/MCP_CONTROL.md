@@ -10,7 +10,8 @@ This keeps Qt/playback inside the Melodex process while allowing OpenWebUI and d
 ## Available MCP tools
 
 - `melodex_status` — current track, queue, position, volume and playback state
-- `melodex_sources` — connected source/resolver priority
+- `melodex_sources` — connected source/resolver priority plus version/permission/install provenance where available
+- `melodex_extensions` — installed capability extensions plus permission/install provenance
 - `melodex_search` — search connected providers
 - `melodex_resolve` — resolve artist/title/album without playing
 - `melodex_play` — resolve and play one track

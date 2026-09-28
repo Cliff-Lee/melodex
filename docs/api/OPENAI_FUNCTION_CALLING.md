@@ -1,5 +1,8 @@
 # OpenAI Function Calling with Melodex
 
+> **External API review:** OpenAI's strict function-calling requirements were rechecked on 2026-09-28. OpenAI's live developer documentation remains authoritative for OpenAI-specific schema/tool semantics.
+
+
 Melodex publishes function definitions for its high-level application controls.
 
 Authenticated request:

@@ -3,6 +3,10 @@ description: Ask where to start contributing or propose a small community improv
 title: "[Community]: "
 labels: ["community"]
 body:
+  - type: markdown
+    attributes:
+      value: |
+        New to the ecosystem? The fastest path is docs/DEVELOPER_QUICKSTART.md. Project decisions are described in GOVERNANCE.md.
   - type: dropdown
     id: interest
     attributes:

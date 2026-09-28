@@ -2,13 +2,15 @@
 
 This page is the project's **truth table**.
 
-Melodex is intentionally developing in public. Some surfaces are implemented and usable today; some are preview/experimental; some are design targets. Documentation should not blur those categories.
+Melodex is intentionally developing in public. Some surfaces are implemented on `main`; some are preview/experimental; some are design targets. Documentation should not blur those categories.
+
+**Release availability is separate from implementation status.** The packaged GitHub release can lag behind `main`. See [Release status](../RELEASE_STATUS.md).
 
 ## Labels used in this documentation
 
 | Label | Meaning |
 | --- | --- |
-| **Implemented** | Present in the current public repository and exercised by tests |
+| **Implemented** | Present in the current public `main` branch and exercised by tests; it may post-date the latest packaged release |
 | **Preview** | Implemented, but compatibility may still change before a stable commitment |
 | **Experimental** | Implemented for real use/testing, but the contract is deliberately still evolving |
 | **Planned** | Design direction, not something users/developers should assume exists |
@@ -109,9 +111,9 @@ Keep these versions distinct:
 - **MPP protocol_version** — provider wire-contract identifier;
 - **capability contract_version** — enrichment contract version such as 0.1;
 - **plugin version** — extension author's release version;
-- **Melodex app version** — player release version.
+- **Melodex app version** — source/application version in the root `VERSION` file;
 
-A matching number in two of those fields does not make them the same versioning system.
+A matching number in two of those fields does not make them the same versioning system. A Git tag/release version should normally match the stable app version used for that packaged release.
 
 ## Historical design documents
 

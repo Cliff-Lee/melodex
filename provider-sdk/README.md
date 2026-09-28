@@ -93,6 +93,7 @@ Complex HTML parsers can be vendored per provider.
 
 ## Documentation
 
+- [Provider SDK documentation map](docs/README.md)
 - [Provider developer guide](docs/04_PROVIDER_DEVELOPER_GUIDE.md)
 - [Messy provider playbook](docs/10_MESSY_PROVIDER_PLAYBOOK.md)
 - [Playback Gateway](docs/11_PLAYBACK_GATEWAY.md)

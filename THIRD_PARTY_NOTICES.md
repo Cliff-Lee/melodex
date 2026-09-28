@@ -1,29 +1,26 @@
 # Third-Party Notices
 
-Melodex code is MIT licensed unless a subdirectory states otherwise. The notices below document design inspiration and external services/content used at runtime. External music, artwork and metadata are not relicensed under the Melodex MIT licence.
+Melodex code is MIT licensed unless a subdirectory/file states otherwise.
 
-## Parachord
+This notice documents external software inspiration, services, datasets and media sources that Melodex can use. External music, artwork, metadata and upstream APIs are **not** relicensed under the Melodex MIT licence.
 
-Melodex is an independent project. Its multi-source resolver design is inspired in part by Parachord and by the earlier Tomahawk approach to source-neutral music playback.
+## Parachord / Tomahawk design lineage
+
+Melodex is an independent project.
+
+Its source-neutral/multi-source resolver design is inspired in part by Parachord and the earlier Tomahawk approach.
 
 Parachord: https://github.com/Parachord/parachord
 
-Parachord is licensed under the MIT License.
+Parachord is MIT licensed (copyright Jason Herskowitz, 2025).
 
-Copyright (c) 2025 Jason Herskowitz
-
-The full Parachord MIT license is reproduced in `docs/licenses/PARACHORD-LICENSE.txt`.
-
-The resolver code added to Melodex was independently implemented for Melodex rather than copied from Parachord source files. The notice is included to document design inspiration clearly and to keep the repository ready for any future MIT-compatible reuse that is explicitly identified in source.
+The Melodex resolver was implemented independently rather than copied wholesale from Parachord source. The notice records design lineage/transparency.
 
 ## MusicBrainz / MetaBrainz Foundation
 
-Melodex can retrieve recording, artist, release, relationship, tag/genre and credit metadata from MusicBrainz.
+Melodex and its reference extension can retrieve music identity/metadata from MusicBrainz.
 
-MusicBrainz licensing is split by data category:
-
-- core database data: CC0 1.0 / public-domain dedication;
-- supplementary data: CC BY-NC-SA 3.0.
+MusicBrainz documents different licensing for different data classes, including CC0 for core database data and separate terms for supplementary data.
 
 See: https://musicbrainz.org/doc/About/Data_License
 
@@ -31,42 +28,102 @@ MusicBrainz/MetaBrainz names and marks remain the property of their respective o
 
 ## Cover Art Archive
 
-Melodex can retrieve release artwork from the Cover Art Archive, a collaboration between MusicBrainz and the Internet Archive.
+Melodex can retrieve release artwork from the Cover Art Archive.
 
 See: https://musicbrainz.org/doc/Cover_Art_Archive
 
-Cover images may remain copyrighted by artists, labels, designers or other rightsholders. The archive does not provide a single blanket copyright licence for all images, and Melodex does not relicense them.
+Cover images can remain copyrighted by artists, labels, designers or other rightsholders. Melodex does not apply one blanket licence to all archive artwork.
 
 ## Wikidata
 
-Melodex may use Wikidata to follow structured links between a MusicBrainz artist and a Wikimedia Commons image.
+Melodex may use Wikidata links to connect MusicBrainz identities with Wikimedia Commons media.
 
-Wikidata structured data is released under Creative Commons CC0.
+Wikidata structured data is released under CC0.
 
 See: https://www.wikidata.org/wiki/Wikidata:Licensing
 
 ## Wikimedia Commons
 
-Melodex may display artist photographs hosted on Wikimedia Commons when linked through Wikidata.
+Melodex can use Wikimedia Commons for artist/artwork enrichment.
 
-Each Commons file can have different copyright/licence and attribution requirements. Reusers should follow the author, licence, attribution and share-alike requirements shown on that file's description page. Melodex does not relicense Commons media.
+Commons files have per-file licensing/attribution requirements.
+
+Current Melodex Wikimedia enrichment records, when available:
+
+- creator/credit;
+- licence name;
+- licence URL;
+- source/file-description URL.
+
+Melodex does not relicense Commons media.
 
 See: https://commons.wikimedia.org/wiki/Commons:Reusing_content_outside_Wikimedia
 
-**Implementation note:** README-level attribution does not replace per-file credit when an image licence requires it. Melodex should expose the specific Commons file's author/licence/link in the UI before artist-photo support is treated as fully attribution-complete.
-
 ## Jamendo
 
-Jamendo is included as an optional reference provider. Users supply their own Jamendo developer Client ID.
+Jamendo is available as a built-in reference provider. Users supply their own Jamendo developer Client ID.
 
-Jamendo API terms require applications to credit the creator, credit Jamendo as provider, and provide a direct backlink from each item to its relevant Jamendo content page. Melodex's Jamendo provider preserves creator attribution, the track licence URL and the Jamendo source-page link.
+Jamendo API terms require creator/Jamendo attribution and a direct backlink, and distinguish commercial API use.
+
+Melodex preserves the returned creator attribution, track licence URL and Jamendo source-page link.
 
 See:
+
 - https://devportal.jamendo.com/api_terms_of_use
-- https://developer.jamendo.com/v3.0/tracks
+- https://developer.jamendo.com/
 
 Melodex is not affiliated with or endorsed by Jamendo.
 
-## Python and application dependencies
+## Radio Browser
 
-Melodex uses third-party Python/application dependencies such as PySide6, requests, NumPy, mutagen and the optional MCP SDK. Those packages retain their own licences and copyright notices. Refer to each dependency's distribution metadata/upstream repository for its applicable licence.
+Melodex includes a Provider SDK reference package for Radio Browser.
+
+Radio Browser is an open radio-directory/API project. Individual radio-station streams/programming remain controlled by their respective operators/rightsholders; Melodex does not claim redistribution rights over station programming.
+
+See:
+
+- https://api.radio-browser.info/
+- https://docs.radio-browser.info/
+
+## LibriVox
+
+Melodex includes a Provider SDK reference package for LibriVox.
+
+LibriVox states that its recordings are public domain in the United States and asks users in other jurisdictions to check local copyright status.
+
+See: https://librivox.org/pages/public-domain/
+
+## Internet Archive
+
+The repository contains an Internet Archive provider source/reference integration.
+
+Rights and access conditions vary by Archive item. Melodex does not treat availability on Internet Archive as one blanket copyright licence.
+
+See: https://archive.org/developers/
+
+## Python / application dependencies
+
+Melodex uses third-party dependencies including:
+
+- PySide6 / Qt for Python;
+- NumPy;
+- mutagen;
+- requests;
+- PyInstaller and Pillow for packaging/build workflows;
+- the optional Python MCP SDK;
+- jsonschema in the Provider SDK;
+- optional Beautiful Soup in Provider SDK web integrations.
+
+Those dependencies retain their own licences/copyright notices. Refer to each installed distribution/upstream project for the exact applicable licence/version.
+
+## Android dependencies
+
+The Android preview uses AndroidX/Jetpack Compose and Media3/ExoPlayer dependencies declared in `android/app/build.gradle.kts`.
+
+Those dependencies retain their own licences and notices.
+
+## Media/data rule
+
+Third-party API availability, public-domain status, Creative Commons licensing, and copyright can be jurisdiction/item-specific.
+
+Melodex attempts to preserve relevant source/licence/provenance fields, but downstream users/reusers remain responsible for complying with applicable rights and terms.

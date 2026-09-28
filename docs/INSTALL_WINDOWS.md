@@ -1,5 +1,7 @@
 # Install Melodex on Windows
 
+> **Release note:** these instructions install the latest packaged release, which can lag behind current `main`. See [Release status](RELEASE_STATUS.md).
+
 This guide is for Windows 10/11 users. You do **not** need Python, Git, PowerShell commands, or developer tools when using the normal installer.
 
 ## 1. Download Melodex

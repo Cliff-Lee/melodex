@@ -1,5 +1,8 @@
 # Melodex Progressive Metadata Loading
 
+> **Implementation note.** This page documents the current progressive-enrichment behavior and the historical blocking behavior it replaced.
+
+
 This update fixes Rich Now Playing appearing stuck on raw local metadata while network enrichment is still running.
 
 ## Previous behavior

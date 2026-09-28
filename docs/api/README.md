@@ -1,6 +1,13 @@
 # Melodex API Platform
 
-Melodex has several integration surfaces. They are related, but they are not the same API.
+The live OpenAPI document currently identifies the local control API as **0.2**.
+
+API-platform versions are separate from the Melodex app version, Provider SDK version, MPP version and capability-contract versions.
+
+
+Melodex has several integration surfaces. They are related, but they are not the same API and they do not necessarily expose identical tool lists.
+
+Documentation normally describes current `main`; the latest packaged release can lag. See [Release status](../RELEASE_STATUS.md).
 
 ## 1. Local REST control API
 
@@ -40,7 +47,7 @@ Read [OpenAI compatibility](OPENAI_COMPATIBILITY.md).
 
 ## 4. OpenAI function tools
 
-Melodex publishes the same high-level application actions as function schemas for OpenAI Responses and Chat Completions tool calling:
+Melodex publishes a high-level application-action catalog as function schemas for OpenAI Responses and Chat Completions tool calling:
 
 ```text
 GET /v1/openai/tools
@@ -51,6 +58,8 @@ Read [OpenAI function calling](OPENAI_FUNCTION_CALLING.md).
 ## 5. MCP
 
 MCP is the easiest current path for OpenWebUI and other MCP-capable clients.
+
+MCP and the OpenAI-function catalog overlap substantially, but MCP currently also exposes resolver-memory actions such as preferring/rejecting a specific match. Do not assume the two catalogs are byte-for-byte identical.
 
 Read [MCP and OpenWebUI](MCP_AND_OPENWEBUI.md).
 

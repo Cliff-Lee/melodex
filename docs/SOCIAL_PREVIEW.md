@@ -1,5 +1,8 @@
 # GitHub Social Preview
 
+> **Maintainer note.** This page is repository presentation guidance, not product/user documentation.
+
+
 Recommended canvas: **1280 × 640 px**
 
 Use this composition:

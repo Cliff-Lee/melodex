@@ -6,7 +6,7 @@ The current Android app is a **Melodex Provider Bridge client**. It does not yet
 
 That means the easiest setup is:
 
-**music/provider → Melodex on Mac/Windows/NAS → Provider Bridge → Android app**
+**music/provider → Melodex on Mac/Windows (or another compatible Bridge host) → Provider Bridge → Android app**
 
 Your phone searches and plays music that your computer's Melodex installation exposes to it.
 
@@ -15,7 +15,7 @@ Your phone searches and plays music that your computer's Melodex installation ex
 Before starting, have:
 
 - an Android phone/tablet;
-- Melodex installed on a Mac, Windows PC, NAS, or home server;
+- Melodex installed on a Mac or Windows PC, or an advanced compatible Melodex Bridge/source deployment you maintain yourself;
 - at least one working music source configured on that computer, usually **Local Files**;
 - both devices on the same trusted Wi-Fi/LAN for the easiest setup.
 

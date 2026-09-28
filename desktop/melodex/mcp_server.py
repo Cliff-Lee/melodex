@@ -39,6 +39,11 @@ def build_server(client: MelodexControlClient):
         """List connected music sources in resolver-priority order."""
         return client.providers()
 
+    @mcp.tool(name="melodex_extensions", title="List Melodex extensions", annotations=read_only)
+    def melodex_extensions() -> list[dict[str, Any]]:
+        """List installed identity/metadata/artwork/lyrics extensions, including install provenance where available."""
+        return client.extensions()
+
     @mcp.tool(name="melodex_search", title="Search Melodex", annotations=read_only)
     def melodex_search(query: str, provider: str = "all", limit: int = 20) -> list[dict[str, Any]]:
         """Search connected Melodex providers for tracks. provider may be 'all' or a provider id."""

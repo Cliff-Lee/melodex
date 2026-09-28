@@ -1,5 +1,8 @@
 # OpenAI API Compatibility
 
+> **External API review:** OpenAI's current Responses/function-calling guidance was rechecked on 2026-09-28. OpenAI APIs evolve; the live OpenAI developer documentation remains authoritative for OpenAI-specific request semantics.
+
+
 Melodex is an **OpenAI API client**, not an OpenAI model server.
 
 ## Responses API

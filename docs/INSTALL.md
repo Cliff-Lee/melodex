@@ -1,5 +1,7 @@
 # Install Melodex
 
+> **Release note:** these instructions install the latest packaged release, which can lag behind current `main`. See [Release status](RELEASE_STATUS.md).
+
 You do **not** need Python, Git, Android Studio, or any developer tools if you install a release build.
 
 Download the latest release from:
