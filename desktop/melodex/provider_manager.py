@@ -12,6 +12,7 @@ from .providers import JamendoProvider, LocalFilesProvider, UserStreamsProvider
 from .resolver import UniversalResolver
 from .capabilities import CapabilityBroker, ExtensionInfo
 from .plugin_registry import PluginRegistryClient, RegistryResult
+from .plugin_config import PluginConfigBroker
 
 
 class ProviderManager:
@@ -20,6 +21,7 @@ class ProviderManager:
         self.settings_path = self.data_dir / "sources.json"
         self.installations_path = self.data_dir / "plugin-installations.json"
         self.installer = ProviderInstaller(self.data_dir / "providers")
+        self.plugin_config = PluginConfigBroker(self.data_dir)
         self.settings = self._load_settings()
         self._installations = self._load_installations()
         local_roots = [Path(x) for x in self.settings.get("local_roots", [])]
@@ -29,9 +31,16 @@ class ProviderManager:
             "streams": UserStreamsProvider(list(self.settings.get("user_streams", []))),
         }
         for provider in self.installer.load_installed():
+            provider.configure(
+                self.plugin_config.values(
+                    provider.info.id, provider.info.configuration
+                )
+            )
             self.providers[provider.info.id] = provider
         self.resolver = UniversalResolver(self)
-        self.capabilities = CapabilityBroker(self.data_dir)
+        self.capabilities = CapabilityBroker(
+            self.data_dir, config_broker=self.plugin_config
+        )
         self.registry = PluginRegistryClient(self.data_dir)
 
     def _load_settings(self) -> dict[str, Any]:
@@ -210,6 +219,11 @@ class ProviderManager:
         from .provider import ExternalProvider
 
         provider = ExternalProvider(folder, manifest)
+        provider.configure(
+            self.plugin_config.values(
+                provider.info.id, provider.info.configuration
+            )
+        )
         previous = self.providers.get(provider.info.id)
         if previous is not None and previous is not provider:
             close = getattr(previous, "close", None)
@@ -299,6 +313,53 @@ class ProviderManager:
             registry_entry=registry_entry,
         )
         return info
+
+    def plugin_configuration(self, plugin_id: str) -> dict[str, Any]:
+        plugin_id = str(plugin_id or "").strip()
+        provider = self.providers.get(plugin_id)
+        if provider is not None and plugin_id not in {"local", "jamendo", "streams"}:
+            declarations = list(provider.info.configuration or [])
+            return {
+                "id": plugin_id,
+                "name": provider.info.name,
+                "kind": "provider",
+                "fields": declarations,
+                "values": self.plugin_config.editable_values(
+                    plugin_id, declarations
+                ),
+                "status": self.plugin_config.status(plugin_id, declarations),
+            }
+
+        extension = self.capabilities.extensions.get(plugin_id)
+        if extension is not None:
+            declarations = list(extension.info.configuration or [])
+            return {
+                "id": plugin_id,
+                "name": extension.info.name,
+                "kind": "extension",
+                "fields": declarations,
+                "values": self.plugin_config.editable_values(
+                    plugin_id, declarations
+                ),
+                "status": self.plugin_config.status(plugin_id, declarations),
+            }
+        raise KeyError(f"Unknown configurable plugin: {plugin_id}")
+
+    def set_plugin_configuration(
+        self, plugin_id: str, changes: dict[str, Any]
+    ) -> dict[str, Any]:
+        info = self.plugin_configuration(plugin_id)
+        declarations = list(info.get("fields") or [])
+        status = self.plugin_config.update(plugin_id, declarations, dict(changes))
+        values = self.plugin_config.values(plugin_id, declarations)
+
+        provider = self.providers.get(plugin_id)
+        if provider is not None and plugin_id not in {"local", "jamendo", "streams"}:
+            provider.configure(values)
+        extension = self.capabilities.extensions.get(plugin_id)
+        if extension is not None:
+            extension.configure(values)
+        return status
 
     def plugin_registry(self, force: bool = False) -> RegistryResult:
         return self.registry.fetch(force=force)
