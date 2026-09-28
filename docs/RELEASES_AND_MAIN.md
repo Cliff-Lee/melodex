@@ -124,7 +124,7 @@ Do not confuse the application version with:
 - capability-contract version;
 - individual provider/plugin versions.
 
-For example, an SDK version of `0.5.0` does not imply the Melodex desktop app is version `0.5.0`.
+For example, an SDK version of `0.6.0` does not imply the Melodex desktop app is version `0.6.0`.
 
 See [Status, stability and trust](developers/00_STATUS_AND_STABILITY.md) for the broader compatibility picture.
 
