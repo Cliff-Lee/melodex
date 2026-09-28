@@ -60,7 +60,10 @@
             "maxLength": 40
           },
           "package_sha256": {
-            "type": "string",
+            "type": [
+              "string",
+              "null"
+            ],
             "pattern": "^[0-9a-fA-F]{64}$"
           },
           "summary": {
