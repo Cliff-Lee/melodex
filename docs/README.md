@@ -49,7 +49,7 @@ For users:
 For developers:
 
 - [5-minute developer quickstart](DEVELOPER_QUICKSTART.md)
-- [Develop with Melodex](DEVELOPERS.md)
+- [Developer Gateway](DEVELOPERS.md)
 
 ## I want to build something
 
