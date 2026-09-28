@@ -4,13 +4,15 @@ This is the fastest way to understand Melodex.
 
 ## 1. Add your music
 
-Open **Sources** and choose **Add local folder…**.
+Before local music is indexed, **My music** can look like this:
+
+![Empty My Music screen](images/my-music-empty.png)
+
+To add music, open **Sources** and choose **Add local folder…**.
 
 Select a folder containing music you are authorised to play. Melodex indexes the files in place; it does not need to move your originals.
 
-Then open **My music**.
-
-![Empty My Music screen](images/my-music-empty.png)
+Then return to **My music** to browse the indexed library.
 
 **My music** also has an **Add folder…** shortcut to the same folder picker. The Sources route is used throughout the documentation because it is also where online sources, streams and plugins are managed.
 
