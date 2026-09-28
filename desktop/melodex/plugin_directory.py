@@ -150,6 +150,31 @@ class PluginDirectoryDialog(QDialog):
         plugin_id = str(entry.get("id") or "")
         return plugin_id in (providers if entry.get("kind") == "provider" else extensions)
 
+    def _installed_version(self, entry: dict[str, Any]) -> str:
+        plugin_id = str(entry.get("id") or "")
+        record = self.manager.installation_record(plugin_id)
+        if record.get("version"):
+            return str(record.get("version") or "")
+        if entry.get("kind") == "provider":
+            provider = self.manager.providers.get(plugin_id)
+            return str(provider.info.version) if provider is not None else ""
+        extension = next(
+            (
+                row
+                for row in self.manager.extensions()
+                if str(row.get("id") or "") == plugin_id
+            ),
+            None,
+        )
+        return str((extension or {}).get("version") or "")
+
+    def _update_available(self, entry: dict[str, Any]) -> bool:
+        if not self._is_installed(entry):
+            return False
+        return self.manager.registry.update_available(
+            entry, self._installed_version(entry)
+        )
+
     def _selected(self) -> dict[str, Any]:
         item = self.rows.currentItem()
         value = item.data(Qt.UserRole) if item else None
@@ -202,8 +227,11 @@ class PluginDirectoryDialog(QDialog):
                 providers if entry.get("kind") == "provider" else extensions
             )
             capabilities = ", ".join(str(x) for x in entry.get("capabilities") or [])
+            update_available = installed and self._update_available(entry)
             badge = (
-                "INSTALLED"
+                "UPDATE"
+                if update_available
+                else "INSTALLED"
                 if installed
                 else str(entry.get("status") or "").upper()
             )
@@ -236,8 +264,28 @@ class PluginDirectoryDialog(QDialog):
             or "None declared"
         )
         installed = self._is_installed(entry)
+        installed_version = self._installed_version(entry) if installed else ""
+        update_available = self._update_available(entry) if installed else False
+        installation = self.manager.installation_record(str(entry.get("id") or ""))
         compatible, compatibility_reason = self.manager.registry.compatibility(entry)
         sha256 = str(distribution.get("sha256") or "")
+        if installation:
+            if installation.get("registry_verified"):
+                install_origin = "Registry — package SHA-256 verified at install"
+            elif installation.get("method") == "manual":
+                install_origin = "Manual file — local SHA-256 recorded; not registry-verified"
+            else:
+                install_origin = str(installation.get("method") or "unknown")
+            install_hash = str(installation.get("package_sha256") or "not recorded")
+            installed_at = str(installation.get("installed_at") or "not recorded")
+        elif installed:
+            install_origin = "Unknown — installed before provenance tracking"
+            install_hash = "not recorded"
+            installed_at = "not recorded"
+        else:
+            install_origin = "Not installed"
+            install_hash = "—"
+            installed_at = "—"
         text = (
             f"{entry.get('name','')}\n"
             f"{entry.get('id','')}\n\n"
@@ -248,6 +296,11 @@ class PluginDirectoryDialog(QDialog):
             f"License: {entry.get('license') or 'Not specified'}\n"
             f"Capabilities: {capabilities}\n"
             f"Installed: {'Yes' if installed else 'No'}\n"
+            f"Installed version: {installed_version or '—'}\n"
+            f"Update available: {'Yes' if update_available else 'No'}\n"
+            f"Install origin: {install_origin}\n"
+            f"Installed at: {installed_at}\n"
+            f"Installed package SHA-256: {install_hash}\n"
             f"Compatible: {'Yes' if compatible else 'No'}"
             + (f" — {compatibility_reason}" if compatibility_reason else "")
             + "\n\n"
@@ -269,7 +322,9 @@ class PluginDirectoryDialog(QDialog):
                 and entry.get("status") != "blocked"
             )
         )
-        self.install_button.setText("Reinstall" if installed else "Install")
+        self.install_button.setText(
+            "Update" if update_available else "Reinstall" if installed else "Install"
+        )
         self.source_button.setEnabled(bool(source.get("repository")))
 
     def _install_selected(self) -> None:

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import hashlib
 import json
+import zipfile
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -15,8 +18,10 @@ class ProviderManager:
     def __init__(self, data_dir: Path):
         self.data_dir = Path(data_dir)
         self.settings_path = self.data_dir / "sources.json"
+        self.installations_path = self.data_dir / "plugin-installations.json"
         self.installer = ProviderInstaller(self.data_dir / "providers")
         self.settings = self._load_settings()
+        self._installations = self._load_installations()
         local_roots = [Path(x) for x in self.settings.get("local_roots", [])]
         self.providers: dict[str, MusicProvider] = {
             "local": LocalFilesProvider(local_roots),
@@ -40,6 +45,88 @@ class ProviderManager:
         self.settings_path.write_text(
             json.dumps(self.settings, indent=2, ensure_ascii=False), "utf-8"
         )
+
+    def _load_installations(self) -> dict[str, dict[str, Any]]:
+        try:
+            raw = json.loads(self.installations_path.read_text("utf-8"))
+            if not isinstance(raw, dict):
+                return {}
+            return {
+                str(key): dict(value)
+                for key, value in raw.items()
+                if isinstance(value, dict)
+            }
+        except Exception:
+            return {}
+
+    def _save_installations(self) -> None:
+        self.data_dir.mkdir(parents=True, exist_ok=True)
+        temp = self.installations_path.with_suffix(".tmp")
+        temp.write_text(
+            json.dumps(self._installations, indent=2, ensure_ascii=False),
+            "utf-8",
+        )
+        temp.replace(self.installations_path)
+
+    @staticmethod
+    def _package_sha256(path: Path) -> str:
+        digest = hashlib.sha256()
+        with Path(path).open("rb") as handle:
+            for chunk in iter(lambda: handle.read(64 * 1024), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
+
+    def _record_installation(
+        self,
+        *,
+        plugin_id: str,
+        name: str,
+        version: str,
+        kind: str,
+        package: Path,
+        method: str,
+        registry_entry: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        package = Path(package)
+        local_sha256 = self._package_sha256(package)
+        entry = dict(registry_entry or {})
+        distribution = dict(entry.get("distribution") or {})
+        source = dict(entry.get("source") or {})
+        registry_sha256 = str(distribution.get("sha256") or "").lower()
+        record = {
+            "id": str(plugin_id),
+            "name": str(name),
+            "version": str(version),
+            "kind": str(kind),
+            "installed_at": datetime.now(timezone.utc).isoformat(),
+            "method": "registry" if method == "registry" else "manual",
+            "package_name": package.name,
+            "package_size": package.stat().st_size,
+            "package_sha256": local_sha256,
+            "registry_verified": bool(
+                method == "registry"
+                and registry_sha256
+                and registry_sha256 == local_sha256
+            ),
+            "registry_status": str(entry.get("status") or ""),
+            "publisher": str(entry.get("publisher") or ""),
+            "package_url": str(distribution.get("package_url") or ""),
+            "registry_sha256": registry_sha256,
+            "source_repository": str(source.get("repository") or ""),
+        }
+        self._installations[str(plugin_id)] = record
+        self._save_installations()
+        return dict(record)
+
+    def installation_record(self, plugin_id: str) -> dict[str, Any]:
+        return dict(self._installations.get(str(plugin_id), {}))
+
+    def plugin_installations(self) -> list[dict[str, Any]]:
+        return [
+            dict(value)
+            for _, value in sorted(self._installations.items())
+            if isinstance(value, dict)
+        ]
 
     def set_local_roots(self, roots: list[Path]) -> int:
         provider = self.providers["local"]
@@ -110,13 +197,34 @@ class ProviderManager:
     def set_provider_order(self, provider_ids: list[str]) -> list[str]:
         return self.resolver.set_provider_order(provider_ids)
 
-    def install_package(self, path: Path) -> MusicProvider:
+    def install_package(
+        self,
+        path: Path,
+        *,
+        install_source: str = "manual",
+        registry_entry: dict[str, Any] | None = None,
+    ) -> MusicProvider:
+        path = Path(path)
         folder = self.installer.install(path)
         manifest = json.loads((folder / "manifest.json").read_text("utf-8"))
         from .provider import ExternalProvider
 
         provider = ExternalProvider(folder, manifest)
+        previous = self.providers.get(provider.info.id)
+        if previous is not None and previous is not provider:
+            close = getattr(previous, "close", None)
+            if callable(close):
+                close()
         self.providers[provider.info.id] = provider
+        self._record_installation(
+            plugin_id=provider.info.id,
+            name=provider.info.name,
+            version=provider.info.version,
+            kind="provider",
+            package=path,
+            method=install_source,
+            registry_entry=registry_entry,
+        )
         return provider
 
     def search(self, query: str, provider_id: str = "all", limit: int = 50) -> list[dict[str, Any]]:
@@ -172,8 +280,25 @@ class ProviderManager:
     def clear_resolution_blocklist(self) -> None:
         self.resolver.unblock_all()
 
-    def install_extension(self, path: Path) -> ExtensionInfo:
-        return self.capabilities.install_package(path)
+    def install_extension(
+        self,
+        path: Path,
+        *,
+        install_source: str = "manual",
+        registry_entry: dict[str, Any] | None = None,
+    ) -> ExtensionInfo:
+        path = Path(path)
+        info = self.capabilities.install_package(path)
+        self._record_installation(
+            plugin_id=info.id,
+            name=info.name,
+            version=info.version,
+            kind="enrichment",
+            package=path,
+            method=install_source,
+            registry_entry=registry_entry,
+        )
+        return info
 
     def plugin_registry(self, force: bool = False) -> RegistryResult:
         return self.registry.fetch(force=force)
@@ -185,9 +310,43 @@ class ProviderManager:
         self, entry: dict[str, Any], package: Path
     ) -> dict[str, Any]:
         entry = dict(entry or {})
+        package = Path(package)
         fmt = str((entry.get("distribution") or {}).get("format") or "")
+        expected_id = str(entry.get("id") or "")
+        expected_version = str(entry.get("version") or "")
+
+        with zipfile.ZipFile(package) as archive:
+            if fmt == "mdxprovider":
+                _, descriptor = self.installer._manifest_from_archive(archive)
+                actual_id = str(descriptor.get("id") or "")
+                actual_version = str(descriptor.get("version") or "")
+            elif fmt == "mdxplugin":
+                _, descriptor = self.capabilities.installer._descriptor_from_archive(
+                    archive
+                )
+                actual_id = str(descriptor.get("extension_id") or "")
+                actual_version = str(descriptor.get("version") or "")
+            else:
+                raise RuntimeError(
+                    f"Unsupported registry package format: {fmt}"
+                )
+
+        if actual_id != expected_id:
+            raise RuntimeError(
+                f"Registry/package id mismatch: expected {expected_id!r}, "
+                f"package declares {actual_id!r}"
+            )
+        if expected_version and actual_version != expected_version:
+            raise RuntimeError(
+                f"Registry/package version mismatch: expected {expected_version!r}, "
+                f"package declares {actual_version!r}"
+            )
         if fmt == "mdxprovider":
-            provider = self.install_package(Path(package))
+            provider = self.install_package(
+                package,
+                install_source="registry",
+                registry_entry=entry,
+            )
             return {
                 "id": provider.info.id,
                 "name": provider.info.name,
@@ -195,7 +354,11 @@ class ProviderManager:
                 "package": str(package),
             }
         if fmt == "mdxplugin":
-            info = self.install_extension(Path(package))
+            info = self.install_extension(
+                package,
+                install_source="registry",
+                registry_entry=entry,
+            )
             return {
                 "id": info.id,
                 "name": info.name,
@@ -209,7 +372,11 @@ class ProviderManager:
         return self.install_downloaded_registry_entry(entry, package)
 
     def remove_extension(self, extension_id: str) -> bool:
-        return self.capabilities.remove(extension_id)
+        changed = self.capabilities.remove(extension_id)
+        if changed and extension_id in self._installations:
+            self._installations.pop(extension_id, None)
+            self._save_installations()
+        return changed
 
     def extensions(self) -> list[dict[str, Any]]:
         return self.capabilities.list_extensions()

@@ -34,6 +34,15 @@ Melodex is a local-first music player that turns your library and connected sour
 - [Jamendo reference provider](JAMENDO_REFERENCE_PROVIDER.md)
 - [Provider SDK](../provider-sdk/)
 
+## Develop / extend Melodex
+
+- [5-minute developer quickstart](DEVELOPER_QUICKSTART.md)
+- [Develop with Melodex](DEVELOPERS.md)
+- [Status, stability and trust](developers/00_STATUS_AND_STABILITY.md)
+- [Ecosystem architecture](developers/01_ECOSYSTEM_ARCHITECTURE.md)
+- [Plugin Directory](PLUGIN_DIRECTORY.md)
+- [Provider SDK](../provider-sdk/README.md)
+
 ## Development
 
 - [Build from source](BUILD_FROM_SOURCE.md)

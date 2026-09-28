@@ -1,52 +1,76 @@
-# Implementation checklist
+# Implementation Checklist
 
-This repository covers the public protocol/SDK layer. Checkmarks below indicate what is already present here, not what has already landed in the Melodex application.
+This checklist reflects the **current public repository**, not an original design plan.
 
-## Milestone A — provider-neutral desktop core
+For the authoritative maturity/security summary, see [Status, stability and trust](../docs/developers/00_STATUS_AND_STABILITY.md).
 
-- [x] Define normalized provider models.
-- [ ] Add `ProviderManager` to Melodex Core.
-- [ ] Implement `LocalFilesProvider` through the same interface.
-- [ ] Refactor `StreamBridge` to generic `PlaybackBridge`.
-- [ ] Change `MelodexPlayer` to accept `ProviderManager`.
-- [ ] Convert AI playlist resolution to global `CatalogResolver`.
-- [ ] Add source badges/status to UI only where necessary.
+## Provider-neutral desktop core
 
-## Milestone B — desktop SDK
+- [x] Normalized provider models.
+- [x] `ProviderManager` in Melodex Core.
+- [x] Local Files through the provider abstraction.
+- [x] Generic playback gateway/resource handling.
+- [x] Source-neutral player/provider resolution path.
+- [x] Universal multi-source resolver.
+- [x] Provider source status/priority UI.
+- [ ] Full provider health/diagnostic UI.
+
+## Desktop provider SDK/runtime
 
 - [x] Manifest schema and validation CLI.
 - [x] `.mdxprovider` package format and pack command.
-- [ ] `.mdxprovider` installer in Melodex.
-- [ ] Out-of-process provider transport reference host.
-- [ ] Permissions/trust sheet in Melodex.
-- [ ] Provider logs and health screen.
-- [x] SDK `init` / `validate` / `pack` commands.
-- [ ] SDK conformance `test` command.
+- [x] Desktop `.mdxprovider` installer.
+- [x] Out-of-process JSON-RPC provider transport.
+- [x] Package traversal/symlink hardening.
+- [x] `init / validate / doctor / pack`.
+- [x] Source-policy scaffold/documentation.
+- [x] Offline fixture/unit testing patterns.
+- [ ] Full protocol conformance runner beyond smoke tests.
+- [ ] OS-level permission sandbox.
+- [ ] Rich provider logs/health dashboard.
 
-## Milestone C — Provider Bridge
+## Capability-extension ecosystem
 
-- [x] Define HTTPS/OpenAPI mapping.
-- [ ] Reference Provider Bridge server.
-- [ ] Device pairing / QR flow.
-- [ ] Token revocation.
-- [ ] Docker packaging.
-- [ ] LAN discovery as opt-in.
+- [x] Experimental v0.1 identity contract.
+- [x] Experimental v0.1 metadata contract.
+- [x] Experimental v0.1 artwork contract.
+- [x] Experimental v0.1 lyrics contract.
+- [x] Capability Broker in desktop Core.
+- [x] `.mdxplugin` installer/runtime.
+- [x] `melodex-extension init / validate / doctor / pack`.
+- [x] Progressive enrichment and provenance model.
+- [x] Reference MusicBrainz/Wikimedia examples.
+- [ ] Stable compatibility commitment for enrichment contracts.
 
-## Milestone D — mobile
+## Registry / community distribution
 
-- [x] Define Android/iOS architecture.
-- [ ] Android client to Provider Bridge.
-- [ ] Android scoped local-file provider.
-- [ ] iOS client to Provider Bridge.
-- [ ] iOS Files/iCloud local provider.
-- [ ] Shared queue/taste sync design (optional and separate from provider credentials).
+- [x] Canonical registry schema.
+- [x] Desktop Plugin Directory.
+- [x] HTTPS package download.
+- [x] SHA-256 + byte-size verification.
+- [x] Compatibility metadata.
+- [x] Registry status vocabulary/governance.
+- [x] `melodex-registry validate / summary / verify-packages`.
+- [x] Installable legal/open reference packages.
+- [x] Installation provenance/update-awareness work.
+- [ ] Publisher cryptographic signatures.
+- [ ] Verified-publisher keyring/revocation.
+- [ ] Automatic updates (intentionally not enabled today).
 
-## Milestone E — clean public release
+## Bridge / mobile
 
-- [x] Publish Provider SDK docs and fictional demo provider.
-- [x] Add public source-neutrality/repository policy.
-- [x] Add release-safety string/secret guardrail script.
-- [ ] Remove source-specific code from Melodex Core before publishing the app repository.
-- [ ] Review all app dependencies and licences.
-- [ ] Sign/notarize desktop builds.
-- [ ] Publish only reviewed providers in any official directory.
+- [x] Authenticated desktop local/LAN control bridge.
+- [x] Android Bridge client path.
+- [ ] QR/fingerprint pairing workflow.
+- [ ] Per-device token revocation UI.
+- [ ] Standalone/Docker Bridge packaging.
+- [ ] iOS application.
+
+## Public-release hygiene
+
+- [x] Source-neutral public Core.
+- [x] Secret/private-source release check.
+- [x] Rights/source-policy documentation.
+- [x] Registry package integrity tests.
+- [x] Public contribution/security templates.
+- [ ] Signed/notarized coverage for every future binary/release platform.

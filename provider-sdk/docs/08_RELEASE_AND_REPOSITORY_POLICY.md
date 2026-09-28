@@ -14,9 +14,9 @@ Should contain:
 
 Should not contain source-specific bypass or circumvention code.
 
-## 8.2 Provider directory
+## 8.2 Plugin Directory / registry
 
-If Melodex later operates an official provider directory, inclusion should require:
+Melodex now operates a public registry-backed Plugin Directory. Inclusion should require:
 
 - publisher identity;
 - source repository;
@@ -27,7 +27,7 @@ If Melodex later operates an official provider directory, inclusion should requi
 - no DRM/access-control circumvention;
 - no hidden network destinations.
 
-The directory can still allow users to install an arbitrary file manually in desktop Power mode without implying endorsement.
+The desktop app still allows manual file installation in power mode. Manual installs are recorded as manual/local provenance and do not imply registry review or endorsement.
 
 ## 8.3 Manual provider installation
 
@@ -54,3 +54,10 @@ It must exclude:
 - passwords;
 - playback signed URLs;
 - listening-history content unless the user opts in.
+
+
+## 8.5 Current integrity model
+
+Registry installs require HTTPS package URLs plus recorded byte size and SHA-256. Melodex verifies those values before installation.
+
+This is package integrity relative to registry metadata, **not publisher signing**. Signed publishers/key management remain planned.

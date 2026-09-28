@@ -22,12 +22,12 @@ _FUNCTIONS: list[dict[str, Any]] = [
     },
     {
         "name": "melodex_sources",
-        "description": "List connected Melodex music sources in resolver-priority order.",
+        "description": "List connected Melodex music sources in resolver-priority order, including version, declared permissions and install provenance when available.",
         "parameters": _obj({}, []),
     },
     {
         "name": "melodex_extensions",
-        "description": "List installed Melodex capability extensions for identity, metadata, artwork and lyrics.",
+        "description": "List installed Melodex capability extensions for identity, metadata, artwork and lyrics, including declared permissions and install provenance.",
         "parameters": _obj({}, []),
     },
     {

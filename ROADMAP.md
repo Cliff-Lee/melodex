@@ -40,17 +40,23 @@ The roadmap has two parallel goals:
 - SHA-256 verified remote package installation
 - canonical registry with installable legal/open reference packages
 - `melodex-registry` validate/verify tooling
+- installation provenance (manual vs registry, package hash/version/time)
+- Plugin Directory update awareness
+- 5-minute developer quickstart + explicit status/stability/trust documentation
+- CI documentation-link integrity checks
 
-## Next — platform
+## Next — trust and platform
 
-- richer user-configurable preferred capability-provider UI
-- capability health/diagnostics UI
-- registry review workflow and richer signing metadata
-- signed provider packages
-- richer provider permission UI
-- generated API-client examples
-- clearer extension diagnostics
-- provider/capability health UI
+- child-process environment scrubbing;
+- explicit credential/configuration broker for third-party providers;
+- richer user-configurable preferred capability-provider UI;
+- capability/provider health and diagnostics UI;
+- redacted diagnostic export;
+- stronger permission-policy enforcement where practical;
+- registry review history;
+- signed provider/plugin packages;
+- verified-publisher keyring / revocation;
+- generated API-client examples.
 
 ## Next — player
 

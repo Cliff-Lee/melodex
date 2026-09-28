@@ -2,6 +2,8 @@
 
 Thanks for helping improve the Melodex Provider SDK.
 
+For a first provider/extension, the shortest route is the repository-level [5-minute developer quickstart](../docs/DEVELOPER_QUICKSTART.md).
+
 ## Scope
 
 This repository is for the source-neutral provider protocol, SDK, schemas, examples, and documentation. Provider-specific integrations should normally live in their own repositories.
@@ -21,6 +23,7 @@ source .venv/bin/activate          # Windows: .venv\\Scripts\\activate
 python -m pip install -e '.[dev]'
 pytest
 ruff check .
+python ../scripts/docs_check.py
 ```
 
 ## Pull requests
@@ -45,3 +48,18 @@ No strict convention is required, but concise imperative subjects are preferred,
 - `Add album catalog schema`
 - `Validate provider network hosts`
 - `Document iOS bridge model`
+
+
+## Compatibility / truth labels
+
+The SDK is still 0.x and MPP 1.0 remains a preview compatibility target.
+
+Protocol/docs PRs should explicitly say whether a change is:
+
+- implemented;
+- preview;
+- experimental;
+- planned;
+- historical.
+
+See [Status, stability and trust](../docs/developers/00_STATUS_AND_STABILITY.md).

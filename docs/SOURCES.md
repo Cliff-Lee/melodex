@@ -31,3 +31,18 @@ Before installing any third-party code, review its publisher, permissions and so
 ## Android
 
 Android uses Provider Bridge rather than arbitrary downloaded provider code.
+
+
+## Trust labels
+
+For newly tracked third-party installs Melodex can distinguish:
+
+```text
+REGISTRY VERIFIED
+MANUAL
+origin unknown (older install)
+```
+
+“Registry verified” means package bytes matched registry SHA-256/size metadata. It does not mean publisher signing or full OS sandboxing.
+
+See [Status, stability and trust](developers/00_STATUS_AND_STABILITY.md).

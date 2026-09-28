@@ -1,4 +1,7 @@
-# 7. Concrete migration from Melodex v15
+# 7. Concrete Migration from Melodex v15 — Historical Design Record
+
+> **Historical:** this document records the migration plan that led to the current source-neutral public architecture. The migration is no longer the developer entry point and several “add/refactor” steps below are already implemented. Use [Ecosystem architecture](../../docs/developers/01_ECOSYSTEM_ARCHITECTURE.md) and [Status, stability and trust](../../docs/developers/00_STATUS_AND_STABILITY.md) for current guidance.
+
 
 This plan describes how to move the current desktop application from a source-specific backend to the public provider-neutral architecture.
 

@@ -2,6 +2,16 @@
 
 You do not need to understand the entire player to build something useful.
 
+## Fastest route
+
+If you want a working scaffold before reading the architecture:
+
+**[→ Build something in 5 minutes](DEVELOPER_QUICKSTART.md)**
+
+If you want the exact current maturity/security picture first:
+
+**[→ Status, stability and trust](developers/00_STATUS_AND_STABILITY.md)**
+
 ## Pick one path
 
 | You want to build… | Interface | Tutorial |
@@ -17,19 +27,21 @@ You do not need to understand the entire player to build something useful.
 ## Architecture at a glance
 
 ```text
-                         Melodex Core
-                              │
-        ┌─────────────────────┼──────────────────────┐
-        │                     │                      │
-   Music providers       Capability extensions   External control
-        │                     │                      │
-       MPP             identity / metadata      REST / MCP /
-                           artwork / lyrics       OpenAI tools
-        │                     │                      │
-        └─────────────────────┼──────────────────────┘
-                              ▼
-                       Resolver + Player
+registry / Plugin Directory
+          │
+   ┌──────┴──────┐
+   │             │
+providers   capability extensions
+   │             │
+   └──────┬──────┘
+          ▼
+resolver + player
+          ▲
+          │
+REST / OpenAPI / MCP / OpenAI
 ```
+
+See the [canonical ecosystem architecture](developers/01_ECOSYSTEM_ARCHITECTURE.md) for the full map.
 
 ## Important boundaries
 
@@ -52,6 +64,8 @@ You do not need to understand the entire player to build something useful.
 
 ## Deep reference
 
+- [Status, stability and trust](developers/00_STATUS_AND_STABILITY.md)
+- [Ecosystem architecture](developers/01_ECOSYSTEM_ARCHITECTURE.md)
 - [Developer ecosystem](developers/README.md)
 - [Provider SDK](../provider-sdk/README.md)
 - [MCP control](MCP_CONTROL.md)
