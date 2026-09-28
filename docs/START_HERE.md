@@ -10,7 +10,7 @@ It shows the actual application and covers:
 
 1. adding your music;
 2. browsing the library;
-3. Play for Me;
+3. Play for me;
 4. Familiar ↔ Surprising;
 5. teaching Melodex your taste;
 6. Flow;
