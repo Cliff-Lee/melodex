@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from .process_env import scrubbed_child_env
+from .plugin_config import normalise_configuration
 
 
 @dataclass(slots=True)
@@ -54,6 +55,7 @@ class ExternalProvider(MusicProvider):
     def __init__(self, folder: Path, manifest: dict[str, Any]):
         self.folder = Path(folder)
         self.manifest = dict(manifest)
+        normalise_configuration(self.manifest.get("configuration"))
         self._lock = threading.RLock()
         self._seq = 0
         self._proc: subprocess.Popen[str] | None = None
@@ -68,7 +70,7 @@ class ExternalProvider(MusicProvider):
             description=str(self.manifest.get("description", "")),
             capabilities=list(self.manifest.get("capabilities", [])),
             permissions=dict(self.manifest.get("permissions", {})),
-            configuration=list(self.manifest.get("configuration") or []),
+            configuration=normalise_configuration(self.manifest.get("configuration")),
         )
 
     def _platform_entrypoint_key(self) -> str:
@@ -231,6 +233,7 @@ class ProviderInstaller:
         pid = str(manifest.get("id", "")).strip()
         if not pid or ".." in pid or "/" in pid or "\\" in pid:
             raise ValueError("Invalid provider id")
+        normalise_configuration(manifest.get("configuration"))
         return manifest_name, manifest
 
     def install(self, package: Path) -> Path:
