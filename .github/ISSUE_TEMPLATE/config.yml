@@ -1,8 +1,14 @@
 blank_issues_enabled: true
 contact_links:
-  - name: Documentation
+  - name: Start here
     url: https://github.com/Cliff-Lee/melodex/blob/main/docs/START_HERE.md
-    about: Start here before opening a setup question.
+    about: New to Melodex as a listener? Start here.
+  - name: Developer start page
+    url: https://github.com/Cliff-Lee/melodex/blob/main/docs/DEVELOPERS.md
+    about: Providers, plugins, REST/OpenAPI, MCP and OpenAI integrations.
+  - name: Community guide
+    url: https://github.com/Cliff-Lee/melodex/blob/main/docs/COMMUNITY.md
+    about: Ways to contribute even if you do not know the whole codebase.
   - name: Troubleshooting
     url: https://github.com/Cliff-Lee/melodex/blob/main/docs/TROUBLESHOOTING.md
     about: Common setup and playback problems.

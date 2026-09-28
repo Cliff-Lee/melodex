@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://melodex.example/schema/extensions/v0.1/artwork-response.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "capability",
+    "subject",
+    "assets"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "0.1"
+    },
+    "capability": {
+      "const": "artwork"
+    },
+    "subject": {
+      "$ref": "common.schema.json#/$defs/EntityRef"
+    },
+    "assets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "url",
+          "role",
+          "provenance"
+        ],
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "cover",
+              "portrait",
+              "background",
+              "thumbnail",
+              "logo",
+              "other"
+            ]
+          },
+          "width": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "height": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "mime_type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "variant": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "score": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 1
+          },
+          "provenance": {
+            "$ref": "common.schema.json#/$defs/Provenance"
+          }
+        }
+      }
+    },
+    "cache": {
+      "$ref": "common.schema.json#/$defs/CacheDirective"
+    }
+  }
+}

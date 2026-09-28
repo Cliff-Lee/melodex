@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://melodex.example/schema/extensions/v0.1/lyrics-request.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "capability", "subject"],
+  "properties": {
+    "schema_version": {"const": "0.1"},
+    "capability": {"const": "lyrics"},
+    "subject": {"$ref": "common.schema.json#/$defs/EntityRef"},
+    "kinds": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "enum": ["plain", "synchronized", "translated"]}
+    },
+    "languages": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 2}}
+  }
+}

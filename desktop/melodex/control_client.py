@@ -86,6 +86,12 @@ class MelodexControlClient:
     def health(self) -> dict[str, Any]:
         return dict(self._request("GET", "/health") or {})
 
+    def api_spec(self) -> dict[str, Any]:
+        return dict(self._request("GET", "/openapi.json") or {})
+
+    def openai_tools(self) -> dict[str, Any]:
+        return dict(self._request("GET", "/v1/openai/tools") or {})
+
     def status(self) -> dict[str, Any]:
         return dict(self._request("GET", "/v1/status") or {})
 

@@ -1,0 +1,48 @@
+name: Plugin / provider proposal
+description: Propose a new Melodex provider or capability extension
+title: "[Plugin]: "
+labels: ["ecosystem"]
+body:
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What kind of extension?
+      options:
+        - Music source / playback provider
+        - Identity / metadata
+        - Artwork
+        - Lyrics
+        - Playlist import/export
+        - Scrobbling / listening history
+        - API / automation
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: source
+    attributes:
+      label: Source / service
+      description: Name the upstream API, service, archive or system.
+    validations:
+      required: true
+  - type: textarea
+    id: value
+    attributes:
+      label: What would this add to Melodex?
+      description: Keep this focused on one useful capability where possible.
+    validations:
+      required: true
+  - type: textarea
+    id: access
+    attributes:
+      label: API / access method
+      description: Link or describe the documented access method if known.
+    validations:
+      required: true
+  - type: textarea
+    id: rights
+    attributes:
+      label: Source policy / rights notes
+      description: What is known about API terms, media/data rights, attribution, caching/download and commercial restrictions?
+    validations:
+      required: true

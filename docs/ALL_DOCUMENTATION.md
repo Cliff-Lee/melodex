@@ -1,33 +1,90 @@
-# Documentation index
+# Melodex Documentation
 
-## Everyone
+## Start here
+
 - [Start Here](START_HERE.md)
+- [5-minute Visual Tour](VISUAL_TOUR.md)
+- [Why Melodex?](WHY_MELODEX.md)
 - [User Guide](USER_GUIDE.md)
 - [FAQ](FAQ.md)
 - [Troubleshooting](TROUBLESHOOTING.md)
 
 ## Installation
+
 - [Installation chooser](INSTALL.md)
 - [macOS](INSTALL_MACOS.md)
 - [Windows](INSTALL_WINDOWS.md)
 - [Android](INSTALL_ANDROID.md)
 
-## Music sources
+## Developer start pages
+
+- [Develop with Melodex](DEVELOPERS.md)
+- [Developer ecosystem](developers/README.md)
+- [Community](COMMUNITY.md)
+- [Provider SDK](../provider-sdk/README.md)
+- [API platform](api/README.md)
+
+## Tutorials
+
+### Music-source development
+- [Build a Provider](tutorials/BUILD_A_PROVIDER.md)
+- [Publish a Community Plugin](tutorials/ADD_PLUGIN_TO_REGISTRY.md)
+
+### Capability extensions
+- [Build an Enrichment Plugin](tutorials/BUILD_AN_ENRICHMENT_PLUGIN.md)
+- [Capability Reference](developers/05_CAPABILITY_REFERENCE.md)
+- [Composition and Provenance](developers/06_COMPOSITION_AND_PROVENANCE.md)
+
+### Application / API development
+- [Control Melodex with REST](tutorials/CONTROL_MELODEX_WITH_REST.md)
+- [Local REST API](api/LOCAL_REST_API.md)
+- [OpenAPI](api/OPENAPI.md)
+- [cURL examples](api/CURL_EXAMPLES.md)
+
+### AI integrations
+- [Connect OpenWebUI with MCP](tutorials/CONNECT_OPENWEBUI_MCP.md)
+- [Use OpenAI Function Calling](tutorials/USE_OPENAI_FUNCTIONS.md)
+- [MCP Control](MCP_CONTROL.md)
+- [OpenAI compatibility](api/OPENAI_COMPATIBILITY.md)
+- [OpenAI function tools](api/OPENAI_FUNCTION_CALLING.md)
+
+## Music sources and providers
+
 - [Sources](SOURCES.md)
 - [Installing providers](PROVIDER_INSTALLATION.md)
-- [Jamendo reference provider](JAMENDO_REFERENCE_PROVIDER.md)
+- [Provider development](PROVIDER_DEVELOPMENT.md)
+- [Example plugins](developers/13_EXAMPLE_PLUGINS.md)
+- [Source and rights policy](developers/11_SOURCE_AND_RIGHTS_POLICY.md)
 
-## AI / LLM
+## Resolver and interoperability
+
+- [Universal Resolver](UNIVERSAL_RESOLVER.md)
+- [Resolver Inspector](RESOLVER_INSPECTOR.md)
+- [Playlist interchange](PLAYLIST_INTERCHANGE.md)
+- [Rich Now Playing](RICH_NOW_PLAYING.md)
+
+## LLM / AI configuration
+
 - [LLM Guide](LLM_GUIDE.md)
 - [OpenWebUI](OPENWEBUI.md)
 - [Ollama](OLLAMA.md)
 
-## Developers
-- [Provider development](PROVIDER_DEVELOPMENT.md)
+## Developer reference
+
+- [Permissions and security](developers/07_PERMISSIONS_SECURITY.md)
+- [Testing plugins](developers/08_TESTING.md)
+- [Publishing and registry](developers/10_PUBLISHING_REGISTRY.md)
+- [Plugin review checklist](developers/12_PLUGIN_REVIEW_CHECKLIST.md)
+- [Glossary](developers/15_GLOSSARY.md)
+
+## Build and release
+
 - [Build from source](BUILD_FROM_SOURCE.md)
 - [Releasing](RELEASING.md)
-- full [Provider SDK](../provider-sdk/README.md)
 
-## Trust
+## Trust and security
+
 - [Privacy](PRIVACY.md)
+- [Responsible Use](../RESPONSIBLE_USE.md)
+- [API security](api/SECURITY.md)
 - Provider SDK security model: `provider-sdk/docs/05_SECURITY_AND_TRUST.md`

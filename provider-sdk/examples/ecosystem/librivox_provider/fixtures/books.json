@@ -1,0 +1,42 @@
+{
+  "books": [
+    {
+      "id": "65",
+      "title": "Odyssey",
+      "description": "Demo public-domain audiobook.",
+      "language": "English",
+      "url_librivox": "https://librivox.org/the-odyssey-by-homer/",
+      "url_iarchive": "https://www.archive.org/details/odyssey_butler_librivox",
+      "coverart_jpg": "https://www.archive.org/download/librivox_cd_covers/odyssey.jpg",
+      "authors": [
+        {
+          "id": "765",
+          "first_name": "",
+          "last_name": "Homer",
+          "dob": "c. 8th cen",
+          "dod": "c. 8th cen"
+        }
+      ],
+      "sections": [
+        {
+          "id": "121514",
+          "section_number": "1",
+          "title": "Book 01",
+          "listen_url": "https://www.archive.org/download/odyssey_butler_librivox/odyssey_01_homer_butler_64kb.mp3",
+          "language": "English",
+          "playtime": "1386",
+          "readers": []
+        },
+        {
+          "id": "121515",
+          "section_number": "2",
+          "title": "Book 02",
+          "listen_url": "https://www.archive.org/download/odyssey_butler_librivox/odyssey_02_homer_butler_64kb.mp3",
+          "language": "English",
+          "playtime": "1450",
+          "readers": []
+        }
+      ]
+    }
+  ]
+}

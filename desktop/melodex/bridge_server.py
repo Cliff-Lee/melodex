@@ -89,7 +89,7 @@ class ProviderBridge:
 
             def _auth(self) -> bool:
                 u, q = self._query()
-                if u.path == "/health":
+                if u.path in {"/health", "/openapi.json"}:
                     return True
                 auth = self.headers.get("Authorization", "")
                 query_token = q.get("token", [""])[0]
@@ -178,6 +178,10 @@ class ProviderBridge:
                 try:
                     if u.path == "/health":
                         return self._send(200, {"ok": True, "service": "melodex-provider-bridge", "control": bool(bridge.controller)})
+                    if u.path == "/openapi.json":
+                        return self._send(200, openapi_document())
+                    if u.path == "/v1/openai/tools":
+                        return self._send(200, OPENAI_FUNCTION_TOOLS)
                     if u.path == "/v1/providers":
                         order = bridge.manager.provider_order() if hasattr(bridge.manager, "provider_order") else list(bridge.manager.providers)
                         providers = []

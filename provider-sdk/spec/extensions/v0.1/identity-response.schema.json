@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://melodex.example/schema/extensions/v0.1/identity-response.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "capability", "status", "subject", "candidates"],
+  "properties": {
+    "schema_version": {"const": "0.1"},
+    "capability": {"const": "identity"},
+    "status": {"type": "string", "enum": ["matched", "ambiguous", "not_found"]},
+    "subject": {"$ref": "common.schema.json#/$defs/EntityRef"},
+    "candidates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["canonical_ids", "score", "provenance"],
+        "properties": {
+          "canonical_ids": {"$ref": "common.schema.json#/$defs/CanonicalIds"},
+          "display": {"type": "object", "additionalProperties": true},
+          "score": {"type": "number", "minimum": 0, "maximum": 1},
+          "provenance": {"$ref": "common.schema.json#/$defs/Provenance"}
+        }
+      }
+    },
+    "cache": {"$ref": "common.schema.json#/$defs/CacheDirective"}
+  }
+}

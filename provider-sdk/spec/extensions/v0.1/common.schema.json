@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://melodex.example/schema/extensions/v0.1/common.schema.json",
+  "title": "Melodex Extension Contracts v0.1 Common Types",
+  "$defs": {
+    "ProviderRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider_id", "provider_entity_id"],
+      "properties": {
+        "provider_id": {"type": "string", "minLength": 1},
+        "provider_entity_id": {"type": "string", "minLength": 1},
+        "entity_type": {"type": "string", "enum": ["track", "album", "artist"]}
+      }
+    },
+    "CanonicalIds": {
+      "type": "object",
+      "minProperties": 1,
+      "properties": {
+        "isrc": {"type": "string", "minLength": 1},
+        "musicbrainz_recording_id": {"type": "string", "minLength": 1},
+        "musicbrainz_release_id": {"type": "string", "minLength": 1},
+        "musicbrainz_release_group_id": {"type": "string", "minLength": 1},
+        "musicbrainz_artist_id": {"type": "string", "minLength": 1},
+        "wikidata_id": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": {"type": "string", "minLength": 1}
+    },
+    "EntityHints": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": false,
+      "properties": {
+        "title": {"type": "string"},
+        "name": {"type": "string"},
+        "artist": {"type": "string"},
+        "album": {"type": "string"},
+        "duration_ms": {"type": ["integer", "null"], "minimum": 0},
+        "year": {"type": ["integer", "null"], "minimum": 0}
+      }
+    },
+    "EntityRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entity_type"],
+      "properties": {
+        "entity_type": {"type": "string", "enum": ["track", "album", "artist"]},
+        "provider_refs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/ProviderRef"}
+        },
+        "canonical_ids": {"$ref": "#/$defs/CanonicalIds"},
+        "hints": {"$ref": "#/$defs/EntityHints"}
+      },
+      "anyOf": [
+        {"required": ["provider_refs"]},
+        {"required": ["canonical_ids"]},
+        {"required": ["hints"]}
+      ]
+    },
+    "Provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_extension_id", "retrieved_at"],
+      "properties": {
+        "source_extension_id": {"type": "string", "minLength": 3},
+        "source_item_id": {"type": ["string", "null"]},
+        "source_url": {"type": ["string", "null"], "format": "uri"},
+        "retrieved_at": {"type": "string", "format": "date-time"},
+        "license": {"type": ["string", "null"]},
+        "attribution": {"type": ["string", "null"]},
+        "confidence": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+        "evidence": {"type": "array", "items": {"type": "string"}, "maxItems": 20}
+      }
+    },
+    "CacheDirective": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["policy"],
+      "properties": {
+        "policy": {"type": "string", "enum": ["no_store", "session", "ttl", "persistent"]},
+        "ttl_seconds": {"type": ["integer", "null"], "minimum": 0}
+      }
+    },
+    "SourcedValue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value", "provenance"],
+      "properties": {
+        "value": {"type": ["string", "number", "boolean", "object", "array", "null"]},
+        "provenance": {"$ref": "#/$defs/Provenance"}
+      }
+    }
+  }
+}

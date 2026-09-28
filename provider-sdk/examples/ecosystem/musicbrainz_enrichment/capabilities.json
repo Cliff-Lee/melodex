@@ -1,0 +1,16 @@
+{
+  "schema_version": "0.1",
+  "extension_id": "org.melodex.example.musicbrainz",
+  "contracts": [
+    {
+      "capability": "identity",
+      "contract_version": "0.1",
+      "method": "identity.resolve"
+    },
+    {
+      "capability": "metadata",
+      "contract_version": "0.1",
+      "method": "metadata.enrich"
+    }
+  ]
+}

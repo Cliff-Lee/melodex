@@ -78,8 +78,26 @@ class LLMClient:
         if provider == "openwebui":
             return "http://localhost:3000/api/chat/completions"
         if provider == "openai":
-            return "https://api.openai.com/v1/chat/completions"
+            return "https://api.openai.com/v1/responses"
         return "http://localhost:8000/v1/chat/completions"
+
+    @staticmethod
+    def _responses_text(data: Any) -> str:
+        if not isinstance(data, dict):
+            raise RuntimeError("OpenAI Responses API returned an unexpected response")
+        output_text = data.get("output_text")
+        if isinstance(output_text, str) and output_text.strip():
+            return output_text.strip()
+        parts: list[str] = []
+        for item in list(data.get("output") or []):
+            if not isinstance(item, dict) or item.get("type") != "message":
+                continue
+            for block in list(item.get("content") or []):
+                if isinstance(block, dict) and block.get("type") in {"output_text", "text"} and isinstance(block.get("text"), str):
+                    parts.append(str(block["text"]))
+        if parts:
+            return "\n".join(parts).strip()
+        raise RuntimeError("OpenAI Responses API did not return assistant text")
 
     @staticmethod
     def _openai_text(data: Any) -> str:
@@ -139,6 +157,16 @@ class LLMClient:
         if settings.api_key:
             headers["Authorization"] = f"Bearer {settings.api_key}"
 
+        if endpoint.rstrip("/").endswith("/responses"):
+            payload = {
+                "model": model,
+                "input": messages,
+                "store": False,
+            }
+            response = self.session.post(endpoint, headers=headers, json=payload, timeout=self.timeout)
+            response.raise_for_status()
+            return self._responses_text(response.json())
+
         if provider == "ollama" or endpoint.rstrip("/").endswith("/api/chat"):
             payload = {
                 "model": model,
@@ -179,6 +207,8 @@ class LLMClient:
         if provider == "ollama" or endpoint.rstrip("/").endswith("/api/chat"):
             base = endpoint.rsplit("/api/chat", 1)[0]
             candidates = [base + "/api/tags"]
+        elif endpoint.rstrip("/").endswith("/responses"):
+            candidates = [endpoint.rstrip("/").rsplit("/responses", 1)[0] + "/models"]
         elif "/api/chat/completions" in endpoint:
             base = endpoint.split("/api/chat/completions", 1)[0]
             candidates = [base + "/api/models", base + "/v1/models"]
