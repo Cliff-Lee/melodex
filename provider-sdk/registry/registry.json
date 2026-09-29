@@ -22,7 +22,7 @@
         "documentation": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/radio_browser_provider/README.md"
       },
       "distribution": {
-        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/main/provider-sdk/registry/packages/radio-browser-0.1.1.mdxprovider",
+        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/testing/v0.3.1-dev-stabilized/provider-sdk/registry/packages/radio-browser-0.1.1.mdxprovider",
         "format": "mdxprovider",
         "sha256": "1f8d705620610b41504cf32d1cd5c81c48f8f3674c86dd391fde9bf2fd427141",
         "size_bytes": 4840
@@ -62,7 +62,7 @@
         "documentation": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/librivox_provider/README.md"
       },
       "distribution": {
-        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/main/provider-sdk/registry/packages/librivox-0.1.1.mdxprovider",
+        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/testing/v0.3.1-dev-stabilized/provider-sdk/registry/packages/librivox-0.1.1.mdxprovider",
         "format": "mdxprovider",
         "sha256": "38b57495cde66d74ef6a147b3023065501dec213279b02b1e4bbcb3a3cfbd6e7",
         "size_bytes": 5072
@@ -102,7 +102,7 @@
         "documentation": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/musicbrainz_enrichment/README.md"
       },
       "distribution": {
-        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/main/provider-sdk/registry/packages/musicbrainz-enrichment-0.1.1.mdxplugin",
+        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/testing/v0.3.1-dev-stabilized/provider-sdk/registry/packages/musicbrainz-enrichment-0.1.1.mdxplugin",
         "format": "mdxplugin",
         "sha256": "f3168d559443b628a48b414bc2825531ee76ab5a268596933557863d62587e7a",
         "size_bytes": 5961
@@ -142,7 +142,7 @@
         "documentation": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/wikimedia_artwork/README.md"
       },
       "distribution": {
-        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/main/provider-sdk/registry/packages/wikimedia-artwork-0.1.1.mdxplugin",
+        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/testing/v0.3.1-dev-stabilized/provider-sdk/registry/packages/wikimedia-artwork-0.1.1.mdxplugin",
         "format": "mdxplugin",
         "sha256": "1500e9596a915db82173a3d0798968631773969deb687bea4fe3cf302e437459",
         "size_bytes": 4371
@@ -184,7 +184,7 @@
         "documentation": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/openverse_audio_provider/README.md"
       },
       "distribution": {
-        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/main/provider-sdk/registry/packages/openverse-audio-0.1.1.mdxprovider",
+        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/testing/v0.3.1-dev-stabilized/provider-sdk/registry/packages/openverse-audio-0.1.1.mdxprovider",
         "format": "mdxprovider",
         "sha256": "28c62dd617a1d48281e5c0705b54f939668a33dfe185848f09ca2553319c1b0b",
         "size_bytes": 5302
@@ -221,7 +221,7 @@
         "documentation": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/cover_art_archive_artwork/README.md"
       },
       "distribution": {
-        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/main/provider-sdk/registry/packages/cover-art-archive-0.1.1.mdxplugin",
+        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/testing/v0.3.1-dev-stabilized/provider-sdk/registry/packages/cover-art-archive-0.1.1.mdxplugin",
         "format": "mdxplugin",
         "sha256": "eb575c190993711da7303c074def07183046203094b71e18e822f3a8309d1781",
         "size_bytes": 4440
@@ -260,7 +260,7 @@
         "documentation": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/listenbrainz_tags/README.md"
       },
       "distribution": {
-        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/main/provider-sdk/registry/packages/listenbrainz-tags-0.1.2.mdxplugin",
+        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/testing/v0.3.1-dev-stabilized/provider-sdk/registry/packages/listenbrainz-tags-0.1.2.mdxplugin",
         "format": "mdxplugin",
         "sha256": "7578f28a2fd2bdd5e5ea73bb88f11fccc9ef0061a3c778e96d7401625dd5f7be",
         "size_bytes": 5109
@@ -299,7 +299,7 @@
         "documentation": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/public_domain_lyrics/README.md"
       },
       "distribution": {
-        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/main/provider-sdk/registry/packages/public-domain-lyrics-0.1.0.mdxplugin",
+        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/testing/v0.3.1-dev-stabilized/provider-sdk/registry/packages/public-domain-lyrics-0.1.0.mdxplugin",
         "format": "mdxplugin",
         "sha256": "5d4e2a3c8fccbb6430eda393332c022d04a7829c8a73f5895b7448389100fa21",
         "size_bytes": 4387
@@ -336,7 +336,7 @@
         "documentation": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/lastfm_recommendations_provider/README.md"
       },
       "distribution": {
-        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/main/provider-sdk/registry/packages/lastfm-recommendations-0.1.1.mdxprovider",
+        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/testing/v0.3.1-dev-stabilized/provider-sdk/registry/packages/lastfm-recommendations-0.1.1.mdxprovider",
         "format": "mdxprovider",
         "sha256": "943c8589e16b15b3bcade84d4f7c371d61ef0aad278901f7f77940c029a6d22c",
         "size_bytes": 5523
@@ -374,7 +374,7 @@
         "documentation": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/musicbrainz_connections/README.md"
       },
       "distribution": {
-        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/main/provider-sdk/registry/packages/musicbrainz-connections-0.1.1.mdxplugin",
+        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/testing/v0.3.1-dev-stabilized/provider-sdk/registry/packages/musicbrainz-connections-0.1.1.mdxplugin",
         "format": "mdxplugin",
         "sha256": "7eda1a9a4310c8ccc5666f13d4894a7a1ed92d07b2d35d3fa7383544cc822634",
         "size_bytes": 5095
@@ -413,7 +413,7 @@
         "documentation": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/wikimedia_liner_notes/README.md"
       },
       "distribution": {
-        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/main/provider-sdk/registry/packages/wikimedia-liner-notes-0.1.1.mdxplugin",
+        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/testing/v0.3.1-dev-stabilized/provider-sdk/registry/packages/wikimedia-liner-notes-0.1.1.mdxplugin",
         "format": "mdxplugin",
         "sha256": "3582479542dae46477e3bc75a91bd9b5ba0f0aef4980adfb9e3c9ce92268286b",
         "size_bytes": 4292
@@ -453,7 +453,7 @@
         "documentation": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/listenbrainz_community_pulse/README.md"
       },
       "distribution": {
-        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/main/provider-sdk/registry/packages/listenbrainz-community-pulse-0.1.1.mdxplugin",
+        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/testing/v0.3.1-dev-stabilized/provider-sdk/registry/packages/listenbrainz-community-pulse-0.1.1.mdxplugin",
         "format": "mdxplugin",
         "sha256": "7e1db57159f3f227c96a125fbefe0a728941674c0147083ca2fbf0517d8278ac",
         "size_bytes": 4982
@@ -492,7 +492,7 @@
         "documentation": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/sonic_neighbours/README.md"
       },
       "distribution": {
-        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/main/provider-sdk/registry/packages/sonic-neighbours-0.1.1.mdxplugin",
+        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/testing/v0.3.1-dev-stabilized/provider-sdk/registry/packages/sonic-neighbours-0.1.1.mdxplugin",
         "format": "mdxplugin",
         "sha256": "aba47781eb727bab6331c2980ca343ff9cdedb40f97689c6380ce72506930c86",
         "size_bytes": 4833
@@ -529,7 +529,7 @@
         "documentation": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/forgotten_favourites/README.md"
       },
       "distribution": {
-        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/main/provider-sdk/registry/packages/forgotten-favourites-0.1.0.mdxplugin",
+        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/testing/v0.3.1-dev-stabilized/provider-sdk/registry/packages/forgotten-favourites-0.1.0.mdxplugin",
         "format": "mdxplugin",
         "sha256": "b1e86da0b11fd7db5b7c3ef109499981426a13fc9d8392da2efdf30d204f7465",
         "size_bytes": 8949
@@ -566,7 +566,7 @@
         "documentation": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/bridge_builder/README.md"
       },
       "distribution": {
-        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/main/provider-sdk/registry/packages/bridge-builder-0.1.1.mdxplugin",
+        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/testing/v0.3.1-dev-stabilized/provider-sdk/registry/packages/bridge-builder-0.1.1.mdxplugin",
         "format": "mdxplugin",
         "sha256": "fec5298c5834468e8832916823107218f7a5ecc3ed872f91dc10eb78269ab1f1",
         "size_bytes": 5052
