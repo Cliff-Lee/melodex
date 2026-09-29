@@ -45,6 +45,8 @@ melodex-extension doctor my-artwork
 melodex-extension pack my-artwork
 ```
 
+Network-backed extensions may optionally declare the v0.1 `extension.health` method. This is lifecycle metadata rather than an enrichment capability; extensions that omit it remain compatible and use Melodex's process-check fallback. See the experimental extension contract reference for the request/response schema.
+
 Registry maintenance:
 
 ```bash
