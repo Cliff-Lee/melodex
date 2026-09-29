@@ -232,6 +232,50 @@ def test_listenbrainz_community_pulse_example_with_fixture(monkeypatch):
     assert health["upstream_checked"] is True
 
 
+def test_sonic_neighbours_example_with_fixture():
+    module = _load(
+        "sonic_neighbours_example",
+        EXAMPLES / "sonic_neighbours" / "plugin.py",
+    )
+    params = json.loads(
+        (EXAMPLES / "sonic_neighbours" / "fixtures" / "request.json").read_text("utf-8")
+    )
+    result = module.suggest(params)
+    assert result["intent"] == "similar"
+    assert result["suggestions"][0]["ref"] == "t1"
+    assert result["suggestions"][0]["score"] > result["suggestions"][-1]["score"]
+
+
+def test_forgotten_favourites_example_with_fixture():
+    module = _load(
+        "forgotten_favourites_example",
+        EXAMPLES / "forgotten_favourites" / "plugin.py",
+    )
+    params = json.loads(
+        (EXAMPLES / "forgotten_favourites" / "fixtures" / "request.json").read_text("utf-8")
+    )
+    result = module.suggest(params)
+    refs = [row["ref"] for row in result["suggestions"]]
+    assert refs[0] == "t0"
+    assert "t1" not in refs  # played yesterday
+    assert "t3" not in refs  # explicitly disliked
+    assert "days since last play" in result["suggestions"][0]["reason"]
+
+
+def test_bridge_builder_example_with_fixture():
+    module = _load(
+        "bridge_builder_example",
+        EXAMPLES / "bridge_builder" / "plugin.py",
+    )
+    params = json.loads(
+        (EXAMPLES / "bridge_builder" / "fixtures" / "request.json").read_text("utf-8")
+    )
+    result = module.suggest(params)
+    assert result["intent"] == "bridge"
+    assert result["suggestions"][0]["ref"] == "t2"
+    assert result["suggestions"][0]["score"] > 0.5
+
+
 def test_registry_references_all_examples():
     registry = json.loads((ROOT / "registry" / "example-registry.json").read_text(encoding="utf-8"))
     ids = {row["id"] for row in registry["plugins"]}
@@ -248,4 +292,7 @@ def test_registry_references_all_examples():
         "org.melodex.example.musicbrainz-connections",
         "org.melodex.example.wikimedia-liner-notes",
         "org.melodex.example.listenbrainz-community-pulse",
+        "org.melodex.example.sonic-neighbours",
+        "org.melodex.example.forgotten-favourites",
+        "org.melodex.example.bridge-builder",
     }.issubset(ids)
