@@ -16,6 +16,25 @@ Use **Sources → Add local folder…** to add one or more folders. Melodex scan
 
 The **My music** page also has an **Add folder…** shortcut to the same picker, then becomes the main place to browse your indexed local library.
 
+## Music map
+
+**Music map** turns cached local Flow analysis into a zoomable sonic landscape.
+
+Each dot is an analysed local track. Nearby dots have similar combinations of tempo, energy, key, timbre, rhythmic density and mixability. Thin lines connect the nearest local neighbours.
+
+Use the colour selector to view the same landscape through different lenses:
+
+- **Sonic colour** — key/energy-oriented colour;
+- **Energy** — calmer to more energetic;
+- **Taste** — stronger positive local taste signals;
+- **Rediscovery** — tracks that have positive history and may be ready to return.
+
+Click a node to inspect it. Double-click to play it. The page can also **Add selected to queue** or **Start journey here**, which hands that track back to Mind + Flow as the session anchor.
+
+The map uses cached local analysis only. **Analyse my library** is an explicit action; simply opening the map does not silently analyse every file.
+
+For large analysed libraries, the first implementation displays a bounded representative map rather than trying to draw every track at once.
+
 ## Flow queue
 
 Flow is not random shuffle. It evaluates the current queue and, when local audio is available, analyses BPM, key, loudness, energy, onset density, timbre, intro/outro mixability and ending type. It chooses an order designed to make the next track feel intentional.
