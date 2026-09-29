@@ -158,6 +158,22 @@
           }
         }
       }
+    },
+    "health": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_version",
+        "method"
+      ],
+      "properties": {
+        "contract_version": {
+          "const": "0.1"
+        },
+        "method": {
+          "const": "extension.health"
+        }
+      }
     }
   }
 }

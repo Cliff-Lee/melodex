@@ -46,7 +46,9 @@ def normalise_health_status(value: Any) -> str:
         return "setup_required"
     if raw in {"disabled"}:
         return "disabled"
-    if raw in {"unavailable", "offline", "timeout", "degraded"}:
+    if raw in {"degraded"}:
+        return "degraded"
+    if raw in {"unavailable", "offline", "timeout"}:
         return "unavailable"
     if raw in {"error", "failed", "failure", "broken"}:
         return "error"
@@ -62,6 +64,7 @@ def health_badge(result: dict[str, Any] | None) -> str:
         "setup_required": "SETUP NEEDED",
         "authentication_required": "AUTH REQUIRED",
         "disabled": "DISABLED",
+        "degraded": "DEGRADED",
         "unavailable": "UNAVAILABLE",
         "error": "ERROR",
         "untested": "NOT TESTED",

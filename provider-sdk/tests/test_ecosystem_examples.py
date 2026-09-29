@@ -118,6 +118,9 @@ def test_listenbrainz_tags_example_with_fixture(monkeypatch):
     result = module.metadata_enrich({"subject": subject})
     assert result["fields"]["community_tags"]["value"][0] == "trip hop"
     assert result["fields"]["community_tag_counts"]["value"][0]["count"] == 8
+    health = module.respond({"method": "extension.health", "params": {"schema_version": "0.1", "check": "live"}})
+    assert health["status"] == "ready"
+    assert health["upstream_checked"] is True
 
 def test_public_domain_lyrics_example():
     module = _load(

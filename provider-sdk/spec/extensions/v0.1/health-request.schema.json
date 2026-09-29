@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://melodex.example/schema/extensions/v0.1/health-request.schema.json",
+  "title": "Melodex extension health request v0.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "check"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "0.1"
+    },
+    "check": {
+      "const": "live"
+    }
+  }
+}

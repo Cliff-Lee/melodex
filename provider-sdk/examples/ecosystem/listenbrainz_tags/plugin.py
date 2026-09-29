@@ -3,15 +3,18 @@ from __future__ import annotations
 import json
 import os
 import urllib.parse
+import urllib.error
 import urllib.request
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
 EXTENSION_ID = "org.melodex.example.listenbrainz-tags"
 API = "https://api.listenbrainz.org/1/metadata/recording/"
+HEALTH_API = "https://api.listenbrainz.org/1/status/service-status"
 USER_AGENT = os.getenv(
     "MELODEX_USER_AGENT",
-    "Melodex-ListenBrainz-Tags-Example/0.1 (https://github.com/Cliff-Lee/melodex)",
+    "Melodex-ListenBrainz-Tags-Example/0.1.1 (https://github.com/Cliff-Lee/melodex)",
 )
 
 
@@ -65,6 +68,52 @@ def _record(data, recording_mbid):
             {},
         )
     return {}
+
+
+def extension_health(params):
+    if os.getenv("MELODEX_EXAMPLE_FIXTURES") == "1":
+        return {
+            "schema_version": "0.1",
+            "status": "ready",
+            "upstream_checked": True,
+            "message": "ListenBrainz fixture service is available",
+            "latency_ms": 0,
+        }
+
+    started = time.monotonic()
+    req = urllib.request.Request(
+        HEALTH_API,
+        headers={"User-Agent": USER_AGENT, "Accept": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10) as response:
+            data = json.load(response)
+        if not isinstance(data, dict):
+            raise ValueError("unexpected status response")
+    except urllib.error.HTTPError as exc:
+        return {
+            "schema_version": "0.1",
+            "status": "auth_required" if exc.code in {401, 403} else "unavailable",
+            "upstream_checked": True,
+            "message": f"ListenBrainz status endpoint returned HTTP {exc.code}",
+            "latency_ms": int((time.monotonic() - started) * 1000),
+        }
+    except (urllib.error.URLError, TimeoutError, ValueError, json.JSONDecodeError):
+        return {
+            "schema_version": "0.1",
+            "status": "unavailable",
+            "upstream_checked": True,
+            "message": "ListenBrainz status endpoint is unavailable",
+            "latency_ms": int((time.monotonic() - started) * 1000),
+        }
+
+    return {
+        "schema_version": "0.1",
+        "status": "ready",
+        "upstream_checked": True,
+        "message": "ListenBrainz status endpoint is reachable",
+        "latency_ms": int((time.monotonic() - started) * 1000),
+    }
 
 
 def metadata_enrich(params):
@@ -134,6 +183,8 @@ def metadata_enrich(params):
 
 
 def respond(request):
+    if request.get("method") == "extension.health":
+        return extension_health(request.get("params") or {})
     if request.get("method") == "metadata.enrich":
         return metadata_enrich(request.get("params") or {})
     raise RuntimeError(f"Unsupported method: {request.get('method')}")

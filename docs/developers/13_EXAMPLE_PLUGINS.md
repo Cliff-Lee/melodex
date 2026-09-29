@@ -86,6 +86,8 @@ metadata.enrich
 
 Teaches chained enrichment: a provider or identity resolver supplies a MusicBrainz recording ID, then ListenBrainz contributes community tags without repeating fuzzy identity matching. It also demonstrates privacy-minimal API use because only the recording identifier is sent.
 
+Version 0.1.1 additionally demonstrates the optional extension-level `extension.health` contract using ListenBrainz's service-status endpoint. Health remains separate from the `metadata` capability, and the response explicitly reports whether an upstream service was checked.
+
 ## Public Domain Lyrics
 
 **Layer:** experimental v0.1 capability extension

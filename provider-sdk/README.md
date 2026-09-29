@@ -7,7 +7,7 @@ A source-neutral provider protocol and developer SDK for **Melodex**.
 
 ## Status
 
-**SDK v0.6.0 / MPP 1.0 preview.**
+**SDK v0.7.0 / MPP 1.0 preview.**
 
 The SDK/tooling is usable today, but the package remains 0.x and MPP 1.0 is still a **preview compatibility target**, not a frozen final protocol.
 
@@ -44,6 +44,8 @@ melodex-extension validate my-artwork
 melodex-extension doctor my-artwork
 melodex-extension pack my-artwork
 ```
+
+Network-backed extensions may optionally declare the v0.1 `extension.health` method. This is lifecycle metadata rather than an enrichment capability; extensions that omit it remain compatible and use Melodex's process-check fallback. See the experimental extension contract reference for the request/response schema.
 
 Registry maintenance:
 

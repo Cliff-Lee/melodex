@@ -13,6 +13,14 @@ artwork.lookup
 lyrics.lookup
 ```
 
+Capability extensions may also declare the optional extension-level health method:
+
+```text
+extension.health
+```
+
+Health is not an enrichment capability and is therefore not included in capability preference/ranking.
+
 These contracts are **experimental**. MPP playback-provider contracts remain separate.
 
 ## Runtime model
@@ -108,6 +116,8 @@ Melodex also tracks a small runtime-health record for each installed capability 
 - the last **redacted error category** such as `timeout`, `protocol_error`, `process_error` or `call_error`.
 
 The Sources page shows this health state, and `GET /v1/extensions` exposes the same non-secret diagnostics.
+
+When an extension declares the optional `extension.health` contract, **Test plugin** calls it with a bounded timeout. The response must include `upstream_checked`; Melodex labels the result as an upstream check only when that flag is true. Extensions without the optional contract keep the existing process-start fallback.
 
 Plugin-supplied exception messages and stderr are not copied into the public health record.
 

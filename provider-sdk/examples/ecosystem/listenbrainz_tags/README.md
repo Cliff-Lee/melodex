@@ -17,3 +17,7 @@ Returned fields:
 - `genres` (top tag labels, lower confidence)
 
 The public recording-metadata endpoint does not require a user token when a recording MBID is already known.
+
+## Health check
+
+This example also declares the optional v0.1 `extension.health` contract. Melodex calls ListenBrainz's public `/1/status/service-status` endpoint for an explicit live upstream check. This is separate from metadata enrichment and does not require a recording MBID.

@@ -181,6 +181,11 @@ def command_doctor(args: argparse.Namespace) -> int:
         print(f"✓ Python entrypoint compiles: {entry}")
     caps = ", ".join(str(x.get("capability")) for x in descriptor.get("contracts") or [] if isinstance(x, dict))
     print(f"✓ contracts: {caps}")
+    health = descriptor.get("health")
+    if isinstance(health, dict):
+        print(f"✓ optional health: {health.get('method')} v{health.get('contract_version')}")
+    else:
+        print("✓ optional health: not declared (process-check fallback)")
     return 0
 
 
@@ -211,7 +216,7 @@ def command_pack(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="melodex-extension")
-    parser.add_argument("--version", action="version", version="%(prog)s 0.6.0")
+    parser.add_argument("--version", action="version", version="%(prog)s 0.7.0")
     sub = parser.add_subparsers(dest="command", required=True)
     p = sub.add_parser("init", help="create a capability extension skeleton")
     p.add_argument("directory")

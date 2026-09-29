@@ -22,6 +22,10 @@ def test_json_schemas_are_valid_schemas():
 def test_registry_schema_copies_match():
     pairs = [
         (
+            ROOT / "spec" / "extensions" / "v0.1" / "capabilities.schema.json",
+            ROOT / "src" / "melodex_provider_sdk" / "schemas" / "extension-capabilities-v0.1.json",
+        ),
+        (
             ROOT / "registry" / "plugin-registry.schema.json",
             ROOT / "src" / "melodex_provider_sdk" / "schemas" / "plugin-registry-v0.1.json",
         ),

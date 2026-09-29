@@ -64,6 +64,21 @@ extension process
 
 This isolates crashes/timeouts from the player. It is not yet a full security sandbox.
 
+## Optional extension health
+
+A `.mdxplugin` may declare:
+
+```json
+"health": {
+  "contract_version": "0.1",
+  "method": "extension.health"
+}
+```
+
+This is extension-level lifecycle metadata, **not** a fifth enrichment capability. It therefore does not participate in identity/metadata/artwork/lyrics ranking.
+
+Melodex sends a bounded live check and expects a v0.1 response with a health status plus `upstream_checked`. Only `upstream_checked=true` is presented as a genuine upstream connectivity check. Extensions that omit the declaration remain valid and use the process-start fallback.
+
 ## Future directions
 
 Possible future capabilities include:

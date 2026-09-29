@@ -28,7 +28,7 @@ Plugins that need required configuration open a setup form immediately after ins
 
 Installed third-party providers and extensions show a health state in Sources. Use **Test selected** to refresh it.
 
-Provider checks use `provider.health`; extension checks verify process startup and then runtime success/failure is learned from actual extension calls. A failed or unavailable plugin does not prevent unrelated providers/extensions from continuing to work.
+Provider checks use `provider.health`. Extensions that declare `extension.health` get a bounded active check; older extensions fall back to process startup. Runtime success/failure is still learned from actual extension calls and overrides stale health when necessary. A failed or unavailable plugin does not prevent unrelated providers/extensions from continuing to work.
 
 ## Manual third-party installation
 
