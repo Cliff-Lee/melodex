@@ -20,13 +20,18 @@ Melodex is intentionally developing in public. Some surfaces are implemented and
 | --- | --- | --- |
 | Desktop provider manager | **Implemented** | Source-neutral runtime is in the public desktop app |
 | Local files / built-in sources | **Implemented** | First-party runtime behavior |
+| Music Map | **Implemented / Preview** | Desktop local-library view using cached Flow features, deterministic 2D projection, sonic/factual overlays, explainable Pathfinder routing, semantic Journey Designer stages and local Journey Live tail-replanning; layout/routing/adaptation heuristics may evolve |
+| Journey Library / `.mdxjourney` | **Implemented / Preview** | Local Recipe persistence/import/export plus private Journey Live run/event history and designed/final replay; schema version 1 may evolve through explicit future versions |
 | `.mdxprovider` installation | **Implemented** | Desktop only; package extraction rejects traversal/symlinks |
 | MPP JSON-RPC subprocess transport | **Implemented** | **MPP 1.0 preview**; do not read “1.0” as a final compatibility guarantee yet |
 | Provider SDK | **Implemented** | SDK package is currently **0.x** and may evolve |
+| MPP `recommendations.get` | **Implemented / Preview** | Optional recommendation-only provider operation; results are discovery metadata and may require resolution through another playback provider |
 | `melodex-provider init/validate/doctor/pack` | **Implemented** | Recommended fast path for provider authors |
 | Capability Broker | **Implemented** | Broker runtime exists |
 | `.mdxplugin` installation | **Implemented** | Desktop capability-extension runtime |
 | identity / metadata / artwork / lyrics contracts | **Experimental v0.1** | Real and testable, but contract changes are still possible |
+| context card contract | **Experimental v0.1** | `context.lookup` adds sourced text/list/fact cards to Rich Now Playing; deliberately host-rendered rather than plugin-specific GUI |
+| local intelligence contract | **Experimental v0.1** | `library.suggest` ranks privacy-preserving local-library profiles; Core withholds paths, database keys and absolute listening timestamps |
 | `melodex-extension init/validate/doctor/pack` | **Implemented** | Scaffolding/tooling is usable today |
 | Plugin Directory | **Implemented** | Registry-backed discovery/install in desktop Sources |
 | Registry package SHA-256 + size verification | **Implemented** | Verifies bytes against registry metadata; does **not** identify the publisher cryptographically |
@@ -36,6 +41,9 @@ Melodex is intentionally developing in public. Some surfaces are implemented and
 | Registry review history | **Implemented** | Append-only per-plugin review records are tied to the current version/package SHA-256 and validated in CI; review is still not publisher signing or legal endorsement |
 | Declared plugin permissions | **Implemented** | Visible metadata/review contract; not universal OS enforcement |
 | Declared plugin configuration broker | **Implemented / Preview** | Schema-driven `string`/`secret`/`boolean` configuration; only declared values are brokered to the plugin |
+| Plugin install/setup onboarding | **Implemented** | Registry and manual installs automatically prompt for missing required configuration; incomplete installs remain visible as `SETUP NEEDED` |
+| Plugin health/testing UI | **Implemented / Preview** | Providers use bounded `provider.health`; extensions expose process/runtime health without claiming a universal upstream connectivity test |
+| Optional extension health contract | **Implemented / Preview** | `.mdxplugin` may declare bounded `extension.health`; `upstream_checked` distinguishes genuine upstream connectivity from local self-checks |
 | Secret configuration storage | **Implemented** | System credential store when available; otherwise session-only memory rather than plaintext JSON |
 | Playback-host allowlist enforcement | **Implemented** | Playback Gateway checks external provider HTTP(S) playback URLs and redirects against declared hosts; this is not process-wide network isolation |
 | OS-enforced plugin network/filesystem sandbox | **Not implemented** | Provider/extension processes still run with the current user's OS permissions |

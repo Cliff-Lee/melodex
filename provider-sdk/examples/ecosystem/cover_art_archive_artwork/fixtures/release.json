@@ -1,0 +1,20 @@
+{
+  "release": "https://musicbrainz.org/release/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+  "images": [
+    {
+      "id": "12345",
+      "image": "https://archive.org/download/example/front.jpg",
+      "front": true,
+      "back": false,
+      "comment": "Front",
+      "types": ["Front"],
+      "thumbnails": {
+        "250": "https://archive.org/download/example/front-250.jpg",
+        "500": "https://archive.org/download/example/front-500.jpg",
+        "1200": "https://archive.org/download/example/front-1200.jpg",
+        "small": "https://archive.org/download/example/front-250.jpg",
+        "large": "https://archive.org/download/example/front-500.jpg"
+      }
+    }
+  ]
+}

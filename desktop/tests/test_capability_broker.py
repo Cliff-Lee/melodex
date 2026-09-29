@@ -27,6 +27,8 @@ class FakeExtension:
                         "metadata": "metadata.enrich",
                         "artwork": "artwork.lookup",
                         "lyrics": "lyrics.lookup",
+                        "context": "context.lookup",
+                        "library_suggestions": "library.suggest",
                     }[capability],
                 )
             ],
@@ -421,3 +423,151 @@ for line in sys.stdin:
         assert result["fields"]["token"]["value"] == "brokered-secret"
     finally:
         extension.close()
+
+
+def test_broker_context_aggregates_cards_with_provenance_and_priority(tmp_path: Path):
+    broker = CapabilityBroker(tmp_path)
+    subject = {
+        "entity_type": "track",
+        "canonical_ids": {"musicbrainz_recording_id": "rec-1"},
+    }
+    broker.extensions = {
+        "org.example.low": FakeExtension(
+            "org.example.low",
+            "context",
+            {
+                "cards": [
+                    {
+                        "id": "low",
+                        "title": "Low card",
+                        "kind": "text",
+                        "priority": 10,
+                        "text": "Later",
+                        "provenance": {"retrieved_at": "2026-09-29T00:00:00Z"},
+                    }
+                ]
+            },
+        ),
+        "org.example.high": FakeExtension(
+            "org.example.high",
+            "context",
+            {
+                "cards": [
+                    {
+                        "id": "high",
+                        "title": "High card",
+                        "kind": "facts",
+                        "priority": 80,
+                        "facts": [{"label": "Listeners", "value": 42}],
+                        "provenance": {"retrieved_at": "2026-09-29T00:00:00Z"},
+                    }
+                ]
+            },
+        ),
+    }
+    result = broker.lookup_context(subject)
+    assert [card["id"] for card in result["cards"]] == ["high", "low"]
+    assert (
+        result["cards"][0]["provenance"]["source_extension_id"]
+        == "org.example.high"
+    )
+    assert result["errors"] == []
+
+
+def test_metadata_service_exposes_context_cards(tmp_path: Path):
+    class Broker:
+        def entity_ref(self, track, identity=None, entity_type="track"):
+            return {
+                "entity_type": entity_type,
+                "canonical_ids": {
+                    "musicbrainz_recording_id": (identity or {}).get(
+                        "recording_mbid", "rec-1"
+                    )
+                },
+            }
+
+        def lookup_context(self, subject, requested_cards=None, max_cards=20):
+            return {
+                "cards": [
+                    {
+                        "id": "story",
+                        "title": "Story",
+                        "kind": "text",
+                        "text": "Context works",
+                        "provenance": {
+                            "source_extension_id": "org.example.context",
+                            "retrieved_at": "2026-09-29T00:00:00Z",
+                        },
+                    }
+                ],
+                "errors": [],
+            }
+
+    svc = RichMetadataService(tmp_path / "data", capability_broker=Broker())
+    result = svc.enrich_context(
+        {"title": "Demo"},
+        {"recording_mbid": "rec-1", "artist": "Example"},
+    )
+    assert result["cards"][0]["title"] == "Story"
+    assert result["cards"][0]["text"] == "Context works"
+
+
+def test_broker_library_suggestions_merges_and_ranks(tmp_path: Path):
+    broker = CapabilityBroker(tmp_path)
+    profiles = [
+        {
+            "ref": "t0",
+            "title": "Seed",
+            "artist": "A",
+            "album": "",
+            "duration_ms": 1000,
+            "analysis": None,
+            "taste": {},
+        },
+        {
+            "ref": "t1",
+            "title": "One",
+            "artist": "B",
+            "album": "",
+            "duration_ms": 1000,
+            "analysis": None,
+            "taste": {},
+        },
+        {
+            "ref": "t2",
+            "title": "Two",
+            "artist": "C",
+            "album": "",
+            "duration_ms": 1000,
+            "analysis": None,
+            "taste": {},
+        },
+    ]
+    broker.extensions = {
+        "org.example.low": FakeExtension(
+            "org.example.low",
+            "library_suggestions",
+            {
+                "intent": "similar",
+                "suggestions": [
+                    {"ref": "t1", "score": 0.61, "reason": "low"}
+                ],
+            },
+        ),
+        "org.example.high": FakeExtension(
+            "org.example.high",
+            "library_suggestions",
+            {
+                "intent": "similar",
+                "suggestions": [
+                    {"ref": "t2", "score": 0.91, "reason": "high"}
+                ],
+            },
+        ),
+    }
+    result = broker.suggest_library(
+        profiles, "similar", seed_refs=["t0"], limit=10, adventure=0.4
+    )
+    assert [row["ref"] for row in result["suggestions"]] == ["t2", "t1"]
+    assert result["suggestions"][0]["_extension_id"] == "org.example.high"
+    assert result["errors"] == []

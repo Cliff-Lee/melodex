@@ -7,18 +7,38 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import Qt, QTimer, Signal, QObject
+from PySide6.QtCore import QEvent, Qt, QTimer, Signal, QObject
 from PySide6.QtGui import QAction, QDesktopServices, QPixmap
+from PySide6.QtMultimedia import QMediaPlayer
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QListWidget,
     QListWidgetItem, QStackedWidget, QLineEdit, QComboBox, QFileDialog, QMessageBox,
-    QSlider, QTextEdit, QInputDialog, QDialog, QFormLayout, QDialogButtonBox, QCheckBox
+    QSlider, QTextEdit, QInputDialog, QDialog, QFormLayout, QDialogButtonBox, QCheckBox,
+    QTabWidget,
 )
 
 from .paths import app_data_dir
 from .provider_manager import ProviderManager
 from .flow import FlowEngine
 from .mind import MindEngine
+from .local_intelligence import LocalIntelligenceService
+from .music_map import MusicMapWidget
+from .music_map_model import build_music_map
+from .music_knowledge import MusicKnowledgeStore, build_knowledge_graph
+from .music_pathfinder import find_music_path
+from .music_journey import STAGE_LABELS, build_music_journey
+from .music_journey_live import replan_live_journey
+from .journey_recipe import (
+    load_journey_recipe,
+    make_journey_recipe,
+    materialize_recipe_stages,
+    save_journey_recipe,
+)
+from .journey_replay import (
+    materialize_route_snapshot,
+    portable_route_snapshot,
+    summarize_journey_run,
+)
 from .user_state import UserState
 from .player import FlowPlayer
 from .llm_bridge import LLMClient, LLMSettings, llm_track_summary
@@ -26,13 +46,26 @@ from .bridge_server import ProviderBridge
 from .playlist_io import load_playlist, save_playlist
 from .metadata import RichMetadataService
 from .rich_now_playing import RichNowPlayingWidget
+from .living_canvas import LivingCanvasView
+from .visualization_models import build_constellation, build_visual_memory
 from .plugin_directory import PluginDirectoryDialog
+from .plugin_configuration_dialog import configure_plugin
+from .plugin_onboarding import plugin_needs_setup
+from .plugin_health import health_badge, health_summary
 from .diagnostics import write_diagnostics
 
 
 class WorkerSignals(QObject):
     done = Signal(object)
     error = Signal(str)
+
+
+class _VisualAnalysisSignals(QObject):
+    ready = Signal(str, object)
+
+
+class _VisualContextSignals(QObject):
+    ready = Signal(int, str, object)
 
 
 def _track_text(t: dict[str, Any]) -> str:
@@ -55,12 +88,43 @@ class MainWindow(QMainWindow):
         self.state = UserState(self.data_dir / "taste.sqlite3")
         self.flow = FlowEngine(self.data_dir / "flow.sqlite3")
         self.mind = MindEngine(self.state, self.flow)
+        self.local_intelligence = LocalIntelligenceService(
+            self.state, self.flow, self.providers.capabilities
+        )
+        self.knowledge = MusicKnowledgeStore(
+            self.data_dir / "music-knowledge.sqlite3"
+        )
         self.llm = LLMClient()
         self.metadata = RichMetadataService(self.data_dir, capability_broker=self.providers.capabilities)
         self.bridge: ProviderBridge | None = None
         self.current_history_id = 0
         self.current_track_started = 0.0
         self.current_track: dict[str, Any] | None = None
+        self._visual_position_ms = 0
+        self._visual_duration_ms = 0
+        self._visual_analysis_signals = _VisualAnalysisSignals(self)
+        self._visual_analysis_signals.ready.connect(self._visual_analysis_loaded)
+        self._visual_context_signals = _VisualContextSignals(self)
+        self._visual_context_signals.ready.connect(self._visual_context_loaded)
+        self._visual_context_sequence = 0
+        self._visual_neighbour_tracks: dict[int, dict[str, Any]] = {}
+        self.music_path_start_ref = ""
+        self.music_path_end_ref = ""
+        self.music_path_result: dict[str, Any] = {}
+        self.music_journey_stages_data: list[dict[str, Any]] = []
+        self.music_live_active = False
+        self.music_live_route: dict[str, Any] = {}
+        self.music_live_original_route: dict[str, Any] = {}
+        self.music_live_destination_ref = ""
+        self.music_live_avoid_refs: set[str] = set()
+        self.music_live_avoid_artists: set[str] = set()
+        self.music_live_replanning = False
+        self.music_live_run_id = ""
+        self.music_live_played_refs: list[str] = []
+        self.music_active_recipe_id = ""
+        self.music_active_recipe: dict[str, Any] = {}
+        self.pending_journey_recipe: dict[str, Any] | None = None
+        self.pending_journey_replay: tuple[dict[str, Any], str] | None = None
         self.current_page = "home"
         self._closing = False
         self.externalCommand.connect(self._on_external_command)
@@ -73,6 +137,7 @@ class MainWindow(QMainWindow):
         self.player.positionChanged.connect(self._on_position)
         self.player.error.connect(lambda s: self.statusBar().showMessage(s, 7000))
         self.player.queueChanged.connect(self._refresh_queue)
+        self.player.manualAdvanced.connect(self._on_manual_advance)
 
         self._build_ui()
         self._show_home()
@@ -106,7 +171,7 @@ class MainWindow(QMainWindow):
         titles.addWidget(logo); titles.addWidget(tagline)
         brand.addWidget(mark); brand.addLayout(titles, 1)
         side.addLayout(brand); side.addSpacing(12)
-        for text, page in [("Home","home"),("Now playing","now_playing"),("Play for me","for_you"),("Discover","discover"),("My music","library"),("Playlists","playlists"),("Moments","moments"),("Ask Melodex","ask"),("Sources","sources")]:
+        for text, page in [("Home","home"),("Now playing","now_playing"),("Play for me","for_you"),("Discover","discover"),("My music","library"),("Music map","music_map"),("Journeys","journeys"),("Playlists","playlists"),("Moments","moments"),("Ask Melodex","ask"),("Sources","sources")]:
             b = QPushButton(text); b.setCursor(Qt.PointingHandCursor); b.clicked.connect(lambda _=False,p=page:self.open_page(p)); side.addWidget(b)
         side.addStretch(1)
         self.power_toggle = QCheckBox("Show power tools")
@@ -116,9 +181,9 @@ class MainWindow(QMainWindow):
 
         self.stack = QStackedWidget(); body_l.addWidget(self.stack, 1)
         self.pages: dict[str, QWidget] = {}
-        for name in ["home","now_playing","for_you","discover","library","playlists","moments","ask","sources"]:
+        for name in ["home","now_playing","for_you","discover","library","music_map","journeys","playlists","moments","ask","sources"]:
             w = QWidget(); self.pages[name]=w; self.stack.addWidget(w)
-        self._build_home(); self._build_now_playing(); self._build_for_you(); self._build_discover(); self._build_library(); self._build_playlists(); self._build_moments(); self._build_ask(); self._build_sources()
+        self._build_home(); self._build_now_playing(); self._build_for_you(); self._build_discover(); self._build_library(); self._build_music_map(); self._build_journeys(); self._build_playlists(); self._build_moments(); self._build_ask(); self._build_sources()
 
         self.queue_panel = QWidget(); self.queue_panel.setFixedWidth(320)
         ql = QVBoxLayout(self.queue_panel); ql.setContentsMargins(12,12,12,12)
@@ -173,15 +238,47 @@ class MainWindow(QMainWindow):
         self.home_status=QLabel(); self.home_status.setWordWrap(True); l.addWidget(self.home_status); l.addStretch(1)
 
     def _build_now_playing(self):
-        l=self._page_layout("now_playing","Now playing","Artwork, local lyrics, artist relationships and recording credits are enriched independently from the playback source.")
-        self.rich_now=RichNowPlayingWidget(self.metadata,self); l.addWidget(self.rich_now,1)
+        l=self._page_layout(
+            "now_playing",
+            "Now playing",
+            "A living, seekable musical fingerprint alongside artwork, lyrics and track context.",
+        )
+        self.now_views = QTabWidget()
+        self.living_canvas = LivingCanvasView(self, self.data_dir / "visualizers")
+        self.rich_now = RichNowPlayingWidget(self.metadata, self)
+        self.rich_now.knowledgeChanged.connect(self._remember_now_playing_knowledge)
+        self.rich_now.accentChanged.connect(self.living_canvas.set_accent_color)
+        self.rich_now.paletteChanged.connect(self.living_canvas.set_palette)
+        self.rich_now.lyricsChanged.connect(self.living_canvas.set_lyrics)
+        self.living_canvas.seekRequested.connect(self.player.seek)
+        self.living_canvas.modeDataRequested.connect(self._request_visual_mode_data)
+        self.living_canvas.neighbourActivated.connect(self._queue_visual_neighbour)
+        self.player.playingChanged.connect(self.living_canvas.set_playing)
+        self.now_views.addTab(self.living_canvas, "Living Canvas")
+        self.now_views.addTab(self.rich_now, "Details")
+        l.addWidget(self.now_views, 1)
 
     def _build_for_you(self):
         l=self._page_layout("for_you","Play for me","Melodex uses only local listening history and audio analysis unless you explicitly connect an LLM.")
         row=QHBoxLayout(); self.mode=QComboBox(); self.mode.addItems(["balanced","comfort","rediscover","explore"]); self.minutes=QComboBox(); self.minutes.addItems(["30","60","90","120"]); self.adventure=QSlider(Qt.Horizontal); self.adventure.setRange(0,100); self.adventure.setValue(35)
         row.addWidget(QLabel("Mode")); row.addWidget(self.mode); row.addWidget(QLabel("Minutes")); row.addWidget(self.minutes); row.addWidget(QLabel("Familiar")); row.addWidget(self.adventure,1); row.addWidget(QLabel("Surprising")); l.addLayout(row)
         go=QPushButton("▶ Build this journey"); go.clicked.connect(lambda:self._play_for_me(self.mode.currentText(),int(self.minutes.currentText()),self.adventure.value()/100)); l.addWidget(go)
-        self.taste_label=QLabel(); self.taste_label.setWordWrap(True); l.addWidget(self.taste_label); l.addStretch(1)
+        self.taste_label=QLabel(); self.taste_label.setWordWrap(True); l.addWidget(self.taste_label)
+
+        intel_title=QLabel("Local intelligence plugins"); intel_title.setStyleSheet("font-size:18px;font-weight:650;margin-top:10px"); l.addWidget(intel_title)
+        intel_help=QLabel("Private, local suggestions from your own library. A detour keeps one Flow feature and changes two others; Melodex does not send file paths or database rows."); intel_help.setWordWrap(True); intel_help.setStyleSheet("color:#aab0ba"); l.addWidget(intel_help)
+        intel_row=QHBoxLayout()
+        similar=QPushButton("More like current"); similar.clicked.connect(lambda:self._run_local_intelligence("similar"))
+        rediscover=QPushButton("Forgotten favourites"); rediscover.clicked.connect(lambda:self._run_local_intelligence("rediscover"))
+        bridge=QPushButton("Bridge current → next"); bridge.clicked.connect(lambda:self._run_local_intelligence("bridge"))
+        detour=QPushButton("Find a detour"); detour.clicked.connect(lambda:self._run_local_intelligence("detour"))
+        analyse=QPushButton("Analyse my library"); analyse.clicked.connect(self._analyse_library_for_intelligence)
+        intel_row.addWidget(similar); intel_row.addWidget(rediscover); intel_row.addWidget(bridge); intel_row.addWidget(detour); intel_row.addWidget(analyse); intel_row.addStretch(1); l.addLayout(intel_row)
+        self.intelligence_results=QListWidget(); self.intelligence_results.itemDoubleClicked.connect(self._play_intelligence_result); l.addWidget(self.intelligence_results,1)
+        intel_actions=QHBoxLayout()
+        play_pick=QPushButton("Play selected"); play_pick.clicked.connect(self._play_selected_intelligence)
+        queue_pick=QPushButton("Add selected to queue"); queue_pick.clicked.connect(self._queue_selected_intelligence)
+        intel_actions.addWidget(play_pick); intel_actions.addWidget(queue_pick); intel_actions.addStretch(1); l.addLayout(intel_actions)
 
     def _build_discover(self):
         l=self._page_layout("discover","Discover","Search all connected music sources. Add a source in Sources if you want more places to search.")
@@ -194,6 +291,208 @@ class MainWindow(QMainWindow):
         l=self._page_layout("library","My music","Local music stays on your device. Melodex analyses it locally for Flow.")
         row=QHBoxLayout(); add=QPushButton("Add folder…"); add.clicked.connect(self._choose_music_folder); scan=QPushButton("Rescan"); scan.clicked.connect(self._rescan); row.addWidget(add); row.addWidget(scan); row.addStretch(1); l.addLayout(row)
         self.library_list=QListWidget(); self.library_list.itemDoubleClicked.connect(self._play_library); l.addWidget(self.library_list,1)
+
+    def _build_music_map(self):
+        l=self._page_layout(
+            "music_map",
+            "Music map",
+            "Explore your library as both a sonic landscape and a knowledge graph. Keep the dots fixed, switch Connections, or ask Pathfinder to build an explainable listening route between two tracks."
+        )
+        actions=QHBoxLayout()
+        refresh=QPushButton("Refresh map"); refresh.clicked.connect(self._refresh_music_map)
+        analyse=QPushButton("Analyse my library"); analyse.clicked.connect(self._analyse_library_for_map)
+        enrich_selected=QPushButton("Enrich selected"); enrich_selected.clicked.connect(self._enrich_selected_map_knowledge)
+        enrich_map=QPushButton("Enrich map (+8)"); enrich_map.clicked.connect(self._enrich_map_knowledge_batch)
+        play=QPushButton("Play selected"); play.clicked.connect(self._play_music_map_selected)
+        queue=QPushButton("Add selected to queue"); queue.clicked.connect(self._queue_music_map_selected)
+        journey=QPushButton("Start Mind journey here"); journey.clicked.connect(self._journey_from_music_map)
+        actions.addWidget(refresh); actions.addWidget(analyse); actions.addWidget(enrich_selected); actions.addWidget(enrich_map); actions.addWidget(play); actions.addWidget(queue); actions.addWidget(journey); actions.addStretch(1)
+        l.addLayout(actions)
+
+        path_row=QHBoxLayout()
+        self.music_path_mode=QComboBox()
+        self.music_path_mode.addItem("Balanced", "balanced")
+        self.music_path_mode.addItem("Sonic", "sonic")
+        self.music_path_mode.addItem("Knowledge-first", "knowledge")
+        self.music_path_mode.currentIndexChanged.connect(
+            lambda *_:self._journey_recipe_mark_modified()
+        )
+        set_start=QPushButton("Set start"); set_start.clicked.connect(self._music_path_set_start)
+        set_end=QPushButton("Set destination"); set_end.clicked.connect(self._music_path_set_end)
+        find_path=QPushButton("Find path"); find_path.clicked.connect(self._music_path_find)
+        play_path=QPushButton("Play route"); play_path.clicked.connect(self._music_path_play)
+        queue_path=QPushButton("Queue route"); queue_path.clicked.connect(self._music_path_queue)
+        clear_path=QPushButton("Clear path"); clear_path.clicked.connect(self._music_path_clear)
+        self.music_path_label=QLabel("Pathfinder · start —  →  destination —")
+        self.music_path_label.setStyleSheet("color:#aab0ba")
+        path_row.addWidget(QLabel("Pathfinder"))
+        path_row.addWidget(self.music_path_mode)
+        path_row.addWidget(set_start); path_row.addWidget(set_end); path_row.addWidget(find_path)
+        path_row.addWidget(play_path); path_row.addWidget(queue_path); path_row.addWidget(clear_path)
+        path_row.addWidget(self.music_path_label,1)
+        l.addLayout(path_row)
+
+        journey_edit=QHBoxLayout()
+        self.music_journey_preset=QComboBox()
+        self.music_journey_preset.addItem(
+            "Calm → Darker → Forgotten → Energetic",
+            ["calm","dark","forgotten","energetic"],
+        )
+        self.music_journey_preset.addItem(
+            "Calm → Rhythmic → Energetic",
+            ["calm","rhythmic","energetic"],
+        )
+        self.music_journey_preset.addItem(
+            "Familiar → Forgotten → Bright",
+            ["familiar","forgotten","bright"],
+        )
+        self.music_journey_preset.addItem(
+            "Surprising → Darker → Bright",
+            ["surprising","dark","bright"],
+        )
+        load_preset=QPushButton("Load preset"); load_preset.clicked.connect(self._music_journey_load_preset)
+        self.music_journey_constraint=QComboBox()
+        for key in ("calm","dark","forgotten","energetic","bright","rhythmic","familiar","surprising"):
+            self.music_journey_constraint.addItem(STAGE_LABELS[key],key)
+        add_constraint=QPushButton("Add constraint"); add_constraint.clicked.connect(self._music_journey_add_constraint)
+        add_track=QPushButton("Add selected track"); add_track.clicked.connect(self._music_journey_add_track)
+        remove_stage=QPushButton("Remove stage"); remove_stage.clicked.connect(self._music_journey_remove_stage)
+        clear_stages=QPushButton("Clear stages"); clear_stages.clicked.connect(self._music_journey_clear_stages)
+        journey_edit.addWidget(QLabel("Journey Designer"))
+        journey_edit.addWidget(self.music_journey_preset,1)
+        journey_edit.addWidget(load_preset)
+        journey_edit.addWidget(self.music_journey_constraint)
+        journey_edit.addWidget(add_constraint)
+        journey_edit.addWidget(add_track)
+        journey_edit.addWidget(remove_stage)
+        journey_edit.addWidget(clear_stages)
+        l.addLayout(journey_edit)
+
+        journey_actions=QHBoxLayout()
+        build_journey=QPushButton("Build journey"); build_journey.clicked.connect(self._music_journey_build)
+        play_journey=QPushButton("Play journey"); play_journey.clicked.connect(self._music_path_play)
+        queue_journey=QPushButton("Queue journey"); queue_journey.clicked.connect(self._music_path_queue)
+        journey_help=QLabel("Uses the Pathfinder start/destination and routing mode.")
+        journey_help.setStyleSheet("color:#aab0ba")
+        journey_actions.addWidget(build_journey)
+        journey_actions.addWidget(play_journey)
+        journey_actions.addWidget(queue_journey)
+        journey_actions.addWidget(journey_help,1)
+        l.addLayout(journey_actions)
+
+        self.music_journey_stages=QListWidget()
+        self.music_journey_stages.setMaximumHeight(96)
+        self.music_journey_stages.addItem(
+            "Journey stages use the Pathfinder start/destination. Load a preset or add constraints/track waypoints."
+        )
+        l.addWidget(self.music_journey_stages)
+
+        live_row=QHBoxLayout()
+        self.music_live_steering=QComboBox()
+        self.music_live_steering.addItem("No extra steer", "")
+        for key,label in (
+            ("calmer","Calmer next"),
+            ("more_energy","More energy next"),
+            ("darker","Darker next"),
+            ("brighter","Brighter next"),
+            ("more_rhythmic","More rhythmic next"),
+            ("more_familiar","More familiar next"),
+            ("more_surprising","More surprising next"),
+            ("rediscover","Rediscover next"),
+        ):
+            self.music_live_steering.addItem(label,key)
+        play_live=QPushButton("Play live journey"); play_live.clicked.connect(self._journey_live_start)
+        apply_steer=QPushButton("Apply steer"); apply_steer.clicked.connect(self._journey_live_apply_steer)
+        avoid_artist=QPushButton("Avoid current artist"); avoid_artist.clicked.connect(self._journey_live_avoid_current_artist)
+        skip_replan=QPushButton("Skip + replan"); skip_replan.clicked.connect(self.player.next)
+        replan=QPushButton("Replan remaining"); replan.clicked.connect(lambda:self._journey_live_replan("",reason="manual replan"))
+        restore=QPushButton("Restore designed route"); restore.clicked.connect(self._journey_live_restore)
+        stop_live=QPushButton("Stop live"); stop_live.clicked.connect(self._journey_live_stop)
+        self.music_live_label=QLabel("Journey Live · inactive")
+        self.music_live_label.setStyleSheet("color:#aab0ba")
+        live_row.addWidget(QLabel("Journey Live"))
+        live_row.addWidget(play_live)
+        live_row.addWidget(self.music_live_steering)
+        live_row.addWidget(apply_steer)
+        live_row.addWidget(avoid_artist)
+        live_row.addWidget(skip_replan)
+        live_row.addWidget(replan)
+        live_row.addWidget(restore)
+        live_row.addWidget(stop_live)
+        live_row.addWidget(self.music_live_label,1)
+        l.addLayout(live_row)
+
+        self.music_map=MusicMapWidget(self)
+        self.music_map.trackActivated.connect(self._play_music_map_track)
+        l.addWidget(self.music_map,1)
+        self.music_path_steps=QListWidget()
+        self.music_path_steps.setMaximumHeight(132)
+        self.music_path_steps.addItem("Pathfinder explanations will appear here.")
+        l.addWidget(self.music_path_steps)
+
+    def _build_journeys(self):
+        l=self._page_layout(
+            "journeys",
+            "Journey library",
+            "Save reusable journey intent separately from private listening history. Recipes can be imported/exported without exposing local paths; runs show how live listening actually diverged from the design.",
+        )
+        columns=QHBoxLayout()
+
+        recipes_panel=QWidget()
+        recipes_layout=QVBoxLayout(recipes_panel)
+        recipe_title=QLabel("Recipes")
+        recipe_title.setStyleSheet("font-size:18px;font-weight:700")
+        recipes_layout.addWidget(recipe_title)
+        recipe_help=QLabel(
+            "Recipes store routing mode + ordered semantic/exact waypoints. "
+            "Choose fresh start/destination tracks when you reuse them."
+        )
+        recipe_help.setWordWrap(True)
+        recipe_help.setStyleSheet("color:#aab0ba")
+        recipes_layout.addWidget(recipe_help)
+        self.journey_recipes_list=QListWidget()
+        self.journey_recipes_list.itemDoubleClicked.connect(
+            lambda _item:self._journey_recipe_load_selected()
+        )
+        recipes_layout.addWidget(self.journey_recipes_list,1)
+        recipe_buttons=QHBoxLayout()
+        save_current=QPushButton("Save current design"); save_current.clicked.connect(self._journey_recipe_save_current)
+        load_selected=QPushButton("Load into Music Map"); load_selected.clicked.connect(self._journey_recipe_load_selected)
+        import_recipe=QPushButton("Import…"); import_recipe.clicked.connect(self._journey_recipe_import)
+        export_recipe=QPushButton("Export…"); export_recipe.clicked.connect(self._journey_recipe_export)
+        delete_recipe=QPushButton("Delete"); delete_recipe.clicked.connect(self._journey_recipe_delete)
+        for button in (save_current,load_selected,import_recipe,export_recipe,delete_recipe):
+            recipe_buttons.addWidget(button)
+        recipes_layout.addLayout(recipe_buttons)
+
+        runs_panel=QWidget()
+        runs_layout=QVBoxLayout(runs_panel)
+        runs_title=QLabel("Recent runs")
+        runs_title.setStyleSheet("font-size:18px;font-weight:700")
+        runs_layout.addWidget(runs_title)
+        runs_help=QLabel(
+            "Run history is private local state: original design, final adapted route, "
+            "and the steering/skip/avoid decisions that changed it."
+        )
+        runs_help.setWordWrap(True)
+        runs_help.setStyleSheet("color:#aab0ba")
+        runs_layout.addWidget(runs_help)
+        self.journey_runs_list=QListWidget()
+        self.journey_runs_list.itemDoubleClicked.connect(
+            lambda _item:self._journey_run_inspect()
+        )
+        runs_layout.addWidget(self.journey_runs_list,1)
+        run_buttons=QHBoxLayout()
+        inspect=QPushButton("Inspect"); inspect.clicked.connect(self._journey_run_inspect)
+        replay_original=QPushButton("Replay designed"); replay_original.clicked.connect(lambda:self._journey_run_replay("original"))
+        replay_final=QPushButton("Replay final"); replay_final.clicked.connect(lambda:self._journey_run_replay("final"))
+        run_buttons.addWidget(inspect); run_buttons.addWidget(replay_original); run_buttons.addWidget(replay_final)
+        run_buttons.addStretch(1)
+        runs_layout.addLayout(run_buttons)
+
+        columns.addWidget(recipes_panel,1)
+        columns.addWidget(runs_panel,1)
+        l.addLayout(columns,1)
 
     def _build_playlists(self):
         l=self._page_layout("playlists","Playlists","Saved journeys and imported playlists live locally. Import or export XSPF, M3U and M3U8.")
@@ -223,7 +522,8 @@ class MainWindow(QMainWindow):
         jam=QPushButton("Jamendo settings…"); jam.clicked.connect(self._jamendo_settings)
         streams=QPushButton("User Streams…"); streams.clicked.connect(self._user_streams_dialog)
         directory=QPushButton("Explore plugins…"); directory.clicked.connect(self._plugin_directory)
-        row.addWidget(local); row.addWidget(jam); row.addWidget(streams); row.addWidget(directory)
+        test_plugin=QPushButton("Test selected"); test_plugin.clicked.connect(self._test_selected_plugin)
+        row.addWidget(local); row.addWidget(jam); row.addWidget(streams); row.addWidget(directory); row.addWidget(test_plugin)
         row.addStretch(1); l.addLayout(row)
 
         self.source_power_panel = QWidget()
@@ -246,12 +546,19 @@ class MainWindow(QMainWindow):
         l.addWidget(self.source_power_panel)
 
     # ------------------------------- navigation/data
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() == QEvent.WindowStateChange and hasattr(self, "living_canvas"):
+            self.living_canvas.set_window_minimized(self.isMinimized())
+
     def open_page(self, name: str):
         self.current_page=name; self.stack.setCurrentWidget(self.pages[name])
         if name=="home": self._show_home()
         elif name=="library": self._refresh_library()
+        elif name=="music_map": self._refresh_music_map()
         elif name=="sources": self._refresh_sources()
         elif name=="moments": self._refresh_moments()
+        elif name=="journeys": self._refresh_journeys()
         elif name=="playlists": self._refresh_playlists()
         elif name=="for_you": self._refresh_taste()
         elif name=="discover": self._refresh_source_combo()
@@ -270,7 +577,10 @@ class MainWindow(QMainWindow):
     def _refresh_source_combo(self):
         current=self.search_source.currentData(); self.search_source.clear(); self.search_source.addItem("All sources","all")
         for pid in self.providers.provider_order():
-            p=self.providers.providers[pid]; self.search_source.addItem(p.info.name,pid)
+            p=self.providers.providers[pid]
+            if "search" not in list(p.info.capabilities or []):
+                continue
+            self.search_source.addItem(p.info.name,pid)
         idx=self.search_source.findData(current); self.search_source.setCurrentIndex(idx if idx>=0 else 0)
 
     def _refresh_sources(self):
@@ -304,7 +614,10 @@ class MainWindow(QMainWindow):
                         pid, p.info.configuration
                     )
                     if not config_status.get("ready", True):
-                        status += " · CONFIG NEEDED"
+                        status += " · SETUP NEEDED"
+                health = self.providers.plugin_health(pid)
+                if health.get("status") not in {"setup_required"}:
+                    status += f" · {health_badge(health)}"
                 kind = "PROVIDER"
             item=QListWidgetItem(
                 f"{name}    ·    {kind}    ·    {status}\n{p.info.description}"
@@ -331,15 +644,9 @@ class MainWindow(QMainWindow):
                 )
                 config_status = dict(extension.get("configuration_status") or {})
                 if config_status.get("declared") and not config_status.get("ready", True):
-                    trust_status += " · CONFIG NEEDED"
-                health = dict(extension.get("health") or {})
-                runtime_status = str(health.get("status") or "idle").upper()
-                failure_count = int(health.get("failures") or 0)
-                health_text = (
-                    f"{runtime_status}"
-                    if not failure_count
-                    else f"{runtime_status} · {failure_count} failure{'s' if failure_count != 1 else ''}"
-                )
+                    trust_status += " · SETUP NEEDED"
+                health = self.providers.plugin_health(str(extension.get("id") or ""))
+                health_text = health_badge(health)
                 item = QListWidgetItem(
                     f"{extension.get('name') or extension.get('id')}    ·    EXTENSION    ·    {enabled_status}    ·    {trust_status}    ·    {health_text}\n"
                     f"{capabilities} · {extension.get('description') or ''}"
@@ -362,6 +669,343 @@ class MainWindow(QMainWindow):
         self.library_list.clear()
         for t in self.providers.local_catalog():
             it=QListWidgetItem(_track_text(t)); it.setData(Qt.UserRole,t); self.library_list.addItem(it)
+
+    def _refresh_journeys(self):
+        if not hasattr(self,"journey_recipes_list") or not hasattr(self,"journey_runs_list"):
+            return
+        self.journey_recipes_list.clear()
+        for record in self.state.journey_recipes():
+            recipe=dict(record.get("payload") or {})
+            stages=list(recipe.get("stages") or [])
+            mode=str(recipe.get("routing_mode") or "balanced")
+            description=str(record.get("description") or "")
+            subtitle=f"{len(stages)} stage{'s' if len(stages)!=1 else ''} · {mode}"
+            if description:
+                subtitle+=f" · {description}"
+            item=QListWidgetItem(f"{record.get('name') or 'Journey recipe'}\n{subtitle}")
+            item.setData(Qt.UserRole,record)
+            self.journey_recipes_list.addItem(item)
+
+        self.journey_runs_list.clear()
+        for run in self.state.journey_runs(80):
+            events=self.state.journey_events(str(run.get("id") or ""))
+            summary=summarize_journey_run(run,events)
+            stamp=float(run.get("started_at") or 0)
+            when=time.strftime("%Y-%m-%d %H:%M",time.localtime(stamp)) if stamp else "Unknown time"
+            recipe=dict(run.get("recipe") or {})
+            name=str(recipe.get("name") or "Unsaved journey")
+            status=str(run.get("status") or "unknown")
+            changed="adapted" if summary.get("changed") else "as designed"
+            final_count=int(summary.get("final_track_count") or 0)
+            original_count=int(summary.get("original_track_count") or 0)
+            count=final_count or original_count
+            item=QListWidgetItem(
+                f"{when} · {name}\n{status} · {changed} · {count} track{'s' if count!=1 else ''} · "
+                f"{len(events)} event{'s' if len(events)!=1 else ''}"
+            )
+            item.setData(Qt.UserRole,run)
+            self.journey_runs_list.addItem(item)
+
+    def _selected_journey_recipe_record(self):
+        item=self.journey_recipes_list.currentItem() if hasattr(self,"journey_recipes_list") else None
+        data=item.data(Qt.UserRole) if item else None
+        return dict(data or {}) if isinstance(data,dict) else {}
+
+    def _selected_journey_run_record(self):
+        item=self.journey_runs_list.currentItem() if hasattr(self,"journey_runs_list") else None
+        data=item.data(Qt.UserRole) if item else None
+        return dict(data or {}) if isinstance(data,dict) else {}
+
+    def _journey_recipe_save_current(self):
+        if not self.music_journey_stages_data:
+            self.statusBar().showMessage(
+                "Add Journey Designer stages before saving a recipe",3500
+            ); return
+        default_name=str(self.music_active_recipe.get("name") or "Journey recipe")
+        name,ok=QInputDialog.getText(
+            self,
+            "Save journey recipe",
+            "Recipe name:",
+            text=default_name,
+        )
+        if not ok or not str(name).strip():
+            return
+        description,ok=QInputDialog.getText(
+            self,
+            "Save journey recipe",
+            "Short description (optional):",
+            text=str(self.music_active_recipe.get("description") or ""),
+        )
+        if not ok:
+            return
+        try:
+            recipe=make_journey_recipe(
+                name=str(name),
+                description=str(description),
+                mode=str(self.music_path_mode.currentData() or "balanced"),
+                stages=list(self.music_journey_stages_data),
+                ref_map=dict(self.music_map.ref_map or {}),
+            )
+        except Exception as exc:
+            QMessageBox.warning(self,"Could not save journey recipe",str(exc)); return
+        recipe_id=str(uuid.uuid4())
+        self.state.save_journey_recipe(
+            recipe_id,
+            str(recipe.get("name") or name),
+            str(recipe.get("description") or ""),
+            recipe,
+        )
+        self.music_active_recipe_id=recipe_id
+        self.music_active_recipe=dict(recipe)
+        self._refresh_journeys()
+        self.statusBar().showMessage(
+            f"Saved journey recipe · {recipe.get('name')}",4000
+        )
+
+    def _journey_recipe_load_selected(self):
+        record=self._selected_journey_recipe_record()
+        if not record:
+            self.statusBar().showMessage("Select a journey recipe first",3000); return
+        recipe=dict(record.get("payload") or {})
+        self.pending_journey_recipe={
+            "id":str(record.get("id") or ""),
+            "payload":recipe,
+        }
+        self.open_page("music_map")
+        self.statusBar().showMessage("Refreshing Music Map before loading recipe…",3500)
+
+    def _journey_recipe_import(self):
+        filename,_=QFileDialog.getOpenFileName(
+            self,
+            "Import journey recipe",
+            filter="Melodex Journey (*.mdxjourney);;JSON files (*.json)",
+        )
+        if not filename:
+            return
+        try:
+            recipe=load_journey_recipe(Path(filename))
+        except Exception as exc:
+            QMessageBox.warning(self,"Could not import journey recipe",str(exc)); return
+        recipe_id=str(uuid.uuid4())
+        self.state.save_journey_recipe(
+            recipe_id,
+            str(recipe.get("name") or Path(filename).stem),
+            str(recipe.get("description") or ""),
+            recipe,
+        )
+        self._refresh_journeys()
+        self.statusBar().showMessage(
+            f"Imported journey recipe · {recipe.get('name')}",4500
+        )
+
+    def _journey_recipe_export(self):
+        record=self._selected_journey_recipe_record()
+        if not record:
+            self.statusBar().showMessage("Select a journey recipe first",3000); return
+        recipe=dict(record.get("payload") or {})
+        default_name="".join(
+            ch if ch.isalnum() or ch in {" ","-","_"} else "_"
+            for ch in str(record.get("name") or "journey")
+        ).strip() or "journey"
+        filename,_=QFileDialog.getSaveFileName(
+            self,
+            "Export journey recipe",
+            default_name+".mdxjourney",
+            "Melodex Journey (*.mdxjourney)",
+        )
+        if not filename:
+            return
+        try:
+            path=save_journey_recipe(Path(filename),recipe)
+        except Exception as exc:
+            QMessageBox.warning(self,"Could not export journey recipe",str(exc)); return
+        self.statusBar().showMessage(f"Exported {path.name}",4500)
+
+    def _journey_recipe_delete(self):
+        record=self._selected_journey_recipe_record()
+        if not record:
+            self.statusBar().showMessage("Select a journey recipe first",3000); return
+        answer=QMessageBox.question(
+            self,
+            "Delete journey recipe",
+            f"Delete {record.get('name') or 'this recipe'}?\n\nRun history is kept.",
+            QMessageBox.Yes|QMessageBox.No,
+            QMessageBox.No,
+        )
+        if answer!=QMessageBox.Yes:
+            return
+        recipe_id=str(record.get("id") or "")
+        self.state.delete_journey_recipe(recipe_id)
+        if self.music_active_recipe_id==recipe_id:
+            self.music_active_recipe_id=""
+            self.music_active_recipe={}
+        self._refresh_journeys()
+        self.statusBar().showMessage("Journey recipe deleted",3000)
+
+    def _apply_pending_journey_recipe(self):
+        pending=self.pending_journey_recipe
+        self.pending_journey_recipe=None
+        if not isinstance(pending,dict):
+            return
+        recipe=dict(pending.get("payload") or {})
+        try:
+            materialized=materialize_recipe_stages(
+                recipe,
+                dict(self.music_map.ref_map or {}),
+            )
+        except Exception as exc:
+            QMessageBox.warning(self,"Could not load journey recipe",str(exc)); return
+        mode=str(recipe.get("routing_mode") or "balanced")
+        index=self.music_path_mode.findData(mode)
+        if index>=0:
+            self.music_path_mode.setCurrentIndex(index)
+        self.music_journey_stages_data=[
+            dict(stage)
+            for stage in list(materialized.get("stages") or [])
+            if isinstance(stage,dict)
+        ]
+        self.music_active_recipe_id=str(pending.get("id") or "")
+        self.music_active_recipe=dict(recipe)
+        self._music_journey_render_stages()
+        unresolved=[
+            dict(stage)
+            for stage in list(materialized.get("unresolved") or [])
+            if isinstance(stage,dict)
+        ]
+        if unresolved:
+            names=", ".join(
+                str(stage.get("label") or (stage.get("selector") or {}).get("title") or "Unknown waypoint")
+                for stage in unresolved[:5]
+            )
+            QMessageBox.warning(
+                self,
+                "Recipe loaded with missing waypoints",
+                "The semantic stages were loaded, but these exact track waypoints "
+                f"are not present on the current Music Map:\n\n{names}",
+            )
+        self.statusBar().showMessage(
+            f"Loaded recipe · {recipe.get('name') or 'Journey recipe'} · choose start and destination",
+            6000,
+        )
+
+    def _journey_run_inspect(self):
+        run=self._selected_journey_run_record()
+        if not run:
+            self.statusBar().showMessage("Select a journey run first",3000); return
+        events=self.state.journey_events(str(run.get("id") or ""))
+        summary=summarize_journey_run(run,events)
+        d=QDialog(self)
+        d.setWindowTitle("Journey run")
+        d.resize(760,640)
+        lay=QVBoxLayout(d)
+        recipe=dict(run.get("recipe") or {})
+        title=QLabel(str(recipe.get("name") or "Journey run"))
+        title.setStyleSheet("font-size:20px;font-weight:700")
+        lay.addWidget(title)
+        body=QTextEdit()
+        body.setReadOnly(True)
+        lines=[
+            f"Status: {summary.get('status') or 'unknown'}",
+            f"Started: {time.strftime('%Y-%m-%d %H:%M:%S',time.localtime(float(summary.get('started_at') or 0)))}",
+            f"Designed tracks: {summary.get('original_track_count') or 0}",
+            f"Final tracks: {summary.get('final_track_count') or 0}",
+            f"Route changed: {'yes' if summary.get('changed') else 'no'}",
+            "",
+            "DESIGNED ROUTE",
+        ]
+        lines.extend(
+            f"{i+1}. {track}"
+            for i,track in enumerate(list(summary.get("original_tracks") or []))
+        )
+        lines.extend(["","FINAL / ADAPTED ROUTE"])
+        final_tracks=list(summary.get("final_tracks") or [])
+        if final_tracks:
+            lines.extend(f"{i+1}. {track}" for i,track in enumerate(final_tracks))
+        else:
+            lines.append("(no final snapshot)")
+        lines.extend(["","DECISIONS"])
+        decisions=list(summary.get("decisions") or [])
+        lines.extend(f"• {row}" for row in decisions) if decisions else lines.append("(no adaptive decisions)")
+        body.setPlainText("\n".join(lines))
+        lay.addWidget(body,1)
+        close=QDialogButtonBox(QDialogButtonBox.Close)
+        close.rejected.connect(d.reject); close.accepted.connect(d.accept)
+        lay.addWidget(close)
+        d.exec()
+
+    def _journey_run_replay(self,which):
+        run=self._selected_journey_run_record()
+        if not run:
+            self.statusBar().showMessage("Select a journey run first",3000); return
+        which=str(which or "final")
+        snapshot=dict(
+            run.get("original_route")
+            if which=="original"
+            else run.get("final_route")
+            or {}
+        )
+        if not snapshot or not list(snapshot.get("tracks") or []):
+            self.statusBar().showMessage(
+                f"This run has no {which} route snapshot to replay",4000
+            ); return
+        self.pending_journey_replay=(snapshot,f"{which.title()} journey replay")
+        self.open_page("music_map")
+        self.statusBar().showMessage(
+            f"Refreshing Music Map before {which} replay…",3500
+        )
+
+    def _apply_pending_journey_replay(self):
+        pending=self.pending_journey_replay
+        self.pending_journey_replay=None
+        if not pending:
+            return
+        snapshot,label=pending
+        result=materialize_route_snapshot(
+            dict(snapshot or {}),
+            dict(self.music_map.ref_map or {}),
+        )
+        if not result.get("complete"):
+            unresolved=[
+                str(row.get("display") or "Unknown track")
+                for row in list(result.get("unresolved") or [])
+                if isinstance(row,dict)
+            ]
+            QMessageBox.warning(
+                self,
+                "Could not replay full journey",
+                "These historical tracks are not available on the current Music Map:\n\n"
+                + "\n".join(unresolved[:8]),
+            )
+            return
+        route=dict(result.get("route") or {})
+        refs=[str(ref) for ref in list(route.get("path_refs") or []) if str(ref)]
+        tracks=[
+            dict(self.music_map.ref_map[ref])
+            for ref in refs
+            if ref in self.music_map.ref_map
+        ]
+        if len(tracks)!=len(refs):
+            self.statusBar().showMessage("Historical route could not be fully rematched",4500); return
+        self.music_path_result=route
+        self.music_path_start_ref=refs[0]
+        self.music_path_end_ref=refs[-1]
+        self._music_path_update_label()
+        mode=str(route.get("mode") or "balanced")
+        index=self.music_path_mode.findData(mode)
+        if index>=0:
+            self.music_path_mode.setCurrentIndex(index)
+        self.music_map.show_route(route)
+        self.music_path_steps.clear()
+        for index,hop in enumerate(list(route.get("hops") or []),start=1):
+            if not isinstance(hop,dict):
+                continue
+            self.music_path_steps.addItem(
+                f"{index}. {self._music_path_name(hop.get('from') or '')}  →  "
+                f"{self._music_path_name(hop.get('to') or '')}\n"
+                f"{hop.get('reason') or 'Historical route'}"
+            )
+        self.player.set_queue(tracks,0,True)
+        self.statusBar().showMessage(f"{label} · {len(tracks)} tracks",5000)
 
     def _refresh_playlists(self):
         self.playlists_list.clear()
@@ -504,7 +1148,20 @@ class MainWindow(QMainWindow):
         path,_=QFileDialog.getOpenFileName(self,"Install provider",filter="Melodex Provider (*.mdxprovider *.zip)")
         if not path:return
         try:
-            p=self.providers.install_package(Path(path)); QMessageBox.information(self,"Provider installed",f"Installed {p.info.name}"); self._refresh_sources()
+            p=self.providers.install_package(Path(path))
+            self._refresh_sources()
+            if plugin_needs_setup(self.providers,p.info.id):
+                configure_plugin(self,self.providers,p.info.id,setup=True)
+                self._refresh_sources()
+            QMessageBox.information(
+                self,
+                "Provider installed",
+                f"Installed {p.info.name}" + (
+                    "\n\nSetup is still required before this provider is ready."
+                    if plugin_needs_setup(self.providers,p.info.id)
+                    else "\n\nReady to use."
+                ),
+            )
         except Exception as exc: QMessageBox.critical(self,"Could not install provider",str(exc))
 
     def _install_extension(self):
@@ -517,12 +1174,20 @@ class MainWindow(QMainWindow):
             return
         try:
             info=self.providers.install_extension(Path(path))
+            self._refresh_sources()
+            if plugin_needs_setup(self.providers,info.id):
+                configure_plugin(self,self.providers,info.id,setup=True)
+                self._refresh_sources()
             QMessageBox.information(
                 self,
                 "Extension installed",
-                f"Installed {info.name}\n\nCapabilities: {', '.join(info.capabilities)}",
+                f"Installed {info.name}\n\nCapabilities: {', '.join(info.capabilities)}"
+                + (
+                    "\n\nSetup is still required before this extension is ready."
+                    if plugin_needs_setup(self.providers,info.id)
+                    else "\n\nReady to use."
+                ),
             )
-            self._refresh_sources()
         except Exception as exc:
             QMessageBox.critical(self,"Could not install extension",str(exc))
 
@@ -535,92 +1200,52 @@ class MainWindow(QMainWindow):
             return value.split(":",1)[1]
         return value if value not in {"local", "jamendo", "streams"} else ""
 
+    def _test_selected_plugin(self):
+        plugin_id=self._selected_plugin_id()
+        if not plugin_id:
+            self.statusBar().showMessage(
+                "Select an installed third-party provider or extension first",3000
+            )
+            return
+        self.statusBar().showMessage("Testing plugin…")
+        self._run_async(
+            lambda:self.providers.test_plugin_health(plugin_id),
+            lambda result:self._finish_plugin_health_test(plugin_id,result),
+        )
+
+    def _finish_plugin_health_test(self,plugin_id,result):
+        result=dict(result or {})
+        self._refresh_sources()
+        self.statusBar().showMessage(health_summary(result),6000)
+        if result.get("status")=="setup_required":
+            answer=QMessageBox.question(
+                self,
+                "Plugin setup required",
+                f"{result.get('name') or plugin_id} needs setup before it can be tested.\n\nConfigure it now?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.Yes,
+            )
+            if answer==QMessageBox.Yes:
+                configure_plugin(self,self.providers,plugin_id,setup=True)
+                self._refresh_sources()
+            return
+        QMessageBox.information(
+            self,
+            "Plugin health",
+            f"{result.get('name') or plugin_id}\n\n{health_summary(result)}",
+        )
+
     def _configure_selected_plugin(self):
         plugin_id=self._selected_plugin_id()
         if not plugin_id:
             self.statusBar().showMessage("Select an installed provider or extension first",3000)
             return
-        try:
-            info=self.providers.plugin_configuration(plugin_id)
-        except Exception as exc:
-            QMessageBox.warning(self,"Plugin configuration",str(exc))
-            return
-        fields=list(info.get("fields") or [])
-        if not fields:
-            QMessageBox.information(
-                self,
-                "Plugin configuration",
-                f"{info.get('name') or plugin_id} does not declare any configuration fields.",
-            )
-            return
-
-        dialog=QDialog(self)
-        dialog.setWindowTitle(f"Configure {info.get('name') or plugin_id}")
-        layout=QVBoxLayout(dialog)
-        intro=QLabel(
-            "Melodex sends only the values declared by this plugin. "
-            "Secret fields are stored in the system credential store when available."
-        )
-        intro.setWordWrap(True); layout.addWidget(intro)
-        form=QFormLayout(); layout.addLayout(form)
-        current=dict(info.get("values") or {})
-        status=dict(info.get("status") or {})
-        configured=dict(status.get("configured") or {})
-        widgets: dict[str, tuple[dict[str, Any], QWidget]] = {}
-        for field in fields:
-            key=str(field.get("key") or "")
-            label=str(field.get("label") or key)
-            if field.get("required"):
-                label += " *"
-            field_type=str(field.get("type") or "string")
-            if field_type == "boolean":
-                widget=QCheckBox()
-                widget.setChecked(bool(current.get(key, False)))
-            else:
-                widget=QLineEdit()
-                if field_type == "secret":
-                    widget.setEchoMode(QLineEdit.EchoMode.Password)
-                    widget.setPlaceholderText(
-                        "Stored — leave blank to keep" if configured.get(key) else "Enter secret"
-                    )
-                else:
-                    widget.setText(str(current.get(key) or ""))
-                help_text=str(field.get("help") or "")
-                if help_text:
-                    widget.setToolTip(help_text)
-            widgets[key]=(field,widget)
-            form.addRow(label,widget)
-        storage=str(status.get("secret_storage") or "")
-        if any(str(field.get("type")) == "secret" for field in fields):
-            note=QLabel(f"Secret storage: {storage or 'unavailable'}")
-            note.setWordWrap(True); layout.addWidget(note)
-        buttons=QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
-        buttons.accepted.connect(dialog.accept); buttons.rejected.connect(dialog.reject)
-        layout.addWidget(buttons)
-        if dialog.exec() != QDialog.Accepted:
-            return
-
-        changes: dict[str, Any] = {}
-        for key,(field,widget) in widgets.items():
-            field_type=str(field.get("type") or "string")
-            if field_type == "boolean":
-                assert isinstance(widget,QCheckBox)
-                changes[key]=widget.isChecked()
-            else:
-                assert isinstance(widget,QLineEdit)
-                text=widget.text()
-                changes[key]=None if field_type == "secret" and not text else text
-        try:
-            updated=self.providers.set_plugin_configuration(plugin_id,changes)
-        except Exception as exc:
-            QMessageBox.critical(self,"Could not save configuration",str(exc))
-            return
+        result=configure_plugin(self,self.providers,plugin_id)
         self._refresh_sources()
-        if updated.get("ready",True):
+        if result is None:
+            return
+        if result.get("ready",True):
             self.statusBar().showMessage("Plugin configuration updated",3000)
-        else:
-            missing=", ".join(str(x) for x in updated.get("missing_required") or [])
-            self.statusBar().showMessage(f"Configuration saved · required values missing: {missing}",5000)
 
     def _selected_extension_id(self) -> str:
         item=self.sources_list.currentItem()
@@ -837,6 +1462,1053 @@ class MainWindow(QMainWindow):
         if not q: self.player.set_queue([t],0,False)
         else: self.player.queue.append(t); self.player.queueChanged.emit(self.player.queue)
 
+    # ------------------------------- local intelligence
+    def _intelligence_seeds(self, intent: str) -> list[dict[str, Any]]:
+        if intent == "rediscover":
+            return []
+        current = dict(self.current_track or {})
+        if not current or not current.get("local_path"):
+            return []
+        if intent in {"similar", "detour"}:
+            return [current]
+        if intent == "bridge":
+            idx = int(getattr(self.player, "index", -1))
+            queue = list(getattr(self.player, "queue", []) or [])
+            if idx < 0 or idx + 1 >= len(queue):
+                return []
+            nxt = dict(queue[idx + 1] or {})
+            if not nxt.get("local_path"):
+                return []
+            return [current, nxt]
+        return []
+
+    def _run_local_intelligence(self, intent: str) -> None:
+        catalog = self.providers.local_catalog()
+        if not catalog:
+            QMessageBox.information(
+                self, "Add music first",
+                "Local intelligence needs your local library. Add a folder, then try again."
+            )
+            return
+        seeds = self._intelligence_seeds(intent)
+        if intent in {"similar", "detour"} and len(seeds) != 1:
+            message = (
+                "Find a detour needs the current track to be local."
+                if intent == "detour"
+                else "More like current needs a local track as the seed."
+            )
+            QMessageBox.information(self, "Play a local track first", message)
+            return
+        if intent == "bridge" and len(seeds) != 2:
+            QMessageBox.information(
+                self, "Queue two local tracks",
+                "Bridge current → next needs the current track and the next queued track to be local."
+            )
+            return
+        self.intelligence_results.clear()
+        self.statusBar().showMessage("Asking local intelligence plugins…")
+        adventure = self.adventure.value() / 100.0
+        self._run_async(
+            lambda: self.local_intelligence.suggest(
+                intent, catalog, seeds, limit=16, adventure=adventure
+            ),
+            self._show_intelligence_results,
+        )
+
+    def _show_intelligence_results(self, result: dict[str, Any]) -> None:
+        self.intelligence_results.clear()
+        tracks = [dict(x) for x in list(result.get("tracks") or []) if isinstance(x, dict)]
+        for track in tracks:
+            reason = str(track.get("_intelligence_reason") or "")
+            score = float(track.get("_intelligence_score") or 0.0)
+            badges = ", ".join(str(x) for x in list(track.get("_intelligence_badges") or []) if x)
+            suffix = " · ".join(x for x in (reason, badges, f"{score:.0%}") if x)
+            item = QListWidgetItem(_track_text(track) + (f"\n{suffix}" if suffix else ""))
+            item.setData(Qt.UserRole, track)
+            self.intelligence_results.addItem(item)
+        if tracks:
+            self.statusBar().showMessage(
+                f"{len(tracks)} local suggestions · {int(result.get('analysed') or 0)} of {int(result.get('profiles') or 0)} profiles have Flow analysis",
+                7000,
+            )
+            return
+        errors = [str(x) for x in list(result.get("errors") or []) if x]
+        analysed = int(result.get("analysed") or 0)
+        if errors:
+            message = errors[0]
+        elif analysed == 0 and result.get("intent") in {"similar", "bridge", "detour"}:
+            message = "No analysed comparison tracks yet. Use ‘Analyse my library’, then try again."
+        else:
+            message = "No local-intelligence plugin returned suggestions. Install one from Explore plugins."
+        self.intelligence_results.addItem(message)
+        self.statusBar().showMessage(message, 7000)
+
+    def _selected_intelligence_track(self) -> dict[str, Any]:
+        item = self.intelligence_results.currentItem()
+        data = item.data(Qt.UserRole) if item else None
+        return dict(data) if isinstance(data, dict) else {}
+
+    def _play_intelligence_result(self, item) -> None:
+        data = item.data(Qt.UserRole)
+        if isinstance(data, dict):
+            self.player.set_queue([dict(data)], 0, True)
+
+    def _play_selected_intelligence(self) -> None:
+        track = self._selected_intelligence_track()
+        if track:
+            self.player.set_queue([track], 0, True)
+
+    def _queue_selected_intelligence(self) -> None:
+        track = self._selected_intelligence_track()
+        if not track:
+            return
+        if not self.player.queue:
+            self.player.set_queue([track], 0, False)
+        else:
+            self.player.queue.append(track)
+            self.player.queueChanged.emit(self.player.queue)
+        self.statusBar().showMessage("Added local-intelligence suggestion to queue", 3000)
+
+    def _analyse_library_for_intelligence(self) -> None:
+        catalog = self.providers.local_catalog()
+        if not catalog:
+            QMessageBox.information(
+                self, "Add music first",
+                "Add a local music folder before analysing your library."
+            )
+            return
+        if not self.flow.analysis_available:
+            QMessageBox.information(
+                self, "Audio analysis unavailable",
+                "Deep local analysis needs ffmpeg and NumPy. Melodex can still use taste-only rediscovery."
+            )
+            return
+        self.statusBar().showMessage("Analysing local library for Flow and local intelligence…")
+        self._run_async(
+            lambda: self.local_intelligence.analyse_catalog(catalog),
+            self._library_analysis_finished,
+        )
+
+    def _library_analysis_finished(self, result: dict[str, Any]) -> None:
+        self.statusBar().showMessage(
+            f"Library analysis ready · {int(result.get('analysed') or 0)}/{int(result.get('total') or 0)} analysed · {int(result.get('newly_analysed') or 0)} new",
+            8000,
+        )
+
+    # ------------------------------- Music Map
+    def _build_music_map_payload(self):
+        catalog=self.providers.local_catalog()
+        profiles, _seed_refs, ref_map, _analysed = self.local_intelligence.build_snapshot(
+            catalog,
+            [],
+            max_tracks=5000,
+            analyse_seeds=False,
+        )
+        model=build_music_map(profiles,max_nodes=700,neighbours=2)
+        mapped_refs={
+            str(node.get("ref") or "")
+            for node in list(model.get("nodes") or [])
+            if isinstance(node,dict) and str(node.get("ref") or "")
+        }
+        mapped_ref_map={
+            ref:dict(track)
+            for ref,track in ref_map.items()
+            if ref in mapped_refs
+        }
+        knowledge=self.knowledge.snapshot(mapped_ref_map)
+        graph=build_knowledge_graph(mapped_ref_map,knowledge)
+        return {
+            "model":model,
+            "ref_map":mapped_ref_map,
+            "knowledge_graph":graph,
+        }
+
+    def _refresh_music_map(self):
+        catalog=self.providers.local_catalog()
+        if not catalog:
+            self.music_map.set_map({}, {}, self.current_track)
+            self.statusBar().showMessage("Add local music to build a Music Map",4000)
+            return
+        self.statusBar().showMessage("Building Music Map from cached Flow analysis…")
+        self._run_async(self._build_music_map_payload,self._apply_music_map_payload)
+
+    def _apply_music_map_payload(self,payload):
+        payload=dict(payload or {})
+        if self.music_live_active:
+            self._journey_live_stop("map refreshed · adaptation stopped")
+        self.music_map.set_map(
+            dict(payload.get("model") or {}),
+            dict(payload.get("ref_map") or {}),
+            self.current_track,
+            dict(payload.get("knowledge_graph") or {}),
+        )
+        self.music_path_start_ref=""
+        self.music_path_end_ref=""
+        self.music_path_result={}
+        self.music_journey_stages_data=[]
+        if self.pending_journey_recipe is None:
+            self.music_active_recipe_id=""
+            self.music_active_recipe={}
+        self._music_path_update_label()
+        if hasattr(self,"music_journey_stages"):
+            self._music_journey_render_stages()
+        if hasattr(self,"music_path_steps"):
+            self.music_path_steps.clear()
+            self.music_path_steps.addItem("Select a mapped track, set start/destination, then Find path.")
+        mapped=int((payload.get("model") or {}).get("analysed") or 0)
+        if mapped:
+            self.statusBar().showMessage(f"Music Map ready · {mapped} analysed tracks",5000)
+        else:
+            self.statusBar().showMessage("Music Map needs cached Flow analysis · choose Analyse my library",6000)
+        if self.pending_journey_recipe is not None:
+            self._apply_pending_journey_recipe()
+        if self.pending_journey_replay is not None:
+            self._apply_pending_journey_replay()
+
+    def _remember_now_playing_knowledge(self,track,bundle):
+        if not isinstance(track,dict) or not isinstance(bundle,dict):
+            return
+        kwargs={}
+        if isinstance(bundle.get("identity"),dict):
+            kwargs["identity"]=dict(bundle.get("identity") or {})
+        if isinstance(bundle.get("artist"),dict):
+            kwargs["artist"]=dict(bundle.get("artist") or {})
+        if "credits" in bundle:
+            kwargs["credits"]=[
+                dict(x) for x in list(bundle.get("credits") or []) if isinstance(x,dict)
+            ]
+        if "context" in bundle:
+            kwargs["context"]=[
+                dict(x) for x in list(bundle.get("context") or []) if isinstance(x,dict)
+            ]
+        if kwargs:
+            self.knowledge.remember(dict(track),**kwargs)
+            if self.current_page=="music_map" and hasattr(self,"music_map"):
+                knowledge=self.knowledge.snapshot(self.music_map.ref_map)
+                self.music_map.set_knowledge_graph(
+                    build_knowledge_graph(self.music_map.ref_map,knowledge)
+                )
+
+    def _knowledge_bundle_for_track(self,track):
+        track=dict(track or {})
+        errors=[]
+        try:
+            identity=self.metadata.identify(track).as_dict()
+        except Exception as exc:
+            identity={
+                "artist":str(track.get("artist") or ""),
+                "title":str(track.get("title") or ""),
+                "album":str(track.get("album") or ""),
+            }
+            errors.append(f"identity: {exc}")
+
+        artist={}
+        credits=[]
+        context=[]
+        artist_mbid=str(identity.get("artist_mbid") or "")
+        recording_mbid=str(identity.get("recording_mbid") or "")
+        if artist_mbid:
+            try:
+                artist=self.metadata.artist_info(artist_mbid)
+                qid=str(artist.get("wikidata_qid") or "")
+                if qid:
+                    identity["wikidata_id"]=qid
+            except Exception as exc:
+                errors.append(f"artist: {exc}")
+        if recording_mbid:
+            try:
+                credits=self.metadata.recording_credits(recording_mbid)
+            except Exception as exc:
+                errors.append(f"credits: {exc}")
+        if self.providers.capabilities is not None:
+            try:
+                context_result=self.metadata.enrich_context(track,identity)
+                context=[
+                    dict(x)
+                    for x in list(context_result.get("cards") or [])
+                    if isinstance(x,dict)
+                ]
+                errors.extend(
+                    str(x)
+                    for x in list(context_result.get("errors") or [])
+                    if x
+                )
+            except Exception as exc:
+                errors.append(f"context: {exc}")
+
+        self.knowledge.remember(
+            track,
+            identity=identity,
+            artist=artist,
+            credits=credits,
+            context=context,
+        )
+        return {
+            "track":track,
+            "matched":bool(recording_mbid or artist_mbid),
+            "credits":len(credits),
+            "context_cards":len(context),
+            "errors":errors,
+        }
+
+    def _enrich_selected_map_knowledge(self):
+        track=self._music_map_selected()
+        if not track:
+            self.statusBar().showMessage("Select a mapped track first",3000)
+            return
+        self.statusBar().showMessage(
+            "Enriching selected track via MusicBrainz and enabled context plugins…"
+        )
+        self._run_async(
+            lambda:self._knowledge_bundle_for_track(track),
+            self._knowledge_enrichment_finished,
+        )
+
+    def _knowledge_needs_enrichment(self,track):
+        payload=self.knowledge.get(dict(track or {}))
+        identity=payload.get("identity") if isinstance(payload.get("identity"),dict) else {}
+        has_identity=bool(
+            identity.get("recording_mbid")
+            or identity.get("artist_mbid")
+            or track.get("musicbrainz_recording_id")
+            or track.get("musicbrainz_artist_id")
+        )
+        has_credits="credits" in payload
+        has_context="context" in payload
+        has_artist="artist" in payload
+        return not (has_identity and has_credits and has_context and has_artist)
+
+    def _enrich_map_knowledge_batch(self):
+        tracks=self.music_map.mapped_tracks() if hasattr(self,"music_map") else []
+        pending=[track for track in tracks if self._knowledge_needs_enrichment(track)]
+        batch=pending[:8]
+        if not batch:
+            self.statusBar().showMessage("Mapped knowledge is already populated for these tracks",4000)
+            return
+        self.statusBar().showMessage(
+            f"Enriching {len(batch)} mapped tracks via MusicBrainz and enabled context plugins…"
+        )
+        def work():
+            rows=[]
+            for track in batch:
+                try:
+                    rows.append(self._knowledge_bundle_for_track(track))
+                except Exception as exc:
+                    rows.append({"track":track,"matched":False,"credits":0,"context_cards":0,"errors":[str(exc)]})
+            return rows
+        self._run_async(work,self._knowledge_batch_finished)
+
+    def _knowledge_enrichment_finished(self,result):
+        errors=[str(x) for x in list((result or {}).get("errors") or []) if x]
+        self.statusBar().showMessage(
+            f"Knowledge enriched · {int((result or {}).get('credits') or 0)} credits · "
+            f"{int((result or {}).get('context_cards') or 0)} context cards"
+            + (f" · {len(errors)} warning(s)" if errors else ""),
+            7000,
+        )
+        self._refresh_music_map()
+
+    def _knowledge_batch_finished(self,rows):
+        rows=[dict(x) for x in list(rows or []) if isinstance(x,dict)]
+        matched=sum(1 for row in rows if row.get("matched"))
+        credits=sum(int(row.get("credits") or 0) for row in rows)
+        cards=sum(int(row.get("context_cards") or 0) for row in rows)
+        warnings=sum(len(list(row.get("errors") or [])) for row in rows)
+        self.statusBar().showMessage(
+            f"Knowledge batch complete · {matched}/{len(rows)} identified · "
+            f"{credits} credits · {cards} context cards"
+            + (f" · {warnings} warning(s)" if warnings else ""),
+            9000,
+        )
+        self._refresh_music_map()
+
+    # ------------------------------- Music Map Pathfinder
+    def _music_path_name(self,ref):
+        track=dict(self.music_map.ref_map.get(str(ref),{}) or {}) if hasattr(self,"music_map") else {}
+        if not track:return "—"
+        artist=str(track.get("artist") or "Unknown artist")
+        title=str(track.get("title") or "Unknown track")
+        return f"{artist} — {title}"
+
+    def _music_path_update_label(self):
+        if not hasattr(self,"music_path_label"):return
+        self.music_path_label.setText(
+            f"Pathfinder · start {self._music_path_name(self.music_path_start_ref)}"
+            f"  →  destination {self._music_path_name(self.music_path_end_ref)}"
+        )
+
+    def _music_path_set_start(self):
+        ref=self.music_map.selected_ref_value() if hasattr(self,"music_map") else ""
+        if not ref:
+            self.statusBar().showMessage("Select a Music Map track first",3000); return
+        self.music_path_start_ref=ref
+        self.music_path_result={}
+        self.music_map.set_route_endpoints(self.music_path_start_ref,self.music_path_end_ref)
+        self._music_path_update_label()
+        self.statusBar().showMessage("Pathfinder start set",2500)
+
+    def _music_path_set_end(self):
+        ref=self.music_map.selected_ref_value() if hasattr(self,"music_map") else ""
+        if not ref:
+            self.statusBar().showMessage("Select a Music Map track first",3000); return
+        self.music_path_end_ref=ref
+        self.music_path_result={}
+        self.music_map.set_route_endpoints(self.music_path_start_ref,self.music_path_end_ref)
+        self._music_path_update_label()
+        self.statusBar().showMessage("Pathfinder destination set",2500)
+
+    def _music_path_find(self):
+        if not self.music_path_start_ref or not self.music_path_end_ref:
+            self.statusBar().showMessage("Set both Pathfinder start and destination",3500); return
+        mode=str(self.music_path_mode.currentData() or "balanced")
+        result=find_music_path(
+            dict(self.music_map.model or {}),
+            dict(self.music_map.knowledge_graph or {}),
+            self.music_path_start_ref,
+            self.music_path_end_ref,
+            mode=mode,
+            max_hops=12,
+        )
+        self.music_path_result=dict(result or {})
+        self.music_map.show_route(self.music_path_result)
+        self.music_path_steps.clear()
+        if not self.music_path_result.get("found"):
+            reason=str(self.music_path_result.get("reason") or "No route found")
+            self.music_path_steps.addItem(reason)
+            self.statusBar().showMessage(reason,6000)
+            return
+
+        refs=[str(x) for x in list(self.music_path_result.get("path_refs") or []) if str(x)]
+        hops=[dict(x) for x in list(self.music_path_result.get("hops") or []) if isinstance(x,dict)]
+        for index,hop in enumerate(hops):
+            a=self._music_path_name(hop.get("from") or (refs[index] if index<len(refs) else ""))
+            b=self._music_path_name(hop.get("to") or (refs[index+1] if index+1<len(refs) else ""))
+            reason=str(hop.get("reason") or "graph connection")
+            self.music_path_steps.addItem(f"{index+1}. {a}  →  {b}\n{reason}")
+        self.statusBar().showMessage(
+            f"Pathfinder ready · {len(hops)} hop{'s' if len(hops)!=1 else ''} · "
+            f"score {float(self.music_path_result.get('score') or 0):.0%}",
+            7000,
+        )
+
+    def _music_path_tracks(self):
+        if not self.music_path_result.get("found"):return []
+        refs=[str(x) for x in list(self.music_path_result.get("path_refs") or []) if str(x)]
+        return [
+            dict(self.music_map.ref_map[ref])
+            for ref in refs
+            if ref in self.music_map.ref_map
+        ]
+
+    def _music_path_play(self):
+        if self.music_live_active:
+            self._journey_live_stop("normal route playback")
+        tracks=self._music_path_tracks()
+        if not tracks:
+            self.statusBar().showMessage("Find a Pathfinder route first",3000); return
+        self.player.set_queue(tracks,0,True)
+        self.statusBar().showMessage(f"Playing Pathfinder route · {len(tracks)} tracks",4000)
+
+    def _music_path_queue(self):
+        tracks=self._music_path_tracks()
+        if not tracks:
+            self.statusBar().showMessage("Find a Pathfinder route first",3000); return
+        if not self.player.queue:
+            self.player.set_queue(tracks,0,False)
+        else:
+            self.player.queue.extend(dict(track) for track in tracks)
+            self.player.queueChanged.emit(self.player.queue)
+        self.statusBar().showMessage(f"Queued Pathfinder route · {len(tracks)} tracks",4000)
+
+    def _music_path_clear(self):
+        if self.music_live_active:
+            self._journey_live_stop("route cleared")
+        self.music_path_start_ref=""
+        self.music_path_end_ref=""
+        self.music_path_result={}
+        if hasattr(self,"music_map"):self.music_map.clear_route()
+        self._music_path_update_label()
+        if hasattr(self,"music_path_steps"):
+            self.music_path_steps.clear()
+            self.music_path_steps.addItem("Pathfinder explanations will appear here.")
+        self.statusBar().showMessage("Pathfinder cleared",2500)
+
+    def _journey_recipe_mark_modified(self):
+        if self.music_active_recipe_id:
+            self.music_active_recipe_id=""
+            self.music_active_recipe={}
+
+    # ------------------------------- Music Map Journey Designer
+    def _music_journey_render_stages(self):
+        if not hasattr(self,"music_journey_stages"):return
+        self.music_journey_stages.clear()
+        if not self.music_journey_stages_data:
+            self.music_journey_stages.addItem(
+                "Journey stages use the Pathfinder start/destination. Load a preset or add constraints/track waypoints."
+            )
+            return
+        for index,stage in enumerate(self.music_journey_stages_data, start=1):
+            if str(stage.get("type") or "")=="track":
+                label=str(stage.get("label") or self._music_path_name(stage.get("ref") or ""))
+                text=f"{index}. Track waypoint · {label}"
+            else:
+                key=str(stage.get("constraint") or "")
+                text=f"{index}. Constraint · {str(stage.get('label') or STAGE_LABELS.get(key,key.title()))}"
+            item=QListWidgetItem(text)
+            item.setData(Qt.UserRole,index-1)
+            self.music_journey_stages.addItem(item)
+
+    def _music_journey_load_preset(self):
+        self.music_active_recipe_id=""
+        self.music_active_recipe={}
+        raw=self.music_journey_preset.currentData() if hasattr(self,"music_journey_preset") else []
+        self.music_journey_stages_data=[
+            {"type":"constraint","constraint":str(key),"label":STAGE_LABELS.get(str(key),str(key).title())}
+            for key in list(raw or [])
+        ]
+        self._music_journey_render_stages()
+        self.statusBar().showMessage("Journey preset loaded",2500)
+
+    def _music_journey_add_constraint(self):
+        self.music_active_recipe_id=""
+        self.music_active_recipe={}
+        key=str(self.music_journey_constraint.currentData() or "") if hasattr(self,"music_journey_constraint") else ""
+        if not key:return
+        self.music_journey_stages_data.append(
+            {"type":"constraint","constraint":key,"label":STAGE_LABELS.get(key,key.title())}
+        )
+        self._music_journey_render_stages()
+
+    def _music_journey_add_track(self):
+        self.music_active_recipe_id=""
+        self.music_active_recipe={}
+        ref=self.music_map.selected_ref_value() if hasattr(self,"music_map") else ""
+        if not ref:
+            self.statusBar().showMessage("Select a mapped track first",3000); return
+        self.music_journey_stages_data.append(
+            {"type":"track","ref":ref,"label":self._music_path_name(ref)}
+        )
+        self._music_journey_render_stages()
+
+    def _music_journey_remove_stage(self):
+        if not self.music_journey_stages_data:return
+        self.music_active_recipe_id=""
+        self.music_active_recipe={}
+        row=self.music_journey_stages.currentRow() if hasattr(self,"music_journey_stages") else -1
+        if row<0 or row>=len(self.music_journey_stages_data):
+            row=len(self.music_journey_stages_data)-1
+        self.music_journey_stages_data.pop(row)
+        self._music_journey_render_stages()
+
+    def _music_journey_clear_stages(self):
+        self.music_active_recipe_id=""
+        self.music_active_recipe={}
+        self.music_journey_stages_data=[]
+        self._music_journey_render_stages()
+        self.statusBar().showMessage("Journey stages cleared",2500)
+
+    def _music_journey_build(self):
+        if self.music_live_active:
+            self._journey_live_stop("design changed")
+        if not self.music_path_start_ref or not self.music_path_end_ref:
+            self.statusBar().showMessage(
+                "Set Pathfinder start and destination before building a journey",4000
+            ); return
+        if not self.music_journey_stages_data:
+            self.statusBar().showMessage(
+                "Load a Journey preset or add at least one stage",3500
+            ); return
+        mode=str(self.music_path_mode.currentData() or "balanced")
+        self.statusBar().showMessage("Designing staged local journey…")
+        result=build_music_journey(
+            dict(self.music_map.model or {}),
+            dict(self.music_map.knowledge_graph or {}),
+            self.music_path_start_ref,
+            self.music_path_end_ref,
+            list(self.music_journey_stages_data),
+            mode=mode,
+            max_hops_per_segment=8,
+            candidates_per_stage=10,
+        )
+        self.music_path_result=dict(result or {})
+        self.music_map.show_route(self.music_path_result)
+        self.music_path_steps.clear()
+        if not self.music_path_result.get("found"):
+            reason=str(self.music_path_result.get("reason") or "Journey could not be built")
+            self.music_path_steps.addItem(reason)
+            for stage in list(self.music_path_result.get("stages") or []):
+                if isinstance(stage,dict):
+                    self.music_path_steps.addItem(
+                        f"✓ {stage.get('label') or 'Stage'} · fit {float(stage.get('score') or 0):.0%}\n"
+                        f"{stage.get('reason') or ''}"
+                    )
+            self.statusBar().showMessage(reason,7000)
+            return
+
+        stages_by_ref={
+            str(stage.get("ref") or ""):dict(stage)
+            for stage in list(self.music_path_result.get("stages") or [])
+            if isinstance(stage,dict) and str(stage.get("ref") or "")
+        }
+        hops=[dict(x) for x in list(self.music_path_result.get("hops") or []) if isinstance(x,dict)]
+        for index,hop in enumerate(hops,start=1):
+            a=self._music_path_name(hop.get("from") or "")
+            b=self._music_path_name(hop.get("to") or "")
+            reason=str(hop.get("reason") or "graph connection")
+            stage=stages_by_ref.get(str(hop.get("to") or ""))
+            if stage:
+                reason += (
+                    f"\n→ Journey stage: {stage.get('label') or 'Stage'} · "
+                    f"fit {float(stage.get('score') or 0):.0%} · {stage.get('reason') or ''}"
+                )
+            self.music_path_steps.addItem(f"{index}. {a}  →  {b}\n{reason}")
+        self.statusBar().showMessage(
+            f"Journey ready · {len(self.music_path_result.get('stages') or [])} stages · "
+            f"{len(hops)} hops · score {float(self.music_path_result.get('score') or 0):.0%}",
+            8000,
+        )
+
+    # ------------------------------- Journey Live
+    def _music_ref_for_track(self,track):
+        if not isinstance(track,dict) or not hasattr(self,"music_map"):
+            return ""
+        candidate=dict(track or {})
+        for ref,mapped in self.music_map.ref_map.items():
+            mapped=dict(mapped or {})
+            for key in ("rel","local_path","track_id"):
+                a=str(candidate.get(key) or "").strip()
+                b=str(mapped.get(key) or "").strip()
+                if a and b and a==b:
+                    return str(ref)
+        artist=str(candidate.get("artist") or "").strip().casefold()
+        title=str(candidate.get("title") or "").strip().casefold()
+        album=str(candidate.get("album") or "").strip().casefold()
+        matches=[]
+        for ref,mapped in self.music_map.ref_map.items():
+            if (
+                str(mapped.get("artist") or "").strip().casefold()==artist
+                and str(mapped.get("title") or "").strip().casefold()==title
+                and (
+                    not album
+                    or str(mapped.get("album") or "").strip().casefold()==album
+                )
+            ):
+                matches.append(str(ref))
+        return matches[0] if len(matches)==1 else ""
+
+    def _journey_live_update_label(self,text=""):
+        if not hasattr(self,"music_live_label"):
+            return
+        if text:
+            self.music_live_label.setText("Journey Live · "+str(text))
+            return
+        if not self.music_live_active:
+            self.music_live_label.setText("Journey Live · inactive")
+            return
+        current_ref=self._music_ref_for_track(self.current_track or {})
+        current=self._music_path_name(current_ref)
+        destination=self._music_path_name(self.music_live_destination_ref)
+        avoided=len(self.music_live_avoid_refs)+len(self.music_live_avoid_artists)
+        suffix=f" · {avoided} avoid rule{'s' if avoided!=1 else ''}" if avoided else ""
+        self.music_live_label.setText(
+            f"Journey Live · {current} → {destination}{suffix}"
+        )
+
+    def _journey_live_event(self,event_type,payload=None):
+        if not self.music_live_run_id:
+            return
+        try:
+            self.state.record_journey_event(
+                self.music_live_run_id,
+                str(event_type or ""),
+                dict(payload or {}),
+            )
+        except Exception:
+            pass
+
+    def _journey_live_recipe_snapshot(self):
+        name=str(self.music_active_recipe.get("name") or "Unsaved journey")
+        description=str(self.music_active_recipe.get("description") or "")
+        try:
+            return make_journey_recipe(
+                name=name,
+                description=description,
+                mode=str(self.music_path_mode.currentData() or "balanced"),
+                stages=list(self.music_journey_stages_data),
+                ref_map=dict(self.music_map.ref_map or {}),
+            )
+        except Exception:
+            return {
+                "melodex_journey":1,
+                "name":name,
+                "description":description,
+                "routing_mode":str(self.music_path_mode.currentData() or "balanced"),
+                "stages":[],
+            }
+
+    def _journey_live_final_snapshot(self):
+        route=dict(self.music_live_route or self.music_path_result or {})
+        played=[str(ref) for ref in list(self.music_live_played_refs or []) if str(ref)]
+        tail=[str(ref) for ref in list(route.get("path_refs") or []) if str(ref)]
+        combined=list(played)
+        if tail:
+            if combined and tail[0]==combined[-1]:
+                combined.extend(tail[1:])
+            else:
+                for ref in tail:
+                    if not combined or ref!=combined[-1]:
+                        combined.append(ref)
+        if combined:
+            route["path_refs"]=combined
+        return portable_route_snapshot(route,dict(self.music_map.ref_map or {}))
+
+    def _journey_live_start(self):
+        route=dict(self.music_path_result or {})
+        if not route.get("found") or not route.get("journey"):
+            self.statusBar().showMessage(
+                "Build a Journey Designer route before starting Journey Live",4000
+            ); return
+        if self.music_live_active:
+            self._journey_live_stop("restarted")
+        refs=[str(x) for x in list(route.get("path_refs") or []) if str(x)]
+        tracks=[
+            dict(self.music_map.ref_map[ref])
+            for ref in refs
+            if ref in self.music_map.ref_map
+        ]
+        if len(tracks)<1 or len(tracks)!=len(refs):
+            self.statusBar().showMessage(
+                "Journey Live needs every route track to remain on the current Music Map",4500
+            ); return
+        self.music_live_active=True
+        self.music_live_route=dict(route)
+        self.music_live_original_route=dict(route)
+        self.music_live_destination_ref=refs[-1]
+        self.music_live_avoid_refs=set()
+        self.music_live_avoid_artists=set()
+        self.music_live_replanning=False
+        self.music_live_played_refs=[]
+        self.music_live_run_id=str(uuid.uuid4())
+        recipe=self._journey_live_recipe_snapshot()
+        original_snapshot=portable_route_snapshot(
+            route,
+            dict(self.music_map.ref_map or {}),
+        )
+        try:
+            self.state.start_journey_run(
+                self.music_live_run_id,
+                recipe_id=str(self.music_active_recipe_id or ""),
+                recipe=recipe,
+                original_route=original_snapshot,
+            )
+            self._journey_live_event(
+                "start",
+                {
+                    "recipe_id":str(self.music_active_recipe_id or ""),
+                    "destination":self._music_path_name(self.music_live_destination_ref),
+                    "routing_mode":str(self.music_path_mode.currentData() or "balanced"),
+                },
+            )
+        except Exception:
+            self.music_live_run_id=""
+        if hasattr(self,"music_live_steering"):
+            self.music_live_steering.setCurrentIndex(0)
+        self.player.set_queue(tracks,0,True)
+        self.music_map.show_route(route)
+        self._journey_live_update_label()
+        self._refresh_journeys()
+        self.statusBar().showMessage(
+            "Journey Live active · manual Next will adapt the remaining route",6000
+        )
+
+    def _journey_live_stop(self,message="inactive"):
+        was_active=bool(self.music_live_active)
+        run_id=str(self.music_live_run_id or "")
+        final_snapshot=self._journey_live_final_snapshot() if was_active and run_id else {}
+        status="completed" if str(message)=="destination reached" else "stopped"
+        if run_id:
+            self._journey_live_event(
+                "complete" if status=="completed" else "stop",
+                {"reason":str(message or status)},
+            )
+            try:
+                self.state.finish_journey_run(
+                    run_id,
+                    status=status,
+                    final_route=final_snapshot,
+                )
+            except Exception:
+                pass
+        self.music_live_active=False
+        self.music_live_replanning=False
+        self.music_live_run_id=""
+        self._journey_live_update_label(message)
+        if hasattr(self,"journey_runs_list"):
+            self._refresh_journeys()
+
+    def _journey_live_apply_steer(self):
+        if not self.music_live_active:
+            self.statusBar().showMessage("Start Journey Live first",3000); return
+        steering=str(self.music_live_steering.currentData() or "") if hasattr(self,"music_live_steering") else ""
+        if not steering:
+            self.statusBar().showMessage("Choose a Journey Live steering direction first",3000); return
+        self._journey_live_event(
+            "steer",
+            {
+                "steering":steering,
+                "label":str(self.music_live_steering.currentText() or steering),
+            },
+        )
+        self._journey_live_replan(steering,reason=f"steer:{steering}")
+
+    def _journey_live_avoid_current_artist(self):
+        if not self.music_live_active or not self.current_track:
+            self.statusBar().showMessage("Start Journey Live and play a mapped track first",3500); return
+        artist=str(self.current_track.get("artist") or "").strip()
+        if not artist:
+            self.statusBar().showMessage("The current track has no artist metadata to avoid",3500); return
+        self.music_live_avoid_artists.add(artist)
+        self._journey_live_event("avoid_artist",{"artist":artist})
+        self.statusBar().showMessage(f"Journey Live will avoid {artist} in the remaining route",4500)
+        self._journey_live_replan("",reason="avoid artist")
+
+    def _journey_live_restore(self):
+        if not self.music_live_active:
+            self.statusBar().showMessage("Start Journey Live first",3000); return
+        self.music_live_avoid_refs=set()
+        self.music_live_avoid_artists=set()
+        self._journey_live_event("restore",{})
+        self._journey_live_replan(
+            "",
+            base_route=dict(self.music_live_original_route or {}),
+            reason="restore designed route",
+        )
+
+    def _journey_live_replan(
+        self,
+        steering="",
+        *,
+        reopen_stage_refs=None,
+        base_route=None,
+        reason="",
+    ):
+        if not self.music_live_active:
+            self.statusBar().showMessage("Start Journey Live first",3000); return
+        if self.music_live_replanning:
+            self.statusBar().showMessage("Journey Live is already replanning…",2500); return
+        current_ref=self._music_ref_for_track(self.current_track or {})
+        if not current_ref:
+            self.statusBar().showMessage(
+                "The current track is not available on the active Music Map",4500
+            ); return
+        if current_ref==self.music_live_destination_ref:
+            self._journey_live_stop("destination reached")
+            return
+        route=dict(base_route or self.music_live_route or {})
+        mode=str(self.music_path_mode.currentData() or route.get("mode") or "balanced")
+        self.music_live_replanning=True
+        self._journey_live_update_label("replanning…")
+        avoid_refs=set(self.music_live_avoid_refs)
+        avoid_artists=set(self.music_live_avoid_artists)
+        reopen=set(reopen_stage_refs or set())
+        destination=str(self.music_live_destination_ref)
+        request_reason=str(reason or "")
+        def work():
+            result=replan_live_journey(
+                dict(self.music_map.model or {}),
+                dict(self.music_map.knowledge_graph or {}),
+                route,
+                current_ref,
+                destination,
+                mode=mode,
+                steering=str(steering or ""),
+                avoid_refs=avoid_refs,
+                avoid_artists=avoid_artists,
+                reopen_stage_refs=reopen,
+                max_hops_per_segment=8,
+            )
+            result=dict(result or {})
+            result["_live_from_ref"]=current_ref
+            result["_live_request_reason"]=request_reason
+            return result
+        self._run_async(work,self._journey_live_apply_result)
+
+    def _journey_live_apply_result(self,result):
+        self.music_live_replanning=False
+        if not self.music_live_active:
+            return
+        result=dict(result or {})
+        expected=str(result.get("_live_from_ref") or "")
+        current_ref=self._music_ref_for_track(self.current_track or {})
+        if expected and current_ref and current_ref!=expected:
+            self.statusBar().showMessage(
+                "Journey Live moved while replanning · recalculating from the current track",4500
+            )
+            QTimer.singleShot(0,lambda:self._journey_live_replan(""))
+            return
+        if not result.get("found"):
+            reason=str(result.get("reason") or "No adaptive route could be found")
+            self._journey_live_event(
+                "replan_failed",
+                {
+                    "reason":reason,
+                    "request":str(result.get("_live_request_reason") or ""),
+                },
+            )
+            self._journey_live_update_label("replan failed · queue unchanged")
+            self.statusBar().showMessage(
+                reason+" · existing queue kept unchanged",7000
+            )
+            return
+
+        refs=[str(x) for x in list(result.get("path_refs") or []) if str(x)]
+        if not refs or refs[0]!=current_ref:
+            self._journey_live_update_label("invalid replan · queue unchanged")
+            self.statusBar().showMessage(
+                "Journey Live returned an invalid route start · existing queue kept unchanged",6500
+            )
+            return
+        tail=[
+            dict(self.music_map.ref_map[ref])
+            for ref in refs[1:]
+            if ref in self.music_map.ref_map
+        ]
+        if len(tail)!=max(0,len(refs)-1):
+            self._journey_live_update_label("map changed · queue unchanged")
+            self.statusBar().showMessage(
+                "A replanned track is no longer on the Music Map · existing queue kept unchanged",6500
+            )
+            return
+
+        self.player.replace_upcoming(tail)
+        self.music_live_route=dict(result)
+        self.music_path_result=dict(result)
+        self._journey_live_event(
+            "replan",
+            {
+                "reason":str(result.get("_live_request_reason") or result.get("reason") or ""),
+                "upcoming_tracks":len(tail),
+                "score":float(result.get("score") or 0.0),
+            },
+        )
+        self.music_map.show_route(result)
+        if hasattr(self,"music_live_steering"):
+            self.music_live_steering.setCurrentIndex(0)
+        self.music_path_steps.clear()
+        stages_by_ref={
+            str(stage.get("ref") or ""):dict(stage)
+            for stage in list(result.get("stages") or [])
+            if isinstance(stage,dict) and str(stage.get("ref") or "")
+        }
+        hops=[dict(x) for x in list(result.get("hops") or []) if isinstance(x,dict)]
+        for index,hop in enumerate(hops,start=1):
+            a=self._music_path_name(hop.get("from") or "")
+            b=self._music_path_name(hop.get("to") or "")
+            detail=str(hop.get("reason") or "graph connection")
+            stage=stages_by_ref.get(str(hop.get("to") or ""))
+            if stage:
+                detail+=(
+                    f"\n→ Live stage: {stage.get('label') or 'Stage'} · "
+                    f"fit {float(stage.get('score') or 0):.0%} · {stage.get('reason') or ''}"
+                )
+            self.music_path_steps.addItem(f"{index}. {a}  →  {b}\n{detail}")
+        self._journey_live_update_label()
+        self.statusBar().showMessage(
+            f"Journey Live replanned · {len(tail)} upcoming track{'s' if len(tail)!=1 else ''} · "
+            f"score {float(result.get('score') or 0):.0%}",
+            6500,
+        )
+
+    def _on_manual_advance(self,previous,current,played_ms,duration_ms):
+        if not self.music_live_active:
+            return
+        previous_ref=self._music_ref_for_track(dict(previous or {}))
+        if previous_ref:
+            self.music_live_avoid_refs.add(previous_ref)
+        self._journey_live_event(
+            "manual_skip",
+            {
+                "track":_track_text(dict(previous or {})),
+                "played_ms":int(played_ms or 0),
+                "duration_ms":int(duration_ms or 0),
+                "quick_skip":bool(int(played_ms or 0)<30000),
+            },
+        )
+        reopen=set()
+        # Preserve the existing taste model's conservative definition of an
+        # immediate skip: under 30 seconds means the stage was not really
+        # experienced, so a skipped semantic waypoint is reopened.
+        if previous_ref and int(played_ms or 0)<30000:
+            reopen.add(previous_ref)
+        self.statusBar().showMessage("Journey Live adapting after manual skip…",3500)
+        self._journey_live_replan(
+            "",
+            reopen_stage_refs=reopen,
+            reason="manual skip",
+        )
+
+    def _analyse_library_for_map(self):
+        catalog=self.providers.local_catalog()
+        if not catalog:
+            QMessageBox.information(self,"Add music first","Add a local music folder before analysing your library.")
+            return
+        if not self.flow.analysis_available:
+            QMessageBox.information(
+                self,
+                "Audio analysis unavailable",
+                "Music Map analysis needs ffmpeg and NumPy. Install/enable them, then try again."
+            )
+            return
+        self.statusBar().showMessage("Analysing local library for Music Map…")
+        self._run_async(
+            lambda:self.local_intelligence.analyse_catalog(catalog),
+            self._music_map_analysis_finished,
+        )
+
+    def _music_map_analysis_finished(self,result):
+        self.statusBar().showMessage(
+            f"Library analysis ready · {int(result.get('analysed') or 0)}/{int(result.get('total') or 0)} analysed",
+            5000,
+        )
+        self._refresh_music_map()
+
+    def _music_map_selected(self):
+        return self.music_map.selected_track() if hasattr(self,"music_map") else {}
+
+    def _play_music_map_track(self,track):
+        if isinstance(track,dict) and track:
+            self.player.set_queue([dict(track)],0,True)
+
+    def _play_music_map_selected(self):
+        track=self._music_map_selected()
+        if track:self._play_music_map_track(track)
+
+    def _queue_music_map_selected(self):
+        track=self._music_map_selected()
+        if not track:return
+        if not self.player.queue:self.player.set_queue([track],0,False)
+        else:
+            self.player.queue.append(dict(track)); self.player.queueChanged.emit(self.player.queue)
+        self.statusBar().showMessage("Added Music Map track to queue",3000)
+
+    def _journey_from_music_map(self):
+        track=self._music_map_selected()
+        if not track:
+            self.statusBar().showMessage("Select a Music Map track first",3000); return
+        catalog=self.providers.local_catalog()
+        self.statusBar().showMessage("Building a journey from this part of your map…")
+        self._run_async(
+            lambda:self.mind.build_session(
+                catalog,
+                self._path_for,
+                minutes=int(self.minutes.currentText()),
+                adventure=self.adventure.value()/100,
+                mode=self.mode.currentText(),
+                start_track=track,
+            ),
+            lambda plan:self._apply_mind(plan),
+        )
+
     # ------------------------------- Flow / Mind
     def _path_for(self,t):
         p=str(t.get("local_path") or ""); return Path(p) if p else None
@@ -872,12 +2544,153 @@ class MainWindow(QMainWindow):
         if self.current_track and self.current_track_started and time.time()-self.current_track_started<30:
             self.state.record_skip(self.current_track)
         self.current_track=dict(t); self.current_track_started=time.time(); self.current_history_id=self.state.record_play(t)
+        self._visual_position_ms = 0
+        self._visual_duration_ms = 0
+        if hasattr(self, "living_canvas"):
+            self.living_canvas.set_track(self.current_track, None)
+            self._request_cached_visual_analysis(self.current_track)
+        if hasattr(self,"music_map"):
+            self.music_map.highlight_track(t)
+        if self.music_live_active:
+            current_ref=self._music_ref_for_track(self.current_track)
+            if current_ref and (
+                not self.music_live_played_refs
+                or self.music_live_played_refs[-1]!=current_ref
+            ):
+                self.music_live_played_refs.append(current_ref)
+            if current_ref and current_ref==self.music_live_destination_ref:
+                self._journey_live_stop("destination reached")
+            else:
+                self._journey_live_update_label()
         self.now_title.setText(str(t.get("title") or "Unknown track")); base=f"{t.get('artist','Unknown artist')}   ·   {t.get('album','')}   ·   {t.get('provider_id','')}"; src=str(t.get("source_page") or ""); attr=str(t.get("attribution") or ""); self.now_meta.setText(base + ((f"   ·   <a href=\"{src}\">{attr or 'Source'}</a>") if src else ""))
         if hasattr(self,"rich_now"):self.rich_now.set_track(dict(t))
+        if hasattr(self, "living_canvas"):
+            self.living_canvas.refresh_context()
+
+    def _request_cached_visual_analysis(self, track: dict[str, Any]) -> None:
+        local_path = str(track.get("local_path") or "").strip()
+        if not local_path:
+            return
+
+        def lookup() -> None:
+            try:
+                analysis = self.flow.cached_analysis_for(Path(local_path))
+            except Exception:
+                analysis = None
+            self._visual_analysis_signals.ready.emit(local_path, analysis)
+
+        threading.Thread(target=lookup, daemon=True).start()
+
+    def _visual_analysis_loaded(self, local_path: str, analysis: object) -> None:
+        current_path = str((self.current_track or {}).get("local_path") or "")
+        if self._closing or not local_path or local_path != current_path:
+            return
+        self.living_canvas.set_analysis(analysis)
+        self.living_canvas.set_position(self._visual_position_ms, self._visual_duration_ms)
+
+    def _request_visual_mode_data(self, request: str) -> None:
+        if self._closing or not hasattr(self, "living_canvas"):
+            return
+        mode, _, scale = str(request or "").partition(":")
+        scale = scale or str(self.living_canvas.memory_scale.currentData() or "sessions")
+        if mode not in {"constellation", "memory"}:
+            return
+
+        self._visual_context_sequence += 1
+        sequence = self._visual_context_sequence
+        queue_candidates: list[dict[str, Any]] = []
+        if mode == "constellation":
+            queue = list(getattr(self.player, "queue", []) or [])
+            current_index = int(getattr(self.player, "index", -1))
+            start = max(0, current_index - 5)
+            end = min(len(queue), current_index + 21)
+            for index in range(start, end):
+                if index == current_index or not isinstance(queue[index], dict):
+                    continue
+                queue_candidates.append({
+                    "_visual_token": len(queue_candidates),
+                    "_visual_relation": "Up next" if index > current_index else "Played earlier",
+                    "track": dict(queue[index]),
+                })
+        limit = 2000 if mode == "memory" else 120
+
+        def load_context() -> None:
+            try:
+                recent = self.state.recent_tracks(limit)
+                if mode == "memory":
+                    payload: object = {
+                        "scale": scale,
+                        "marks": build_visual_memory(recent, scale),
+                    }
+                else:
+                    payload = {"queue": queue_candidates, "recent": recent}
+            except Exception:
+                payload = {"scale": scale, "marks": ()} if mode == "memory" else {"queue": queue_candidates, "recent": []}
+            self._visual_context_signals.ready.emit(sequence, mode, payload)
+
+        threading.Thread(target=load_context, daemon=True).start()
+
+    def _visual_context_loaded(self, sequence: int, mode: str, payload: object) -> None:
+        if self._closing or sequence != self._visual_context_sequence:
+            return
+        if not hasattr(self, "living_canvas") or self.living_canvas.active_mode != mode:
+            return
+        if not isinstance(payload, dict):
+            return
+        if mode == "memory":
+            scale = str(payload.get("scale") or "sessions")
+            if scale != str(self.living_canvas.memory_scale.currentData() or "sessions"):
+                return
+            self.living_canvas.set_memory_marks(tuple(payload.get("marks") or ()), scale)
+            return
+
+        current = dict(self.current_track or {})
+        candidates = [row for row in payload.get("queue", ()) if isinstance(row, dict)]
+        refs: dict[int, dict[str, Any]] = {}
+        for row in candidates:
+            try:
+                refs[int(row.get("_visual_token"))] = dict(row.get("track") or {})
+            except (TypeError, ValueError, OverflowError):
+                continue
+        token = max(refs, default=-1) + 1
+        for track in payload.get("recent", ()):
+            if not isinstance(track, dict):
+                continue
+            candidates.append({
+                "_visual_token": token,
+                "_visual_relation": "Played earlier",
+                "track": dict(track),
+            })
+            refs[token] = dict(track)
+            token += 1
+        neighbours = build_constellation(current, candidates, limit=24)
+        self._visual_neighbour_tracks = {
+            node.token: refs[node.token]
+            for node in neighbours if node.token in refs
+        }
+        self.living_canvas.set_neighbours(neighbours)
+
+    def _queue_visual_neighbour(self, token: int) -> None:
+        track = self._visual_neighbour_tracks.get(int(token))
+        if not track:
+            return
+        self.player.append_queue([dict(track)], autoplay=False)
+        self.statusBar().showMessage(
+            f"Queued {track.get('artist') or 'Unknown artist'} — {track.get('title') or 'Unknown track'}",
+            4000,
+        )
 
     def _on_position(self,pos,dur):
         if self._closing:
             return
+        self._visual_position_ms = int(pos)
+        self._visual_duration_ms = int(dur)
+        if hasattr(self,"living_canvas"):
+            self.living_canvas.set_position(pos, dur)
+            active_player = self.player.players[self.player.active]
+            self.living_canvas.set_playing(
+                active_player.playbackState() == QMediaPlayer.PlayingState
+            )
         if hasattr(self,"rich_now"):self.rich_now.set_position(pos)
         if dur>0:self.seek.setValue(int(1000*pos/dur))
         if dur>0 and pos>=dur-1500 and self.current_history_id:
@@ -981,6 +2794,8 @@ class MainWindow(QMainWindow):
         self.queue_list.clear()
         for i,t in enumerate(tracks):
             prefix="▶ " if i==self.player.index else ""; item=QListWidgetItem(prefix+_track_text(t)); item.setData(Qt.UserRole,i); self.queue_list.addItem(item)
+        if hasattr(self, "living_canvas") and self.living_canvas.active_mode == "constellation":
+            self.living_canvas.refresh_context()
 
     def _queue_jump(self,item):
         idx=int(item.data(Qt.UserRole)); self.player.players[self.player.active].stop(); self.player._load_index(idx,True)
@@ -1143,6 +2958,8 @@ class MainWindow(QMainWindow):
         threading.Thread(target=work,daemon=True).start()
 
     def closeEvent(self,event):
+        if self.music_live_active:
+            self._journey_live_stop("application closed")
         self._closing = True
         if self.bridge:self.bridge.stop()
-        self.player.close(); self.metadata.close(); self.providers.close(); self.flow.close(); self.state.close(); super().closeEvent(event)
+        self.player.close(); self.metadata.close(); self.providers.close(); self.flow.close(); self.knowledge.close(); self.state.close(); super().closeEvent(event)

@@ -22,7 +22,7 @@
 
 Melodex is a source-neutral music player that tries to make listening sessions **go somewhere**.
 
-It combines your library and connected sources with taste memory, optional audio analysis, **Flow** sequencing, **Play for me**, Moments, and a resolver that can match requested music across multiple providers.
+It combines your library and connected sources with taste memory, optional audio analysis, **Flow** sequencing, **Play for me**, a local **Music Map**, Moments, and a resolver that can match requested music across multiple providers.
 
 But Melodex is also becoming something broader:
 
@@ -69,7 +69,8 @@ Melodex separates discovery/distribution from runtime capabilities and external 
              │                                   │
       Provider Manager                    Capability Broker
              │                                   │
-        catalog/playback             identity/metadata/artwork/lyrics
+        catalog/playback        identity/metadata/artwork/lyrics/context
+                                      local intelligence
              └─────────────────┬─────────────────┘
                                ▼
                     resolver + player + Flow
@@ -102,9 +103,11 @@ identity.resolve
 metadata.enrich
 artwork.lookup
 lyrics.lookup
+context.lookup
+library.suggest
 ```
 
-The aim is composition: playback from one source, canonical identity from another, artwork from another, and lyrics from another — while retaining provenance.
+The aim is composition: playback from one source, canonical identity from another, artwork/context from others, and privacy-preserving local intelligence over the user's own library.
 
 Install extensions through **Sources → Explore plugins…**, or start with [Build an enrichment plugin](docs/tutorials/BUILD_AN_ENRICHMENT_PLUGIN.md).
 
@@ -152,6 +155,22 @@ melodex_feedback
 
 Use [MCP with OpenWebUI](docs/tutorials/CONNECT_OPENWEBUI_MCP.md) or [OpenAI function calling](docs/tutorials/USE_OPENAI_FUNCTIONS.md).
 
+## Explore your library spatially
+
+The desktop **Music Map** turns cached Flow analysis into a zoomable local sonic landscape. Nearby tracks share similar combinations of tempo, energy, key, timbre, rhythmic density and mixability; colour modes can expose energy, taste strength or rediscovery potential.
+
+The same fixed dots can switch from **Sounds similar · Flow** to **Actually connected** overlays built from cached artists/albums, production and performer credits, compositions/works, samples/remixes/versions, artist relationships and recording places. Normal listening grows that local knowledge index; explicit map enrichment can fill gaps.
+
+A selected node can be played, queued, or used as the anchor for a new Mind + Flow journey. **Pathfinder** can connect two mapped tracks using Balanced, Sonic or Knowledge-first routing, drawing a numbered route and explaining every hop before it is played or queued.
+
+**Journey Designer** layers transparent semantic waypoints on top: Calm, Darker, Forgotten, Energetic, Bright, Rhythmic, Familiar, Surprising, or an exact chosen track. Its first preset builds a **Calm → Darker → Forgotten → Energetic** arc and records the fit/reason for every selected stage.
+
+**Journey Live** can then adapt only the unfinished tail while playback continues: steer calmer/more energetic/darker/brighter, ask for more rhythm/familiarity/surprise/rediscovery, avoid the current artist, or manually skip and replan. The current track and fixed destination stay anchored, and failed replans keep the existing queue.
+
+The **Journey Library** separates reusable intent from personal history. Recipes save/share routing mode + ordered stages as `.mdxjourney` without local paths or taste data; private Runs keep the designed route, final adapted route and explicit steering/skip/avoid decisions so either route can be inspected and replayed later.
+
+The first implementation is deterministic, local and dependency-light rather than using a remote embedding service or opaque ML model.
+
 ## Reference extensions
 
 The ecosystem is being developed with small examples built around documented, legal/open-access sources:
@@ -162,8 +181,14 @@ The ecosystem is being developed with small examples built around documented, le
 | LibriVox | public-domain search + playback + offline |
 | MusicBrainz | canonical identity + metadata provenance |
 | Wikimedia Commons | artwork + per-file licence/attribution |
+| MusicBrainz Song Connections | samples/remixes/works/recording-place context |
+| Wikimedia Liner Notes | sourced encyclopedic context cards |
+| ListenBrainz Community Pulse | aggregate community listening context |
+| Sonic Neighbours | local Flow-feature “more like this” |
+| Forgotten Favourites | private local rediscovery |
+| Bridge Builder | local transition bridge suggestions |
 
-The examples are designed to be copied, studied and changed. All four are also published as registry-verified example packages in the desktop [Plugin Directory](docs/PLUGIN_DIRECTORY.md).
+The examples are designed to be copied, studied and changed. Canonical examples are packaged with exact SHA-256/size metadata and surfaced through the desktop [Plugin Directory](docs/PLUGIN_DIRECTORY.md).
 
 ## Community philosophy
 

@@ -49,9 +49,18 @@ def _authors(book):
     return ", ".join(names) or "Unknown author"
 
 
+def _safe_seconds(value):
+    try:
+        return max(0, int(float(value or 0)))
+    except (TypeError, ValueError):
+        return 0
+
+
 def _track(book, section):
-    book_id = str(book["id"])
-    section_id = str(section["id"])
+    book_id = str(book.get("id") or "").strip()
+    section_id = str(section.get("id") or "").strip()
+    if not book_id or not section_id:
+        raise RuntimeError("LibriVox item is missing an id")
     track_id = f"{book_id}:{section_id}"
     item = {
         "type":"track",
@@ -60,7 +69,7 @@ def _track(book, section):
         "title":section.get("title") or f"Section {section.get('section_number') or ''}".strip(),
         "artist":_authors(book),
         "album":book.get("title") or "LibriVox",
-        "duration_ms":int(section.get("playtime") or 0) * 1000,
+        "duration_ms":_safe_seconds(section.get("playtime")) * 1000,
         "artwork_url":book.get("coverart_jpg") or None,
         "metadata":{
             "public_domain_us":True,
@@ -127,11 +136,22 @@ def respond(request):
                 "protocol_version":"1.0","capabilities":["search","track","playback","offline"]}
 
     if method == "provider.health":
-        return {"status":"ready"}
+        if os.getenv("MELODEX_EXAMPLE_FIXTURES") == "1":
+            return {"status":"ready","message":"LibriVox fixture is available"}
+        try:
+            data = _get_json({"format":"json","limit":"1"})
+            ready = isinstance(data, dict) and isinstance(data.get("books"), list)
+            return {
+                "status":"ready" if ready else "degraded",
+                "message":"LibriVox API is reachable" if ready else "LibriVox returned an unexpected response",
+            }
+        except Exception as exc:
+            return {"status":"unavailable","message":f"LibriVox unavailable: {exc}"}
 
     if method == "catalog.search":
         query = str(params.get("query") or "").strip()
-        limit = min(int(params.get("limit") or 25), 50)
+        raw_limit = params.get("limit")
+        limit = 25 if raw_limit is None else max(1, min(int(raw_limit), 50))
         items = []
         for book in _search(query, limit):
             _cache_book(book)

@@ -29,7 +29,8 @@ This is the canonical high-level map of the current Melodex extension platform.
      └────────┬─────────┘              └────────┬─────────┘
               │                                 │
        catalog/playback                 identity/metadata
-              │                          artwork/lyrics
+              │                       artwork/lyrics/context
+              │                        library suggestions
               └──────────────┬──────────────────┘
                              ▼
                     Universal Resolver
@@ -80,6 +81,8 @@ identity.resolve
 metadata.enrich
 artwork.lookup
 lyrics.lookup
+context.lookup
+library.suggest
 ```
 
 These also run outside the GUI process.
@@ -99,7 +102,7 @@ Melodex Core owns:
 - external-control API;
 - user-facing installation state.
 
-A plugin should not reach into Core databases or UI internals.
+A plugin should not reach into Core databases or UI internals. Local-intelligence plugins receive privacy-preserving snapshots brokered by Core instead of direct library/taste-database access.
 
 ## Progressive enrichment
 
@@ -194,6 +197,8 @@ Melodex can therefore be open and decentralized without making Core responsible 
 | Registry client | `desktop/melodex/plugin_registry.py` |
 | Plugin Directory UI | `desktop/melodex/plugin_directory.py` |
 | Universal resolver | `desktop/melodex/resolver.py` |
+| Music Map model | `desktop/melodex/music_map_model.py` |
+| Music Map desktop view | `desktop/melodex/music_map.py` |
 | Local control API | `desktop/melodex/bridge_server.py` |
 | OpenAPI schema | `desktop/melodex/api_schema.py` |
 | OpenAI tool schemas | `desktop/melodex/openai_tools.py` |

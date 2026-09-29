@@ -1,0 +1,48 @@
+{
+  "schema_version": "0.1",
+  "plugin_id": "org.melodex.example.openverse-audio",
+  "events": [
+    {
+      "reviewed_at": "2026-09-29T01:00:00Z",
+      "reviewer": "Melodex project",
+      "decision": "example-baseline",
+      "version": "0.1.0",
+      "package_sha256": "6d07609213dc86e6902da361ceede86ee4058d813dbd8e090883e391b94976ec",
+      "summary": "Baseline review of the project-maintained Openverse audio provider example: registry metadata, package bytes, provider manifest, declared network access, source/licence provenance, source policy and deterministic fixture tests were checked for the published 0.1.0 example.",
+      "checks": {
+        "registry_schema": true,
+        "package_integrity": true,
+        "manifest_descriptor": true,
+        "permissions": true,
+        "source_policy": true,
+        "tests": true,
+        "rights_notes": true
+      },
+      "limitations": [
+        "Openverse licence information is index metadata and should be verified at the original source before reuse.",
+        "Project-maintained example review; this does not cryptographically verify a publisher identity or provide a legal/content endorsement."
+      ]
+    },
+    {
+      "reviewer": "Melodex project",
+      "decision": "example-baseline",
+      "checks": {
+        "registry_schema": true,
+        "package_integrity": true,
+        "manifest_descriptor": true,
+        "permissions": true,
+        "source_policy": true,
+        "tests": true,
+        "rights_notes": true
+      },
+      "limitations": [
+        "Openverse licence information is index metadata and should be verified at the original source before reuse.",
+        "Project-maintained example review; this does not cryptographically verify a publisher identity or provide a legal/content endorsement."
+      ],
+      "reviewed_at": "2026-09-29T10:30:00Z",
+      "version": "0.1.1",
+      "package_sha256": "28c62dd617a1d48281e5c0705b54f939668a33dfe185848f09ca2553319c1b0b",
+      "summary": "Stabilization review after packaged-host/plugin audit: source parsing/boundary fixes, package descriptor, permissions, source policy, adversarial fixtures and rebuilt package bytes were checked for this patch release."
+    }
+  ]
+}

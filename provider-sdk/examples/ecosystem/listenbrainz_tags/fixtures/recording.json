@@ -1,0 +1,29 @@
+{
+  "e97f805a-ab48-4c52-855e-07049142113d": {
+    "tag": {
+      "recording": [
+        {
+          "count": 8,
+          "genre_mbid": "45eb1d9c-588c-4dc8-9394-a14b7c8f02bc",
+          "tag": "trip hop"
+        },
+        {
+          "count": 4,
+          "tag": "trip-hop"
+        },
+        {
+          "count": 3,
+          "genre_mbid": "89255676-1f14-4dd8-bbad-fca839d6aff4",
+          "tag": "electronic"
+        }
+      ],
+      "artist": [
+        {
+          "count": 5,
+          "tag": "bristol"
+        }
+      ],
+      "release_group": []
+    }
+  }
+}

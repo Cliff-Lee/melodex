@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://melodex.example/schema/extensions/v0.1/health-response.schema.json",
+  "title": "Melodex extension health response v0.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "status",
+    "upstream_checked"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "0.1"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "ready",
+        "auth_required",
+        "unavailable",
+        "degraded",
+        "error"
+      ]
+    },
+    "upstream_checked": {
+      "type": "boolean"
+    },
+    "message": {
+      "type": "string",
+      "maxLength": 300
+    },
+    "latency_ms": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "retry_after_seconds": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    }
+  }
+}

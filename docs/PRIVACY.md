@@ -15,6 +15,7 @@ Melodex stores local application state including:
 - Love / Keep feedback;
 - Moments;
 - saved playlists and Vibes;
+- Journey Recipes and private Journey Run/event history;
 - provider configuration;
 - installed-plugin provenance;
 - Plugin Directory cache/download state;
@@ -69,6 +70,41 @@ Melodex can use the network when you deliberately use features that require it, 
 - using Provider Bridge or MCP across a LAN.
 
 Local-file playback itself does not require those services.
+
+## Music Map
+
+The desktop Music Map is a Core-owned local view. It reads cached Flow analysis and local taste signals from Melodex's own application state and does not require a remote embedding service.
+
+Opening the map uses cached analysis and cached local knowledge only. Full-library audio analysis happens only when the user chooses **Analyse my library**.
+
+The map's projection and knowledge graph are computed locally and are not sent to the Plugin Directory, an LLM or a remote recommendation service.
+
+Normal Now Playing enrichment can be remembered in the local Music Map knowledge index. The explicit **Enrich selected** and **Enrich map (+8)** controls may contact MusicBrainz and enabled context plugins; they are user-initiated network enrichment, not background crawling.
+
+**Pathfinder** is local. Route finding uses the current map's cached standardized Flow vectors and cached factual edges. It does not contact metadata services, plugins, an LLM or a remote recommender merely to find a path.
+
+**Journey Designer** is also local. Semantic stages are scored from Flow/taste values already present in the current map, and staged routes reuse the prepared Pathfinder graph. Building a journey does not send the stage sequence or your library to an LLM or remote planner.
+
+**Journey Live** remains local as it adapts playback. Manual skip events, steering choices and temporary avoid rules are applied to the in-memory route planner; they are not sent to an LLM, metadata provider, plugin or remote planning service.
+
+**Journey Library** keeps two privacy classes separate. Exported `.mdxjourney` Recipes contain routing mode, semantic stages and deliberately chosen portable exact-track selectors; they exclude local paths, provider playback IDs, taste/rediscovery values and listening history. Journey Run history records personal adaptive decisions locally and is not exported by the current UI.
+
+## Local intelligence plugins
+
+The `library.suggest` contract is designed so useful local recommendation tools do not need the user's filesystem paths or taste database.
+
+For each request Melodex creates ephemeral refs such as `t0` and can send:
+
+```text
+title / artist / album / duration
+cached Flow analysis values
+play/completion/skip/love/keep counts
+relative days since last play
+```
+
+The contract does not include absolute local paths, provider-local IDs, SQLite/database keys, raw audio or absolute listening timestamps. Core retains the real track objects and maps returned ephemeral refs back after the plugin responds.
+
+This is a **data-minimisation boundary**, not an OS sandbox. As with other desktop plugins, executable third-party extension code still runs with the current user's operating-system permissions unless stronger platform sandboxing is configured.
 
 ## Provider Bridge
 

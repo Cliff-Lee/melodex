@@ -1,0 +1,28 @@
+{
+  "schema_version": "0.1",
+  "plugin_id": "org.melodex.example.public-domain-lyrics",
+  "events": [
+    {
+      "reviewed_at": "2026-09-29T01:30:00Z",
+      "reviewer": "Melodex project",
+      "decision": "example-baseline",
+      "version": "0.1.0",
+      "package_sha256": "5d4e2a3c8fccbb6430eda393332c022d04a7829c8a73f5895b7448389100fa21",
+      "summary": "Baseline review of the project-maintained public-domain lyrics example: package integrity, capability descriptor, no-network permission surface, bundled historical sample corpus, provenance/rights notes and deterministic tests were checked for 0.1.0.",
+      "checks": {
+        "registry_schema": true,
+        "package_integrity": true,
+        "manifest_descriptor": true,
+        "permissions": true,
+        "source_policy": true,
+        "tests": true,
+        "rights_notes": true
+      },
+      "limitations": [
+        "This is a deliberately tiny developer corpus, not a general lyrics catalogue.",
+        "Historical public-domain status can vary by jurisdiction and edition; broader lyrics integrations need their own source/rights review.",
+        "Runtime process isolation is not a complete operating-system sandbox."
+      ]
+    }
+  ]
+}

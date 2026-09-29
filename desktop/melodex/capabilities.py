@@ -16,7 +16,16 @@ from pathlib import Path
 from typing import Any
 
 from .process_env import scrubbed_child_env
+from .child_host import python_child_command
 from .plugin_config import PluginConfigBroker, normalise_configuration
+from .package_safety import (
+    entrypoint_errors,
+    extract_archive,
+    replace_directory,
+    resolve_entrypoint,
+    staged_install_dir,
+    validate_plugin_identifier,
+)
 
 
 _METHODS = {
@@ -24,6 +33,8 @@ _METHODS = {
     "metadata": "metadata.enrich",
     "artwork": "artwork.lookup",
     "lyrics": "lyrics.lookup",
+    "context": "context.lookup",
+    "library_suggestions": "library.suggest",
 }
 
 
@@ -50,6 +61,7 @@ class ExtensionInfo:
     contracts: list[ExtensionContract] = field(default_factory=list)
     permissions: dict[str, Any] = field(default_factory=dict)
     configuration: list[dict[str, Any]] = field(default_factory=list)
+    health_contract: dict[str, str] = field(default_factory=dict)
 
     @property
     def capabilities(self) -> list[str]:
@@ -65,6 +77,7 @@ class ExtensionInfo:
             "contracts": [item.as_dict() for item in self.contracts],
             "permissions": dict(self.permissions),
             "configuration": list(self.configuration),
+            "health": dict(self.health_contract),
         }
 
 
@@ -72,13 +85,10 @@ def validate_descriptor(descriptor: dict[str, Any]) -> list[str]:
     errors: list[str] = []
     if str(descriptor.get("schema_version") or "") != "0.1":
         errors.append("schema_version must be '0.1'")
-    extension_id = str(descriptor.get("extension_id") or "").strip()
-    if not extension_id:
-        errors.append("extension_id is required")
-    if extension_id and (
-        ".." in extension_id or "/" in extension_id or "\\" in extension_id
-    ):
-        errors.append("extension_id contains an unsafe path sequence")
+    try:
+        validate_plugin_identifier(descriptor.get("extension_id"))
+    except ValueError as exc:
+        errors.append(f"extension_id is invalid: {exc}")
 
     contracts = descriptor.get("contracts")
     if not isinstance(contracts, list) or not contracts:
@@ -106,9 +116,18 @@ def validate_descriptor(descriptor: dict[str, Any]) -> list[str]:
             errors.append(f"duplicate capability contract: {capability}")
         seen.add(capability)
 
+    health = descriptor.get("health")
+    if health is not None:
+        if not isinstance(health, dict):
+            errors.append("health must be an object when present")
+        else:
+            if str(health.get("contract_version") or "") != "0.1":
+                errors.append("health.contract_version must be '0.1'")
+            if str(health.get("method") or "") != "extension.health":
+                errors.append("health.method must be 'extension.health'")
+
     entrypoints = descriptor.get("entrypoints")
-    if entrypoints is not None and not isinstance(entrypoints, dict):
-        errors.append("entrypoints must be an object when present")
+    errors.extend(entrypoint_errors(entrypoints))
     permissions = descriptor.get("permissions")
     if permissions is not None and not isinstance(permissions, dict):
         errors.append("permissions must be an object when present")
@@ -165,6 +184,10 @@ class ExternalExtension:
             contracts=contracts,
             permissions=dict(self.descriptor.get("permissions") or {}),
             configuration=normalise_configuration(self.descriptor.get("configuration")),
+            health_contract={
+                str(key): str(value)
+                for key, value in dict(self.descriptor.get("health") or {}).items()
+            },
         )
 
     def configure(self, settings: dict[str, Any]) -> None:
@@ -190,16 +213,19 @@ class ExternalExtension:
         entries = dict(self.descriptor.get("entrypoints") or {})
         python_entry = str(entries.get("python") or "").strip()
         if python_entry:
-            return [sys.executable, "-u", str(self.folder / python_entry)]
+            return python_child_command(resolve_entrypoint(self.folder, python_entry))
         if not entries and (self.folder / "plugin.py").is_file():
-            return [sys.executable, "-u", str(self.folder / "plugin.py")]
+            return python_child_command(resolve_entrypoint(self.folder, "plugin.py"))
         native = str(
             entries.get(self._platform_entrypoint_key())
             or entries.get("executable")
             or ""
         ).strip()
         if native:
-            return [str(self.folder / native)]
+            target = resolve_entrypoint(self.folder, native)
+            if os.name != "nt" and not os.access(target, os.X_OK):
+                raise RuntimeError(f"Extension native entrypoint is not executable: {target.name}")
+            return [str(target)]
         raise RuntimeError(f"Extension {self.info.name} has no runnable entrypoint")
 
     def _drain_stdout(self, proc: subprocess.Popen[str]) -> None:
@@ -260,17 +286,12 @@ class ExternalExtension:
         except subprocess.TimeoutExpired:
             proc.kill()
 
-    def _call_once(
+    def _rpc_method(
         self,
-        capability: str,
+        method: str,
         params: dict[str, Any],
         timeout: float | None = None,
     ) -> Any:
-        contract = self.contract(capability)
-        if contract is None:
-            raise RuntimeError(
-                f"Extension {self.info.name} does not implement {capability}"
-            )
         with self._lock:
             proc = self._ensure()
             self._seq += 1
@@ -281,7 +302,7 @@ class ExternalExtension:
             request = {
                 "jsonrpc": "2.0",
                 "id": request_id,
-                "method": contract.method,
+                "method": str(method),
                 "params": request_params,
             }
             assert proc.stdin
@@ -334,6 +355,75 @@ class ExternalExtension:
                     raise RuntimeError(str(message or "Extension error"))
                 return response.get("result")
 
+    def _call_once(
+        self,
+        capability: str,
+        params: dict[str, Any],
+        timeout: float | None = None,
+    ) -> Any:
+        contract = self.contract(capability)
+        if contract is None:
+            raise RuntimeError(
+                f"Extension {self.info.name} does not implement {capability}"
+            )
+        return self._rpc_method(contract.method, params, timeout=timeout)
+
+    def active_health_check(self, timeout: float = 8.0) -> dict[str, Any]:
+        declaration = dict(self.info.health_contract or {})
+        if not declaration:
+            return self.process_check()
+        try:
+            raw = self._rpc_method(
+                str(declaration.get("method") or "extension.health"),
+                {"schema_version": "0.1", "check": "live"},
+                timeout=max(0.5, float(timeout)),
+            )
+        except Exception as exc:
+            category = self._diagnostic_error(exc)
+            return {
+                "status": "unavailable" if category in {"timeout", "process_error"} else "error",
+                "message": "Extension health check failed",
+                "check_scope": "upstream",
+                "reason": category,
+                "upstream_checked": False,
+            }
+        if not isinstance(raw, dict):
+            return {
+                "status": "error",
+                "message": "Extension returned an invalid health response",
+                "check_scope": "upstream",
+                "reason": "protocol_error",
+                "upstream_checked": False,
+            }
+        if str(raw.get("schema_version") or "") != "0.1":
+            return {
+                "status": "error",
+                "message": "Extension returned an invalid health schema version",
+                "check_scope": "upstream",
+                "reason": "protocol_error",
+                "upstream_checked": False,
+            }
+        allowed_statuses = {"ready", "auth_required", "unavailable", "degraded", "error"}
+        status = str(raw.get("status") or "")
+        if status not in allowed_statuses or not isinstance(raw.get("upstream_checked"), bool):
+            return {
+                "status": "error",
+                "message": "Extension returned an invalid health response",
+                "check_scope": "upstream",
+                "reason": "protocol_error",
+                "upstream_checked": False,
+            }
+        upstream_checked = bool(raw.get("upstream_checked"))
+        return {
+            "status": status,
+            "message": str(raw.get("message") or ""),
+            "check_scope": "upstream" if upstream_checked else "extension",
+            "reason": "",
+            "upstream_checked": upstream_checked,
+            "latency_ms": raw.get("latency_ms"),
+            "retry_after_seconds": raw.get("retry_after_seconds"),
+        }
+
     @staticmethod
     def _diagnostic_error(exc: Exception) -> str:
         text = str(exc).casefold()
@@ -352,6 +442,36 @@ class ExternalExtension:
             self._proc is not None and self._proc.poll() is None
         )
         return health
+
+    def process_check(self) -> dict[str, Any]:
+        """Verify the extension can start without claiming upstream connectivity."""
+        try:
+            proc = self._ensure()
+        except Exception:
+            return {
+                "status": "error",
+                "message": "Extension process could not start",
+                "check_scope": "process",
+                "reason": "process_start_failed",
+            }
+        time.sleep(0.05)
+        if proc.poll() is not None:
+            details = " | ".join(list(self._stderr)[-3:])
+            return {
+                "status": "error",
+                "message": "Extension process exited during startup",
+                "check_scope": "process",
+                "reason": "process_exited",
+                "details": details[:500] if details else "",
+            }
+        return {
+            "status": "ready",
+            "message": (
+                "Extension process started successfully. "
+                "Upstream service access is tested when the extension is used."
+            ),
+            "check_scope": "process",
+        }
 
     def call(
         self,
@@ -393,17 +513,16 @@ class ExtensionInstaller:
     def _descriptor_from_archive(
         archive: zipfile.ZipFile,
     ) -> tuple[str, dict[str, Any]]:
-        names = archive.namelist()
-        descriptor_name = next(
-            (
-                name
-                for name in names
-                if name.rstrip("/").endswith("capabilities.json")
-            ),
-            None,
-        )
-        if not descriptor_name:
+        candidates = [
+            name
+            for name in archive.namelist()
+            if not name.endswith("/") and Path(name).name == "capabilities.json"
+        ]
+        if not candidates:
             raise ValueError("Extension package has no capabilities.json")
+        if len(candidates) != 1:
+            raise ValueError("Extension package must contain exactly one capabilities.json")
+        descriptor_name = candidates[0]
         descriptor = json.loads(archive.read(descriptor_name))
         if not isinstance(descriptor, dict):
             raise ValueError("capabilities.json must contain a JSON object")
@@ -416,38 +535,33 @@ class ExtensionInstaller:
         package = Path(package)
         if package.suffix.lower() not in {".mdxplugin", ".zip"}:
             raise ValueError("Extension packages must use .mdxplugin")
-        with zipfile.ZipFile(package) as archive:
-            descriptor_name, descriptor = self._descriptor_from_archive(archive)
-            extension_id = str(descriptor["extension_id"])
-            destination = self.extensions_dir / extension_id
-            if destination.exists():
-                shutil.rmtree(destination)
-            destination.mkdir(parents=True)
-            prefix = Path(descriptor_name).parent
-            for member in archive.infolist():
-                source = Path(member.filename)
-                try:
-                    relative = source.relative_to(prefix) if str(prefix) != "." else source
-                except ValueError:
-                    continue
-                if not relative.parts or relative.name == "":
-                    continue
-                # Reject symlink entries and path traversal.
-                unix_mode = (member.external_attr >> 16) & 0o170000
-                if unix_mode == 0o120000:
-                    raise ValueError("Symlinks are not allowed in extension packages")
-                target = (destination / relative).resolve()
-                if not target.is_relative_to(destination.resolve()):
-                    raise ValueError("Unsafe path in extension package")
-                if member.is_dir():
-                    target.mkdir(parents=True, exist_ok=True)
-                    continue
-                target.parent.mkdir(parents=True, exist_ok=True)
-                with archive.open(member) as source_file, target.open("wb") as out:
-                    shutil.copyfileobj(source_file, out)
-            if not (destination / "capabilities.json").is_file():
-                raise ValueError("Extension package did not install capabilities.json")
-        return destination
+        staged: Path | None = None
+        try:
+            with zipfile.ZipFile(package) as archive:
+                descriptor_name, descriptor = self._descriptor_from_archive(archive)
+                extension_id = str(descriptor["extension_id"])
+                destination = self.extensions_dir / extension_id
+                staged = staged_install_dir(self.extensions_dir, extension_id)
+                extract_archive(
+                    archive,
+                    prefix=Path(descriptor_name).parent,
+                    destination=staged,
+                )
+                descriptor_path = staged / "capabilities.json"
+                if not descriptor_path.is_file():
+                    raise ValueError("Extension package did not install capabilities.json")
+                extracted = json.loads(descriptor_path.read_text("utf-8"))
+                if not isinstance(extracted, dict):
+                    raise ValueError("Installed capabilities.json is invalid")
+                errors = validate_descriptor(extracted)
+                if errors:
+                    raise ValueError("Invalid capabilities.json: " + "; ".join(errors))
+                replace_directory(staged, destination)
+                staged = None
+                return destination
+        finally:
+            if staged is not None and staged.exists():
+                shutil.rmtree(staged, ignore_errors=True)
 
     def load_installed(self) -> list[ExternalExtension]:
         out: list[ExternalExtension] = []
@@ -460,11 +574,15 @@ class ExtensionInstaller:
         return out
 
     def remove(self, extension_id: str) -> bool:
-        extension_id = str(extension_id or "").strip()
-        if not extension_id or ".." in extension_id or "/" in extension_id or "\\" in extension_id:
+        try:
+            safe_id = validate_plugin_identifier(extension_id)
+        except ValueError:
             return False
-        destination = self.extensions_dir / extension_id
-        if not destination.exists():
+        root = self.extensions_dir.resolve()
+        destination = (root / safe_id).resolve()
+        if destination == root or not destination.is_relative_to(root):
+            return False
+        if not destination.exists() or destination.is_symlink():
             return False
         shutil.rmtree(destination)
         return True
@@ -849,6 +967,107 @@ class CapabilityBroker:
             "capability": "artwork",
             "subject": dict(subject),
             "assets": assets[: max(1, int(max_results))],
+            "errors": errors,
+        }
+
+    def suggest_library(
+        self,
+        tracks: list[dict[str, Any]],
+        intent: str,
+        seed_refs: list[str] | None = None,
+        limit: int = 12,
+        adventure: float = 0.35,
+    ) -> dict[str, Any]:
+        params: dict[str, Any] = {
+            "schema_version": "0.1",
+            "capability": "library_suggestions",
+            "intent": str(intent),
+            "tracks": [dict(x) for x in tracks if isinstance(x, dict)],
+            "limit": max(1, min(50, int(limit))),
+            "adventure": max(0.0, min(1.0, float(adventure))),
+        }
+        if seed_refs:
+            params["seed_refs"] = [str(x) for x in seed_refs[:2]]
+        results, errors = self._call_all("library_suggestions", params)
+        suggestions: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for order, (extension, result) in enumerate(results):
+            if str(result.get("intent") or intent) != str(intent):
+                continue
+            for raw in list(result.get("suggestions") or []):
+                if not isinstance(raw, dict):
+                    continue
+                ref = str(raw.get("ref") or "").strip()
+                if not ref or ref in seen:
+                    continue
+                seen.add(ref)
+                item = dict(raw)
+                item["_extension_id"] = extension.info.id
+                item["_extension_order"] = order
+                suggestions.append(item)
+        suggestions.sort(
+            key=lambda row: (
+                -float(row.get("score") or 0.0),
+                int(row.get("_extension_order") or 0),
+                str(row.get("ref") or ""),
+            )
+        )
+        return {
+            "schema_version": "0.1",
+            "capability": "library_suggestions",
+            "intent": str(intent),
+            "suggestions": suggestions[: max(1, min(50, int(limit)))],
+            "errors": errors,
+        }
+
+    def lookup_context(
+        self,
+        subject: dict[str, Any],
+        requested_cards: list[str] | None = None,
+        max_cards: int = 20,
+    ) -> dict[str, Any]:
+        params: dict[str, Any] = {
+            "schema_version": "0.1",
+            "capability": "context",
+            "subject": dict(subject),
+            "max_cards": max(1, min(30, int(max_cards))),
+        }
+        if requested_cards:
+            params["requested_cards"] = [str(x) for x in requested_cards]
+        results, errors = self._call_all("context", params)
+        cards: list[dict[str, Any]] = []
+        seen: set[tuple[str, str]] = set()
+        for order, (extension, result) in enumerate(results):
+            for raw in list(result.get("cards") or []):
+                if not isinstance(raw, dict):
+                    continue
+                card = dict(raw)
+                card_id = str(card.get("id") or "").strip()
+                title = str(card.get("title") or "").strip()
+                if not card_id or not title:
+                    continue
+                key = (extension.info.id, card_id)
+                if key in seen:
+                    continue
+                seen.add(key)
+                provenance = card.get("provenance")
+                if isinstance(provenance, dict):
+                    provenance.setdefault("source_extension_id", extension.info.id)
+                card["_extension_id"] = extension.info.id
+                card["_extension_order"] = order
+                cards.append(card)
+        cards.sort(
+            key=lambda row: (
+                -int(row.get("priority") or 0),
+                int(row.get("_extension_order") or 0),
+                str(row.get("title") or "").casefold(),
+            )
+        )
+        return {
+            "schema_version": "0.1",
+            "capability": "context",
+            "subject": dict(subject),
+            "cards": cards[: max(1, min(30, int(max_cards)))],
             "errors": errors,
         }
 

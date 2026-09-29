@@ -1,0 +1,50 @@
+{
+  "schema_version": "0.1",
+  "plugin_id": "org.melodex.example.bridge-builder",
+  "events": [
+    {
+      "reviewed_at": "2026-09-29T03:35:00Z",
+      "reviewer": "Melodex project",
+      "decision": "example-baseline",
+      "version": "0.1.0",
+      "package_sha256": "02a4192afadf606c81fc9b2dcc2eb30659c5a3a2ef57637795e2ed9b8ecf72f2",
+      "summary": "Baseline review of Bridge Builder 0.1.0: exact package bytes, library.suggest descriptor, no requested permissions, deterministic two-sided Flow compatibility fixture and privacy source policy were checked.",
+      "checks": {
+        "registry_schema": true,
+        "package_integrity": true,
+        "manifest_descriptor": true,
+        "permissions": true,
+        "source_policy": true,
+        "tests": true,
+        "rights_notes": true
+      },
+      "limitations": [
+        "Bridge suggestions require Flow analysis for both seed tracks and candidate tracks.",
+        "A high bridge score means the local features fit the reference transition heuristic; it is not a guarantee that a human listener will prefer the transition.",
+        "Melodex does not broker local paths or raw audio to the plugin, but extension subprocesses are not yet protected by a complete OS sandbox."
+      ]
+    },
+    {
+      "reviewer": "Melodex project",
+      "decision": "example-baseline",
+      "checks": {
+        "registry_schema": true,
+        "package_integrity": true,
+        "manifest_descriptor": true,
+        "permissions": true,
+        "source_policy": true,
+        "tests": true,
+        "rights_notes": true
+      },
+      "limitations": [
+        "Bridge suggestions require Flow analysis for both seed tracks and candidate tracks.",
+        "A high bridge score means the local features fit the reference transition heuristic; it is not a guarantee that a human listener will prefer the transition.",
+        "Melodex does not broker local paths or raw audio to the plugin, but extension subprocesses are not yet protected by a complete OS sandbox."
+      ],
+      "reviewed_at": "2026-09-29T10:30:00Z",
+      "version": "0.1.1",
+      "package_sha256": "fec5298c5834468e8832916823107218f7a5ecc3ed872f91dc10eb78269ab1f1",
+      "summary": "Stabilization review after packaged-host/plugin audit: source parsing/boundary fixes, package descriptor, permissions, source policy, adversarial fixtures and rebuilt package bytes were checked for this patch release."
+    }
+  ]
+}

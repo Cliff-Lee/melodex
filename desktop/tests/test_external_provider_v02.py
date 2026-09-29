@@ -149,3 +149,70 @@ for line in sys.stdin:
         assert item["artist"] == "eu"
     finally:
         provider.close()
+
+
+def test_external_provider_recommendations_receive_brokered_secret(tmp_path: Path):
+    code = """import json, sys
+for line in sys.stdin:
+    req = json.loads(line)
+    params = req.get("params") or {}
+    if req.get("method") == "recommendations.get":
+        config = params.get("_melodex_config") or {}
+        seed = params.get("seed") or {}
+        result = {
+            "items": [{
+                "provider_track_id": "rec-1",
+                "title": "Recommended",
+                "artist": seed.get("artist", "Unknown"),
+                "metadata": {
+                    "configured": config.get("api_key") == "secret-key",
+                    "playable": False,
+                },
+            }],
+            "next_cursor": None,
+        }
+    else:
+        result = {}
+    print(json.dumps({"jsonrpc": "2.0", "id": req["id"], "result": result}), flush=True)
+"""
+    (tmp_path / "provider.py").write_text(code, "utf-8")
+    manifest = {
+        "id": "org.example.recommend",
+        "name": "Recommend",
+        "version": "1",
+        "capabilities": ["recommendations"],
+        "permissions": {"network_hosts": []},
+        "configuration": [
+            {"key": "api_key", "label": "API key", "type": "secret", "required": True},
+        ],
+        "entrypoints": {"python": "provider.py"},
+    }
+    provider = ExternalProvider(tmp_path, manifest)
+    provider.configure({"api_key": "secret-key"})
+    try:
+        items = provider.recommend({"artist": "Seed Artist", "title": "Seed Song"}, 5)
+        assert items[0]["title"] == "Recommended"
+        assert items[0]["artist"] == "Seed Artist"
+        assert items[0]["metadata"]["configured"] is True
+    finally:
+        provider.close()
+
+
+def test_external_provider_adds_exact_resolved_media_host(tmp_path: Path):
+    manifest = {
+        "id": "org.example.dynamic-media",
+        "name": "Dynamic Media",
+        "version": "1",
+        "capabilities": ["playback"],
+        "permissions": {"network_hosts": ["api.example"]},
+        "entrypoints": {"python": "provider.py"},
+    }
+    provider = ExternalProvider(tmp_path, manifest)
+    merged = provider._merge_playback(
+        {"track_id": "1"},
+        {"kind": "http", "url": "https://cdn.other.example/audio.mp3"},
+    )
+    assert merged["_playback_allowed_hosts"] == [
+        "api.example",
+        "cdn.other.example",
+    ]

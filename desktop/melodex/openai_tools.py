@@ -43,6 +43,20 @@ _FUNCTIONS: list[dict[str, Any]] = [
         ),
     },
     {
+        "name": "melodex_recommendations",
+        "description": "Get provider-side track recommendations from a seed artist/title. Results may need resolving through another playback source.",
+        "parameters": _obj(
+            {
+                "artist": {"type": "string"},
+                "title": {"type": "string"},
+                "album": {"type": ["string", "null"]},
+                "provider": {"type": ["string", "null"]},
+                "limit": {"type": ["integer", "null"], "minimum": 1, "maximum": 100},
+            },
+            ["artist", "title", "album", "provider", "limit"],
+        ),
+    },
+    {
         "name": "melodex_resolve",
         "description": "Resolve artist/title/album metadata to Melodex's best playable source without changing playback.",
         "parameters": _obj(
@@ -180,6 +194,16 @@ def execute_tool(client: Any, name: str, arguments: dict[str, Any] | None = None
         provider = str(args.get("provider") or "all")
         limit = int(args.get("limit") or 20)
         return client.search(str(args["query"]), provider, limit)
+    if name == "melodex_recommendations":
+        provider = str(args.get("provider") or "all")
+        limit = int(args.get("limit") or 20)
+        return client.recommendations(
+            str(args["artist"]),
+            str(args["title"]),
+            str(args.get("album") or ""),
+            provider,
+            limit,
+        )
     if name == "melodex_resolve":
         return client.resolve(str(args["artist"]), str(args["title"]), str(args.get("album") or ""))
     if name == "melodex_resolution_candidates":

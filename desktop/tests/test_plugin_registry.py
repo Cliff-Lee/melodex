@@ -183,3 +183,29 @@ def test_registry_validation_requires_https_review_record():
     data["plugins"][0]["review"]["record"] = "http://example.org/review.json"
     errors = validate_registry(data)
     assert any("review.record must use HTTPS" in error for error in errors)
+
+
+def test_registry_validation_requires_mdxplugin_for_tools():
+    data = _registry()
+    data["plugins"][0]["kind"] = "tool"
+    data["plugins"][0]["distribution"]["format"] = "mdxprovider"
+    errors = validate_registry(data)
+    assert any("mdxplugin for tools" in error for error in errors)
+
+
+def test_registry_cache_isolated_by_registry_url(tmp_path: Path):
+    first = PluginRegistryClient(
+        tmp_path,
+        registry_url="https://example.org/a/registry.json",
+        session=FakeSession(),
+    )
+    second = PluginRegistryClient(
+        tmp_path,
+        registry_url="https://example.org/b/registry.json",
+        session=FakeSession(),
+    )
+    assert first.cache_path != second.cache_path
+
+    first.fetch(force=True)
+    assert first.cache_path.exists()
+    assert not second.cache_path.exists()

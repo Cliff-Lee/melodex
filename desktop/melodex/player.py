@@ -28,6 +28,7 @@ class FlowPlayer(QObject):
     positionChanged = Signal(int, int)
     playingChanged = Signal(bool)
     queueChanged = Signal(list)
+    manualAdvanced = Signal(dict, dict, int, int)
     error = Signal(str)
 
     def __init__(
@@ -124,13 +125,18 @@ class FlowPlayer(QObject):
         url = str(resolved.get("stream_url") or resolved.get("url") or "")
         if not url:
             raise RuntimeError("This source did not provide a playable stream")
+        guarded_external = "_playback_allowed_hosts" in resolved
+        kind = str(resolved.get("kind") or "http").casefold()
         needs_gateway = bool(
             resolved.get("headers")
             or resolved.get("cookies")
             or resolved.get("gateway_required")
+            or (guarded_external and kind != "hls")
         )
         if needs_gateway:
             url = self.gateway.register(resolved)
+        elif guarded_external:
+            self.gateway.validate_resource(resolved)
         return QUrl(url)
 
     def _load_index(self, index: int, play: bool = True, deck: int | None = None) -> None:
@@ -163,9 +169,34 @@ class FlowPlayer(QObject):
 
     def next(self) -> None:
         if self.index + 1 < len(self.queue):
-            self.players[self.active].stop()
+            previous = dict(self.queue[self.index]) if 0 <= self.index < len(self.queue) else {}
+            played_ms = int(self.players[self.active].position())
+            duration_ms = int(self.players[self.active].duration())
+            for player in self.players:
+                player.stop()
+            self.outputs[self.active].setVolume(1.0)
+            self.outputs[1 - self.active].setVolume(0.0)
             self._crossfading = False
+            self._transition_ms = 0
             self._load_index(self.index + 1, True)
+            current = dict(self.queue[self.index]) if 0 <= self.index < len(self.queue) else {}
+            self.manualAdvanced.emit(previous, current, played_ms, duration_ms)
+
+    def replace_upcoming(self, tracks: list[dict[str, Any]]) -> None:
+        """Replace only the queue tail, preserving the track currently playing."""
+        incoming = [dict(item) for item in tracks]
+        if not self.queue or self.index < 0:
+            self.set_queue(incoming, 0, False)
+            return
+        if self._crossfading:
+            next_deck = 1 - self.active
+            self.players[next_deck].stop()
+            self.outputs[next_deck].setVolume(0.0)
+            self.outputs[self.active].setVolume(1.0)
+            self._crossfading = False
+            self._transition_ms = 0
+        self.queue = self.queue[: self.index + 1] + incoming
+        self.queueChanged.emit(self.queue)
 
     def previous(self) -> None:
         player = self.players[self.active]

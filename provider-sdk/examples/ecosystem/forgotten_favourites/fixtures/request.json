@@ -1,0 +1,86 @@
+{
+  "schema_version": "0.1",
+  "capability": "library_suggestions",
+  "intent": "rediscover",
+  "seed_refs": [],
+  "limit": 5,
+  "adventure": 0.35,
+  "tracks": [
+    {
+      "ref": "t0",
+      "title": "Loved Long Ago",
+      "artist": "A",
+      "album": "X",
+      "duration_ms": 220000,
+      "analysis": null,
+      "taste": {
+        "plays": 8,
+        "completes": 7,
+        "skips": 0,
+        "loves": 1,
+        "dislikes": 0,
+        "keeps": 2,
+        "completion_rate": 0.875,
+        "skip_rate": 0,
+        "days_since_last_played": 72
+      }
+    },
+    {
+      "ref": "t1",
+      "title": "Played Yesterday",
+      "artist": "B",
+      "album": "Y",
+      "duration_ms": 220000,
+      "analysis": null,
+      "taste": {
+        "plays": 20,
+        "completes": 19,
+        "skips": 0,
+        "loves": 1,
+        "dislikes": 0,
+        "keeps": 4,
+        "completion_rate": 0.95,
+        "skip_rate": 0,
+        "days_since_last_played": 1
+      }
+    },
+    {
+      "ref": "t2",
+      "title": "Old Skip",
+      "artist": "C",
+      "album": "Z",
+      "duration_ms": 220000,
+      "analysis": null,
+      "taste": {
+        "plays": 5,
+        "completes": 1,
+        "skips": 4,
+        "loves": 0,
+        "dislikes": 0,
+        "keeps": 0,
+        "completion_rate": 0.2,
+        "skip_rate": 0.8,
+        "days_since_last_played": 100
+      }
+    },
+    {
+      "ref": "t3",
+      "title": "Disliked",
+      "artist": "D",
+      "album": "Q",
+      "duration_ms": 220000,
+      "analysis": null,
+      "taste": {
+        "plays": 4,
+        "completes": 3,
+        "skips": 0,
+        "loves": 0,
+        "dislikes": 1,
+        "keeps": 0,
+        "completion_rate": 0.75,
+        "skip_rate": 0,
+        "days_since_last_played": 180
+      }
+    }
+  ]
+}

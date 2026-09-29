@@ -2,7 +2,7 @@
   "schema_version": 1,
   "id": "org.melodex.example.radio-browser",
   "name": "Radio Browser Example",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "Melodex examples",
   "protocol_version": "1.0",
   "description": "Example provider for the free/open Radio Browser community radio index. Search station names such as jazz, BBC or ambient.",

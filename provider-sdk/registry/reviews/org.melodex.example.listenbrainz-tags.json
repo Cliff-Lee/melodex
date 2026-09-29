@@ -1,0 +1,71 @@
+{
+  "schema_version": "0.1",
+  "plugin_id": "org.melodex.example.listenbrainz-tags",
+  "events": [
+    {
+      "reviewed_at": "2026-09-29T01:00:00Z",
+      "reviewer": "Melodex project",
+      "decision": "example-baseline",
+      "version": "0.1.0",
+      "package_sha256": "035615d90aec65e60d8a9b0bcfb592ec65d74b7df9c3ad3fd76695f0cf391027",
+      "summary": "Baseline review of the project-maintained ListenBrainz tags example: registry metadata, package bytes, capability descriptor, declared network access, privacy-minimal composition, provenance/source policy and deterministic fixture tests were checked for the published 0.1.0 example.",
+      "checks": {
+        "registry_schema": true,
+        "package_integrity": true,
+        "manifest_descriptor": true,
+        "permissions": true,
+        "source_policy": true,
+        "tests": true,
+        "rights_notes": true
+      },
+      "limitations": [
+        "The example emits the ListenBrainz recording tag block; broader MetaBrainz metadata can have field- or dataset-specific licensing.",
+        "Runtime process isolation is not a complete operating-system sandbox."
+      ]
+    },
+    {
+      "reviewed_at": "2026-09-29T02:20:00Z",
+      "reviewer": "Melodex project",
+      "decision": "example-baseline",
+      "version": "0.1.1",
+      "package_sha256": "b97654b0e2f0a81eefe7446ca0aa420f03a06e8eb2130dd74b8292da8539def1",
+      "summary": "Reviewed the ListenBrainz tags 0.1.1 example after adding the optional v0.1 extension.health contract. The packaged bytes, descriptor, network permission, documented ListenBrainz service-status endpoint, deterministic fixture health response, metadata behavior, source policy and regression tests were checked.",
+      "checks": {
+        "registry_schema": true,
+        "package_integrity": true,
+        "manifest_descriptor": true,
+        "permissions": true,
+        "source_policy": true,
+        "tests": true,
+        "rights_notes": true
+      },
+      "limitations": [
+        "A READY active health result confirms the extension's declared health check succeeded; it is not a guarantee that every ListenBrainz endpoint or later request will succeed.",
+        "The example emits the ListenBrainz recording tag block; broader MetaBrainz metadata can have field- or dataset-specific licensing.",
+        "Runtime process isolation is not a complete operating-system sandbox."
+      ]
+    },
+    {
+      "reviewer": "Melodex project",
+      "decision": "example-baseline",
+      "checks": {
+        "registry_schema": true,
+        "package_integrity": true,
+        "manifest_descriptor": true,
+        "permissions": true,
+        "source_policy": true,
+        "tests": true,
+        "rights_notes": true
+      },
+      "limitations": [
+        "A READY active health result confirms the extension's declared health check succeeded; it is not a guarantee that every ListenBrainz endpoint or later request will succeed.",
+        "The example emits the ListenBrainz recording tag block; broader MetaBrainz metadata can have field- or dataset-specific licensing.",
+        "Runtime process isolation is not a complete operating-system sandbox."
+      ],
+      "reviewed_at": "2026-09-29T10:30:00Z",
+      "version": "0.1.2",
+      "package_sha256": "7578f28a2fd2bdd5e5ea73bb88f11fccc9ef0061a3c778e96d7401625dd5f7be",
+      "summary": "Stabilization review after packaged-host/plugin audit: source parsing/boundary fixes, package descriptor, permissions, source policy, adversarial fixtures and rebuilt package bytes were checked for this patch release."
+    }
+  ]
+}

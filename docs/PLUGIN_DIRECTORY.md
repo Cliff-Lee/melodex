@@ -38,11 +38,58 @@ The point is not merely convenience. The directory makes the trust boundary visi
 ## Package types
 
 ```text
-.mdxprovider   music-source/catalog/playback providers
-.mdxplugin     identity/metadata/artwork/lyrics extensions
+.mdxprovider   music providers (search, playback, recommendations, etc.)
+.mdxplugin     identity/metadata/artwork/lyrics/context/local-intelligence extensions
 ```
 
 Both are installed through their existing isolated provider/extension runtimes.
+
+## End-user install and setup flow
+
+For a normal user the complete flow stays inside the directory:
+
+```text
+Sources
+→ Explore plugins…
+→ select a plugin
+→ review permissions/source/review information
+→ Install
+→ configure required fields when prompted
+→ Ready
+```
+
+If an installed plugin declares required configuration that is still missing, the directory marks it **SETUP NEEDED** rather than merely **INSTALLED**. Select it and use **Configure…** to finish setup later.
+
+Plugins with no required setup install normally without an extra prompt. Existing configuration is preserved across reinstall/update unless the plugin's declared configuration changes.
+
+The same shared configuration dialog is used from the Sources page and from the Plugin Directory. Secret values are never displayed back to the user; a stored secret is represented only as configured/not configured.
+
+## Health and connection testing
+
+Installed plugins can be checked from the GUI with **Test plugin**.
+
+Melodex reports a small shared status vocabulary:
+
+```text
+READY
+DEGRADED
+NOT TESTED
+SETUP NEEDED
+AUTH REQUIRED
+UNAVAILABLE
+ERROR
+DISABLED
+```
+
+The meaning of a test depends on the plugin type:
+
+- **MPP providers:** Melodex calls the provider's standard `provider.health` method with the plugin's brokered configuration. The provider decides what its health method verifies, so a READY response is described as a **provider check**, not automatically as proof that every upstream operation works.
+- **Capability extensions with `extension.health`:** Melodex calls the declared bounded health RPC. A result is described as an **upstream check** only when the extension returns `upstream_checked=true`.
+- **Older capability extensions:** if no health contract is declared, Melodex verifies process startup and labels the result as a **process check**. Actual runtime successes/failures continue to update extension health when the extension is used.
+
+Health checks are bounded so a broken provider cannot leave the GUI waiting indefinitely. Configuration changes, reinstalls and enable/disable actions invalidate cached results.
+
+Health messages are redacted for common secret/token patterns before display or caching.
 
 ## Review records
 
@@ -94,7 +141,7 @@ Existing plugins installed before provenance tracking may show their origin as u
 
 ## Update awareness
 
-When a registry entry has a higher version than the installed plugin, the directory marks it as **UPDATE** and offers an explicit user-initiated update.
+When a registry entry has a higher version than the installed plugin, the directory marks it as **UPDATE** and offers an explicit user-initiated update. If setup is also incomplete, the directory can show **UPDATE · SETUP NEEDED** so those two states are not confused.
 
 Melodex does not silently auto-update third-party code.
 
@@ -158,14 +205,13 @@ Registry package URLs must still use HTTPS and valid SHA-256 metadata.
 
 ## Reference packages
 
-The first directory contains installable examples for:
+The directory includes installable examples for providers, enrichment, context and local tools. Local-intelligence examples include:
 
-- Radio Browser — playback provider;
-- LibriVox — public-domain audiobook provider;
-- MusicBrainz — identity/metadata enrichment;
-- Wikimedia Commons — artwork enrichment.
+- **Sonic Neighbours** — local “more like this” from Flow features;
+- **Forgotten Favourites** — private taste/recency rediscovery;
+- **Bridge Builder** — local transition-bridge suggestions.
 
-These examples exist to teach the extension model using documented legal/open-access sources.
+These local tools request no network or local-file permission in their descriptors. Melodex Core supplies them a sanitized `library.suggest` snapshot instead of brokering filesystem paths or database rows. The general desktop extension process is still not a complete OS sandbox.
 
 ## For plugin authors
 

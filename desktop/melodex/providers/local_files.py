@@ -32,6 +32,10 @@ class LocalFilesProvider(MusicProvider):
     def _metadata(path: Path) -> dict[str, Any]:
         title, artist, album = path.stem, "", ""
         duration = 0.0
+        musicbrainz_recording_id = ""
+        musicbrainz_artist_id = ""
+        musicbrainz_release_id = ""
+        musicbrainz_release_group_id = ""
         try:
             from mutagen import File
             audio = File(path, easy=True)
@@ -43,13 +47,32 @@ class LocalFilesProvider(MusicProvider):
                 artist = first("artist")
                 album = first("album")
                 duration = float(getattr(getattr(audio, "info", None), "length", 0.0) or 0.0)
+                musicbrainz_recording_id = (
+                    first("musicbrainz_recordingid")
+                    or first("musicbrainz_trackid")
+                )
+                musicbrainz_artist_id = (
+                    first("musicbrainz_artistid")
+                    or first("musicbrainz_albumartistid")
+                )
+                musicbrainz_release_id = first("musicbrainz_albumid")
+                musicbrainz_release_group_id = first("musicbrainz_releasegroupid")
         except Exception:
             pass
-        return {
+        out = {
             "provider_id": "local", "track_id": str(path.resolve()), "rel": f"local:{path.resolve()}",
             "title": title, "artist": artist or "Unknown artist", "album": album,
             "duration": duration, "local_path": str(path.resolve()), "source": "local",
         }
+        for key, value in (
+            ("musicbrainz_recording_id", musicbrainz_recording_id),
+            ("musicbrainz_artist_id", musicbrainz_artist_id),
+            ("musicbrainz_release_id", musicbrainz_release_id),
+            ("musicbrainz_release_group_id", musicbrainz_release_group_id),
+        ):
+            if value:
+                out[key] = value
+        return out
 
     def scan(self) -> int:
         tracks: list[dict[str, Any]] = []

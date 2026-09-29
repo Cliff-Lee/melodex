@@ -123,6 +123,10 @@ def validate_registry(data: Any) -> list[str]:
             errors.append(
                 f"{prefix}.distribution.format must be mdxplugin for enrichment"
             )
+        if kind == "tool" and fmt != "mdxplugin":
+            errors.append(
+                f"{prefix}.distribution.format must be mdxplugin for tools"
+            )
         package_url = distribution.get("package_url")
         sha256 = distribution.get("sha256")
         if package_url:
@@ -160,11 +164,12 @@ class PluginRegistryClient:
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.download_dir = self.cache_dir / "downloads"
         self.download_dir.mkdir(parents=True, exist_ok=True)
-        self.cache_path = self.cache_dir / "registry-cache.json"
         self.registry_url = (
             str(registry_url or os.environ.get("MELODEX_REGISTRY_URL") or DEFAULT_REGISTRY_URL)
             .strip()
         )
+        source_key = hashlib.sha256(self.registry_url.encode("utf-8")).hexdigest()[:12]
+        self.cache_path = self.cache_dir / f"registry-cache-{source_key}.json"
         self.session = session or requests.Session()
         self.timeout = float(timeout)
         self.user_agent = (

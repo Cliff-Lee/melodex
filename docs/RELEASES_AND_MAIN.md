@@ -61,15 +61,15 @@ CI checks these values on every pull request/main build.
 Between tagged releases, `main` uses a development version such as:
 
 ```text
-0.3.0.dev0
+0.4.1.dev0
 ```
 
 A release tag may not be built from a `.devN` application version.
 
-Before tagging `v0.3.0`, set:
+Before tagging `v0.4.0`, set:
 
 ```text
-0.3.0
+0.4.0
 ```
 
 across all app-version surfaces.
@@ -77,7 +77,7 @@ across all app-version surfaces.
 The repository provides:
 
 ```bash
-python scripts/set_version.py 0.3.0
+python scripts/set_version.py 0.4.0
 python scripts/version_check.py
 ```
 

@@ -102,7 +102,9 @@
               "identity",
               "metadata",
               "artwork",
-              "lyrics"
+              "lyrics",
+              "context",
+              "library_suggestions"
             ]
           },
           "contract_version": {
@@ -114,7 +116,9 @@
               "identity.resolve",
               "metadata.enrich",
               "artwork.lookup",
-              "lyrics.lookup"
+              "lyrics.lookup",
+              "context.lookup",
+              "library.suggest"
             ]
           }
         }
@@ -156,6 +160,22 @@
             "type": "string",
             "maxLength": 300
           }
+        }
+      }
+    },
+    "health": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_version",
+        "method"
+      ],
+      "properties": {
+        "contract_version": {
+          "const": "0.1"
+        },
+        "method": {
+          "const": "extension.health"
         }
       }
     }

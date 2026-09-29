@@ -3,7 +3,7 @@
 Desktop Melodex supports two extension package types:
 
 ```text
-.mdxprovider   catalog / playback providers
+.mdxprovider   music providers (search, playback, recommendations, etc.)
 .mdxplugin     identity / metadata / artwork / lyrics
 ```
 
@@ -34,6 +34,16 @@ Registry installs download over HTTPS and must match the registry size/SHA-256 b
 
 For new installs, Melodex records installation provenance so it can distinguish a registry-verified package from a manual local package.
 
+If the installed plugin declares required configuration, Melodex opens its setup form immediately after installation. Canceling setup does not uninstall the plugin; it remains visible as **SETUP NEEDED** and can be completed later with **Configure…**.
+
+The setup form supports declared `string`, `boolean` and `secret` fields. Secret fields use the system credential store when available and are not echoed back into the UI.
+
+## Testing an installed plugin
+
+After installation, select the plugin in **Sources** and choose **Test selected**, or use **Test plugin** in the Plugin Directory.
+
+A provider test calls `provider.health`. A capability extension may declare the optional v0.1 `extension.health` method for a bounded active check; Melodex labels it as an upstream check only when the response says `upstream_checked=true`. Older extensions without that declaration keep the process-start fallback. Melodex keeps those scopes distinct rather than treating every READY state as equivalent.
+
 ## Local development / manual install
 
 Enable **Show power tools** in Sources, then choose:
@@ -48,7 +58,7 @@ or:
 Install .mdxplugin…
 ```
 
-Manual installation is useful while developing your own extension.
+Manual installation is useful while developing your own extension. Required configuration uses the same automatic post-install setup flow as registry installation.
 
 Current limitation: the manual-file path does **not** provide the same registry review/provenance context as the Plugin Directory.
 

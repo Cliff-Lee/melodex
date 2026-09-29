@@ -1,0 +1,50 @@
+{
+  "schema_version": "0.1",
+  "plugin_id": "org.melodex.example.sonic-neighbours",
+  "events": [
+    {
+      "reviewed_at": "2026-09-29T03:35:00Z",
+      "reviewer": "Melodex project",
+      "decision": "example-baseline",
+      "version": "0.1.0",
+      "package_sha256": "213c1fcc0d5e564573f22b1851ddc92c2456611eb02de05c842c81da7f0bfe54",
+      "summary": "Baseline review of Sonic Neighbours 0.1.0: exact package bytes, library.suggest descriptor, no requested network/filesystem permissions, deterministic fixture behavior, privacy source policy and local Flow-feature ranking were checked.",
+      "checks": {
+        "registry_schema": true,
+        "package_integrity": true,
+        "manifest_descriptor": true,
+        "permissions": true,
+        "source_policy": true,
+        "tests": true,
+        "rights_notes": true
+      },
+      "limitations": [
+        "Similarity quality depends on the availability and accuracy of Melodex Flow analysis; unanalysed candidates are skipped by this reference algorithm.",
+        "A sonic similarity score is an explainable heuristic, not an objective statement that two tracks are musically alike.",
+        "Melodex does not broker paths/database keys to library.suggest, but extension subprocesses are not yet protected by a complete OS sandbox."
+      ]
+    },
+    {
+      "reviewer": "Melodex project",
+      "decision": "example-baseline",
+      "checks": {
+        "registry_schema": true,
+        "package_integrity": true,
+        "manifest_descriptor": true,
+        "permissions": true,
+        "source_policy": true,
+        "tests": true,
+        "rights_notes": true
+      },
+      "limitations": [
+        "Similarity quality depends on the availability and accuracy of Melodex Flow analysis; unanalysed candidates are skipped by this reference algorithm.",
+        "A sonic similarity score is an explainable heuristic, not an objective statement that two tracks are musically alike.",
+        "Melodex does not broker paths/database keys to library.suggest, but extension subprocesses are not yet protected by a complete OS sandbox."
+      ],
+      "reviewed_at": "2026-09-29T10:30:00Z",
+      "version": "0.1.1",
+      "package_sha256": "aba47781eb727bab6331c2980ca343ff9cdedb40f97689c6380ce72506930c86",
+      "summary": "Stabilization review after packaged-host/plugin audit: source parsing/boundary fixes, package descriptor, permissions, source policy, adversarial fixtures and rebuilt package bytes were checked for this patch release."
+    }
+  ]
+}

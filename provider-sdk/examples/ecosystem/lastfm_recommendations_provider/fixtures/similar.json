@@ -1,0 +1,50 @@
+{
+  "similartracks": {
+    "@attr": {
+      "artist": "Massive Attack"
+    },
+    "track": [
+      {
+        "name": "Roads",
+        "playcount": 123456,
+        "mbid": "11111111-2222-3333-4444-555555555555",
+        "match": 0.91,
+        "url": "https://www.last.fm/music/Portishead/_/Roads",
+        "streamable": {
+          "#text": "0",
+          "fulltrack": "0"
+        },
+        "duration": 307000,
+        "artist": {
+          "name": "Portishead",
+          "mbid": "8e1d53f6-1e44-4f6f-bb0d-0e8af05f5e8a",
+          "url": "https://www.last.fm/music/Portishead"
+        },
+        "image": [
+          {
+            "#text": "https://lastfm.freetls.fastly.net/i/u/174s/example.jpg",
+            "size": "large"
+          }
+        ]
+      },
+      {
+        "name": "Glory Box",
+        "playcount": 100000,
+        "mbid": "",
+        "match": 0.87,
+        "url": "https://www.last.fm/music/Portishead/_/Glory+Box",
+        "streamable": {
+          "#text": "0",
+          "fulltrack": "0"
+        },
+        "duration": 306000,
+        "artist": {
+          "name": "Portishead",
+          "mbid": "",
+          "url": "https://www.last.fm/music/Portishead"
+        },
+        "image": []
+      }
+    ]
+  }
+}

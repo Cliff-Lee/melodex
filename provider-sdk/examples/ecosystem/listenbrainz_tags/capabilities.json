@@ -1,0 +1,29 @@
+{
+  "schema_version": "0.1",
+  "extension_id": "org.melodex.example.listenbrainz-tags",
+  "name": "ListenBrainz Tags Example",
+  "version": "0.1.2",
+  "publisher": "Melodex examples",
+  "description": "Community tag enrichment from ListenBrainz for tracks that already have a MusicBrainz recording ID.",
+  "permissions": {
+    "network_hosts": [
+      "api.listenbrainz.org"
+    ],
+    "local_files": false,
+    "browser_auth": false
+  },
+  "entrypoints": {
+    "python": "plugin.py"
+  },
+  "contracts": [
+    {
+      "capability": "metadata",
+      "contract_version": "0.1",
+      "method": "metadata.enrich"
+    }
+  ],
+  "health": {
+    "contract_version": "0.1",
+    "method": "extension.health"
+  }
+}

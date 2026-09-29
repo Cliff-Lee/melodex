@@ -111,3 +111,72 @@ def test_extension_descriptor_rejects_invalid_configuration_key():
         ],
     }
     assert validation_errors(descriptor)
+
+
+def test_extension_descriptor_accepts_optional_health_contract():
+    descriptor = {
+        "schema_version": "0.1",
+        "extension_id": "org.example.healthy",
+        "health": {
+            "contract_version": "0.1",
+            "method": "extension.health",
+        },
+        "contracts": [
+            {
+                "capability": "metadata",
+                "contract_version": "0.1",
+                "method": "metadata.enrich",
+            }
+        ],
+    }
+    assert validation_errors(descriptor) == []
+
+
+def test_extension_descriptor_rejects_invalid_health_method():
+    descriptor = {
+        "schema_version": "0.1",
+        "extension_id": "org.example.badhealth",
+        "health": {
+            "contract_version": "0.1",
+            "method": "health.check",
+        },
+        "contracts": [
+            {
+                "capability": "metadata",
+                "contract_version": "0.1",
+                "method": "metadata.enrich",
+            }
+        ],
+    }
+    errors = validation_errors(descriptor)
+    assert any("extension.health" in error for error in errors)
+
+
+def test_extension_cli_can_scaffold_context_extension(tmp_path: Path):
+    root = tmp_path / "context-extension"
+    args = argparse.Namespace(
+        directory=str(root),
+        id="org.example.context",
+        name="Example Context",
+        capability="context",
+    )
+    assert command_init(args) == 0
+    descriptor = json.loads((root / "capabilities.json").read_text("utf-8"))
+    assert descriptor["contracts"][0]["method"] == "context.lookup"
+    plugin = (root / "plugin.py").read_text("utf-8")
+    assert '"capability":"context"' in plugin
+
+
+def test_extension_cli_can_scaffold_library_suggestions_extension(tmp_path: Path):
+    root = tmp_path / "local-intelligence-extension"
+    args = argparse.Namespace(
+        directory=str(root),
+        id="org.example.local-intelligence",
+        name="Example Local Intelligence",
+        capability="library_suggestions",
+    )
+    assert command_init(args) == 0
+    descriptor = json.loads((root / "capabilities.json").read_text("utf-8"))
+    assert descriptor["contracts"][0]["method"] == "library.suggest"
+    plugin = (root / "plugin.py").read_text("utf-8")
+    assert '"capability":"library_suggestions"' in plugin

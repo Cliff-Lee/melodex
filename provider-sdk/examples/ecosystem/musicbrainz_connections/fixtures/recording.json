@@ -1,0 +1,48 @@
+{
+  "id": "demo-recording",
+  "title": "Demo Track",
+  "relations": [
+    {
+      "type": "samples material",
+      "direction": "forward",
+      "recording": {
+        "id": "sample-source",
+        "title": "Source Groove",
+        "artist-credit": [
+          {
+            "name": "Source Artist"
+          }
+        ]
+      }
+    },
+    {
+      "type": "remix",
+      "direction": "backward",
+      "recording": {
+        "id": "remix-version",
+        "title": "Demo Track (Night Mix)",
+        "artist-credit": [
+          {
+            "name": "Remix Artist"
+          }
+        ]
+      }
+    },
+    {
+      "type": "recorded at",
+      "direction": "backward",
+      "place": {
+        "id": "place-1",
+        "name": "Example Studio"
+      }
+    },
+    {
+      "type": "performance",
+      "direction": "forward",
+      "work": {
+        "id": "work-1",
+        "title": "Demo Composition"
+      }
+    }
+  ]
+}

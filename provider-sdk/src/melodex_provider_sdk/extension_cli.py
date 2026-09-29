@@ -16,6 +16,8 @@ METHODS = {
     "metadata": "metadata.enrich",
     "artwork": "artwork.lookup",
     "lyrics": "lyrics.lookup",
+    "context": "context.lookup",
+    "library_suggestions": "library.suggest",
 }
 
 
@@ -74,6 +76,8 @@ def _plugin_template(capability: str) -> str:
         "metadata": '{"schema_version":"0.1","capability":"metadata","subject":params["subject"],"fields":{}}',
         "artwork": '{"schema_version":"0.1","capability":"artwork","subject":params["subject"],"assets":[]}' ,
         "lyrics": '{"schema_version":"0.1","capability":"lyrics","subject":params["subject"],"entries":[]}' ,
+        "context": '{"schema_version":"0.1","capability":"context","subject":params["subject"],"cards":[]}' ,
+        "library_suggestions": '{"schema_version":"0.1","capability":"library_suggestions","intent":params["intent"],"suggestions":[]}' ,
     }
     body = bodies[capability]
     return f'''from __future__ import annotations
@@ -181,6 +185,11 @@ def command_doctor(args: argparse.Namespace) -> int:
         print(f"✓ Python entrypoint compiles: {entry}")
     caps = ", ".join(str(x.get("capability")) for x in descriptor.get("contracts") or [] if isinstance(x, dict))
     print(f"✓ contracts: {caps}")
+    health = descriptor.get("health")
+    if isinstance(health, dict):
+        print(f"✓ optional health: {health.get('method')} v{health.get('contract_version')}")
+    else:
+        print("✓ optional health: not declared (process-check fallback)")
     return 0
 
 
@@ -211,7 +220,7 @@ def command_pack(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="melodex-extension")
-    parser.add_argument("--version", action="version", version="%(prog)s 0.6.0")
+    parser.add_argument("--version", action="version", version="%(prog)s 0.9.0")
     sub = parser.add_subparsers(dest="command", required=True)
     p = sub.add_parser("init", help="create a capability extension skeleton")
     p.add_argument("directory")

@@ -22,9 +22,17 @@ The directory shows publisher, status, licence, capabilities, permissions, compa
 
 Installable packages are downloaded over HTTPS and must match the registry SHA-256 and byte size.
 
+Plugins that need required configuration open a setup form immediately after installation. If setup is cancelled or incomplete, Melodex keeps the plugin installed but labels it **SETUP NEEDED** until configuration is completed.
+
+## Health status
+
+Installed third-party providers and extensions show a health state in Sources. Use **Test selected** to refresh it.
+
+Provider checks use `provider.health`. Extensions that declare `extension.health` get a bounded active check; older extensions fall back to process startup. Runtime success/failure is still learned from actual extension calls and overrides stale health when necessary. A failed or unavailable plugin does not prevent unrelated providers/extensions from continuing to work.
+
 ## Manual third-party installation
 
-Power tools still allow direct installation of `.mdxprovider` and `.mdxplugin` files.
+Power tools still allow direct installation of `.mdxprovider` and `.mdxplugin` files. Manual installs use the same required-configuration setup form as Plugin Directory installs.
 
 Before installing any third-party code, review its publisher, permissions and source code when available.
 

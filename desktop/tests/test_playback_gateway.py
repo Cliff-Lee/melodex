@@ -36,11 +36,15 @@ class _Handler(BaseHTTPRequestHandler):
 
 class _RedirectHandler(BaseHTTPRequestHandler):
     target_url = ""
+    authorization = None
+    cookie = None
 
     def log_message(self, _format, *args):
         return
 
     def do_GET(self):  # noqa: N802
+        type(self).authorization = self.headers.get("Authorization")
+        type(self).cookie = self.headers.get("Cookie")
         self.send_response(302)
         self.send_header("Location", self.target_url)
         self.end_headers()
@@ -48,12 +52,16 @@ class _RedirectHandler(BaseHTTPRequestHandler):
 
 class _RedirectTargetHandler(BaseHTTPRequestHandler):
     hits = 0
+    authorization = None
+    cookie = None
 
     def log_message(self, _format, *args):
         return
 
     def do_GET(self):  # noqa: N802
         type(self).hits += 1
+        type(self).authorization = self.headers.get("Authorization")
+        type(self).cookie = self.headers.get("Cookie")
         self.send_response(200)
         self.end_headers()
         self.wfile.write(b"should-not-be-reached")
@@ -120,6 +128,69 @@ def test_gateway_checks_redirect_host_before_following():
         response = requests.get(url, timeout=3)
         assert response.status_code == 502
         assert _RedirectTargetHandler.hits == 0
+    finally:
+        gateway.close()
+        redirect.shutdown()
+        redirect.server_close()
+        target.shutdown()
+        target.server_close()
+
+
+def test_gateway_validates_direct_external_resource_without_starting_proxy():
+    gateway = PlaybackGateway()
+    try:
+        url = gateway.validate_resource(
+            {
+                "url": "https://media.example/audio.mp3",
+                "_playback_allowed_hosts": ["media.example"],
+            }
+        )
+        assert url == "https://media.example/audio.mp3"
+        assert gateway.port == 0
+        with pytest.raises(ValueError, match="not declared"):
+            gateway.validate_resource(
+                {
+                    "url": "https://other.example/audio.mp3",
+                    "_playback_allowed_hosts": ["media.example"],
+                }
+            )
+    finally:
+        gateway.close()
+
+
+
+def test_gateway_drops_credentials_when_allowed_redirect_changes_origin():
+    target = ThreadingHTTPServer(("127.0.0.1", 0), _RedirectTargetHandler)
+    target_thread = threading.Thread(target=target.serve_forever, daemon=True)
+    target_thread.start()
+
+    redirect = ThreadingHTTPServer(("127.0.0.1", 0), _RedirectHandler)
+    _RedirectHandler.target_url = f"http://localhost:{target.server_address[1]}/audio"
+    _RedirectHandler.authorization = None
+    _RedirectHandler.cookie = None
+    _RedirectTargetHandler.authorization = None
+    _RedirectTargetHandler.cookie = None
+    redirect_thread = threading.Thread(target=redirect.serve_forever, daemon=True)
+    redirect_thread.start()
+
+    gateway = PlaybackGateway()
+    try:
+        url = gateway.register(
+            {
+                "url": f"http://127.0.0.1:{redirect.server_address[1]}/redirect",
+                "headers": {
+                    "Authorization": "Bearer private-test",
+                    "Cookie": "session=private-test",
+                },
+                "_playback_allowed_hosts": ["127.0.0.1", "localhost"],
+            }
+        )
+        response = requests.get(url, timeout=3)
+        assert response.status_code == 200
+        assert _RedirectHandler.authorization == "Bearer private-test"
+        assert _RedirectHandler.cookie == "session=private-test"
+        assert _RedirectTargetHandler.authorization is None
+        assert _RedirectTargetHandler.cookie is None
     finally:
         gateway.close()
         redirect.shutdown()

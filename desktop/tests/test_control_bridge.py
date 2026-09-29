@@ -50,6 +50,16 @@ class FakeManager:
     def search(self, query, provider_id="all", limit=50):
         return [{"provider_id": "web", "track_id": "1", "artist": "Example", "title": query, "stream_url": "https://example.invalid/a.mp3"}]
 
+    def recommend(self, seed, provider_id="all", limit=25):
+        return [{
+            "provider_id": "recs",
+            "track_id": "r1",
+            "artist": "Recommended Artist",
+            "title": "Recommended Song",
+            "album": "",
+            "metadata": {"playable": False, "seed": dict(seed)},
+        }]
+
     def browse(self, provider_id, kind="featured", limit=50):
         return self.search("Featured", provider_id, limit)
 
@@ -108,6 +118,9 @@ def test_control_bridge_and_client(tmp_path: Path):
         assert providers[1]["installation"]["registry_verified"] is True
         assert providers[1]["permissions"]["network_hosts"] == []
         assert client.search("Needle")[0]["title"] == "Needle"
+        recs = client.recommendations("Massive Attack", "Teardrop")
+        assert recs[0]["title"] == "Recommended Song"
+        assert recs[0]["metadata"]["playable"] is False
         resolved = client.resolve("Artist", "Track")
         assert resolved["provider_id"] == "web"
         assert "local_path" not in resolved

@@ -95,6 +95,21 @@ def openapi_document() -> dict[str, Any]:
                     "responses": {"200": {"description": "Search results"}, "401": error},
                 }
             },
+            "/v1/recommendations": {
+                "get": {
+                    "operationId": "melodexRecommendations",
+                    "tags": ["catalog"],
+                    "description": "Get provider-side track recommendations for a seed artist/title without assuming the recommendation provider can play the result.",
+                    "parameters": [
+                        {"name": "artist", "in": "query", "required": True, "schema": {"type": "string"}},
+                        {"name": "title", "in": "query", "required": True, "schema": {"type": "string"}},
+                        {"name": "album", "in": "query", "schema": {"type": "string"}},
+                        {"name": "provider", "in": "query", "schema": {"type": "string", "default": "all"}},
+                        {"name": "limit", "in": "query", "schema": {"type": "integer", "minimum": 1, "maximum": 100, "default": 25}},
+                    ],
+                    "responses": {"200": {"description": "Recommendation results"}, "401": error, "500": error},
+                }
+            },
             "/v1/browse": {
                 "get": {
                     "operationId": "melodexBrowse",

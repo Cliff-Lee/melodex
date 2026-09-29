@@ -52,6 +52,7 @@ This page is intentionally exhaustive. For a shorter route by goal, use the [doc
 - [Local REST API](api/LOCAL_REST_API.md)
 - [OpenAPI](api/OPENAPI.md)
 - [cURL examples](api/CURL_EXAMPLES.md)
+- [Build a `.mdxviz` visualizer](visualizers/README.md)
 
 ### AI integrations
 - [Connect OpenWebUI with MCP](tutorials/CONNECT_OPENWEBUI_MCP.md)
@@ -74,6 +75,8 @@ This page is intentionally exhaustive. For a shorter route by goal, use the [doc
 - [Resolver Inspector](RESOLVER_INSPECTOR.md)
 - [Playlist interchange](PLAYLIST_INTERCHANGE.md)
 - [Rich Now Playing](RICH_NOW_PLAYING.md)
+- [Music Map](MUSIC_MAP.md)
+- [Journey Library](JOURNEY_LIBRARY.md)
 
 ## LLM / AI configuration
 
@@ -96,6 +99,7 @@ This page is intentionally exhaustive. For a shorter route by goal, use the [doc
 - [Build from source](BUILD_FROM_SOURCE.md)
 - [Releases, `main`, and version numbers](RELEASES_AND_MAIN.md)
 - [Releasing](RELEASING.md)
+- [Melodex v0.4.0 release notes](releases/v0.4.0.md)
 
 ## Trust and security
 

@@ -11,7 +11,17 @@ identity.resolve
 metadata.enrich
 artwork.lookup
 lyrics.lookup
+context.lookup
+library.suggest
 ```
+
+Capability extensions may also declare the optional extension-level health method:
+
+```text
+extension.health
+```
+
+Health is not an enrichment capability and is therefore not included in capability preference/ranking.
 
 These contracts are **experimental**. MPP playback-provider contracts remain separate.
 
@@ -26,9 +36,11 @@ Capability Broker
       ├── identity extension(s)
       ├── metadata extension(s)
       ├── artwork extension(s)
-      └── lyrics extension(s)
+      ├── lyrics extension(s)
+      ├── context extension(s)
+      └── local-intelligence extension(s)
       ↓
-progressively enriched Melodex entity
+progressively enriched entities / Now Playing cards / local suggestions
 ```
 
 Playback does not wait for every enrichment service.
@@ -109,7 +121,47 @@ Melodex also tracks a small runtime-health record for each installed capability 
 
 The Sources page shows this health state, and `GET /v1/extensions` exposes the same non-secret diagnostics.
 
+When an extension declares the optional `extension.health` contract, **Test plugin** calls it with a bounded timeout. The response must include `upstream_checked`; Melodex labels the result as an upstream check only when that flag is true. Extensions without the optional contract keep the existing process-start fallback.
+
 Plugin-supplied exception messages and stderr are not copied into the public health record.
+
+## Context cards
+
+`context.lookup` is the host-rendered surface for richer listening context. Extensions return sourced cards rather than arbitrary plugin-specific HTML or widgets.
+
+v0.1 supports:
+
+```text
+text   — a sourced short-form note or explanation
+list   — related recordings, works, places, people or other linked entities
+facts  — labelled scalar facts such as listeners or release statistics
+```
+
+Melodex escapes plugin text and renders the cards itself. This gives context plugins expressive output without granting them a private GUI surface or requiring core code for each plugin.
+
+## Local intelligence
+
+`library.suggest` is intentionally host-mediated. Melodex Core keeps the real local track objects and sends extensions only a bounded snapshot:
+
+```text
+request-local ref (t0, t1, ...)
+title / artist / album / duration
+Flow analysis values when available
+coarse taste counters
+relative days since last play
+```
+
+The wire payload deliberately excludes:
+
+```text
+absolute local paths
+provider-local IDs
+SQLite/database keys
+absolute listening timestamps
+raw audio
+```
+
+Extensions return refs, scores and short reasons; Core maps the refs back to real tracks after the extension process returns.
 
 ## Provenance
 

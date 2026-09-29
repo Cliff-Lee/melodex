@@ -1,0 +1,50 @@
+{
+  "schema_version": "0.1",
+  "plugin_id": "org.melodex.example.wikimedia-liner-notes",
+  "events": [
+    {
+      "reviewed_at": "2026-09-29T03:00:00Z",
+      "reviewer": "Melodex project",
+      "decision": "example-baseline",
+      "version": "0.1.0",
+      "package_sha256": "8a59f28392d8fbf943a4c66326e3ad66ee091fe4ea95df77d9f31250f29685ba",
+      "summary": "Baseline review of the Wikimedia Liner Notes reference: exact package bytes, context descriptor, Wikidata/Wikipedia hosts, short-summary source policy, synthetic fixture, attribution/licence provenance and tests were checked for 0.1.0.",
+      "checks": {
+        "registry_schema": true,
+        "package_integrity": true,
+        "manifest_descriptor": true,
+        "permissions": true,
+        "source_policy": true,
+        "tests": true,
+        "rights_notes": true
+      },
+      "limitations": [
+        "v0.1 uses the English Wikipedia sitelink only and may return no card when an artist has no suitable linked page.",
+        "Wikipedia summaries can change and can reflect the limitations of the underlying article; Melodex preserves source attribution rather than treating the text as authoritative editorial copy.",
+        "Runtime process isolation is not a complete operating-system sandbox."
+      ]
+    },
+    {
+      "reviewer": "Melodex project",
+      "decision": "example-baseline",
+      "checks": {
+        "registry_schema": true,
+        "package_integrity": true,
+        "manifest_descriptor": true,
+        "permissions": true,
+        "source_policy": true,
+        "tests": true,
+        "rights_notes": true
+      },
+      "limitations": [
+        "v0.1 uses the English Wikipedia sitelink only and may return no card when an artist has no suitable linked page.",
+        "Wikipedia summaries can change and can reflect the limitations of the underlying article; Melodex preserves source attribution rather than treating the text as authoritative editorial copy.",
+        "Runtime process isolation is not a complete operating-system sandbox."
+      ],
+      "reviewed_at": "2026-09-29T10:30:00Z",
+      "version": "0.1.1",
+      "package_sha256": "3582479542dae46477e3bc75a91bd9b5ba0f0aef4980adfb9e3c9ce92268286b",
+      "summary": "Stabilization review after packaged-host/plugin audit: source parsing/boundary fixes, package descriptor, permissions, source policy, adversarial fixtures and rebuilt package bytes were checked for this patch release."
+    }
+  ]
+}

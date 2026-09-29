@@ -1,0 +1,31 @@
+{
+  "result_count": 1,
+  "page_count": 1,
+  "page_size": 20,
+  "page": 1,
+  "results": [
+    {
+      "id": "11111111-2222-3333-4444-555555555555",
+      "title": "Example Open Track",
+      "foreign_landing_url": "https://example.org/track",
+      "url": "https://cdn.example.org/example.mp3",
+      "creator": "Example Artist",
+      "creator_url": "https://example.org/artist",
+      "license": "by",
+      "license_version": "4.0",
+      "license_url": "https://creativecommons.org/licenses/by/4.0/",
+      "provider": "example",
+      "source": "example",
+      "category": "music",
+      "genres": ["ambient", "electronic"],
+      "filetype": "mp3",
+      "duration": 123000,
+      "bit_rate": 128000,
+      "sample_rate": 44100,
+      "thumbnail": "https://example.org/cover.jpg",
+      "attribution": "Example Open Track by Example Artist, CC BY 4.0",
+      "mature": false,
+      "tags": [{"name": "calm"}, {"name": "instrumental"}]
+    }
+  ]
+}

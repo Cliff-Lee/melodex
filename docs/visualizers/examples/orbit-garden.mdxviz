@@ -1,0 +1,18 @@
+{
+  "format": "mdxviz",
+  "api_version": 1,
+  "manifest": {
+    "id": "org.melodex.example.orbit-garden",
+    "name": "Orbit Garden",
+    "author": "Melodex example",
+    "description": "Layered rings and slow orbiting lights, shaped by cached Flow features."
+  },
+  "scene": {
+    "layers": [
+      {"type": "rings", "count": 4, "gain": 0.18, "feature": "energy", "palette": 0, "speed": 0.025},
+      {"type": "contour", "count": 3, "gain": 0.22, "feature": "brightness", "palette": 2, "speed": 0.035},
+      {"type": "orbit", "count": 16, "gain": 0.28, "feature": "rhythm", "palette": 1, "speed": 0.08},
+      {"type": "glyphs", "count": 8, "gain": 0.12, "feature": "progress", "palette": 3, "speed": 0.025}
+    ]
+  }
+}

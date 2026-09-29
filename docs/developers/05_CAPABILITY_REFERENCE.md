@@ -6,20 +6,22 @@ Melodex has two extension layers.
 
 MPP providers supply catalogs and authorized playback access.
 
-| Capability | Status | Purpose |
+| Capability | Current desktop/MPP status | Purpose |
 | --- | --- | --- |
-| `search` | implemented | Search a source catalog |
-| `browse` | implemented | Browse source-defined collections |
-| `track` | implemented | Retrieve track data |
-| `album` | implemented | Retrieve album data |
-| `artist` | implemented | Retrieve artist data |
-| `playback` | implemented | Resolve playable media |
-| `library` | implemented | Interact with a provider library |
-| `offline` | implemented/evolving | Provider-authorized offline access |
-| `recommendations` | implemented | Provider-side recommendations |
-| `auth` | implemented | Provider authentication |
+| `search` | **implemented** | Search a source catalog through `catalog.search` |
+| `browse` | **partial** | Built-in providers can browse; a generic external-provider JSON-RPC browse operation is not yet mapped |
+| `track` | **partial** | MPP defines `catalog.get_track`; desktop search/playback paths do not yet expose a general direct track lookup API |
+| `album` | **partial** | MPP defines `catalog.get_album`; the desktop adapter does not yet expose it as a general external-provider operation |
+| `artist` | **partial** | MPP defines `catalog.get_artist`; the desktop adapter does not yet expose it as a general external-provider operation |
+| `playback` | **implemented** | Resolve playable media through `playback.resolve` / optional `playback.refresh` |
+| `library` | **built-in / reserved externally** | Built-in providers may expose library behavior; no generic external-provider library RPC is stable yet |
+| `offline` | **partial** | Playback resources can declare offline-allowed caching, but a complete generic external-provider offline workflow is not yet surfaced |
+| `recommendations` | **implemented / preview** | Optional `recommendations.get` returns discovery tracks from a normalized seed |
+| `auth` | **configuration implemented; generic auth flow not yet stable** | Secret/string/boolean config is brokered; no general browser/OAuth MPP method family is currently exposed |
 
 Packages use `.mdxprovider`.
+
+The manifest capability vocabulary is intentionally a little broader than the operations currently wired through the desktop adapter. Treat this table—not the mere presence of a capability string in the schema—as the support truth table.
 
 ## Experimental enrichment capabilities
 
@@ -31,6 +33,8 @@ These contracts now have a runnable desktop Capability Broker but remain **v0.1 
 | metadata | `metadata.enrich` | Add sourced structured fields |
 | artwork | `artwork.lookup` | Return sourced visual assets |
 | lyrics | `lyrics.lookup` | Return sourced lyrics |
+| context | `context.lookup` | Add sourced text/list/fact cards to the Now Playing Context surface |
+| library_suggestions | `library.suggest` | Rank sanitized local-library profiles for similarity, rediscovery, queue bridges and deliberate sonic detours |
 
 Packages use `.mdxplugin`.
 
@@ -61,6 +65,21 @@ extension process
 ```
 
 This isolates crashes/timeouts from the player. It is not yet a full security sandbox.
+
+## Optional extension health
+
+A `.mdxplugin` may declare:
+
+```json
+"health": {
+  "contract_version": "0.1",
+  "method": "extension.health"
+}
+```
+
+This is extension-level lifecycle metadata, **not** a fifth enrichment capability. It therefore does not participate in identity/metadata/artwork/lyrics/context/library-suggestions ranking.
+
+Melodex sends a bounded live check and expects a v0.1 response with a health status plus `upstream_checked`. Only `upstream_checked=true` is presented as a genuine upstream connectivity check. Extensions that omit the declaration remain valid and use the process-start fallback.
 
 ## Future directions
 

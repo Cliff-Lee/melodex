@@ -2,12 +2,12 @@
 
 A source-neutral provider protocol and developer SDK for **Melodex**.
 
-> Melodex owns playback, Flow, taste, queueing and LLM control. Providers supply
-> catalog and authorized playback access.
+> Melodex owns playback, Flow, taste, queueing and LLM control. Providers can supply
+> catalog/playback access or narrower source-side discovery capabilities such as recommendations.
 
 ## Status
 
-**SDK v0.6.0 / MPP 1.0 preview.**
+**SDK v0.9.0 / MPP 1.0 preview.**
 
 The SDK/tooling is usable today, but the package remains 0.x and MPP 1.0 is still a **preview compatibility target**, not a frozen final protocol.
 
@@ -17,7 +17,7 @@ Melodex now has two package types:
 
 ```text
 .mdxprovider   catalog/playback providers
-.mdxplugin     identity/metadata/artwork/lyrics extensions
+.mdxplugin     identity/metadata/artwork/lyrics/context/local-intelligence extensions
 ```
 
 ## Fastest start
@@ -44,6 +44,12 @@ melodex-extension validate my-artwork
 melodex-extension doctor my-artwork
 melodex-extension pack my-artwork
 ```
+
+Context extensions use `context.lookup` to return sourced text/list/fact cards that Melodex can render in Rich Now Playing without plugin-specific GUI code.
+
+Local-intelligence extensions use `library.suggest`. Melodex brokers a sanitized local-library snapshot with ephemeral refs, Flow features and coarse taste signals; plugins do not need direct access to the user's music folders or taste database. The current intents include similar tracks, rediscovery, queue bridges and Musical Detours.
+
+Network-backed extensions may optionally declare the v0.1 `extension.health` method. This is lifecycle metadata rather than an enrichment capability; extensions that omit it remain compatible and use Melodex's process-check fallback. See the experimental extension contract reference for the request/response schema.
 
 Registry maintenance:
 
@@ -93,7 +99,7 @@ Do not put actual credentials in manifests, packages, fixtures or registry metad
 
 ## Provider doctor
 
-`melodex-provider doctor` checks the manifest, README, licence, `SOURCE_POLICY.md` and, for Python entrypoints, `provider.info`, `provider.health`, `catalog.search`, and `playback.resolve`.
+`melodex-provider doctor` checks the manifest, README, licence, `SOURCE_POLICY.md` and the Python entrypoint. Runtime checks are capability-aware: it calls `catalog.search` only when `search` is declared and checks `playback.resolve` only when a search result exists for a playback-capable provider. Recommendation-only providers can therefore be validated without pretending to implement search.
 
 The generated provider scaffold includes all three documentation files so a first-time developer starts from the same public-release expectations used by the registry.
 

@@ -1,0 +1,29 @@
+{
+  "schema_version": "0.1",
+  "extension_id": "org.melodex.example.listenbrainz-community-pulse",
+  "name": "ListenBrainz Community Pulse",
+  "version": "0.1.1",
+  "publisher": "Melodex examples",
+  "description": "Shows aggregate ListenBrainz listener/listen counts and popular recordings for the current artist.",
+  "permissions": {
+    "network_hosts": [
+      "api.listenbrainz.org"
+    ],
+    "local_files": false,
+    "browser_auth": false
+  },
+  "entrypoints": {
+    "python": "plugin.py"
+  },
+  "health": {
+    "contract_version": "0.1",
+    "method": "extension.health"
+  },
+  "contracts": [
+    {
+      "capability": "context",
+      "contract_version": "0.1",
+      "method": "context.lookup"
+    }
+  ]
+}
