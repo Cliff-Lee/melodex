@@ -24,6 +24,7 @@ _METHODS = {
     "metadata": "metadata.enrich",
     "artwork": "artwork.lookup",
     "lyrics": "lyrics.lookup",
+    "context": "context.lookup",
 }
 
 
@@ -959,6 +960,57 @@ class CapabilityBroker:
             "capability": "artwork",
             "subject": dict(subject),
             "assets": assets[: max(1, int(max_results))],
+            "errors": errors,
+        }
+
+    def lookup_context(
+        self,
+        subject: dict[str, Any],
+        requested_cards: list[str] | None = None,
+        max_cards: int = 20,
+    ) -> dict[str, Any]:
+        params: dict[str, Any] = {
+            "schema_version": "0.1",
+            "capability": "context",
+            "subject": dict(subject),
+            "max_cards": max(1, min(30, int(max_cards))),
+        }
+        if requested_cards:
+            params["requested_cards"] = [str(x) for x in requested_cards]
+        results, errors = self._call_all("context", params)
+        cards: list[dict[str, Any]] = []
+        seen: set[tuple[str, str]] = set()
+        for order, (extension, result) in enumerate(results):
+            for raw in list(result.get("cards") or []):
+                if not isinstance(raw, dict):
+                    continue
+                card = dict(raw)
+                card_id = str(card.get("id") or "").strip()
+                title = str(card.get("title") or "").strip()
+                if not card_id or not title:
+                    continue
+                key = (extension.info.id, card_id)
+                if key in seen:
+                    continue
+                seen.add(key)
+                provenance = card.get("provenance")
+                if isinstance(provenance, dict):
+                    provenance.setdefault("source_extension_id", extension.info.id)
+                card["_extension_id"] = extension.info.id
+                card["_extension_order"] = order
+                cards.append(card)
+        cards.sort(
+            key=lambda row: (
+                -int(row.get("priority") or 0),
+                int(row.get("_extension_order") or 0),
+                str(row.get("title") or "").casefold(),
+            )
+        )
+        return {
+            "schema_version": "0.1",
+            "capability": "context",
+            "subject": dict(subject),
+            "cards": cards[: max(1, min(30, int(max_cards)))],
             "errors": errors,
         }
 
