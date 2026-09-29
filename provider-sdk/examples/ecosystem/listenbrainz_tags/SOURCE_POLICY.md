@@ -5,7 +5,7 @@
 - API: `https://api.listenbrainz.org/1/metadata/recording/`
 - Authentication: none for the recording metadata lookup used here.
 - Required input: MusicBrainz recording MBID.
-- Requested data: tag metadata only (`inc=tag`).
+- Requested enrichment data: tag metadata only (`inc=tag`).\n- Health check: `GET /1/status/service-status`, used only when the user explicitly tests plugin health.
 
 ## Rights and provenance
 
