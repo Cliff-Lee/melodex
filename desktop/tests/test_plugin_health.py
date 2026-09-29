@@ -340,3 +340,30 @@ def test_extension_invalid_active_health_response_is_protocol_error(tmp_path: Pa
         assert result["upstream_checked"] is False
     finally:
         manager.close()
+
+
+def test_active_health_ready_plus_recent_runtime_failure_is_degraded(tmp_path: Path):
+    manager = ProviderManager(tmp_path / "data")
+    try:
+        package = _active_extension_package(tmp_path / "combined.mdxplugin")
+        info = manager.install_extension(package)
+        manager.set_plugin_configuration(
+            info.id, {"credential": "fixture-extension-key"}
+        )
+
+        # First create real runtime failure state using the legacy-style failing
+        # package behavior by directly marking the extension runtime record.
+        extension = manager.capabilities.extensions[info.id]
+        with extension._health_lock:
+            extension._health["status"] = "error"
+            extension._health["failures"] = 1
+            extension._health["consecutive_failures"] = 1
+            extension._health["last_error"] = "call_error"
+
+        result = manager.test_plugin_health(info.id, timeout=1)
+        assert result["status"] == "degraded"
+        assert result["check_scope"] == "combined"
+        assert "Upstream health check passed" in result["message"]
+        assert result["reason"] == "call_error"
+    finally:
+        manager.close()
