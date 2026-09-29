@@ -9,7 +9,7 @@ import pytest
 from melodex.capabilities import ExternalExtension
 from melodex.child_host import CHILD_FLAG, maybe_run_child_from_argv, python_child_command
 from melodex.provider import ExternalProvider
-from melodex.single_instance import instance_server_name
+from melodex.instance_identity import instance_server_name
 
 
 def test_frozen_python_children_reenter_melodex_in_worker_mode(monkeypatch, tmp_path: Path):
