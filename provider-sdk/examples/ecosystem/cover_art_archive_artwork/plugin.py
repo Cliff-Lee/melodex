@@ -75,7 +75,8 @@ def artwork_lookup(params):
         }
 
     data = _get_json(path)
-    max_results = max(1, min(int(params.get("max_results") or 5), 20))
+    raw_limit = params.get("max_results")
+    max_results = 5 if raw_limit is None else max(1, min(int(raw_limit), 20))
     assets = []
     images = [row for row in (data.get("images") or []) if isinstance(row, dict)]
     images.sort(key=lambda row: (not bool(row.get("front")), bool(row.get("back"))))
