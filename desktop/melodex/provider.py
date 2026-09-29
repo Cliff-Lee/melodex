@@ -15,6 +15,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from .process_env import scrubbed_child_env
 from .child_host import python_child_command
@@ -296,8 +297,15 @@ class ExternalProvider(MusicProvider):
     ) -> dict[str, Any]:
         out = dict(track)
         out.update(resource)
-        hosts = list((self.info.permissions or {}).get("network_hosts") or [])
-        out["_playback_allowed_hosts"] = [str(x) for x in hosts]
+        hosts = [str(x) for x in list((self.info.permissions or {}).get("network_hosts") or [])]
+        if hosts:
+            url = str(out.get("stream_url") or out.get("url") or "").strip()
+            host = (urlparse(url).hostname or "").strip().casefold()
+            if host and host not in {value.casefold().strip(".") for value in hosts}:
+                # The provider selected this exact media origin. Add only that
+                # host; redirects are still checked against the resulting list.
+                hosts.append(host)
+        out["_playback_allowed_hosts"] = hosts
         return out
 
     def resolve(self, track: dict[str, Any]) -> dict[str, Any]:
