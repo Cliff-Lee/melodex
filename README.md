@@ -167,6 +167,8 @@ A selected node can be played, queued, or used as the anchor for a new Mind + Fl
 
 **Journey Live** can then adapt only the unfinished tail while playback continues: steer calmer/more energetic/darker/brighter, ask for more rhythm/familiarity/surprise/rediscovery, avoid the current artist, or manually skip and replan. The current track and fixed destination stay anchored, and failed replans keep the existing queue.
 
+The **Journey Library** separates reusable intent from personal history. Recipes save/share routing mode + ordered stages as `.mdxjourney` without local paths or taste data; private Runs keep the designed route, final adapted route and explicit steering/skip/avoid decisions so either route can be inspected and replayed later.
+
 The first implementation is deterministic, local and dependency-light rather than using a remote embedding service or opaque ML model.
 
 ## Reference extensions

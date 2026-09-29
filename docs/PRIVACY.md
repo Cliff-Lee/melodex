@@ -15,6 +15,7 @@ Melodex stores local application state including:
 - Love / Keep feedback;
 - Moments;
 - saved playlists and Vibes;
+- Journey Recipes and private Journey Run/event history;
 - provider configuration;
 - installed-plugin provenance;
 - Plugin Directory cache/download state;
@@ -85,6 +86,8 @@ Normal Now Playing enrichment can be remembered in the local Music Map knowledge
 **Journey Designer** is also local. Semantic stages are scored from Flow/taste values already present in the current map, and staged routes reuse the prepared Pathfinder graph. Building a journey does not send the stage sequence or your library to an LLM or remote planner.
 
 **Journey Live** remains local as it adapts playback. Manual skip events, steering choices and temporary avoid rules are applied to the in-memory route planner; they are not sent to an LLM, metadata provider, plugin or remote planning service.
+
+**Journey Library** keeps two privacy classes separate. Exported `.mdxjourney` Recipes contain routing mode, semantic stages and deliberately chosen portable exact-track selectors; they exclude local paths, provider playback IDs, taste/rediscovery values and listening history. Journey Run history records personal adaptive decisions locally and is not exported by the current UI.
 
 ## Local intelligence plugins
 

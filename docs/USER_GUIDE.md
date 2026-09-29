@@ -50,6 +50,18 @@ For large analysed libraries, the first implementation displays a bounded repres
 
 See [Music Map](MUSIC_MAP.md) for the detailed model and privacy/network behaviour.
 
+## Journeys
+
+**Journeys** is the local library for reusable Journey Recipes and private Journey Live run history.
+
+A **Recipe** saves the Journey Designer intent—routing mode, semantic stages and optional exact-track waypoints—but deliberately does not save start/destination tracks. Use **Save current design**, **Load into Music Map**, **Import…** and **Export…** to reuse or share that shape as a `.mdxjourney` file.
+
+Exact track waypoints are exported using portable identity selectors rather than local file paths. Loading a recipe refreshes Music Map, restores the routing mode/stages and reports any exact waypoint that cannot be found.
+
+A **Run** is private local history of a Journey Live session. **Inspect** compares the designed route with the final adapted route and lists steering/skip/avoid/replan decisions. **Replay designed** and **Replay final** rematch the recorded tracks onto the current Music Map; missing tracks are reported rather than silently substituted.
+
+See [Journey Library](JOURNEY_LIBRARY.md) for the file format, privacy boundary and replay behavior.
+
 ## Flow queue
 
 Flow is not random shuffle. It evaluates the current queue and, when local audio is available, analyses BPM, key, loudness, energy, onset density, timbre, intro/outro mixability and ending type. It chooses an order designed to make the next track feel intentional.

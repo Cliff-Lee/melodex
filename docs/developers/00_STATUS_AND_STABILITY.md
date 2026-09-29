@@ -21,6 +21,7 @@ Melodex is intentionally developing in public. Some surfaces are implemented and
 | Desktop provider manager | **Implemented** | Source-neutral runtime is in the public desktop app |
 | Local files / built-in sources | **Implemented** | First-party runtime behavior |
 | Music Map | **Implemented / Preview** | Desktop local-library view using cached Flow features, deterministic 2D projection, sonic/factual overlays, explainable Pathfinder routing, semantic Journey Designer stages and local Journey Live tail-replanning; layout/routing/adaptation heuristics may evolve |
+| Journey Library / `.mdxjourney` | **Implemented / Preview** | Local Recipe persistence/import/export plus private Journey Live run/event history and designed/final replay; schema version 1 may evolve through explicit future versions |
 | `.mdxprovider` installation | **Implemented** | Desktop only; package extraction rejects traversal/symlinks |
 | MPP JSON-RPC subprocess transport | **Implemented** | **MPP 1.0 preview**; do not read “1.0” as a final compatibility guarantee yet |
 | Provider SDK | **Implemented** | SDK package is currently **0.x** and may evolve |

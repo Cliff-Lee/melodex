@@ -15,9 +15,10 @@ It shows the actual application and covers:
 5. teaching Melodex your taste;
 6. Flow;
 7. Music map;
-8. Moments;
-9. music sources;
-10. optional LLM control.
+8. Journeys;
+9. Moments;
+10. music sources;
+11. optional LLM control.
 
 ## Install
 
@@ -46,6 +47,7 @@ Everything involving Jamendo, third-party providers, Provider Bridge or an LLM i
 - **Play for me** — build a listening session.
 - **Flow queue** — resequence the upcoming queue.
 - **Music map** — explore analysed local music spatially, switch between sonic/factual connections, route with Pathfinder, design staged journeys, or adapt the unfinished route live while listening.
+- **Journeys** — save/share reusable journey shapes and inspect/replay private live-run history.
 - **Keep** — tell Melodex this belongs in your taste.
 - **♥** — strong positive feedback.
 - **••• → Save a moment** — remember the exact point in a song.
