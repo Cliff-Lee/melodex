@@ -111,3 +111,42 @@ def test_extension_descriptor_rejects_invalid_configuration_key():
         ],
     }
     assert validation_errors(descriptor)
+
+
+def test_extension_descriptor_accepts_optional_health_contract():
+    descriptor = {
+        "schema_version": "0.1",
+        "extension_id": "org.example.healthy",
+        "health": {
+            "contract_version": "0.1",
+            "method": "extension.health",
+        },
+        "contracts": [
+            {
+                "capability": "metadata",
+                "contract_version": "0.1",
+                "method": "metadata.enrich",
+            }
+        ],
+    }
+    assert validation_errors(descriptor) == []
+
+
+def test_extension_descriptor_rejects_invalid_health_method():
+    descriptor = {
+        "schema_version": "0.1",
+        "extension_id": "org.example.badhealth",
+        "health": {
+            "contract_version": "0.1",
+            "method": "health.check",
+        },
+        "contracts": [
+            {
+                "capability": "metadata",
+                "contract_version": "0.1",
+                "method": "metadata.enrich",
+            }
+        ],
+    }
+    errors = validation_errors(descriptor)
+    assert any("extension.health" in error for error in errors)
