@@ -58,6 +58,22 @@ def _playable(track: dict[str, Any]) -> bool:
     return bool(track.get("local_path") or track.get("stream_url") or track.get("url"))
 
 
+def _provider_supports(provider: Any, capability: str) -> bool:
+    """Honor declared capabilities without breaking older/internal providers.
+
+    Providers that expose ProviderInfo.capabilities are authoritative. Minimal
+    legacy/internal providers with no capability metadata keep the historical
+    behavior and are treated as supporting the operation.
+    """
+    info = getattr(provider, "info", None)
+    if info is None:
+        return True
+    capabilities = getattr(info, "capabilities", None)
+    if capabilities is None:
+        return True
+    return str(capability) in list(capabilities or [])
+
+
 def _duration(track: dict[str, Any]) -> float:
     try:
         value = float(track.get("duration") or track.get("duration_seconds") or 0)
@@ -330,7 +346,7 @@ class UniversalResolver:
             provider = self.manager.providers.get(pid)
             if provider is None:
                 continue
-            if "search" not in list(provider.info.capabilities or []):
+            if not _provider_supports(provider, "search"):
                 continue
             rows: list[dict[str, Any]] = []
             for query in queries:
@@ -375,7 +391,7 @@ class UniversalResolver:
         if not pid or pid not in self.manager.providers:
             raise RuntimeError("The selected source is no longer installed")
         provider = self.manager.providers[pid]
-        if "playback" not in list(provider.info.capabilities or []):
+        if not _provider_supports(provider, "playback"):
             raise RuntimeError("The selected source does not provide playback")
         resolved = dict(provider.resolve(item))
         if not _playable(resolved):
@@ -408,7 +424,7 @@ class UniversalResolver:
             return target
         if pid and pid in self.manager.providers and (
             target.get("track_id") or target.get("local_path") or target.get("stream_url")
-        ) and "playback" in list(self.manager.providers[pid].info.capabilities or []):
+        ) and _provider_supports(self.manager.providers[pid], "playback"):
             try:
                 direct = dict(self.manager.providers[pid].resolve(target))
                 if _playable(direct):
