@@ -1,0 +1,29 @@
+{
+  "wikidata": {
+    "entities": {
+      "Q123": {
+        "descriptions": {
+          "en": {
+            "language": "en",
+            "value": "example recording artist"
+          }
+        },
+        "sitelinks": {
+          "enwiki": {
+            "site": "enwiki",
+            "title": "Example Artist"
+          }
+        }
+      }
+    }
+  },
+  "summary": {
+    "title": "Example Artist",
+    "extract": "Example Artist is a fictional musician used to demonstrate Melodex liner-note context without redistributing real article text.",
+    "content_urls": {
+      "desktop": {
+        "page": "https://en.wikipedia.org/wiki/Example_Artist"
+      }
+    }
+  }
+}
