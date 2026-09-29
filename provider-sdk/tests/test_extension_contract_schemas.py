@@ -44,6 +44,9 @@ def test_example_capability_descriptors_validate():
         ROOT / "examples" / "ecosystem" / "musicbrainz_connections" / "capabilities.json",
         ROOT / "examples" / "ecosystem" / "wikimedia_liner_notes" / "capabilities.json",
         ROOT / "examples" / "ecosystem" / "listenbrainz_community_pulse" / "capabilities.json",
+        ROOT / "examples" / "ecosystem" / "sonic_neighbours" / "capabilities.json",
+        ROOT / "examples" / "ecosystem" / "forgotten_favourites" / "capabilities.json",
+        ROOT / "examples" / "ecosystem" / "bridge_builder" / "capabilities.json",
     ]
     for path in examples:
         errors = list(validator.iter_errors(_load(path)))
@@ -137,6 +140,75 @@ def test_context_request_and_response_examples_validate():
                             "retrieved_at": "2026-09-29T00:00:00Z",
                         },
                     },
+                ],
+            }
+        )
+    ) == []
+
+
+def test_library_suggest_request_and_response_examples_validate():
+    request_schema = _load(SPEC / "library-suggest-request.schema.json")
+    response_schema = _load(SPEC / "library-suggest-response.schema.json")
+    track = {
+        "ref": "t0",
+        "title": "Demo",
+        "artist": "Artist",
+        "album": "Album",
+        "duration_ms": 240000,
+        "analysis": {
+            "bpm": 120.0,
+            "rhythm_confidence": 0.8,
+            "key_pc": 0,
+            "key_mode": "minor",
+            "key_confidence": 0.7,
+            "loudness_db": -10.0,
+            "energy": 0.6,
+            "energy_start": 0.4,
+            "energy_end": 0.7,
+            "spectral_centroid": 1800.0,
+            "onset_density": 0.14,
+            "intro_mixability": 0.6,
+            "outro_mixability": 0.7,
+            "ending_type": "natural",
+        },
+        "taste": {
+            "plays": 3,
+            "completes": 2,
+            "skips": 0,
+            "loves": 1,
+            "dislikes": 0,
+            "keeps": 1,
+            "completion_rate": 2 / 3,
+            "skip_rate": 0.0,
+            "days_since_last_played": 30.0,
+        },
+    }
+    assert list(
+        Draft202012Validator(request_schema).iter_errors(
+            {
+                "schema_version": "0.1",
+                "capability": "library_suggestions",
+                "intent": "similar",
+                "tracks": [track],
+                "seed_refs": ["t0"],
+                "limit": 10,
+                "adventure": 0.4,
+            }
+        )
+    ) == []
+    assert list(
+        Draft202012Validator(response_schema).iter_errors(
+            {
+                "schema_version": "0.1",
+                "capability": "library_suggestions",
+                "intent": "similar",
+                "suggestions": [
+                    {
+                        "ref": "t1",
+                        "score": 0.87,
+                        "reason": "similar energy · compatible tempo",
+                        "badges": ["energy", "tempo"],
+                    }
                 ],
             }
         )
