@@ -2060,12 +2060,62 @@ class MainWindow(QMainWindow):
             f"Journey Live · {current} → {destination}{suffix}"
         )
 
+    def _journey_live_event(self,event_type,payload=None):
+        if not self.music_live_run_id:
+            return
+        try:
+            self.state.record_journey_event(
+                self.music_live_run_id,
+                str(event_type or ""),
+                dict(payload or {}),
+            )
+        except Exception:
+            pass
+
+    def _journey_live_recipe_snapshot(self):
+        name=str(self.music_active_recipe.get("name") or "Unsaved journey")
+        description=str(self.music_active_recipe.get("description") or "")
+        try:
+            return make_journey_recipe(
+                name=name,
+                description=description,
+                mode=str(self.music_path_mode.currentData() or "balanced"),
+                stages=list(self.music_journey_stages_data),
+                ref_map=dict(self.music_map.ref_map or {}),
+            )
+        except Exception:
+            return {
+                "melodex_journey":1,
+                "name":name,
+                "description":description,
+                "routing_mode":str(self.music_path_mode.currentData() or "balanced"),
+                "stages":[],
+            }
+
+    def _journey_live_final_snapshot(self):
+        route=dict(self.music_live_route or self.music_path_result or {})
+        played=[str(ref) for ref in list(self.music_live_played_refs or []) if str(ref)]
+        tail=[str(ref) for ref in list(route.get("path_refs") or []) if str(ref)]
+        combined=list(played)
+        if tail:
+            if combined and tail[0]==combined[-1]:
+                combined.extend(tail[1:])
+            else:
+                for ref in tail:
+                    if not combined or ref!=combined[-1]:
+                        combined.append(ref)
+        if combined:
+            route["path_refs"]=combined
+        return portable_route_snapshot(route,dict(self.music_map.ref_map or {}))
+
     def _journey_live_start(self):
         route=dict(self.music_path_result or {})
         if not route.get("found") or not route.get("journey"):
             self.statusBar().showMessage(
                 "Build a Journey Designer route before starting Journey Live",4000
             ); return
+        if self.music_live_active:
+            self._journey_live_stop("restarted")
         refs=[str(x) for x in list(route.get("path_refs") or []) if str(x)]
         tracks=[
             dict(self.music_map.ref_map[ref])
@@ -2083,19 +2133,64 @@ class MainWindow(QMainWindow):
         self.music_live_avoid_refs=set()
         self.music_live_avoid_artists=set()
         self.music_live_replanning=False
+        self.music_live_played_refs=[]
+        self.music_live_run_id=str(uuid.uuid4())
+        recipe=self._journey_live_recipe_snapshot()
+        original_snapshot=portable_route_snapshot(
+            route,
+            dict(self.music_map.ref_map or {}),
+        )
+        try:
+            self.state.start_journey_run(
+                self.music_live_run_id,
+                recipe_id=str(self.music_active_recipe_id or ""),
+                recipe=recipe,
+                original_route=original_snapshot,
+            )
+            self._journey_live_event(
+                "start",
+                {
+                    "recipe_id":str(self.music_active_recipe_id or ""),
+                    "destination":self._music_path_name(self.music_live_destination_ref),
+                    "routing_mode":str(self.music_path_mode.currentData() or "balanced"),
+                },
+            )
+        except Exception:
+            self.music_live_run_id=""
         if hasattr(self,"music_live_steering"):
             self.music_live_steering.setCurrentIndex(0)
         self.player.set_queue(tracks,0,True)
         self.music_map.show_route(route)
         self._journey_live_update_label()
+        self._refresh_journeys()
         self.statusBar().showMessage(
             "Journey Live active · manual Next will adapt the remaining route",6000
         )
 
     def _journey_live_stop(self,message="inactive"):
+        was_active=bool(self.music_live_active)
+        run_id=str(self.music_live_run_id or "")
+        final_snapshot=self._journey_live_final_snapshot() if was_active and run_id else {}
+        status="completed" if str(message)=="destination reached" else "stopped"
+        if run_id:
+            self._journey_live_event(
+                "complete" if status=="completed" else "stop",
+                {"reason":str(message or status)},
+            )
+            try:
+                self.state.finish_journey_run(
+                    run_id,
+                    status=status,
+                    final_route=final_snapshot,
+                )
+            except Exception:
+                pass
         self.music_live_active=False
         self.music_live_replanning=False
+        self.music_live_run_id=""
         self._journey_live_update_label(message)
+        if hasattr(self,"journey_runs_list"):
+            self._refresh_journeys()
 
     def _journey_live_apply_steer(self):
         if not self.music_live_active:
@@ -2103,7 +2198,14 @@ class MainWindow(QMainWindow):
         steering=str(self.music_live_steering.currentData() or "") if hasattr(self,"music_live_steering") else ""
         if not steering:
             self.statusBar().showMessage("Choose a Journey Live steering direction first",3000); return
-        self._journey_live_replan(steering)
+        self._journey_live_event(
+            "steer",
+            {
+                "steering":steering,
+                "label":str(self.music_live_steering.currentText() or steering),
+            },
+        )
+        self._journey_live_replan(steering,reason=f"steer:{steering}")
 
     def _journey_live_avoid_current_artist(self):
         if not self.music_live_active or not self.current_track:
@@ -2112,14 +2214,16 @@ class MainWindow(QMainWindow):
         if not artist:
             self.statusBar().showMessage("The current track has no artist metadata to avoid",3500); return
         self.music_live_avoid_artists.add(artist)
+        self._journey_live_event("avoid_artist",{"artist":artist})
         self.statusBar().showMessage(f"Journey Live will avoid {artist} in the remaining route",4500)
-        self._journey_live_replan("")
+        self._journey_live_replan("",reason="avoid artist")
 
     def _journey_live_restore(self):
         if not self.music_live_active:
             self.statusBar().showMessage("Start Journey Live first",3000); return
         self.music_live_avoid_refs=set()
         self.music_live_avoid_artists=set()
+        self._journey_live_event("restore",{})
         self._journey_live_replan(
             "",
             base_route=dict(self.music_live_original_route or {}),
