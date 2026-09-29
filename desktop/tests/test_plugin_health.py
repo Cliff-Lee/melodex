@@ -48,10 +48,10 @@ for line in sys.stdin:
     method = req.get("method")
     if method == "provider.health":
         key = cfg.get("api_key", "")
-        if key == "timeout":
+        if key == "fixture-timeout-key":
             time.sleep(2)
             result = {"status":"ready"}
-        elif key == "good":
+        elif key == "fixture-good-key":
             result = {"status":"ready","message":"Connected"}
         else:
             result = {"status":"auth_required","message":"Invalid credential " + str(key)}
@@ -147,14 +147,14 @@ def test_provider_health_requires_setup_then_redacts_auth_failure(tmp_path: Path
         initial = manager.plugin_health(plugin_id)
         assert initial["status"] == "setup_required"
 
-        manager.set_plugin_configuration(plugin_id, {"api_key": "bad-secret"})
+        manager.set_plugin_configuration(plugin_id, {"api_key": "fixture-bad-key"})
         result = manager.test_plugin_health(plugin_id, timeout=1)
         assert result["status"] == "authentication_required"
         assert result["provider_status"] == "auth_required"
-        assert "bad-secret" not in json.dumps(result)
-        assert "bad-secret" not in result["message"]
+        assert "fixture-bad-key" not in json.dumps(result)
+        assert "fixture-bad-key" not in result["message"]
 
-        manager.set_plugin_configuration(plugin_id, {"api_key": "good"})
+        manager.set_plugin_configuration(plugin_id, {"api_key": "fixture-good-key"})
         ready = manager.test_plugin_health(plugin_id, timeout=1)
         assert ready["status"] == "ready"
         assert ready["message"] == "Connected"
@@ -169,7 +169,7 @@ def test_provider_health_timeout_is_bounded_and_cached(tmp_path: Path):
         package = _provider_package(tmp_path / "health-timeout.mdxprovider")
         provider = manager.install_package(package)
         plugin_id = provider.info.id
-        manager.set_plugin_configuration(plugin_id, {"api_key": "timeout"})
+        manager.set_plugin_configuration(plugin_id, {"api_key": "fixture-timeout-key"})
 
         result = manager.test_plugin_health(plugin_id, timeout=0.05)
         assert result["status"] == "unavailable"
