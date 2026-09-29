@@ -1,12 +1,12 @@
 {
   "schema_version": "0.1",
-  "updated_at": "2026-09-29T03:35:00Z",
+  "updated_at": "2026-09-29T10:30:00Z",
   "plugins": [
     {
       "id": "org.melodex.example.radio-browser",
       "name": "Radio Browser Example",
       "publisher": "Melodex examples",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "kind": "provider",
       "status": "example",
       "description": "Free/open community radio index example provider with station search and live playback.",
@@ -22,10 +22,10 @@
         "documentation": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/radio_browser_provider/README.md"
       },
       "distribution": {
-        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/main/provider-sdk/registry/packages/radio-browser-0.1.0.mdxprovider",
+        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/main/provider-sdk/registry/packages/radio-browser-0.1.1.mdxprovider",
         "format": "mdxprovider",
-        "sha256": "e2ed3cf3c86b8e5215bd5e9a4ac7c46a8956951e08508a1a1f88cc88c01bafff",
-        "size_bytes": 9784
+        "sha256": "1f8d705620610b41504cf32d1cd5c81c48f8f3674c86dd391fde9bf2fd427141",
+        "size_bytes": 4840
       },
       "compatibility": {
         "melodex_min": "0.1.0",
@@ -38,14 +38,14 @@
       "source_policy": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/radio_browser_provider/SOURCE_POLICY.md",
       "review": {
         "record": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/registry/reviews/org.melodex.example.radio-browser.json",
-        "last_reviewed_at": "2026-09-29T00:00:00Z"
+        "last_reviewed_at": "2026-09-29T10:30:00Z"
       }
     },
     {
       "id": "org.melodex.example.librivox",
       "name": "LibriVox Example",
       "publisher": "Melodex examples",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "kind": "provider",
       "status": "example",
       "description": "Public-domain audiobook provider demonstrating search, playback and provider-authorized offline access.",
@@ -62,10 +62,10 @@
         "documentation": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/librivox_provider/README.md"
       },
       "distribution": {
-        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/main/provider-sdk/registry/packages/librivox-0.1.0.mdxprovider",
+        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/main/provider-sdk/registry/packages/librivox-0.1.1.mdxprovider",
         "format": "mdxprovider",
-        "sha256": "f854835052a0b1105c72c091278408c0b0d42410b386e284f202403a4e33f219",
-        "size_bytes": 10893
+        "sha256": "38b57495cde66d74ef6a147b3023065501dec213279b02b1e4bbcb3a3cfbd6e7",
+        "size_bytes": 5072
       },
       "compatibility": {
         "melodex_min": "0.1.0",
@@ -80,14 +80,14 @@
       "source_policy": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/librivox_provider/SOURCE_POLICY.md",
       "review": {
         "record": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/registry/reviews/org.melodex.example.librivox.json",
-        "last_reviewed_at": "2026-09-29T00:00:00Z"
+        "last_reviewed_at": "2026-09-29T10:30:00Z"
       }
     },
     {
       "id": "org.melodex.example.musicbrainz",
       "name": "MusicBrainz Enrichment Example",
       "publisher": "Melodex examples",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "kind": "enrichment",
       "status": "example",
       "description": "Canonical identity and metadata enrichment using the MusicBrainz Web Service.",
@@ -102,10 +102,10 @@
         "documentation": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/musicbrainz_enrichment/README.md"
       },
       "distribution": {
-        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/main/provider-sdk/registry/packages/musicbrainz-enrichment-0.1.0.mdxplugin",
+        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/main/provider-sdk/registry/packages/musicbrainz-enrichment-0.1.1.mdxplugin",
         "format": "mdxplugin",
-        "sha256": "543ef64fc0a318999f02163bd791fa352ec5578e90cfb84ee2ecc46bbec335e9",
-        "size_bytes": 13288
+        "sha256": "f3168d559443b628a48b414bc2825531ee76ab5a268596933557863d62587e7a",
+        "size_bytes": 5961
       },
       "compatibility": {
         "melodex_min": "0.1.0",
@@ -121,14 +121,14 @@
       "source_policy": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/musicbrainz_enrichment/SOURCE_POLICY.md",
       "review": {
         "record": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/registry/reviews/org.melodex.example.musicbrainz.json",
-        "last_reviewed_at": "2026-09-29T00:00:00Z"
+        "last_reviewed_at": "2026-09-29T10:30:00Z"
       }
     },
     {
       "id": "org.melodex.example.wikimedia-commons",
       "name": "Wikimedia Commons Artwork Example",
       "publisher": "Melodex examples",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "kind": "enrichment",
       "status": "example",
       "description": "Artwork enrichment using Wikimedia Commons while preserving per-file licence and attribution.",
@@ -142,10 +142,10 @@
         "documentation": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/wikimedia_artwork/README.md"
       },
       "distribution": {
-        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/main/provider-sdk/registry/packages/wikimedia-artwork-0.1.0.mdxplugin",
+        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/main/provider-sdk/registry/packages/wikimedia-artwork-0.1.1.mdxplugin",
         "format": "mdxplugin",
-        "sha256": "3f79c3268ac23bd3245b378370d0d379dcf6d958c0d676459903eec8d44162e6",
-        "size_bytes": 8954
+        "sha256": "1500e9596a915db82173a3d0798968631773969deb687bea4fe3cf302e437459",
+        "size_bytes": 4371
       },
       "compatibility": {
         "melodex_min": "0.1.0",
@@ -161,14 +161,14 @@
       "source_policy": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/wikimedia_artwork/SOURCE_POLICY.md",
       "review": {
         "record": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/registry/reviews/org.melodex.example.wikimedia-commons.json",
-        "last_reviewed_at": "2026-09-29T00:00:00Z"
+        "last_reviewed_at": "2026-09-29T10:30:00Z"
       }
     },
     {
       "id": "org.melodex.example.openverse-audio",
       "name": "Openverse Audio Example",
       "publisher": "Melodex examples",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "kind": "provider",
       "status": "example",
       "description": "Openly licensed audio search/playback example that preserves source, licence and attribution metadata without inferring offline rights.",
@@ -184,10 +184,10 @@
         "documentation": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/openverse_audio_provider/README.md"
       },
       "distribution": {
-        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/main/provider-sdk/registry/packages/openverse-audio-0.1.0.mdxprovider",
+        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/main/provider-sdk/registry/packages/openverse-audio-0.1.1.mdxprovider",
         "format": "mdxprovider",
-        "sha256": "6d07609213dc86e6902da361ceede86ee4058d813dbd8e090883e391b94976ec",
-        "size_bytes": 5123
+        "sha256": "28c62dd617a1d48281e5c0705b54f939668a33dfe185848f09ca2553319c1b0b",
+        "size_bytes": 5302
       },
       "compatibility": {
         "melodex_min": "0.1.0",
@@ -200,14 +200,14 @@
       "source_policy": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/openverse_audio_provider/SOURCE_POLICY.md",
       "review": {
         "record": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/registry/reviews/org.melodex.example.openverse-audio.json",
-        "last_reviewed_at": "2026-09-29T01:00:00Z"
+        "last_reviewed_at": "2026-09-29T10:30:00Z"
       }
     },
     {
       "id": "org.melodex.example.cover-art-archive",
       "name": "Cover Art Archive Artwork Example",
       "publisher": "Melodex examples",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "kind": "enrichment",
       "status": "example",
       "description": "Cover artwork lookup by MusicBrainz release or release-group ID with independent provenance and conservative rights notes.",
@@ -221,10 +221,10 @@
         "documentation": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/cover_art_archive_artwork/README.md"
       },
       "distribution": {
-        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/main/provider-sdk/registry/packages/cover-art-archive-0.1.0.mdxplugin",
+        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/main/provider-sdk/registry/packages/cover-art-archive-0.1.1.mdxplugin",
         "format": "mdxplugin",
-        "sha256": "6217910182e4f84e1c9909a718d620fd6348e6bab813d99fbe967081006c88a4",
-        "size_bytes": 4419
+        "sha256": "e4ce1d6a3554f1a27849f9ef9b275c1d99814d55d44ba6799592c34762ece940",
+        "size_bytes": 4450
       },
       "compatibility": {
         "melodex_min": "0.1.0",
@@ -239,14 +239,14 @@
       "source_policy": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/cover_art_archive_artwork/SOURCE_POLICY.md",
       "review": {
         "record": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/registry/reviews/org.melodex.example.cover-art-archive.json",
-        "last_reviewed_at": "2026-09-29T01:00:00Z"
+        "last_reviewed_at": "2026-09-29T10:30:00Z"
       }
     },
     {
       "id": "org.melodex.example.listenbrainz-tags",
       "name": "ListenBrainz Tags Example",
       "publisher": "Melodex examples",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "kind": "enrichment",
       "status": "example",
       "description": "Community tag enrichment for tracks with a MusicBrainz recording ID, now also demonstrating the optional active extension health contract.",
@@ -260,10 +260,10 @@
         "documentation": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/listenbrainz_tags/README.md"
       },
       "distribution": {
-        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/main/provider-sdk/registry/packages/listenbrainz-tags-0.1.1.mdxplugin",
+        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/main/provider-sdk/registry/packages/listenbrainz-tags-0.1.2.mdxplugin",
         "format": "mdxplugin",
-        "sha256": "b97654b0e2f0a81eefe7446ca0aa420f03a06e8eb2130dd74b8292da8539def1",
-        "size_bytes": 11915
+        "sha256": "7578f28a2fd2bdd5e5ea73bb88f11fccc9ef0061a3c778e96d7401625dd5f7be",
+        "size_bytes": 5109
       },
       "compatibility": {
         "melodex_min": "0.1.0",
@@ -278,7 +278,7 @@
       "source_policy": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/listenbrainz_tags/SOURCE_POLICY.md",
       "review": {
         "record": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/registry/reviews/org.melodex.example.listenbrainz-tags.json",
-        "last_reviewed_at": "2026-09-29T02:20:00Z"
+        "last_reviewed_at": "2026-09-29T10:30:00Z"
       }
     },
     {
@@ -322,7 +322,7 @@
       "id": "org.melodex.example.lastfm-recommendations",
       "name": "Last.fm Recommendations Example",
       "publisher": "Melodex examples",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "kind": "provider",
       "status": "example",
       "description": "Recommendation-only provider using Last.fm track similarity and a user-supplied API key; results are discovery metadata rather than playback.",
@@ -336,10 +336,10 @@
         "documentation": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/lastfm_recommendations_provider/README.md"
       },
       "distribution": {
-        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/main/provider-sdk/registry/packages/lastfm-recommendations-0.1.0.mdxprovider",
+        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/main/provider-sdk/registry/packages/lastfm-recommendations-0.1.1.mdxprovider",
         "format": "mdxprovider",
-        "sha256": "f0fbd747e25761d5fa9cc3c9575ce8c037415edde2985dfb60610822d325a3c4",
-        "size_bytes": 5211
+        "sha256": "943c8589e16b15b3bcade84d4f7c371d61ef0aad278901f7f77940c029a6d22c",
+        "size_bytes": 5523
       },
       "compatibility": {
         "melodex_min": "0.1.0",
@@ -353,14 +353,14 @@
       "source_policy": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/lastfm_recommendations_provider/SOURCE_POLICY.md",
       "review": {
         "record": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/registry/reviews/org.melodex.example.lastfm-recommendations.json",
-        "last_reviewed_at": "2026-09-29T01:30:00Z"
+        "last_reviewed_at": "2026-09-29T10:30:00Z"
       }
     },
     {
       "id": "org.melodex.example.musicbrainz-connections",
       "name": "MusicBrainz Song Connections",
       "publisher": "Melodex examples",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "kind": "enrichment",
       "status": "example",
       "description": "Musical relationship context showing samples, remixes, versions, linked works and recording places from the MusicBrainz graph.",
@@ -374,10 +374,10 @@
         "documentation": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/musicbrainz_connections/README.md"
       },
       "distribution": {
-        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/main/provider-sdk/registry/packages/musicbrainz-connections-0.1.0.mdxplugin",
+        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/main/provider-sdk/registry/packages/musicbrainz-connections-0.1.1.mdxplugin",
         "format": "mdxplugin",
-        "sha256": "91de40de3065950c4749ee284b5f3af471eeaee82f96b5f133b81713086a701a",
-        "size_bytes": 12466
+        "sha256": "7eda1a9a4310c8ccc5666f13d4894a7a1ed92d07b2d35d3fa7383544cc822634",
+        "size_bytes": 5095
       },
       "compatibility": {
         "melodex_min": "0.3.1",
@@ -392,14 +392,14 @@
       "source_policy": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/musicbrainz_connections/SOURCE_POLICY.md",
       "review": {
         "record": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/registry/reviews/org.melodex.example.musicbrainz-connections.json",
-        "last_reviewed_at": "2026-09-29T03:00:00Z"
+        "last_reviewed_at": "2026-09-29T10:30:00Z"
       }
     },
     {
       "id": "org.melodex.example.wikimedia-liner-notes",
       "name": "Wikimedia Liner Notes",
       "publisher": "Melodex examples",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "kind": "enrichment",
       "status": "example",
       "description": "Short sourced artist liner-note context from Wikidata-linked English Wikipedia summaries.",
@@ -413,10 +413,10 @@
         "documentation": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/wikimedia_liner_notes/README.md"
       },
       "distribution": {
-        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/main/provider-sdk/registry/packages/wikimedia-liner-notes-0.1.0.mdxplugin",
+        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/main/provider-sdk/registry/packages/wikimedia-liner-notes-0.1.1.mdxplugin",
         "format": "mdxplugin",
-        "sha256": "8a59f28392d8fbf943a4c66326e3ad66ee091fe4ea95df77d9f31250f29685ba",
-        "size_bytes": 9180
+        "sha256": "3582479542dae46477e3bc75a91bd9b5ba0f0aef4980adfb9e3c9ce92268286b",
+        "size_bytes": 4292
       },
       "compatibility": {
         "melodex_min": "0.3.1",
@@ -432,14 +432,14 @@
       "source_policy": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/wikimedia_liner_notes/SOURCE_POLICY.md",
       "review": {
         "record": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/registry/reviews/org.melodex.example.wikimedia-liner-notes.json",
-        "last_reviewed_at": "2026-09-29T03:00:00Z"
+        "last_reviewed_at": "2026-09-29T10:30:00Z"
       }
     },
     {
       "id": "org.melodex.example.listenbrainz-community-pulse",
       "name": "ListenBrainz Community Pulse",
       "publisher": "Melodex examples",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "kind": "enrichment",
       "status": "example",
       "description": "Aggregate listener/listen counts and popular recordings for the current artist, without requiring a ListenBrainz account.",
@@ -453,10 +453,10 @@
         "documentation": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/listenbrainz_community_pulse/README.md"
       },
       "distribution": {
-        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/main/provider-sdk/registry/packages/listenbrainz-community-pulse-0.1.0.mdxplugin",
+        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/main/provider-sdk/registry/packages/listenbrainz-community-pulse-0.1.1.mdxplugin",
         "format": "mdxplugin",
-        "sha256": "9a39eb5278143bcb27d8af89c916025d1583c165c83bf0a2e6500940358b7851",
-        "size_bytes": 12599
+        "sha256": "7e1db57159f3f227c96a125fbefe0a728941674c0147083ca2fbf0517d8278ac",
+        "size_bytes": 4982
       },
       "compatibility": {
         "melodex_min": "0.3.1",
@@ -471,14 +471,14 @@
       "source_policy": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/listenbrainz_community_pulse/SOURCE_POLICY.md",
       "review": {
         "record": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/registry/reviews/org.melodex.example.listenbrainz-community-pulse.json",
-        "last_reviewed_at": "2026-09-29T03:00:00Z"
+        "last_reviewed_at": "2026-09-29T10:30:00Z"
       }
     },
     {
       "id": "org.melodex.example.sonic-neighbours",
       "name": "Sonic Neighbours",
       "publisher": "Melodex examples",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "kind": "tool",
       "status": "example",
       "description": "Private local 'more like this' discovery using Melodex Flow features; no network or direct filesystem/database access is requested.",
@@ -492,10 +492,10 @@
         "documentation": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/sonic_neighbours/README.md"
       },
       "distribution": {
-        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/main/provider-sdk/registry/packages/sonic-neighbours-0.1.0.mdxplugin",
+        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/main/provider-sdk/registry/packages/sonic-neighbours-0.1.1.mdxplugin",
         "format": "mdxplugin",
-        "sha256": "213c1fcc0d5e564573f22b1851ddc92c2456611eb02de05c842c81da7f0bfe54",
-        "size_bytes": 11309
+        "sha256": "aba47781eb727bab6331c2980ca343ff9cdedb40f97689c6380ce72506930c86",
+        "size_bytes": 4833
       },
       "compatibility": {
         "melodex_min": "0.3.1",
@@ -508,7 +508,7 @@
       "source_policy": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/sonic_neighbours/SOURCE_POLICY.md",
       "review": {
         "record": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/registry/reviews/org.melodex.example.sonic-neighbours.json",
-        "last_reviewed_at": "2026-09-29T03:35:00Z"
+        "last_reviewed_at": "2026-09-29T10:30:00Z"
       }
     },
     {
@@ -552,7 +552,7 @@
       "id": "org.melodex.example.bridge-builder",
       "name": "Bridge Builder",
       "publisher": "Melodex examples",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "kind": "tool",
       "status": "example",
       "description": "Private local bridge discovery that ranks tracks able to connect the current and next queued songs using Flow tempo, key, energy, timbre and mixability.",
@@ -566,10 +566,10 @@
         "documentation": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/bridge_builder/README.md"
       },
       "distribution": {
-        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/main/provider-sdk/registry/packages/bridge-builder-0.1.0.mdxplugin",
+        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/main/provider-sdk/registry/packages/bridge-builder-0.1.1.mdxplugin",
         "format": "mdxplugin",
-        "sha256": "02a4192afadf606c81fc9b2dcc2eb30659c5a3a2ef57637795e2ed9b8ecf72f2",
-        "size_bytes": 12558
+        "sha256": "fec5298c5834468e8832916823107218f7a5ecc3ed872f91dc10eb78269ab1f1",
+        "size_bytes": 5052
       },
       "compatibility": {
         "melodex_min": "0.3.1",
@@ -582,7 +582,7 @@
       "source_policy": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/bridge_builder/SOURCE_POLICY.md",
       "review": {
         "record": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/registry/reviews/org.melodex.example.bridge-builder.json",
-        "last_reviewed_at": "2026-09-29T03:35:00Z"
+        "last_reviewed_at": "2026-09-29T10:30:00Z"
       }
     }
   ]

@@ -2,7 +2,7 @@
   "schema_version": "0.1",
   "extension_id": "org.melodex.example.listenbrainz-tags",
   "name": "ListenBrainz Tags Example",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "publisher": "Melodex examples",
   "description": "Community tag enrichment from ListenBrainz for tracks that already have a MusicBrainz recording ID.",
   "permissions": {

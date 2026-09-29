@@ -73,6 +73,48 @@ def _image(row):
     return ""
 
 
+def _safe_float(value, default=0.0):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return float(default)
+
+
+def _health(api_key):
+    if os.getenv("MELODEX_EXAMPLE_FIXTURES") == "1":
+        return {"status":"ready","message":"Last.fm fixture is available"}
+    if not api_key:
+        return {"status":"auth_required","message":"Configure a Last.fm API key"}
+    query = urllib.parse.urlencode(
+        {
+            "method":"chart.gettoptracks",
+            "api_key":api_key,
+            "format":"json",
+            "limit":"1",
+        }
+    )
+    req = urllib.request.Request(
+        API + "?" + query,
+        headers={"User-Agent": USER_AGENT, "Accept":"application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=12) as response:
+            data = json.load(response)
+        if isinstance(data, dict) and data.get("error"):
+            code = int(data.get("error") or 0)
+            return {
+                "status":"auth_required" if code in {4, 9, 10, 26} else "unavailable",
+                "message":str(data.get("message") or f"Last.fm API error {code}"),
+            }
+        ready = isinstance(data, dict) and isinstance(data.get("tracks"), dict)
+        return {
+            "status":"ready" if ready else "degraded",
+            "message":"Last.fm API is reachable" if ready else "Last.fm returned an unexpected response",
+        }
+    except Exception as exc:
+        return {"status":"unavailable","message":f"Last.fm unavailable: {exc}"}
+
+
 def _track(row):
     artist_obj = row.get("artist") if isinstance(row.get("artist"), dict) else {}
     artist = str(artist_obj.get("name") or row.get("artist") or "Unknown artist")
@@ -99,7 +141,7 @@ def _track(row):
         "metadata": {
             "recommendation_only": True,
             "playable": False,
-            "match_score": float(row.get("match") or 0.0),
+            "match_score": _safe_float(row.get("match"), 0.0),
             "lastfm_url": lastfm_url,
             "lastfm_playcount": row.get("playcount"),
             "artist_mbid": artist_obj.get("mbid") or None,
@@ -114,7 +156,8 @@ def recommendations_get(params):
     title = str(seed.get("title") or "").strip()
     if not artist or not title:
         raise RuntimeError("recommendations.get requires seed.artist and seed.title")
-    limit = max(1, min(int(params.get("limit") or 25), 100))
+    raw_limit = params.get("limit")
+    limit = 25 if raw_limit is None else max(1, min(int(raw_limit), 100))
     data = _get_json(artist, title, limit, _api_key(params))
     block = data.get("similartracks") if isinstance(data, dict) else {}
     rows = block.get("track") if isinstance(block, dict) else []
@@ -147,11 +190,7 @@ def respond(request):
         }
 
     if method == "provider.health":
-        ready = bool(_api_key(params)) or os.getenv("MELODEX_EXAMPLE_FIXTURES") == "1"
-        return {
-            "status": "ready" if ready else "auth_required",
-            "message": None if ready else "Configure a Last.fm API key",
-        }
+        return _health(_api_key(params))
 
     if method == "recommendations.get":
         return recommendations_get(params)

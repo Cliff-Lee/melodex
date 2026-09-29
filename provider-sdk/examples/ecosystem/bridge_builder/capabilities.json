@@ -2,7 +2,7 @@
   "schema_version": "0.1",
   "extension_id": "org.melodex.example.bridge-builder",
   "name": "Bridge Builder",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "Melodex examples",
   "description": "Finds local tracks that create a musically plausible bridge between the current and next queued tracks using Flow features.",
   "permissions": {

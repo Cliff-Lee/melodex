@@ -9,6 +9,10 @@ def _clamp(v):
     return max(0.0, min(1.0, float(v)))
 
 
+def _default(value, fallback):
+    return fallback if value is None else value
+
+
 def _near(a, b, scale):
     return _clamp(math.exp(-abs(float(a or 0) - float(b or 0)) / max(1e-6, scale)))
 
@@ -54,8 +58,8 @@ def _pair(a, b):
     energy = _near(a.get("energy_end", a.get("energy")), b.get("energy_start", b.get("energy")), .28)
     timbre = _timbre(a.get("spectral_centroid"), b.get("spectral_centroid"))
     mix = (
-        _clamp(a.get("outro_mixability") or .45)
-        + _clamp(b.get("intro_mixability") or .45)
+        _clamp(_default(a.get("outro_mixability"), .45))
+        + _clamp(_default(b.get("intro_mixability"), .45))
     ) / 2.0
     return _clamp(.23 * tempo + .23 * key + .24 * energy + .17 * timbre + .13 * mix), {
         "tempo": tempo, "key": key, "energy": energy, "timbre": timbre, "mix": mix
@@ -120,7 +124,8 @@ def suggest(params):
         taste = candidate.get("taste") if isinstance(candidate.get("taste"), dict) else {}
         if int(taste.get("dislikes") or 0) > 0:
             continue
-        scored = _score(start, candidate, end, params.get("adventure") or .35)
+        adventure = _default(params.get("adventure"), .35)
+        scored = _score(start, candidate, end, adventure)
         if scored is None:
             continue
         score, reason, badges = scored

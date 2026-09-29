@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
@@ -39,7 +40,7 @@ def _wikidata(qid):
         return _fixture()["wikidata"]
     return _get_json(
         "https://www.wikidata.org/wiki/Special:EntityData/"
-        + urllib.parse.quote(qid)
+        + urllib.parse.quote(qid, safe="")
         + ".json"
     )
 
@@ -57,7 +58,7 @@ def context_lookup(params):
     subject = params["subject"]
     canonical = subject.get("canonical_ids") or {}
     qid = str(canonical.get("wikidata_id") or "").strip()
-    if not qid:
+    if not qid or not re.fullmatch(r"Q[1-9]\d*", qid):
         return {
             "schema_version": "0.1",
             "capability": "context",
@@ -99,7 +100,7 @@ def context_lookup(params):
     source_url = str((desktop or {}).get("page") or "")
     if not source_url:
         source_url = "https://en.wikipedia.org/wiki/" + urllib.parse.quote(
-            title.replace(" ", "_")
+            title.replace(" ", "_"), safe=""
         )
 
     provenance = {

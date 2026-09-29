@@ -2,7 +2,7 @@
   "schema_version": "0.1",
   "extension_id": "org.melodex.example.wikimedia-commons",
   "name": "Wikimedia Commons Artwork Example",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "Melodex examples",
   "description": "Artwork enrichment using Wikimedia Commons with per-file provenance and licensing.",
   "permissions": {

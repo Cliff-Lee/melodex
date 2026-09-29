@@ -70,8 +70,15 @@ def _top_recordings(artist_mbid):
     return _get_json(
         API
         + "/1/popularity/top-recordings-for-artist/"
-        + urllib.parse.quote(artist_mbid)
+        + urllib.parse.quote(artist_mbid, safe="")
     )
+
+
+def _safe_int(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _compact(value):
@@ -163,10 +170,12 @@ def context_lookup(params):
     cards = []
     facts = []
     if isinstance(row, dict):
-        if row.get("total_listen_count") is not None:
-            facts.append({"label": "Listens", "value": int(row["total_listen_count"])})
-        if row.get("total_user_count") is not None:
-            facts.append({"label": "Listeners", "value": int(row["total_user_count"])})
+        listens_value = _safe_int(row.get("total_listen_count"))
+        listeners_value = _safe_int(row.get("total_user_count"))
+        if listens_value is not None:
+            facts.append({"label": "Listens", "value": listens_value})
+        if listeners_value is not None:
+            facts.append({"label": "Listeners", "value": listeners_value})
     if facts:
         cards.append({
             "id": "community-pulse",

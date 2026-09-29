@@ -61,7 +61,9 @@ def _get_json(path, params=None):
 
 
 def _station_to_track(station):
-    station_id = str(station["stationuuid"])
+    station_id = str(station.get("stationuuid") or "").strip()
+    if not station_id:
+        return None
     CACHE[station_id] = station
     tags = [x.strip() for x in str(station.get("tags") or "").split(",") if x.strip()]
     return {
@@ -109,15 +111,33 @@ def respond(request):
                 "protocol_version":"1.0","capabilities":["search","track","playback"]}
 
     if method == "provider.health":
-        return {"status":"ready"}
+        if os.getenv("MELODEX_EXAMPLE_FIXTURES") == "1":
+            return {"status":"ready","message":"Radio Browser fixture is available"}
+        try:
+            stats = _get_json("/json/stats")
+            ready = isinstance(stats, dict) and str(stats.get("status") or "").upper() == "OK"
+            return {
+                "status":"ready" if ready else "degraded",
+                "message":"Radio Browser service is reachable" if ready else "Radio Browser returned unexpected stats",
+            }
+        except Exception as exc:
+            return {"status":"unavailable","message":f"Radio Browser unavailable: {exc}"}
 
     if method == "catalog.search":
         query = str(params.get("query") or "").strip()
-        limit = min(int(params.get("limit") or 25), 50)
+        raw_limit = params.get("limit")
+        limit = 25 if raw_limit is None else max(1, min(int(raw_limit), 50))
         rows = _get_json("/json/stations/search", {
             "name":query,"limit":limit,"hidebroken":"true","order":"votes","reverse":"true"
         })
-        return {"items":[_station_to_track(x) for x in rows[:limit]],"next_cursor":None}
+        items = []
+        for row in rows[:limit]:
+            if not isinstance(row, dict):
+                continue
+            track = _station_to_track(row)
+            if track is not None:
+                items.append(track)
+        return {"items":items,"next_cursor":None}
 
     if method == "catalog.get_track":
         track_id = str(params.get("provider_track_id") or params.get("track_id") or "")
@@ -128,7 +148,7 @@ def respond(request):
         station = _station(track_id)
         if os.getenv("MELODEX_EXAMPLE_FIXTURES") != "1":
             try:
-                _get_json(f"/json/url/{track_id}")
+                _get_json("/json/url/" + urllib.parse.quote(track_id, safe=""))
             except Exception:
                 pass
         url = station.get("url_resolved") or station.get("url")

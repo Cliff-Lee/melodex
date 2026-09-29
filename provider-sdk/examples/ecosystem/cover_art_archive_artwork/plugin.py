@@ -58,11 +58,13 @@ def artwork_lookup(params):
     release_group_id = str(canonical.get("musicbrainz_release_group_id") or "").strip()
 
     if release_id:
-        path = f"/release/{urllib.parse.quote(release_id)}/"
+        encoded_id = urllib.parse.quote(release_id, safe="")
+        path = f"/release/{encoded_id}/"
         source_id = release_id
         evidence = ["MusicBrainz release ID supplied by caller"]
     elif release_group_id:
-        path = f"/release-group/{urllib.parse.quote(release_group_id)}/"
+        encoded_id = urllib.parse.quote(release_group_id, safe="")
+        path = f"/release-group/{encoded_id}/"
         source_id = release_group_id
         evidence = ["MusicBrainz release-group ID supplied by caller"]
     else:
@@ -75,7 +77,8 @@ def artwork_lookup(params):
         }
 
     data = _get_json(path)
-    max_results = max(1, min(int(params.get("max_results") or 5), 20))
+    raw_limit = params.get("max_results")
+    max_results = 5 if raw_limit is None else max(1, min(int(raw_limit), 20))
     assets = []
     images = [row for row in (data.get("images") or []) if isinstance(row, dict)]
     images.sort(key=lambda row: (not bool(row.get("front")), bool(row.get("back"))))

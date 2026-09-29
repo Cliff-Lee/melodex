@@ -2,7 +2,7 @@
   "schema_version": "0.1",
   "extension_id": "org.melodex.example.sonic-neighbours",
   "name": "Sonic Neighbours",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "Melodex examples",
   "description": "Finds locally stored tracks with similar sonic character using only host-supplied Flow features.",
   "permissions": {

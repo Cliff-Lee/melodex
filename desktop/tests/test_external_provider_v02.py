@@ -196,3 +196,23 @@ for line in sys.stdin:
         assert items[0]["metadata"]["configured"] is True
     finally:
         provider.close()
+
+
+def test_external_provider_adds_exact_resolved_media_host(tmp_path: Path):
+    manifest = {
+        "id": "org.example.dynamic-media",
+        "name": "Dynamic Media",
+        "version": "1",
+        "capabilities": ["playback"],
+        "permissions": {"network_hosts": ["api.example"]},
+        "entrypoints": {"python": "provider.py"},
+    }
+    provider = ExternalProvider(tmp_path, manifest)
+    merged = provider._merge_playback(
+        {"track_id": "1"},
+        {"kind": "http", "url": "https://cdn.other.example/audio.mp3"},
+    )
+    assert merged["_playback_allowed_hosts"] == [
+        "api.example",
+        "cdn.other.example",
+    ]

@@ -54,10 +54,17 @@ def _provenance(recording_mbid, confidence=0.85):
     }
 
 
+def _safe_int(value, default=0):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return int(default)
+
+
 def _record(data, recording_mbid):
-    if isinstance(data.get(recording_mbid), dict):
+    if isinstance(data, dict) and isinstance(data.get(recording_mbid), dict):
         return data[recording_mbid]
-    rows = data.get("recordings")
+    rows = data.get("recordings") if isinstance(data, dict) else data if isinstance(data, list) else None
     if isinstance(rows, list):
         return next(
             (
@@ -137,7 +144,7 @@ def metadata_enrich(params):
     ]
     recording_tags.sort(
         key=lambda item: (
-            -int(item.get("count") or 0),
+            -_safe_int(item.get("count"), 0),
             str(item.get("tag") or "").casefold(),
         )
     )
@@ -151,7 +158,7 @@ def metadata_enrich(params):
         tags.append(name)
         counts.append({
             "tag": name,
-            "count": int(item.get("count") or 0),
+            "count": _safe_int(item.get("count"), 0),
             "genre_mbid": item.get("genre_mbid"),
         })
 
