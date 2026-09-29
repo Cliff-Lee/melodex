@@ -183,3 +183,11 @@ def test_registry_validation_requires_https_review_record():
     data["plugins"][0]["review"]["record"] = "http://example.org/review.json"
     errors = validate_registry(data)
     assert any("review.record must use HTTPS" in error for error in errors)
+
+
+def test_registry_validation_requires_mdxplugin_for_tools():
+    data = _registry()
+    data["plugins"][0]["kind"] = "tool"
+    data["plugins"][0]["distribution"]["format"] = "mdxprovider"
+    errors = validate_registry(data)
+    assert any("mdxplugin for tools" in error for error in errors)
