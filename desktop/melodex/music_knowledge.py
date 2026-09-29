@@ -23,9 +23,9 @@ def _edge_key(a: str, b: str, kind: str, label: str) -> tuple[str, str, str, str
 def _role_group(role: str) -> str:
     r = _norm(role)
     if any(word in r for word in ("producer", "engineer", "master", "mix")):
-        return "people"
+        return "production"
     if any(word in r for word in ("composer", "writer", "lyric", "arrang")):
-        return "people"
+        return "composition_credit"
     if any(
         word in r
         for word in (
@@ -44,7 +44,7 @@ def _role_group(role: str) -> str:
             "instrument",
         )
     ):
-        return "people"
+        return "performer"
     return "people"
 
 
@@ -320,10 +320,17 @@ def build_knowledge_graph(
         if recording_mbid:
             recording_refs[recording_mbid].append(ref)
         if artist_mbid:
-            artist_refs[artist_mbid].append(ref)
-            artist_names[artist_mbid] = str(
+            artist_key = "mbid:" + artist_mbid
+            artist_refs[artist_key].append(ref)
+            artist_names[artist_key] = str(
                 identity.get("artist") or track.get("artist") or "Same artist"
             )
+        else:
+            local_artist = _norm(track.get("artist"))
+            if local_artist and local_artist not in {"unknown artist", "unknown"}:
+                artist_key = "name:" + local_artist
+                artist_refs[artist_key].append(ref)
+                artist_names[artist_key] = str(track.get("artist") or "Same artist")
 
         # A same-album overlay is useful even with no external metadata.
         album_key = _norm(track.get("album"))
@@ -395,14 +402,18 @@ def build_knowledge_graph(
                             )
 
     # Same artist / album.
-    for artist_mbid, refs in artist_refs.items():
+    for artist_key, refs in artist_refs.items():
         _connect_group(
             edges,
             refs,
             kind="artist",
-            label=artist_names.get(artist_mbid) or "Same artist",
-            strength=0.86,
-            evidence="MusicBrainz artist identity",
+            label=artist_names.get(artist_key) or "Same artist",
+            strength=0.86 if artist_key.startswith("mbid:") else 0.72,
+            evidence=(
+                "MusicBrainz artist identity"
+                if artist_key.startswith("mbid:")
+                else "local artist metadata"
+            ),
         )
     for album_key, refs in album_refs.items():
         if len(refs) < 2:
@@ -449,9 +460,9 @@ def build_knowledge_graph(
     # Related-artist links are artist-level relationships. Use one representative
     # mapped track per artist pair to keep the overlay legible.
     representative = {
-        artist_mbid: sorted(set(refs))[0]
-        for artist_mbid, refs in artist_refs.items()
-        if refs
+        artist_key[5:]: sorted(set(refs))[0]
+        for artist_key, refs in artist_refs.items()
+        if refs and artist_key.startswith("mbid:")
     }
     for ref, payload in knowledge.items():
         identity = dict(payload.get("identity") or {})
