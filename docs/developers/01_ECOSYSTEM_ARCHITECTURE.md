@@ -197,6 +197,8 @@ Melodex can therefore be open and decentralized without making Core responsible 
 | Registry client | `desktop/melodex/plugin_registry.py` |
 | Plugin Directory UI | `desktop/melodex/plugin_directory.py` |
 | Universal resolver | `desktop/melodex/resolver.py` |
+| Music Map model | `desktop/melodex/music_map_model.py` |
+| Music Map desktop view | `desktop/melodex/music_map.py` |
 | Local control API | `desktop/melodex/bridge_server.py` |
 | OpenAPI schema | `desktop/melodex/api_schema.py` |
 | OpenAI tool schemas | `desktop/melodex/openai_tools.py` |
