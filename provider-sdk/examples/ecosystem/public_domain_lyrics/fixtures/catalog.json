@@ -1,0 +1,24 @@
+{
+  "songs": [
+    {
+      "id": "auld-lang-syne-burns-1788",
+      "title": "Auld Lang Syne",
+      "aliases": ["Auld Lang Syne"],
+      "language": "en",
+      "text": "Should auld acquaintance be forgot,\nAnd never brought to mind?\nShould auld acquaintance be forgot,\nAnd auld lang syne!\n\nFor auld lang syne, my jo,\nFor auld lang syne,\nWe'll tak a cup o' kindness yet,\nFor auld lang syne.",
+      "source_url": "https://en.wikisource.org/wiki/Auld_Lang_Syne",
+      "attribution": "Robert Burns / traditional song text",
+      "rights": "Public-domain historical text; this example bundles only a short source-text sample."
+    },
+    {
+      "id": "twinkle-twinkle-1806",
+      "title": "Twinkle, Twinkle, Little Star",
+      "aliases": ["Twinkle Twinkle Little Star", "The Star"],
+      "language": "en",
+      "text": "Twinkle, twinkle, little star,\nHow I wonder what you are!\nUp above the world so high,\nLike a diamond in the sky.",
+      "source_url": "https://en.wikisource.org/wiki/Rhymes_for_the_Nursery/The_Star",
+      "attribution": "Jane Taylor, “The Star” (1806)",
+      "rights": "Public-domain historical text; this example bundles the familiar first stanza."
+    }
+  ]
+}
