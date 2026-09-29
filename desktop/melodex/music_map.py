@@ -340,15 +340,16 @@ class MusicMapWidget(QWidget):
             self.route_end_ref = refs[-1]
         self._redraw_route()
         self._recolour()
+        surface = "Journey Designer" if self.route_result.get("journey") else "Pathfinder"
         if self.route_result.get("found"):
             self.status.setText(
-                "Pathfinder · "
+                surface + " · "
                 + str(self.route_result.get("reason") or "route ready")
                 + f" · score {float(self.route_result.get('score') or 0.0):.0%}"
             )
         else:
             self.status.setText(
-                "Pathfinder · " + str(self.route_result.get("reason") or "no route found")
+                surface + " · " + str(self.route_result.get("reason") or "no route found")
             )
 
     def clear_route(self) -> None:
