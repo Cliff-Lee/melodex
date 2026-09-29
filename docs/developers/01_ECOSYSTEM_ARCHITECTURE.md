@@ -29,7 +29,8 @@ This is the canonical high-level map of the current Melodex extension platform.
      └────────┬─────────┘              └────────┬─────────┘
               │                                 │
        catalog/playback                 identity/metadata
-              │                          artwork/lyrics
+              │                       artwork/lyrics/context
+              │                        library suggestions
               └──────────────┬──────────────────┘
                              ▼
                     Universal Resolver
@@ -80,6 +81,8 @@ identity.resolve
 metadata.enrich
 artwork.lookup
 lyrics.lookup
+context.lookup
+library.suggest
 ```
 
 These also run outside the GUI process.
@@ -99,7 +102,7 @@ Melodex Core owns:
 - external-control API;
 - user-facing installation state.
 
-A plugin should not reach into Core databases or UI internals.
+A plugin should not reach into Core databases or UI internals. Local-intelligence plugins receive privacy-preserving snapshots brokered by Core instead of direct library/taste-database access.
 
 ## Progressive enrichment
 
