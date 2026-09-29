@@ -4,6 +4,12 @@
 
 **Play for me** is the default action. It uses local listening history and your local catalogue to create a session without requiring an LLM.
 
+## Now Playing and Living Canvas
+
+The first Now Playing tab gives each track a repeatable visual fingerprint. Its shape uses track identity and cached Flow features; the colour follows the cover artwork when available. The contour below the scene shows the cached energy shape across the track.
+
+Click or drag the contour to seek, or focus it and use the arrow keys. Flow analysis is read from its cache in the background. If no cached analysis exists, Melodex shows an identity-based scene and suggests analysing the track from **Play for me**. It never analyses audio during playback. Animation pauses when playback pauses or the tab is hidden.
+
 ## Discover
 
 Search all connected sources at once, or choose one source from the selector.
