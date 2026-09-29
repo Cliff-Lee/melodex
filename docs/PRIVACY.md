@@ -70,6 +70,14 @@ Melodex can use the network when you deliberately use features that require it, 
 
 Local-file playback itself does not require those services.
 
+## Music Map
+
+The desktop Music Map is a Core-owned local view. It reads cached Flow analysis and local taste signals from Melodex's own application state and does not require a remote embedding service.
+
+Opening the map uses cached analysis only. Full-library audio analysis happens only when the user chooses **Analyse my library**.
+
+The map's graph/projection is computed locally and is not sent to the Plugin Directory, an LLM or a remote recommendation service.
+
 ## Local intelligence plugins
 
 The `library.suggest` contract is designed so useful local recommendation tools do not need the user's filesystem paths or taste database.
