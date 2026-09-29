@@ -11,14 +11,24 @@ _SECRET_ASSIGNMENT = re.compile(
 _BEARER = re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+/-]+=*")
 
 
-def safe_health_text(value: Any) -> str:
+def safe_health_text(
+    value: Any,
+    redact_values: list[str] | tuple[str, ...] | set[str] | None = None,
+) -> str:
     text = str(value or "").strip()
     if not text:
         return ""
     text = _BEARER.sub("Bearer [redacted]", text)
-    return _SECRET_ASSIGNMENT.sub(
+    text = _SECRET_ASSIGNMENT.sub(
         lambda match: f"{match.group(1)}=[redacted]", text
     )
+    for secret in sorted(
+        {str(item) for item in (redact_values or []) if len(str(item)) >= 4},
+        key=len,
+        reverse=True,
+    ):
+        text = text.replace(secret, "[redacted]")
+    return text
 
 
 def normalise_health_status(value: Any) -> str:
