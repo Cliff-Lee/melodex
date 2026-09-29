@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from .process_env import scrubbed_child_env
+from .child_host import python_child_command
 from .plugin_config import normalise_configuration
 
 
@@ -96,13 +97,13 @@ class ExternalProvider(MusicProvider):
         entries = dict(self.manifest.get("entrypoints") or {})
         python_entry = str(entries.get("python") or "").strip()
         if python_entry:
-            return [sys.executable, "-u", str(self.folder / python_entry)]
+            return python_child_command(self.folder / python_entry)
         native = str(
             entries.get(self._platform_entrypoint_key()) or entries.get("executable") or ""
         )
         if native:
             return [str(self.folder / native)]
-        return [sys.executable, "-u", str(self.folder / "provider.py")]
+        return python_child_command(self.folder / "provider.py")
 
     def _ensure(self) -> subprocess.Popen[str]:
         if self._proc and self._proc.poll() is None:
