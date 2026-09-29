@@ -330,6 +330,8 @@ class UniversalResolver:
             provider = self.manager.providers.get(pid)
             if provider is None:
                 continue
+            if "search" not in list(provider.info.capabilities or []):
+                continue
             rows: list[dict[str, Any]] = []
             for query in queries:
                 try:
