@@ -102,7 +102,10 @@ def suggest(params):
         taste = candidate.get("taste") if isinstance(candidate.get("taste"), dict) else {}
         if int(taste.get("dislikes") or 0) > 0:
             continue
-        scored = _score(seed, candidate, params.get("adventure") or 0.35)
+        adventure = params.get("adventure")
+        if adventure is None:
+            adventure = 0.35
+        scored = _score(seed, candidate, adventure)
         if scored is None:
             continue
         score, reason, badges = scored
