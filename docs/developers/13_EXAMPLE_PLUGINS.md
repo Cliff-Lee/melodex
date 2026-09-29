@@ -88,6 +88,37 @@ Teaches chained enrichment: a provider or identity resolver supplies a MusicBrai
 
 Version 0.1.1 additionally demonstrates the optional extension-level `extension.health` contract using ListenBrainz's service-status endpoint. Health remains separate from the `metadata` capability, and the response explicitly reports whether an upstream service was checked.
 
+## MusicBrainz Song Connections
+
+**Layer:** experimental v0.1 capability extension
+
+```text
+context.lookup
+```
+
+Turns MusicBrainz's relationship graph into useful listening context: samples, remixes, alternate versions, linked compositions and recording places. It deliberately complements rather than duplicates the built-in Credits tab.
+
+## Wikimedia Liner Notes
+
+**Layer:** experimental v0.1 capability extension
+
+```text
+context.lookup
+```
+
+Uses a Wikidata-linked English Wikipedia page summary to add a short sourced liner-note card with explicit attribution/licence provenance.
+
+## ListenBrainz Community Pulse
+
+**Layer:** experimental v0.1 capability extension
+
+```text
+context.lookup
+extension.health
+```
+
+Shows aggregate listener/listen counts and popular recordings for the current artist using public ListenBrainz popularity endpoints. It demonstrates useful community context without requiring a ListenBrainz account or token.
+
 ## Public Domain Lyrics
 
 **Layer:** experimental v0.1 capability extension
