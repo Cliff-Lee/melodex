@@ -15,6 +15,7 @@ If you want a working scaffold immediately, use the [5-minute developer quicksta
 | Trust/maturity wording | [Terminology and claim policy](02_TERMINOLOGY_AND_CLAIMS.md) |
 | Terminology | [Glossary](15_GLOSSARY.md) |
 | Now Playing visualizer design and performance budget | [Living Canvas](18_LIVING_CANVAS.md) |
+| Linux package design and compatibility | [Linux distribution design](19_LINUX_DISTRIBUTION.md) |
 | Create an installable, declarative visualizer | [`.mdxviz` guide](../visualizers/README.md) |
 
 ## Capability extensions

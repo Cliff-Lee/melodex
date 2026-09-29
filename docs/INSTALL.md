@@ -16,6 +16,8 @@ Then choose your platform:
 | Intel Mac | `Melodex-macOS-intel.dmg` | [macOS](INSTALL_MACOS.md) |
 | Windows 10/11 | `Melodex-Windows-x64-Setup.exe` | [Windows](INSTALL_WINDOWS.md) |
 | Windows portable | `Melodex-Windows-portable.zip` | [Windows](INSTALL_WINDOWS.md) |
+| Ubuntu/Debian x86_64 | `Melodex-linux-x86_64.deb` | [Linux](INSTALL_LINUX.md) |
+| Other glibc Linux desktops x86_64 | `Melodex-linux-x86_64.AppImage` | [Linux](INSTALL_LINUX.md) |
 | Android phone/tablet | `Melodex-Android.apk` | [Android](INSTALL_ANDROID.md) |
 
 > **Android works differently.** The Android app is currently a client for a Melodex Provider Bridge running on a Mac, Windows PC, NAS, or home server. For the easiest Android setup, install Melodex on the computer first, add your music there, then pair the phone with that computer.

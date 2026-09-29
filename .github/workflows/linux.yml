@@ -1,0 +1,136 @@
+name: Build Linux packages
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Optional existing release tag to receive the built assets
+        required: false
+        type: string
+      release_sha:
+        description: Optional exact commit SHA to build for a release
+        required: false
+        type: string
+  pull_request:
+  push:
+    branches: [main]
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_sha || github.ref }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify app version
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          if [[ -n "$RELEASE_TAG" ]]; then
+            python scripts/version_check.py --release-tag "$RELEASE_TAG"
+          elif [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            python scripts/version_check.py --release-tag "$GITHUB_REF_NAME"
+          else
+            python scripts/version_check.py
+          fi
+      - name: Install Linux runtime and package tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            binutils desktop-file-utils dpkg-dev file \
+            libasound2 libdbus-1-3 libegl1 libfontconfig1 libfreetype6 \
+            libgl1 libglib2.0-0 libpulse0 libwayland-client0 \
+            libwayland-cursor0 libwayland-egl1 libxcb-cursor0 libxcb-icccm4 \
+            libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 \
+            libxcb-shape0 libxcb-shm0 libxcb-sync1 libxcb-util1 \
+            libxcb-xfixes0 libxcb-xinerama0 libxcb-xinput0 libxcb-xkb1 \
+            libxkbcommon0 libxkbcommon-x11-0 libx11-6 libxext6 libxrender1
+      - name: Build .deb and AppImage
+        run: |
+          chmod +x desktop/build_linux.sh
+          desktop/build_linux.sh
+      - name: Validate package metadata
+        run: |
+          desktop-file-validate desktop/linux/io.github.cliff_lee.Melodex.desktop
+          dpkg-deb --info desktop/dist/Melodex-linux-x86_64.deb
+          dpkg-deb --contents desktop/dist/Melodex-linux-x86_64.deb
+          test -x desktop/dist/Melodex-linux-x86_64.AppImage
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Melodex-Linux-x86_64
+          path: |
+            desktop/dist/Melodex-linux-x86_64.deb
+            desktop/dist/Melodex-linux-x86_64.AppImage
+
+  smoke-ubuntu:
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04, ubuntu-26.04]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: Melodex-Linux-x86_64
+          path: linux-artifacts
+      - name: Install the .deb and run packaged GUI checks
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ./linux-artifacts/Melodex-linux-x86_64.deb
+          chmod +x linux-artifacts/Melodex-linux-x86_64.AppImage
+          python3 desktop/linux/smoke_launch.py /usr/bin/melodex
+          python3 desktop/linux/smoke_launch.py linux-artifacts/Melodex-linux-x86_64.AppImage --appimage
+      - name: Validate AppStream metadata
+        if: matrix.os == 'ubuntu-26.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y appstream
+          appstreamcli validate --no-net desktop/linux/io.github.cliff_lee.Melodex.metainfo.xml
+
+  smoke-debian:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: Melodex-Linux-x86_64
+          path: linux-artifacts
+      - name: Install on Debian 12 and smoke-test both packages
+        run: |
+          chmod +x linux-artifacts/Melodex-linux-x86_64.AppImage
+          docker run --rm \
+            -v "$PWD:/workspace" -w /workspace \
+            debian:12-slim bash -euc '
+              apt-get update
+              apt-get install -y python3 ./linux-artifacts/Melodex-linux-x86_64.deb
+              python3 desktop/linux/smoke_launch.py /usr/bin/melodex
+              python3 desktop/linux/smoke_launch.py linux-artifacts/Melodex-linux-x86_64.AppImage --appimage
+            '
+
+  attach-release-assets:
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.release_tag != ''
+    needs: [build, smoke-ubuntu, smoke-debian]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: Melodex-Linux-x86_64
+          path: linux-artifacts
+      - name: Attach Linux packages to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.release_tag || github.ref_name }}
+          files: |
+            linux-artifacts/Melodex-linux-x86_64.deb
+            linux-artifacts/Melodex-linux-x86_64.AppImage
+          fail_on_unmatched_files: true

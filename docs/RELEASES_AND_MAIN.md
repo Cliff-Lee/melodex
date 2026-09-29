@@ -51,6 +51,7 @@ Examples:
 0.3.0 → 300
 0.3.1 → 301
 0.4.0 → 400
+0.5.0 → 500
 1.0.0 → 10000
 ```
 
@@ -66,7 +67,7 @@ Between tagged releases, `main` uses a development version such as:
 
 A release tag may not be built from a `.devN` application version.
 
-Before tagging `v0.4.0`, set:
+Before tagging `v0.5.0`, set:
 
 ```text
 0.4.0
@@ -77,7 +78,7 @@ across all app-version surfaces.
 The repository provides:
 
 ```bash
-python scripts/set_version.py 0.4.0
+python scripts/set_version.py 0.5.0
 python scripts/version_check.py
 ```
 
@@ -138,6 +139,8 @@ Tagged release workflows currently produce the standard assets documented in [In
 - Windows portable ZIP;
 - Android APK;
 - Android AAB;
+- Ubuntu/Debian `.deb` (x86_64);
+- Linux AppImage (x86_64);
 - source ZIP.
 
 Signing/notarisation can vary between preview releases. Platform installation guides should state the actual signing situation rather than assume every artefact is signed.

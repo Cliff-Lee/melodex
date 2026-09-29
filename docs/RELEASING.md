@@ -12,10 +12,10 @@ While development is in progress, `main` should normally use a development versi
 0.4.1.dev0
 ```
 
-When ready to release `0.4.0`, update every application-version surface with one command:
+When ready to release `0.5.0`, update every application-version surface with one command:
 
 ```bash
-python scripts/set_version.py 0.4.0
+python scripts/set_version.py 0.5.0
 ```
 
 That updates:
@@ -38,7 +38,7 @@ python scripts/version_check.py
 For a release tag, the same check is:
 
 ```bash
-python scripts/version_check.py --release-tag v0.4.0
+python scripts/version_check.py --release-tag v0.5.0
 ```
 
 A release check fails if:
@@ -82,7 +82,7 @@ Example:
 
 ```bash
 git add .
-git commit -m "release: v0.4.0"
+git commit -m "release: v0.5.0"
 git push origin main
 ```
 
@@ -90,10 +90,10 @@ When a strict release version such as `0.3.0` reaches `main`, the **Release** wo
 
 1. runs the release checks and test suites again;
 2. verifies the release tag name against all application-version surfaces;
-3. creates or verifies the exact `v0.4.0` tag at that commit;
+3. creates or verifies the exact `v0.5.0` tag at that commit;
 4. creates the GitHub Release and uploads the source archive;
-5. dispatches desktop and Android workflows against that exact commit;
-6. attaches their assets to the same GitHub Release.
+5. dispatches desktop, Android and Linux workflows against that exact commit;
+6. attaches their assets to the same GitHub Release after package smoke checks pass.
 
 Ordinary development versions such as `0.3.1.dev0` do **not** create a release.
 
@@ -109,6 +109,8 @@ The current workflows produce:
 - `Melodex-Windows-portable.zip`;
 - `Melodex-Android.apk`;
 - `Melodex-Android.aab`;
+- `Melodex-linux-x86_64.deb`;
+- `Melodex-linux-x86_64.AppImage`;
 - `Melodex-vX.Y.Z-source.zip`.
 
 Code signing/notarisation credentials are optional repository secrets. A preview release may therefore contain unsigned artifacts; platform installation docs must describe the actual signing situation.

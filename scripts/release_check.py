@@ -15,7 +15,10 @@ blocked_source_markers = [
 ]
 errors=[]
 for p in ROOT.rglob("*"):
-    if any(part in {".git", ".venv", "build", "dist", "__pycache__"} for part in p.parts):
+    if any(
+        part in {".git", ".venv", ".venv-build", "build", "dist", "__pycache__"}
+        for part in p.parts
+    ):
         continue
     if not p.is_file():
         continue

@@ -129,6 +129,12 @@ jobs:
             -f release_tag="$TAG" \
             -f release_sha="$GITHUB_SHA"
 
+          gh workflow run linux.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main \
+            -f release_tag="$TAG" \
+            -f release_sha="$GITHUB_SHA"
+
   source-from-manual-tag:
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
