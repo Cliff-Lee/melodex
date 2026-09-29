@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from .process_env import scrubbed_child_env
+from .child_host import python_child_command
 from .plugin_config import PluginConfigBroker, normalise_configuration
 
 
@@ -208,9 +209,9 @@ class ExternalExtension:
         entries = dict(self.descriptor.get("entrypoints") or {})
         python_entry = str(entries.get("python") or "").strip()
         if python_entry:
-            return [sys.executable, "-u", str(self.folder / python_entry)]
+            return python_child_command(self.folder / python_entry)
         if not entries and (self.folder / "plugin.py").is_file():
-            return [sys.executable, "-u", str(self.folder / "plugin.py")]
+            return python_child_command(self.folder / "plugin.py")
         native = str(
             entries.get(self._platform_entrypoint_key())
             or entries.get("executable")
