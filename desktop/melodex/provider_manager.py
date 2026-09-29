@@ -429,17 +429,18 @@ class ProviderManager:
         reason: str = "",
         checked: bool = False,
         provider_status: str = "",
+        redact_values: list[str] | None = None,
     ) -> dict[str, Any]:
         result = {
             "id": str(plugin_id),
             "name": str(name),
             "kind": str(kind),
             "status": normalise_health_status(status),
-            "message": safe_health_text(message),
+            "message": safe_health_text(message, redact_values),
             "check_scope": str(check_scope or ""),
-            "reason": safe_health_text(reason),
+            "reason": safe_health_text(reason, redact_values),
             "checked": bool(checked),
-            "provider_status": safe_health_text(provider_status)[:80],
+            "provider_status": safe_health_text(provider_status, redact_values)[:80],
         }
         if checked:
             result["checked_at"] = datetime.now(timezone.utc).isoformat()
@@ -536,6 +537,13 @@ class ProviderManager:
 
         provider = self.providers.get(plugin_id)
         if provider is not None and plugin_id not in {"local", "jamendo", "streams"}:
+            declarations = list(provider.info.configuration or [])
+            configured_values = self.plugin_config.values(plugin_id, declarations)
+            secret_values = [
+                str(configured_values.get(str(field.get("key") or "")) or "")
+                for field in declarations
+                if str(field.get("type") or "") == "secret"
+            ]
             raw = dict(provider.health_check(timeout=timeout) or {})
             provider_status = str(raw.get("status") or "")
             result = self._health_result(
@@ -548,6 +556,7 @@ class ProviderManager:
                 reason=str(raw.get("reason") or ""),
                 checked=True,
                 provider_status=provider_status,
+                redact_values=secret_values,
             )
             self._plugin_health_cache[plugin_id] = result
             return dict(result)
