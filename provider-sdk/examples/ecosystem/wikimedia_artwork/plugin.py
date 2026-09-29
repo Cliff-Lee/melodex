@@ -63,7 +63,7 @@ def artwork_lookup(params):
         return {"schema_version":"0.1","capability":"artwork","subject":subject,"assets":[],
                 "cache":{"policy":"session","ttl_seconds":None}}
 
-    limit = min(int(params.get("max_results") or 5), 20)
+    limit = max(1, min(int(params.get("max_results") or 5), 20))
     data = _get_json({
         "action":"query","format":"json","formatversion":"2",
         "generator":"search","gsrsearch":query,"gsrnamespace":"6","gsrlimit":str(limit),
@@ -76,6 +76,9 @@ def artwork_lookup(params):
         if not info_rows:
             continue
         info = info_rows[0]
+        url = str(info.get("url") or "").strip()
+        if not url:
+            continue
         ext = info.get("extmetadata") or {}
         license_name = _meta(ext, "LicenseShortName")
         license_url = _meta(ext, "LicenseUrl")
@@ -85,7 +88,7 @@ def artwork_lookup(params):
         if license_url:
             license_name = f"{license_name or 'Licence'} — {license_url}"
         assets.append({
-            "url": info["url"],
+            "url": url,
             "role": role,
             "width": info.get("width"),
             "height": info.get("height"),
