@@ -320,3 +320,104 @@ It uses only:
 - cached factual knowledge edges.
 
 Building a journey does not call an LLM or trigger metadata enrichment. Network enrichment remains a separate explicit user action.
+
+## 13. Journey Live
+
+Journey Live makes a designed journey adaptive **while it is playing** without turning it into an opaque recommender.
+
+Start with a successful Journey Designer result, then choose **Play live journey**.
+
+Melodex keeps:
+
+- the fixed destination;
+- the stages already completed;
+- the stages still unsatisfied;
+- the current routing mode;
+- the current track already playing.
+
+Only the **remaining queue tail** is eligible for replacement.
+
+### Explicit steering
+
+The first steering controls are:
+
+- **Calmer next**
+- **More energy next**
+- **Darker next**
+- **Brighter next**
+- **More rhythmic next**
+- **More familiar next**
+- **More surprising next**
+- **Rediscover next**
+
+A steering request is implemented as a temporary transparent semantic stage at the front of the unfinished journey.
+
+For example:
+
+```text
+current track
+    ↓
+More energy next
+    ↓
+Forgotten
+    ↓
+Energetic
+    ↓
+original destination
+```
+
+Once that temporary steering stage has been reached, later replans do not restart it.
+
+### Skip + replan
+
+During an active Journey Live session, the normal **Next** button and **Skip + replan** are explicit adaptation events.
+
+Melodex:
+
+1. advances to the next track normally;
+2. keeps that new current track playing;
+3. excludes the skipped track from the remaining plan;
+4. replans only what comes after the current track.
+
+If the skipped track was a semantic waypoint and it was abandoned within the first 30 seconds, that semantic stage is reopened and Journey Live looks for an alternative waypoint.
+
+This 30-second rule deliberately matches Melodex's existing conservative skip signal.
+
+Automatic completion and normal crossfades do **not** trigger Journey Live replanning.
+
+### Avoid current artist
+
+**Avoid current artist** adds the playing artist to the remaining-route exclusion set.
+
+That artist cannot be used as a new waypoint or intermediate bridge track. The already-playing track is never interrupted, and a fixed final destination remains allowed even when it belongs to an avoided artist.
+
+### Replan remaining
+
+**Replan remaining** rebuilds the unfinished journey from the current track using the current stages, avoid rules and routing mode.
+
+### Restore designed route
+
+**Restore designed route** clears Live avoid rules and reconstructs the unfinished portion from the original Journey Designer result.
+
+Completed stages remain completed; restore does not rewind playback.
+
+### Failure safety
+
+If a Live replan cannot satisfy the remaining route, Melodex leaves the existing queue unchanged and explains the failure.
+
+A stale replan result is also discarded if playback advances while planning; Melodex recalculates from the new current track.
+
+### Map refreshes
+
+Music Map refs are intentionally request-local. Refreshing/rebuilding the map therefore ends the active adaptation session rather than pretending old refs are still valid. Playback continues using the existing queue.
+
+### Local-only behavior
+
+Journey Live uses:
+
+- cached Flow route vectors;
+- current map taste/rediscovery values;
+- cached factual edges;
+- the original local Journey Designer result.
+
+It does not contact metadata services, extensions, an LLM or a cloud planner while adapting the route.
