@@ -89,6 +89,8 @@ Normal Now Playing enrichment can be remembered in the local Music Map knowledge
 
 **Journey Library** keeps two privacy classes separate. Exported `.mdxjourney` Recipes contain routing mode, semantic stages and deliberately chosen portable exact-track selectors; they exclude local paths, provider playback IDs, taste/rediscovery values and listening history. Journey Run history records personal adaptive decisions locally and is not exported by the current UI.
 
+**Journey Recipe Gallery** may contact the public GitHub-hosted Recipe registry when you open/refresh it. The registry request does not contain your library, Recipe collection, listening history or Journey Run history. If the registry is unavailable, Melodex can use a valid cache or its bundled starter Gallery.
+
 ## Local intelligence plugins
 
 The `library.suggest` contract is designed so useful local recommendation tools do not need the user's filesystem paths or taste database.
