@@ -437,9 +437,9 @@ class ProviderManager:
             "status": normalise_health_status(status),
             "message": safe_health_text(message),
             "check_scope": str(check_scope or ""),
-            "reason": str(reason or ""),
+            "reason": safe_health_text(reason),
             "checked": bool(checked),
-            "provider_status": str(provider_status or ""),
+            "provider_status": safe_health_text(provider_status)[:80],
         }
         if checked:
             result["checked_at"] = datetime.now(timezone.utc).isoformat()
