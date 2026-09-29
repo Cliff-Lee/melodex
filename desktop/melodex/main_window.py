@@ -25,6 +25,7 @@ from .music_map_model import build_music_map
 from .music_knowledge import MusicKnowledgeStore, build_knowledge_graph
 from .music_pathfinder import find_music_path
 from .music_journey import STAGE_LABELS, build_music_journey
+from .music_journey_live import STEERING_STAGES, replan_live_journey
 from .user_state import UserState
 from .player import FlowPlayer
 from .llm_bridge import LLMClient, LLMSettings, llm_track_summary
@@ -80,6 +81,13 @@ class MainWindow(QMainWindow):
         self.music_path_end_ref = ""
         self.music_path_result: dict[str, Any] = {}
         self.music_journey_stages_data: list[dict[str, Any]] = []
+        self.music_live_active = False
+        self.music_live_route: dict[str, Any] = {}
+        self.music_live_original_route: dict[str, Any] = {}
+        self.music_live_destination_ref = ""
+        self.music_live_avoid_refs: set[str] = set()
+        self.music_live_avoid_artists: set[str] = set()
+        self.music_live_replanning = False
         self.current_page = "home"
         self._closing = False
         self.externalCommand.connect(self._on_external_command)
@@ -92,6 +100,7 @@ class MainWindow(QMainWindow):
         self.player.positionChanged.connect(self._on_position)
         self.player.error.connect(lambda s: self.statusBar().showMessage(s, 7000))
         self.player.queueChanged.connect(self._refresh_queue)
+        self.player.manualAdvanced.connect(self._on_manual_advance)
 
         self._build_ui()
         self._show_home()
