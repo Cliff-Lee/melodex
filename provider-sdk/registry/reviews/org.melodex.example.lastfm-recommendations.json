@@ -7,7 +7,7 @@
       "reviewer": "Melodex project",
       "decision": "example-baseline",
       "version": "0.1.0",
-      "package_sha256": "5836a94157289692d7bcf73bd8465366cd27dc4cf78a71b69a30013990236ef6",
+      "package_sha256": "f0fbd747e25761d5fa9cc3c9575ce8c037415edde2985dfb60610822d325a3c4",
       "summary": "Baseline review of the project-maintained Last.fm recommendation example: package integrity, recommendation-only capability, brokered secret configuration, declared API/artwork hosts, source policy and deterministic fixture tests were checked for 0.1.0.",
       "checks": {
         "registry_schema": true,
