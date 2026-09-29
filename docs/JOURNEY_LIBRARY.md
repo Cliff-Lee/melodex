@@ -155,6 +155,14 @@ Then:
 
 You still choose the start and destination for this run.
 
+## Gallery
+
+Open **Journeys → Explore gallery…** to browse reusable Recipe ideas from the Melodex Journey Recipe registry.
+
+Gallery entries are validated Recipe data, not executable plugins. Melodex verifies the Recipe schema and canonical SHA-256 before adding one to your local library.
+
+See [Journey Recipe Gallery](JOURNEY_GALLERY.md).
+
 ## Import and export
 
 Use:

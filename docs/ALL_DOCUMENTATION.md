@@ -76,6 +76,7 @@ This page is intentionally exhaustive. For a shorter route by goal, use the [doc
 - [Rich Now Playing](RICH_NOW_PLAYING.md)
 - [Music Map](MUSIC_MAP.md)
 - [Journey Library](JOURNEY_LIBRARY.md)
+- [Journey Recipe Gallery](JOURNEY_GALLERY.md)
 
 ## LLM / AI configuration
 

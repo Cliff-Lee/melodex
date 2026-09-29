@@ -60,6 +60,7 @@ jobs:
           python scripts/navigation_check.py
           python scripts/terminology_check.py
           python scripts/ecosystem_check.py
+          python scripts/journey_registry_check.py
           python scripts/release_check.py
 
       - name: Run release test suites
@@ -141,6 +142,7 @@ jobs:
       - run: python scripts/navigation_check.py
       - run: python scripts/terminology_check.py
       - run: python scripts/ecosystem_check.py
+      - run: python scripts/journey_registry_check.py
       - run: python scripts/version_check.py --release-tag "${GITHUB_REF_NAME}"
       - run: python scripts/release_check.py
       - run: |

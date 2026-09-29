@@ -169,6 +169,8 @@ A selected node can be played, queued, or used as the anchor for a new Mind + Fl
 
 The **Journey Library** separates reusable intent from personal history. Recipes save/share routing mode + ordered stages as `.mdxjourney` without local paths or taste data; private Runs keep the designed route, final adapted route and explicit steering/skip/avoid decisions so either route can be inspected and replayed later.
 
+The **Journey Recipe Gallery** adds a zero-server-cost community discovery layer: browse tagged Recipe ideas, preview their stages, verify schema + SHA-256, and add them to your local library without installing executable code.
+
 The first implementation is deterministic, local and dependency-light rather than using a remote embedding service or opaque ML model.
 
 ## Reference extensions

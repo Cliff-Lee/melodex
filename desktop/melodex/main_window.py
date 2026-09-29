@@ -37,6 +37,7 @@ from .journey_replay import (
     portable_route_snapshot,
     summarize_journey_run,
 )
+from .journey_gallery import JourneyGalleryDialog
 from .user_state import UserState
 from .player import FlowPlayer
 from .llm_bridge import LLMClient, LLMSettings, llm_track_summary
@@ -420,12 +421,13 @@ class MainWindow(QMainWindow):
         )
         recipes_layout.addWidget(self.journey_recipes_list,1)
         recipe_buttons=QHBoxLayout()
+        gallery=QPushButton("Explore gallery…"); gallery.clicked.connect(self._journey_gallery)
         save_current=QPushButton("Save current design"); save_current.clicked.connect(self._journey_recipe_save_current)
         load_selected=QPushButton("Load into Music Map"); load_selected.clicked.connect(self._journey_recipe_load_selected)
         import_recipe=QPushButton("Import…"); import_recipe.clicked.connect(self._journey_recipe_import)
         export_recipe=QPushButton("Export…"); export_recipe.clicked.connect(self._journey_recipe_export)
         delete_recipe=QPushButton("Delete"); delete_recipe.clicked.connect(self._journey_recipe_delete)
-        for button in (save_current,load_selected,import_recipe,export_recipe,delete_recipe):
+        for button in (gallery,save_current,load_selected,import_recipe,export_recipe,delete_recipe):
             recipe_buttons.addWidget(button)
         recipes_layout.addLayout(recipe_buttons)
 
@@ -628,6 +630,15 @@ class MainWindow(QMainWindow):
         self.library_list.clear()
         for t in self.providers.local_catalog():
             it=QListWidgetItem(_track_text(t)); it.setData(Qt.UserRole,t); self.library_list.addItem(it)
+
+    def _journey_gallery(self):
+        dialog=JourneyGalleryDialog(
+            self.state,
+            self.data_dir,
+            on_added=self._refresh_journeys,
+            parent=self,
+        )
+        dialog.exec()
 
     def _refresh_journeys(self):
         if not hasattr(self,"journey_recipes_list") or not hasattr(self,"journey_runs_list"):
