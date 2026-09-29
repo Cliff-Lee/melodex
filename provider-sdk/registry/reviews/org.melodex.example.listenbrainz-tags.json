@@ -22,6 +22,28 @@
         "The example emits the ListenBrainz recording tag block; broader MetaBrainz metadata can have field- or dataset-specific licensing.",
         "Runtime process isolation is not a complete operating-system sandbox."
       ]
+    },
+    {
+      "reviewed_at": "2026-09-29T02:20:00Z",
+      "reviewer": "Melodex project",
+      "decision": "example-baseline",
+      "version": "0.1.1",
+      "package_sha256": "b97654b0e2f0a81eefe7446ca0aa420f03a06e8eb2130dd74b8292da8539def1",
+      "summary": "Reviewed the ListenBrainz tags 0.1.1 example after adding the optional v0.1 extension.health contract. The packaged bytes, descriptor, network permission, documented ListenBrainz service-status endpoint, deterministic fixture health response, metadata behavior, source policy and regression tests were checked.",
+      "checks": {
+        "registry_schema": true,
+        "package_integrity": true,
+        "manifest_descriptor": true,
+        "permissions": true,
+        "source_policy": true,
+        "tests": true,
+        "rights_notes": true
+      },
+      "limitations": [
+        "A READY active health result confirms the extension's declared health check succeeded; it is not a guarantee that every ListenBrainz endpoint or later request will succeed.",
+        "The example emits the ListenBrainz recording tag block; broader MetaBrainz metadata can have field- or dataset-specific licensing.",
+        "Runtime process isolation is not a complete operating-system sandbox."
+      ]
     }
   ]
 }
