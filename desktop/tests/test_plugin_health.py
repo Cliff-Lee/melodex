@@ -173,7 +173,12 @@ for line in sys.stdin:
         subject = params.get("subject") or {}
         title = (subject.get("hints") or {}).get("title")
         if title == "Fail":
-            raise RuntimeError("metadata failure")
+            print(json.dumps({
+                "jsonrpc":"2.0",
+                "id":req["id"],
+                "error":{"code":-32000,"message":"metadata failure"},
+            }), flush=True)
+            continue
         result = {
             "schema_version":"0.1",
             "capability":"metadata",
