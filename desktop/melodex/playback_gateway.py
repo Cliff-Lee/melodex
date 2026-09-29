@@ -76,7 +76,7 @@ class PlaybackGateway:
         self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
         self._thread.start()
 
-    def register(self, resource: dict[str, Any]) -> str:
+    def validate_resource(self, resource: dict[str, Any]) -> str:
         url = str(resource.get("stream_url") or resource.get("url") or "").strip()
         parsed = urlparse(url)
         if parsed.scheme not in {"http", "https"} or not parsed.hostname:
@@ -84,6 +84,10 @@ class PlaybackGateway:
         allowed = _allowed_hosts(resource)
         if allowed is not None and not _host_allowed(parsed.hostname, allowed):
             raise ValueError(f"Playback host is not declared by provider: {parsed.hostname}")
+        return url
+
+    def register(self, resource: dict[str, Any]) -> str:
+        url = self.validate_resource(resource)
         self._ensure_started()
         token = secrets.token_urlsafe(24)
         with self._lock:
