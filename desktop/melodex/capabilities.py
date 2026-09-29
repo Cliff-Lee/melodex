@@ -25,6 +25,7 @@ _METHODS = {
     "artwork": "artwork.lookup",
     "lyrics": "lyrics.lookup",
     "context": "context.lookup",
+    "library_suggestions": "library.suggest",
 }
 
 
@@ -960,6 +961,56 @@ class CapabilityBroker:
             "capability": "artwork",
             "subject": dict(subject),
             "assets": assets[: max(1, int(max_results))],
+            "errors": errors,
+        }
+
+    def suggest_library(
+        self,
+        tracks: list[dict[str, Any]],
+        intent: str,
+        seed_refs: list[str] | None = None,
+        limit: int = 12,
+        adventure: float = 0.35,
+    ) -> dict[str, Any]:
+        params: dict[str, Any] = {
+            "schema_version": "0.1",
+            "capability": "library_suggestions",
+            "intent": str(intent),
+            "tracks": [dict(x) for x in tracks if isinstance(x, dict)],
+            "limit": max(1, min(50, int(limit))),
+            "adventure": max(0.0, min(1.0, float(adventure))),
+        }
+        if seed_refs:
+            params["seed_refs"] = [str(x) for x in seed_refs[:2]]
+        results, errors = self._call_all("library_suggestions", params)
+        suggestions: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for order, (extension, result) in enumerate(results):
+            if str(result.get("intent") or intent) != str(intent):
+                continue
+            for raw in list(result.get("suggestions") or []):
+                if not isinstance(raw, dict):
+                    continue
+                ref = str(raw.get("ref") or "").strip()
+                if not ref or ref in seen:
+                    continue
+                seen.add(ref)
+                item = dict(raw)
+                item["_extension_id"] = extension.info.id
+                item["_extension_order"] = order
+                suggestions.append(item)
+        suggestions.sort(
+            key=lambda row: (
+                -float(row.get("score") or 0.0),
+                int(row.get("_extension_order") or 0),
+                str(row.get("ref") or ""),
+            )
+        )
+        return {
+            "schema_version": "0.1",
+            "capability": "library_suggestions",
+            "intent": str(intent),
+            "suggestions": suggestions[: max(1, min(50, int(limit)))],
             "errors": errors,
         }
 
