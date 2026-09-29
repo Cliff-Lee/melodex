@@ -156,6 +156,40 @@ class LocalIntelligenceService:
         ][:2]
         return profiles, seed_refs, ref_map, analysed
 
+    def analyse_catalog(self, catalog: list[dict[str, Any]]) -> dict[str, int]:
+        total = 0
+        analysed = 0
+        already_cached = 0
+        failed = 0
+        seen: set[str] = set()
+        for raw in catalog:
+            track = dict(raw or {})
+            key = UserState.track_key(track)
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            path = self._path(track)
+            if path is None or not path.exists():
+                continue
+            total += 1
+            cached = self.flow.cached_analysis_for(path)
+            if cached is not None:
+                already_cached += 1
+                analysed += 1
+                continue
+            result = self.flow.analysis_for(path)
+            if result is not None:
+                analysed += 1
+            else:
+                failed += 1
+        return {
+            "total": total,
+            "analysed": analysed,
+            "already_cached": already_cached,
+            "newly_analysed": max(0, analysed - already_cached),
+            "failed": failed,
+        }
+
     def suggest(
         self,
         intent: str,
