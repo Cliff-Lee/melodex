@@ -1,16 +1,12 @@
 from __future__ import annotations
 
-import hashlib
 import time
 from pathlib import Path
 
 from PySide6.QtCore import QLockFile, QObject, Signal
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 
-
-def instance_server_name(data_dir: Path) -> str:
-    digest = hashlib.sha256(str(Path(data_dir).resolve()).encode("utf-8")).hexdigest()[:16]
-    return f"melodex-{digest}"
+from .instance_identity import instance_server_name
 
 
 class SingleInstanceGuard(QObject):
