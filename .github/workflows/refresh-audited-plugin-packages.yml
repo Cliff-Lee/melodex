@@ -47,5 +47,6 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add provider-sdk/examples/ecosystem provider-sdk/registry
+          git add -f provider-sdk/registry/packages/*.mdxprovider
           git commit -m "Refresh audited first-party plugin packages"
           git push origin HEAD:fix/stabilize-v0.3.1-dev
