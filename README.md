@@ -161,7 +161,9 @@ The desktop **Music Map** turns cached Flow analysis into a zoomable local sonic
 
 The same fixed dots can switch from **Sounds similar · Flow** to **Actually connected** overlays built from cached artists/albums, production and performer credits, compositions/works, samples/remixes/versions, artist relationships and recording places. Normal listening grows that local knowledge index; explicit map enrichment can fill gaps.
 
-A selected node can be played, queued, or used as the anchor for a new Mind + Flow journey. **Pathfinder** can also connect two mapped tracks using Balanced, Sonic or Knowledge-first routing, drawing a numbered route and explaining every hop before it is played or queued.
+A selected node can be played, queued, or used as the anchor for a new Mind + Flow journey. **Pathfinder** can connect two mapped tracks using Balanced, Sonic or Knowledge-first routing, drawing a numbered route and explaining every hop before it is played or queued.
+
+**Journey Designer** layers transparent semantic waypoints on top: Calm, Darker, Forgotten, Energetic, Bright, Rhythmic, Familiar, Surprising, or an exact chosen track. Its first preset builds a **Calm → Darker → Forgotten → Energetic** arc and records the fit/reason for every selected stage.
 
 The first implementation is deterministic, local and dependency-light rather than using a remote embedding service or opaque ML model.
 
