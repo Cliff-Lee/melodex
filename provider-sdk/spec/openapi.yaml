@@ -141,6 +141,25 @@ paths:
         '400': {$ref: '#/components/responses/Error'}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '404': {$ref: '#/components/responses/Error'}
+  /v1/recommendations:
+    post:
+      operationId: recommendations
+      description: Optional provider-side recommendations for a normalized seed track.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecommendationRequest'
+      responses:
+        '200':
+          description: Recommendation results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecommendationResponse'
+        '400': {$ref: '#/components/responses/Error'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
 components:
   securitySchemes:
     BearerAuth:
@@ -271,6 +290,32 @@ components:
           enum: [none, session, temporary, offline_allowed]
         refresh_token: {type: [string, 'null']}
         request_timeout_seconds: {type: number, minimum: 1, maximum: 120}
+    RecommendationSeed:
+      type: object
+      additionalProperties: false
+      required: [artist, title]
+      properties:
+        artist: {type: string, minLength: 1}
+        title: {type: string, minLength: 1}
+        album: {type: string}
+        isrc: {type: [string, 'null']}
+        musicbrainz_recording_id: {type: [string, 'null']}
+    RecommendationRequest:
+      type: object
+      additionalProperties: false
+      required: [seed]
+      properties:
+        seed: {$ref: '#/components/schemas/RecommendationSeed'}
+        limit: {type: integer, minimum: 1, maximum: 100, default: 25}
+        cursor: {type: [string, 'null']}
+    RecommendationResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: {$ref: '#/components/schemas/Track'}
+        next_cursor: {type: [string, 'null']}
     ErrorEnvelope:
       type: object
       required: [error]
