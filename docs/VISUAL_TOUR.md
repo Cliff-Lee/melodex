@@ -91,7 +91,7 @@ The map is a zoomable local sonic landscape: nearby dots share similar Flow feat
 
 The separate **Connections** selector lets the same fixed map answer a different question. Use **Sounds similar · Flow** for sonic-neighbour edges, or **Actually connected · all** for cached factual links such as common artists, producers, performers, works, samples/remixes and recording places.
 
-Select a mapped track to play it, queue it, or choose **Start journey here**. That turns visual exploration back into a normal Melodex listening session.
+Select a mapped track to play it, queue it, or choose **Start Mind journey here**. That turns visual exploration back into a normal Melodex listening session.
 
 For a more deliberate route, use **Pathfinder**: set a start and destination, choose Balanced/Sonic/Knowledge-first, then inspect the numbered route and the reason for every hop before playing or queueing it.
 
