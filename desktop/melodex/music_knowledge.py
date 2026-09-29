@@ -377,7 +377,9 @@ def build_knowledge_graph(
                         key = "context:" + _norm(name)
                         work_refs[key].append(ref)
                         work_labels[key] = name
-            elif card_id == "recording-places" or "record" in _norm(title) and "place" in _norm(title):
+            elif card_id == "recording-places" or (
+                "record" in _norm(title) and "place" in _norm(title)
+            ):
                 for item in items:
                     name = str(item.get("title") or "").strip()
                     if name:
