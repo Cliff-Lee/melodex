@@ -125,7 +125,8 @@ def respond(request):
 
     if method == "catalog.search":
         query = str(params.get("query") or "").strip()
-        limit = max(1, min(int(params.get("limit") or 25), 50))
+        raw_limit = params.get("limit")
+        limit = 25 if raw_limit is None else max(1, min(int(raw_limit), 50))
         rows = _get_json("/json/stations/search", {
             "name":query,"limit":limit,"hidebroken":"true","order":"votes","reverse":"true"
         })
