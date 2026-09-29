@@ -94,7 +94,7 @@ def _find(track_id):
         if row:
             CACHE[track_id] = row
             return row
-    url = f"https://api.openverse.org/v1/audio/{urllib.parse.quote(track_id)}/"
+    url = f"https://api.openverse.org/v1/audio/{urllib.parse.quote(track_id, safe='')}/"
     req = urllib.request.Request(
         url,
         headers={"User-Agent": USER_AGENT, "Accept": "application/json"},
@@ -119,14 +119,32 @@ def respond(request):
         }
 
     if method == "provider.health":
-        return {"status": "ready"}
+        if os.getenv("MELODEX_EXAMPLE_FIXTURES") == "1":
+            return {"status":"ready","message":"Openverse fixture is available"}
+        try:
+            data = _get_json({"q":"music","page_size":"1","mature":"false"})
+            ready = isinstance(data, dict) and isinstance(data.get("results"), list)
+            return {
+                "status":"ready" if ready else "degraded",
+                "message":"Openverse API is reachable" if ready else "Openverse returned an unexpected response",
+            }
+        except Exception as exc:
+            return {"status":"unavailable","message":f"Openverse unavailable: {exc}"}
 
     if method == "catalog.search":
         query = str(params.get("query") or "").strip()
         limit = max(1, min(int(params.get("limit") or 25), 50))
         data = _get_json({"q": query, "page_size": str(limit), "mature": "false"})
         rows = data.get("results") or []
-        return {"items": [_to_track(row) for row in rows[:limit]], "next_cursor": None}
+        items = []
+        for row in rows[:limit]:
+            if not isinstance(row, dict):
+                continue
+            try:
+                items.append(_to_track(row))
+            except RuntimeError:
+                continue
+        return {"items": items, "next_cursor": None}
 
     if method == "catalog.get_track":
         track_id = str(params.get("provider_track_id") or params.get("track_id") or "")
