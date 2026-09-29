@@ -199,3 +199,40 @@ Mind + Flow builds the listening path
 ```
 
 Music Map is intended to be a listening interface, not just a visualization.
+
+## 11. Pathfinder
+
+Pathfinder turns the map into an explainable route planner.
+
+Workflow:
+
+1. click a mapped track and choose **Set start**;
+2. click another mapped track and choose **Set destination**;
+3. choose a routing mode;
+4. choose **Find path**.
+
+Available modes:
+
+- **Balanced** — combines Flow similarity and factual knowledge;
+- **Sonic** — uses Flow similarity only;
+- **Knowledge-first** — prefers documented relationships and uses an explicitly labelled sonic bridge only when needed to cross disconnected factual regions.
+
+The route is computed in the full standardized Flow feature space rather than by measuring 2D screen distance.
+
+Each hop records its reason. Examples:
+
+```text
+Flow similarity 87%
+
+Producer P · producer · Flow similarity 61%
+
+shared work: Work W · Flow similarity 54%
+
+samples · Flow similarity 32%
+```
+
+The map draws the resulting route as a numbered overlay while a step list shows the same explanations in text.
+
+Choose **Play route** to replace the queue with the route, or **Queue route** to append it.
+
+Pathfinder is deterministic and local. Finding a route does not contact MusicBrainz, context plugins, an LLM or a remote recommender. It only uses the sonic vectors and factual knowledge already present in the current map.
