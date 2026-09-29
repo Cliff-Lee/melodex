@@ -391,6 +391,70 @@ class MainWindow(QMainWindow):
         self.music_path_steps.addItem("Pathfinder explanations will appear here.")
         l.addWidget(self.music_path_steps)
 
+    def _build_journeys(self):
+        l=self._page_layout(
+            "journeys",
+            "Journey library",
+            "Save reusable journey intent separately from private listening history. Recipes can be imported/exported without exposing local paths; runs show how live listening actually diverged from the design.",
+        )
+        columns=QHBoxLayout()
+
+        recipes_panel=QWidget()
+        recipes_layout=QVBoxLayout(recipes_panel)
+        recipe_title=QLabel("Recipes")
+        recipe_title.setStyleSheet("font-size:18px;font-weight:700")
+        recipes_layout.addWidget(recipe_title)
+        recipe_help=QLabel(
+            "Recipes store routing mode + ordered semantic/exact waypoints. "
+            "Choose fresh start/destination tracks when you reuse them."
+        )
+        recipe_help.setWordWrap(True)
+        recipe_help.setStyleSheet("color:#aab0ba")
+        recipes_layout.addWidget(recipe_help)
+        self.journey_recipes_list=QListWidget()
+        self.journey_recipes_list.itemDoubleClicked.connect(
+            lambda _item:self._journey_recipe_load_selected()
+        )
+        recipes_layout.addWidget(self.journey_recipes_list,1)
+        recipe_buttons=QHBoxLayout()
+        save_current=QPushButton("Save current design"); save_current.clicked.connect(self._journey_recipe_save_current)
+        load_selected=QPushButton("Load into Music Map"); load_selected.clicked.connect(self._journey_recipe_load_selected)
+        import_recipe=QPushButton("Import…"); import_recipe.clicked.connect(self._journey_recipe_import)
+        export_recipe=QPushButton("Export…"); export_recipe.clicked.connect(self._journey_recipe_export)
+        delete_recipe=QPushButton("Delete"); delete_recipe.clicked.connect(self._journey_recipe_delete)
+        for button in (save_current,load_selected,import_recipe,export_recipe,delete_recipe):
+            recipe_buttons.addWidget(button)
+        recipes_layout.addLayout(recipe_buttons)
+
+        runs_panel=QWidget()
+        runs_layout=QVBoxLayout(runs_panel)
+        runs_title=QLabel("Recent runs")
+        runs_title.setStyleSheet("font-size:18px;font-weight:700")
+        runs_layout.addWidget(runs_title)
+        runs_help=QLabel(
+            "Run history is private local state: original design, final adapted route, "
+            "and the steering/skip/avoid decisions that changed it."
+        )
+        runs_help.setWordWrap(True)
+        runs_help.setStyleSheet("color:#aab0ba")
+        runs_layout.addWidget(runs_help)
+        self.journey_runs_list=QListWidget()
+        self.journey_runs_list.itemDoubleClicked.connect(
+            lambda _item:self._journey_run_inspect()
+        )
+        runs_layout.addWidget(self.journey_runs_list,1)
+        run_buttons=QHBoxLayout()
+        inspect=QPushButton("Inspect"); inspect.clicked.connect(self._journey_run_inspect)
+        replay_original=QPushButton("Replay designed"); replay_original.clicked.connect(lambda:self._journey_run_replay("original"))
+        replay_final=QPushButton("Replay final"); replay_final.clicked.connect(lambda:self._journey_run_replay("final"))
+        run_buttons.addWidget(inspect); run_buttons.addWidget(replay_original); run_buttons.addWidget(replay_final)
+        run_buttons.addStretch(1)
+        runs_layout.addLayout(run_buttons)
+
+        columns.addWidget(recipes_panel,1)
+        columns.addWidget(runs_panel,1)
+        l.addLayout(columns,1)
+
     def _build_playlists(self):
         l=self._page_layout("playlists","Playlists","Saved journeys and imported playlists live locally. Import or export XSPF, M3U and M3U8.")
         self.playlists_list=QListWidget(); self.playlists_list.itemDoubleClicked.connect(self._play_saved_playlist); l.addWidget(self.playlists_list,1)
