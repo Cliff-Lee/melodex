@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from .plugin_onboarding import configuration_state
-
 from PySide6.QtWidgets import (
     QCheckBox,
     QDialog,
