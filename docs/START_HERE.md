@@ -45,7 +45,7 @@ Everything involving Jamendo, third-party providers, Provider Bridge or an LLM i
 
 - **Play for me** — build a listening session.
 - **Flow queue** — resequence the upcoming queue.
-- **Music map** — explore analysed local music spatially, switch between sonic similarity and factual connections, route between tracks with Pathfinder, or design staged local journeys.
+- **Music map** — explore analysed local music spatially, switch between sonic/factual connections, route with Pathfinder, design staged journeys, or adapt the unfinished route live while listening.
 - **Keep** — tell Melodex this belongs in your taste.
 - **♥** — strong positive feedback.
 - **••• → Save a moment** — remember the exact point in a song.
