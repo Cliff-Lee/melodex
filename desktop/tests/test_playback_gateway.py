@@ -126,3 +126,25 @@ def test_gateway_checks_redirect_host_before_following():
         redirect.server_close()
         target.shutdown()
         target.server_close()
+
+
+def test_gateway_validates_direct_external_resource_without_starting_proxy():
+    gateway = PlaybackGateway()
+    try:
+        url = gateway.validate_resource(
+            {
+                "url": "https://media.example/audio.mp3",
+                "_playback_allowed_hosts": ["media.example"],
+            }
+        )
+        assert url == "https://media.example/audio.mp3"
+        assert gateway.port == 0
+        with pytest.raises(ValueError, match="not declared"):
+            gateway.validate_resource(
+                {
+                    "url": "https://other.example/audio.mp3",
+                    "_playback_allowed_hosts": ["media.example"],
+                }
+            )
+    finally:
+        gateway.close()
