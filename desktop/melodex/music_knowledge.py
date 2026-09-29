@@ -298,6 +298,7 @@ def build_knowledge_graph(
     artist_names: dict[str, str] = {}
     people_refs: dict[str, list[str]] = defaultdict(list)
     people_labels: dict[str, str] = {}
+    people_kinds: dict[str, str] = {}
     work_refs: dict[str, list[str]] = defaultdict(list)
     work_labels: dict[str, str] = {}
     place_refs: dict[str, list[str]] = defaultdict(list)
@@ -352,9 +353,12 @@ def build_knowledge_graph(
                 work_refs[key].append(ref)
                 work_labels[key] = name
             else:
-                key = mbid or ("name:" + _norm(name))
+                role_kind = _role_group(role)
+                person_key = mbid or ("name:" + _norm(name))
+                key = f"{role_kind}|{person_key}"
                 people_refs[key].append(ref)
                 people_labels[key] = f"{name} · {role}"
+                people_kinds[key] = role_kind
 
         for card in list(payload.get("context") or []):
             if not isinstance(card, dict):
@@ -433,7 +437,7 @@ def build_knowledge_graph(
         _connect_group(
             edges,
             refs,
-            kind=_role_group(people_labels.get(key, "")),
+            kind=people_kinds.get(key) or "people",
             label=people_labels.get(key) or "Shared credit",
             strength=0.90,
             evidence="MusicBrainz recording credits",
