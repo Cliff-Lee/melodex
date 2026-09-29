@@ -31,7 +31,7 @@ def _get_json(recording_mbid):
     if os.getenv("MELODEX_EXAMPLE_FIXTURES") == "1":
         return _fixture()
     inc = "recording-rels+release-rels+artist-rels+work-rels+place-rels"
-    url = API + urllib.parse.quote(recording_mbid) + "?" + urllib.parse.urlencode(
+    url = API + urllib.parse.quote(recording_mbid, safe="") + "?" + urllib.parse.urlencode(
         {"fmt": "json", "inc": inc}
     )
     request = urllib.request.Request(
@@ -183,7 +183,8 @@ def context_lookup(params):
 
         lower = rel_type.casefold()
         if kind == "place":
-            places.append(item)
+            if "record" in lower:
+                places.append(item)
         elif kind == "work":
             works.append(item)
         elif badge or kind in {"recording", "release"}:
