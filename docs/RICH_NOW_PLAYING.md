@@ -1,6 +1,6 @@
 # Melodex Rich Now Playing
 
-Rich Now Playing separates **audio playback** from **music knowledge**. A track can be played from any Melodex provider while its identity, artwork, credits and local lyrics are enriched independently.
+Rich Now Playing separates **audio playback** from **music knowledge**. A track can be played from any Melodex provider while its identity, artwork, credits, local lyrics and plugin-supplied context are enriched independently.
 
 ## Metadata stack
 
@@ -8,6 +8,7 @@ Rich Now Playing separates **audio playback** from **music knowledge**. A track 
 2. **Playback provider** — provider artwork when supplied.
 3. **MusicBrainz** — recording/artist/release identity, artist relationships, tags/genres and structured credits.
 4. **Cover Art Archive** — cached release or release-group artwork.
+5. **Context extensions** — optional sourced cards such as liner notes, song relationships and aggregate listening context.
 
 Melodex uses a meaningful User-Agent, caches MusicBrainz responses, and serializes uncached requests so it does not exceed the public API's one-request-per-second guidance.
 
@@ -31,6 +32,7 @@ The **Now playing** page provides:
 - synchronized lyric highlighting as playback advances;
 - artist/band membership and related-project relationships when MusicBrainz has them;
 - structured recording/work credits;
+- a **Context** tab populated by `context.lookup` extensions;
 - MusicBrainz identity links and metadata-match confidence.
 
 All enrichment is asynchronous; playback is not blocked by network metadata lookups.

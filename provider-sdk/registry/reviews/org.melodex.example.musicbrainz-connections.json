@@ -1,0 +1,28 @@
+{
+  "schema_version": "0.1",
+  "plugin_id": "org.melodex.example.musicbrainz-connections",
+  "events": [
+    {
+      "reviewed_at": "2026-09-29T03:00:00Z",
+      "reviewer": "Melodex project",
+      "decision": "example-baseline",
+      "version": "0.1.0",
+      "package_sha256": "91de40de3065950c4749ee284b5f3af471eeaee82f96b5f133b81713086a701a",
+      "summary": "Baseline review of the MusicBrainz Song Connections reference: exact package bytes, context descriptor, declared MusicBrainz host, relationship-only source policy, deterministic fixture behavior, context-card provenance and tests were checked for 0.1.0.",
+      "checks": {
+        "registry_schema": true,
+        "package_integrity": true,
+        "manifest_descriptor": true,
+        "permissions": true,
+        "source_policy": true,
+        "tests": true,
+        "rights_notes": true
+      },
+      "limitations": [
+        "Relationship coverage is community-maintained and may be incomplete or occasionally model a connection differently than a listener expects.",
+        "A missing relationship in MusicBrainz is not evidence that no sample/remix/version relationship exists.",
+        "Runtime process isolation is not a complete operating-system sandbox."
+      ]
+    }
+  ]
+}

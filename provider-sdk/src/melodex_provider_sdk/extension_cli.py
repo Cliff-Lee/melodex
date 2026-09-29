@@ -16,6 +16,7 @@ METHODS = {
     "metadata": "metadata.enrich",
     "artwork": "artwork.lookup",
     "lyrics": "lyrics.lookup",
+    "context": "context.lookup",
 }
 
 
@@ -74,6 +75,7 @@ def _plugin_template(capability: str) -> str:
         "metadata": '{"schema_version":"0.1","capability":"metadata","subject":params["subject"],"fields":{}}',
         "artwork": '{"schema_version":"0.1","capability":"artwork","subject":params["subject"],"assets":[]}' ,
         "lyrics": '{"schema_version":"0.1","capability":"lyrics","subject":params["subject"],"entries":[]}' ,
+        "context": '{"schema_version":"0.1","capability":"context","subject":params["subject"],"cards":[]}' ,
     }
     body = bodies[capability]
     return f'''from __future__ import annotations
@@ -216,7 +218,7 @@ def command_pack(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="melodex-extension")
-    parser.add_argument("--version", action="version", version="%(prog)s 0.7.0")
+    parser.add_argument("--version", action="version", version="%(prog)s 0.8.0")
     sub = parser.add_subparsers(dest="command", required=True)
     p = sub.add_parser("init", help="create a capability extension skeleton")
     p.add_argument("directory")

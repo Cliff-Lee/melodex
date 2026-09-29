@@ -321,7 +321,7 @@ def command_doctor(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="melodex-provider")
-    parser.add_argument("--version", action="version", version="%(prog)s 0.7.0")
+    parser.add_argument("--version", action="version", version="%(prog)s 0.8.0")
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_init = sub.add_parser("init", help="create a provider skeleton")

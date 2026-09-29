@@ -75,6 +75,7 @@ class PluginDirectoryDialog(QDialog):
             "metadata",
             "artwork",
             "lyrics",
+            "context",
         ):
             self.capability.addItem(value, value)
         self.refresh_button = QPushButton("Refresh")

@@ -1,6 +1,6 @@
 {
   "schema_version": "0.1",
-  "updated_at": "2026-09-29T02:20:00Z",
+  "updated_at": "2026-09-29T03:00:00Z",
   "plugins": [
     {
       "id": "org.melodex.example.radio-browser",
@@ -354,6 +354,124 @@
       "review": {
         "record": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/registry/reviews/org.melodex.example.lastfm-recommendations.json",
         "last_reviewed_at": "2026-09-29T01:30:00Z"
+      }
+    },
+    {
+      "id": "org.melodex.example.musicbrainz-connections",
+      "name": "MusicBrainz Song Connections",
+      "publisher": "Melodex examples",
+      "version": "0.1.0",
+      "kind": "enrichment",
+      "status": "example",
+      "description": "Musical relationship context showing samples, remixes, versions, linked works and recording places from the MusicBrainz graph.",
+      "capabilities": [
+        "context"
+      ],
+      "license": "MIT",
+      "source": {
+        "repository": "https://github.com/Cliff-Lee/melodex/tree/main/provider-sdk/examples/ecosystem/musicbrainz_connections",
+        "homepage": "https://musicbrainz.org/",
+        "documentation": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/musicbrainz_connections/README.md"
+      },
+      "distribution": {
+        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/main/provider-sdk/registry/packages/musicbrainz-connections-0.1.0.mdxplugin",
+        "format": "mdxplugin",
+        "sha256": "91de40de3065950c4749ee284b5f3af471eeaee82f96b5f133b81713086a701a",
+        "size_bytes": 12466
+      },
+      "compatibility": {
+        "melodex_min": "0.3.1",
+        "mpp": null,
+        "contracts": {
+          "context": "0.1"
+        }
+      },
+      "permissions": [
+        "network:musicbrainz.org"
+      ],
+      "source_policy": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/musicbrainz_connections/SOURCE_POLICY.md",
+      "review": {
+        "record": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/registry/reviews/org.melodex.example.musicbrainz-connections.json",
+        "last_reviewed_at": "2026-09-29T03:00:00Z"
+      }
+    },
+    {
+      "id": "org.melodex.example.wikimedia-liner-notes",
+      "name": "Wikimedia Liner Notes",
+      "publisher": "Melodex examples",
+      "version": "0.1.0",
+      "kind": "enrichment",
+      "status": "example",
+      "description": "Short sourced artist liner-note context from Wikidata-linked English Wikipedia summaries.",
+      "capabilities": [
+        "context"
+      ],
+      "license": "MIT",
+      "source": {
+        "repository": "https://github.com/Cliff-Lee/melodex/tree/main/provider-sdk/examples/ecosystem/wikimedia_liner_notes",
+        "homepage": "https://www.wikipedia.org/",
+        "documentation": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/wikimedia_liner_notes/README.md"
+      },
+      "distribution": {
+        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/main/provider-sdk/registry/packages/wikimedia-liner-notes-0.1.0.mdxplugin",
+        "format": "mdxplugin",
+        "sha256": "8a59f28392d8fbf943a4c66326e3ad66ee091fe4ea95df77d9f31250f29685ba",
+        "size_bytes": 9180
+      },
+      "compatibility": {
+        "melodex_min": "0.3.1",
+        "mpp": null,
+        "contracts": {
+          "context": "0.1"
+        }
+      },
+      "permissions": [
+        "network:www.wikidata.org",
+        "network:en.wikipedia.org"
+      ],
+      "source_policy": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/wikimedia_liner_notes/SOURCE_POLICY.md",
+      "review": {
+        "record": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/registry/reviews/org.melodex.example.wikimedia-liner-notes.json",
+        "last_reviewed_at": "2026-09-29T03:00:00Z"
+      }
+    },
+    {
+      "id": "org.melodex.example.listenbrainz-community-pulse",
+      "name": "ListenBrainz Community Pulse",
+      "publisher": "Melodex examples",
+      "version": "0.1.0",
+      "kind": "enrichment",
+      "status": "example",
+      "description": "Aggregate listener/listen counts and popular recordings for the current artist, without requiring a ListenBrainz account.",
+      "capabilities": [
+        "context"
+      ],
+      "license": "MIT",
+      "source": {
+        "repository": "https://github.com/Cliff-Lee/melodex/tree/main/provider-sdk/examples/ecosystem/listenbrainz_community_pulse",
+        "homepage": "https://listenbrainz.org/",
+        "documentation": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/listenbrainz_community_pulse/README.md"
+      },
+      "distribution": {
+        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/main/provider-sdk/registry/packages/listenbrainz-community-pulse-0.1.0.mdxplugin",
+        "format": "mdxplugin",
+        "sha256": "9a39eb5278143bcb27d8af89c916025d1583c165c83bf0a2e6500940358b7851",
+        "size_bytes": 12599
+      },
+      "compatibility": {
+        "melodex_min": "0.3.1",
+        "mpp": null,
+        "contracts": {
+          "context": "0.1"
+        }
+      },
+      "permissions": [
+        "network:api.listenbrainz.org"
+      ],
+      "source_policy": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/listenbrainz_community_pulse/SOURCE_POLICY.md",
+      "review": {
+        "record": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/registry/reviews/org.melodex.example.listenbrainz-community-pulse.json",
+        "last_reviewed_at": "2026-09-29T03:00:00Z"
       }
     }
   ]

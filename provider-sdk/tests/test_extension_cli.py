@@ -150,3 +150,18 @@ def test_extension_descriptor_rejects_invalid_health_method():
     }
     errors = validation_errors(descriptor)
     assert any("extension.health" in error for error in errors)
+
+
+def test_extension_cli_can_scaffold_context_extension(tmp_path: Path):
+    root = tmp_path / "context-extension"
+    args = argparse.Namespace(
+        directory=str(root),
+        id="org.example.context",
+        name="Example Context",
+        capability="context",
+    )
+    assert command_init(args) == 0
+    descriptor = json.loads((root / "capabilities.json").read_text("utf-8"))
+    assert descriptor["contracts"][0]["method"] == "context.lookup"
+    plugin = (root / "plugin.py").read_text("utf-8")
+    assert '"capability":"context"' in plugin

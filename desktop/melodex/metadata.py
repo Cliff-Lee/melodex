@@ -381,6 +381,7 @@ class RichMetadataService:
             "end": str(life.get("end") or ""), "ended": bool(life.get("ended")),
             "disambiguation": str(data.get("disambiguation") or ""), "genres": genres[:10],
             "members": members[:30], "related": related[:20], "links": links[:20],
+            "wikidata_qid": self._extract_wikidata_qid({"links": links}),
         }
 
     def recording_credits(self, recording_mbid: str) -> list[dict[str, str]]:
@@ -811,6 +812,28 @@ class RichMetadataService:
 
         out["identity"] = identity_data
         return out
+
+    def enrich_context(
+        self, track: dict[str, Any], identity: dict[str, Any]
+    ) -> dict[str, Any]:
+        broker = self.capability_broker
+        if broker is None:
+            return {"cards": [], "errors": []}
+        try:
+            result = broker.lookup_context(
+                broker.entity_ref(dict(track or {}), dict(identity or {})),
+                max_cards=20,
+            )
+            return {
+                "cards": [
+                    dict(card)
+                    for card in list(result.get("cards") or [])
+                    if isinstance(card, dict)
+                ],
+                "errors": [str(x) for x in list(result.get("errors") or []) if x],
+            }
+        except Exception as exc:
+            return {"cards": [], "errors": [f"Context: {exc}"]}
 
     def enrich_artwork(self, track: dict[str, Any], identity: dict[str, Any]) -> dict[str, Any]:
         try:

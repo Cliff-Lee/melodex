@@ -27,8 +27,9 @@ The page updates progressively:
 4. artist details
 5. recording/work credits
 6. release timeline metadata
-7. artist photograph
-8. only then a small subset of release-cover thumbnails
+7. plugin context cards after identity/credit prerequisites are available
+8. artist photograph
+9. only then a small subset of release-cover thumbnails
 
 Each stage is stale-result protected using the current track key. Changing tracks while a request is in flight cannot overwrite the new track.
 
@@ -37,7 +38,7 @@ Each stage is stale-result protected using the current track key. Changing track
 The page now shows progress such as:
 
 - `Identifying with MusicBrainz…`
-- `✓ MusicBrainz match 98% · loading artwork, artist, credits…`
+- `✓ MusicBrainz match 98% · loading artwork, credits, context…`
 - `✓ MusicBrainz match 98% · enrichment complete`
 - `No confident MusicBrainz match — showing local metadata`
 

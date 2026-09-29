@@ -1,0 +1,28 @@
+{
+  "schema_version": "0.1",
+  "plugin_id": "org.melodex.example.listenbrainz-community-pulse",
+  "events": [
+    {
+      "reviewed_at": "2026-09-29T03:00:00Z",
+      "reviewer": "Melodex project",
+      "decision": "example-baseline",
+      "version": "0.1.0",
+      "package_sha256": "9a39eb5278143bcb27d8af89c916025d1583c165c83bf0a2e6500940358b7851",
+      "summary": "Baseline review of the ListenBrainz Community Pulse reference: exact package bytes, context and health descriptors, declared ListenBrainz host, privacy-minimal aggregate endpoints, synthetic fixtures, provenance and tests were checked for 0.1.0.",
+      "checks": {
+        "registry_schema": true,
+        "package_integrity": true,
+        "manifest_descriptor": true,
+        "permissions": true,
+        "source_policy": true,
+        "tests": true,
+        "rights_notes": true
+      },
+      "limitations": [
+        "Listen/listener counts reflect ListenBrainz participation and should not be interpreted as total global consumption or a measure of artistic quality.",
+        "Popularity aggregates can change or lag and the extension intentionally uses a short cache lifetime.",
+        "Runtime process isolation is not a complete operating-system sandbox."
+      ]
+    }
+  ]
+}

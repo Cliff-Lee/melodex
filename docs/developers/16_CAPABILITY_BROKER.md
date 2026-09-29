@@ -11,6 +11,7 @@ identity.resolve
 metadata.enrich
 artwork.lookup
 lyrics.lookup
+context.lookup
 ```
 
 Capability extensions may also declare the optional extension-level health method:
@@ -34,9 +35,10 @@ Capability Broker
       ├── identity extension(s)
       ├── metadata extension(s)
       ├── artwork extension(s)
-      └── lyrics extension(s)
+      ├── lyrics extension(s)
+      └── context extension(s)
       ↓
-progressively enriched Melodex entity
+progressively enriched Melodex entity / Now Playing cards
 ```
 
 Playback does not wait for every enrichment service.
@@ -120,6 +122,20 @@ The Sources page shows this health state, and `GET /v1/extensions` exposes the s
 When an extension declares the optional `extension.health` contract, **Test plugin** calls it with a bounded timeout. The response must include `upstream_checked`; Melodex labels the result as an upstream check only when that flag is true. Extensions without the optional contract keep the existing process-start fallback.
 
 Plugin-supplied exception messages and stderr are not copied into the public health record.
+
+## Context cards
+
+`context.lookup` is the host-rendered surface for richer listening context. Extensions return sourced cards rather than arbitrary plugin-specific HTML or widgets.
+
+v0.1 supports:
+
+```text
+text   — a sourced short-form note or explanation
+list   — related recordings, works, places, people or other linked entities
+facts  — labelled scalar facts such as listeners or release statistics
+```
+
+Melodex escapes plugin text and renders the cards itself. This gives context plugins expressive output without granting them a private GUI surface or requiring core code for each plugin.
 
 ## Provenance
 
