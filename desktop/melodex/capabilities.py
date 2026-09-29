@@ -292,7 +292,7 @@ class ExternalExtension:
             request = {
                 "jsonrpc": "2.0",
                 "id": request_id,
-                "method": contract.method,
+                "method": str(method),
                 "params": request_params,
             }
             assert proc.stdin
@@ -385,7 +385,24 @@ class ExternalExtension:
                 "reason": "protocol_error",
                 "upstream_checked": False,
             }
-        status = str(raw.get("status") or "error")
+        if str(raw.get("schema_version") or "") != "0.1":
+            return {
+                "status": "error",
+                "message": "Extension returned an invalid health schema version",
+                "check_scope": "upstream",
+                "reason": "protocol_error",
+                "upstream_checked": False,
+            }
+        allowed_statuses = {"ready", "auth_required", "unavailable", "degraded", "error"}
+        status = str(raw.get("status") or "")
+        if status not in allowed_statuses or not isinstance(raw.get("upstream_checked"), bool):
+            return {
+                "status": "error",
+                "message": "Extension returned an invalid health response",
+                "check_scope": "upstream",
+                "reason": "protocol_error",
+                "upstream_checked": False,
+            }
         upstream_checked = bool(raw.get("upstream_checked"))
         return {
             "status": status,
