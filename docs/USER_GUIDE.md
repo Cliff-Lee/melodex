@@ -33,7 +33,16 @@ Click a node to inspect it. Double-click to play it. The page can also **Add sel
 
 The map uses cached local analysis only. **Analyse my library** is an explicit action; simply opening the map does not silently analyse every file.
 
+The **Connections** selector separates two questions:
+
+- **Sounds similar · Flow** — nearest neighbours in the local Flow feature space;
+- **Actually connected · all** — cached factual links such as same artist/album, production, performers, composition credits, shared works, sample/remix/version relationships, artist relationships and recording places.
+
+Normal Now Playing enrichment gradually grows the factual graph. **Enrich selected** enriches one mapped track; **Enrich map (+8)** explicitly enriches a bounded batch using MusicBrainz and enabled context plugins.
+
 For large analysed libraries, the first implementation displays a bounded representative map rather than trying to draw every track at once.
+
+See [Music Map](MUSIC_MAP.md) for the detailed model and privacy/network behaviour.
 
 ## Flow queue
 
