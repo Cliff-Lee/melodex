@@ -165,3 +165,18 @@ def test_extension_cli_can_scaffold_context_extension(tmp_path: Path):
     assert descriptor["contracts"][0]["method"] == "context.lookup"
     plugin = (root / "plugin.py").read_text("utf-8")
     assert '"capability":"context"' in plugin
+
+
+def test_extension_cli_can_scaffold_library_suggestions_extension(tmp_path: Path):
+    root = tmp_path / "local-intelligence-extension"
+    args = argparse.Namespace(
+        directory=str(root),
+        id="org.example.local-intelligence",
+        name="Example Local Intelligence",
+        capability="library_suggestions",
+    )
+    assert command_init(args) == 0
+    descriptor = json.loads((root / "capabilities.json").read_text("utf-8"))
+    assert descriptor["contracts"][0]["method"] == "library.suggest"
+    plugin = (root / "plugin.py").read_text("utf-8")
+    assert '"capability":"library_suggestions"' in plugin
