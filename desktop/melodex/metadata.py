@@ -397,12 +397,23 @@ class RichMetadataService:
             if not isinstance(rel, dict):
                 continue
             typ = str(rel.get("type") or "credit").replace("_", " ").strip()
-            target = rel.get("artist") if isinstance(rel.get("artist"), dict) else rel.get("work") if isinstance(rel.get("work"), dict) else None
+            kind = "artist"
+            target = rel.get("artist") if isinstance(rel.get("artist"), dict) else None
+            if target is None and isinstance(rel.get("work"), dict):
+                target = rel.get("work")
+                kind = "work"
             if not target:
                 continue
             name = str(target.get("name") or target.get("title") or "")
             if name:
-                rows.append({"role": typ, "name": name, "mbid": str(target.get("id") or "")})
+                rows.append(
+                    {
+                        "role": typ,
+                        "name": name,
+                        "mbid": str(target.get("id") or ""),
+                        "kind": kind,
+                    }
+                )
         # De-duplicate while keeping the most useful order from MusicBrainz.
         seen: set[tuple[str, str]] = set()
         out: list[dict[str, str]] = []

@@ -22,6 +22,7 @@ from .mind import MindEngine
 from .local_intelligence import LocalIntelligenceService
 from .music_map import MusicMapWidget
 from .music_map_model import build_music_map
+from .music_knowledge import MusicKnowledgeStore, build_knowledge_graph
 from .user_state import UserState
 from .player import FlowPlayer
 from .llm_bridge import LLMClient, LLMSettings, llm_track_summary
@@ -63,6 +64,9 @@ class MainWindow(QMainWindow):
         self.mind = MindEngine(self.state, self.flow)
         self.local_intelligence = LocalIntelligenceService(
             self.state, self.flow, self.providers.capabilities
+        )
+        self.knowledge = MusicKnowledgeStore(
+            self.data_dir / "music-knowledge.sqlite3"
         )
         self.llm = LLMClient()
         self.metadata = RichMetadataService(self.data_dir, capability_broker=self.providers.capabilities)
@@ -183,7 +187,9 @@ class MainWindow(QMainWindow):
 
     def _build_now_playing(self):
         l=self._page_layout("now_playing","Now playing","Artwork, local lyrics, artist relationships and recording credits are enriched independently from the playback source.")
-        self.rich_now=RichNowPlayingWidget(self.metadata,self); l.addWidget(self.rich_now,1)
+        self.rich_now=RichNowPlayingWidget(self.metadata,self)
+        self.rich_now.knowledgeChanged.connect(self._remember_now_playing_knowledge)
+        l.addWidget(self.rich_now,1)
 
     def _build_for_you(self):
         l=self._page_layout("for_you","Play for me","Melodex uses only local listening history and audio analysis unless you explicitly connect an LLM.")
@@ -222,15 +228,17 @@ class MainWindow(QMainWindow):
         l=self._page_layout(
             "music_map",
             "Music map",
-            "Explore your own library as a local sonic landscape. Nearby tracks share Flow characteristics; colour can reveal key, energy, taste or forgotten regions."
+            "Explore your library as both a sonic landscape and a knowledge graph. Keep the dots fixed, then switch Connections between what sounds similar and what is actually related."
         )
         actions=QHBoxLayout()
         refresh=QPushButton("Refresh map"); refresh.clicked.connect(self._refresh_music_map)
         analyse=QPushButton("Analyse my library"); analyse.clicked.connect(self._analyse_library_for_map)
+        enrich_selected=QPushButton("Enrich selected"); enrich_selected.clicked.connect(self._enrich_selected_map_knowledge)
+        enrich_map=QPushButton("Enrich map (+8)"); enrich_map.clicked.connect(self._enrich_map_knowledge_batch)
         play=QPushButton("Play selected"); play.clicked.connect(self._play_music_map_selected)
         queue=QPushButton("Add selected to queue"); queue.clicked.connect(self._queue_music_map_selected)
         journey=QPushButton("Start journey here"); journey.clicked.connect(self._journey_from_music_map)
-        actions.addWidget(refresh); actions.addWidget(analyse); actions.addWidget(play); actions.addWidget(queue); actions.addWidget(journey); actions.addStretch(1)
+        actions.addWidget(refresh); actions.addWidget(analyse); actions.addWidget(enrich_selected); actions.addWidget(enrich_map); actions.addWidget(play); actions.addWidget(queue); actions.addWidget(journey); actions.addStretch(1)
         l.addLayout(actions)
         self.music_map=MusicMapWidget(self)
         self.music_map.trackActivated.connect(self._play_music_map_track)
@@ -1002,7 +1010,23 @@ class MainWindow(QMainWindow):
             analyse_seeds=False,
         )
         model=build_music_map(profiles,max_nodes=700,neighbours=2)
-        return {"model":model,"ref_map":ref_map}
+        mapped_refs={
+            str(node.get("ref") or "")
+            for node in list(model.get("nodes") or [])
+            if isinstance(node,dict) and str(node.get("ref") or "")
+        }
+        mapped_ref_map={
+            ref:dict(track)
+            for ref,track in ref_map.items()
+            if ref in mapped_refs
+        }
+        knowledge=self.knowledge.snapshot(mapped_ref_map)
+        graph=build_knowledge_graph(mapped_ref_map,knowledge)
+        return {
+            "model":model,
+            "ref_map":mapped_ref_map,
+            "knowledge_graph":graph,
+        }
 
     def _refresh_music_map(self):
         catalog=self.providers.local_catalog()
@@ -1019,12 +1043,170 @@ class MainWindow(QMainWindow):
             dict(payload.get("model") or {}),
             dict(payload.get("ref_map") or {}),
             self.current_track,
+            dict(payload.get("knowledge_graph") or {}),
         )
         mapped=int((payload.get("model") or {}).get("analysed") or 0)
         if mapped:
             self.statusBar().showMessage(f"Music Map ready · {mapped} analysed tracks",5000)
         else:
             self.statusBar().showMessage("Music Map needs cached Flow analysis · choose Analyse my library",6000)
+
+    def _remember_now_playing_knowledge(self,track,bundle):
+        if not isinstance(track,dict) or not isinstance(bundle,dict):
+            return
+        kwargs={}
+        if isinstance(bundle.get("identity"),dict):
+            kwargs["identity"]=dict(bundle.get("identity") or {})
+        if isinstance(bundle.get("artist"),dict):
+            kwargs["artist"]=dict(bundle.get("artist") or {})
+        if "credits" in bundle:
+            kwargs["credits"]=[
+                dict(x) for x in list(bundle.get("credits") or []) if isinstance(x,dict)
+            ]
+        if "context" in bundle:
+            kwargs["context"]=[
+                dict(x) for x in list(bundle.get("context") or []) if isinstance(x,dict)
+            ]
+        if kwargs:
+            self.knowledge.remember(dict(track),**kwargs)
+            if self.current_page=="music_map" and hasattr(self,"music_map"):
+                knowledge=self.knowledge.snapshot(self.music_map.ref_map)
+                self.music_map.set_knowledge_graph(
+                    build_knowledge_graph(self.music_map.ref_map,knowledge)
+                )
+
+    def _knowledge_bundle_for_track(self,track):
+        track=dict(track or {})
+        errors=[]
+        try:
+            identity=self.metadata.identify(track).as_dict()
+        except Exception as exc:
+            identity={
+                "artist":str(track.get("artist") or ""),
+                "title":str(track.get("title") or ""),
+                "album":str(track.get("album") or ""),
+            }
+            errors.append(f"identity: {exc}")
+
+        artist={}
+        credits=[]
+        context=[]
+        artist_mbid=str(identity.get("artist_mbid") or "")
+        recording_mbid=str(identity.get("recording_mbid") or "")
+        if artist_mbid:
+            try:
+                artist=self.metadata.artist_info(artist_mbid)
+                qid=str(artist.get("wikidata_qid") or "")
+                if qid:
+                    identity["wikidata_id"]=qid
+            except Exception as exc:
+                errors.append(f"artist: {exc}")
+        if recording_mbid:
+            try:
+                credits=self.metadata.recording_credits(recording_mbid)
+            except Exception as exc:
+                errors.append(f"credits: {exc}")
+        if self.providers.capabilities is not None:
+            try:
+                context_result=self.metadata.enrich_context(track,identity)
+                context=[
+                    dict(x)
+                    for x in list(context_result.get("cards") or [])
+                    if isinstance(x,dict)
+                ]
+                errors.extend(
+                    str(x)
+                    for x in list(context_result.get("errors") or [])
+                    if x
+                )
+            except Exception as exc:
+                errors.append(f"context: {exc}")
+
+        self.knowledge.remember(
+            track,
+            identity=identity,
+            artist=artist,
+            credits=credits,
+            context=context,
+        )
+        return {
+            "track":track,
+            "matched":bool(recording_mbid or artist_mbid),
+            "credits":len(credits),
+            "context_cards":len(context),
+            "errors":errors,
+        }
+
+    def _enrich_selected_map_knowledge(self):
+        track=self._music_map_selected()
+        if not track:
+            self.statusBar().showMessage("Select a mapped track first",3000)
+            return
+        self.statusBar().showMessage(
+            "Enriching selected track via MusicBrainz and enabled context plugins…"
+        )
+        self._run_async(
+            lambda:self._knowledge_bundle_for_track(track),
+            self._knowledge_enrichment_finished,
+        )
+
+    def _knowledge_needs_enrichment(self,track):
+        payload=self.knowledge.get(dict(track or {}))
+        identity=payload.get("identity") if isinstance(payload.get("identity"),dict) else {}
+        has_identity=bool(
+            identity.get("recording_mbid")
+            or identity.get("artist_mbid")
+            or track.get("musicbrainz_recording_id")
+            or track.get("musicbrainz_artist_id")
+        )
+        has_credits="credits" in payload
+        has_context="context" in payload
+        has_artist="artist" in payload
+        return not (has_identity and has_credits and has_context and has_artist)
+
+    def _enrich_map_knowledge_batch(self):
+        tracks=self.music_map.mapped_tracks() if hasattr(self,"music_map") else []
+        pending=[track for track in tracks if self._knowledge_needs_enrichment(track)]
+        batch=pending[:8]
+        if not batch:
+            self.statusBar().showMessage("Mapped knowledge is already populated for these tracks",4000)
+            return
+        self.statusBar().showMessage(
+            f"Enriching {len(batch)} mapped tracks via MusicBrainz and enabled context plugins…"
+        )
+        def work():
+            rows=[]
+            for track in batch:
+                try:
+                    rows.append(self._knowledge_bundle_for_track(track))
+                except Exception as exc:
+                    rows.append({"track":track,"matched":False,"credits":0,"context_cards":0,"errors":[str(exc)]})
+            return rows
+        self._run_async(work,self._knowledge_batch_finished)
+
+    def _knowledge_enrichment_finished(self,result):
+        errors=[str(x) for x in list((result or {}).get("errors") or []) if x]
+        self.statusBar().showMessage(
+            f"Knowledge enriched · {int((result or {}).get('credits') or 0)} credits · "
+            f"{int((result or {}).get('context_cards') or 0)} context cards"
+            + (f" · {len(errors)} warning(s)" if errors else ""),
+            7000,
+        )
+        self._refresh_music_map()
+
+    def _knowledge_batch_finished(self,rows):
+        rows=[dict(x) for x in list(rows or []) if isinstance(x,dict)]
+        matched=sum(1 for row in rows if row.get("matched"))
+        credits=sum(int(row.get("credits") or 0) for row in rows)
+        cards=sum(int(row.get("context_cards") or 0) for row in rows)
+        warnings=sum(len(list(row.get("errors") or [])) for row in rows)
+        self.statusBar().showMessage(
+            f"Knowledge batch complete · {matched}/{len(rows)} identified · "
+            f"{credits} credits · {cards} context cards"
+            + (f" · {warnings} warning(s)" if warnings else ""),
+            9000,
+        )
+        self._refresh_music_map()
 
     def _analyse_library_for_map(self):
         catalog=self.providers.local_catalog()
@@ -1398,4 +1580,4 @@ class MainWindow(QMainWindow):
     def closeEvent(self,event):
         self._closing = True
         if self.bridge:self.bridge.stop()
-        self.player.close(); self.metadata.close(); self.providers.close(); self.flow.close(); self.state.close(); super().closeEvent(event)
+        self.player.close(); self.metadata.close(); self.providers.close(); self.flow.close(); self.knowledge.close(); self.state.close(); super().closeEvent(event)

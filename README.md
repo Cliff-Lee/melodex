@@ -157,9 +157,11 @@ Use [MCP with OpenWebUI](docs/tutorials/CONNECT_OPENWEBUI_MCP.md) or [OpenAI fun
 
 ## Explore your library spatially
 
-The desktop **Music Map** turns cached Flow analysis into a zoomable local sonic landscape. Nearby tracks share similar combinations of tempo, energy, key, timbre, rhythmic density and mixability; colour modes can expose energy, taste strength or rediscovery potential. A selected node can be played, queued, or used as the anchor for a new Mind + Flow journey.
+The desktop **Music Map** turns cached Flow analysis into a zoomable local sonic landscape. Nearby tracks share similar combinations of tempo, energy, key, timbre, rhythmic density and mixability; colour modes can expose energy, taste strength or rediscovery potential.
 
-The first implementation is deterministic, local and dependency-light rather than using a remote embedding service or opaque ML model.
+The same fixed dots can switch from **Sounds similar · Flow** to **Actually connected** overlays built from cached artists/albums, production and performer credits, compositions/works, samples/remixes/versions, artist relationships and recording places. Normal listening grows that local knowledge index; explicit map enrichment can fill gaps.
+
+A selected node can be played, queued, or used as the anchor for a new Mind + Flow journey. The first implementation is deterministic, local and dependency-light rather than using a remote embedding service or opaque ML model.
 
 ## Reference extensions
 

@@ -74,9 +74,11 @@ Local-file playback itself does not require those services.
 
 The desktop Music Map is a Core-owned local view. It reads cached Flow analysis and local taste signals from Melodex's own application state and does not require a remote embedding service.
 
-Opening the map uses cached analysis only. Full-library audio analysis happens only when the user chooses **Analyse my library**.
+Opening the map uses cached analysis and cached local knowledge only. Full-library audio analysis happens only when the user chooses **Analyse my library**.
 
-The map's graph/projection is computed locally and is not sent to the Plugin Directory, an LLM or a remote recommendation service.
+The map's projection and knowledge graph are computed locally and are not sent to the Plugin Directory, an LLM or a remote recommendation service.
+
+Normal Now Playing enrichment can be remembered in the local Music Map knowledge index. The explicit **Enrich selected** and **Enrich map (+8)** controls may contact MusicBrainz and enabled context plugins; they are user-initiated network enrichment, not background crawling.
 
 ## Local intelligence plugins
 

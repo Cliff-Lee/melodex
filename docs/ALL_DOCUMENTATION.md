@@ -74,6 +74,7 @@ This page is intentionally exhaustive. For a shorter route by goal, use the [doc
 - [Resolver Inspector](RESOLVER_INSPECTOR.md)
 - [Playlist interchange](PLAYLIST_INTERCHANGE.md)
 - [Rich Now Playing](RICH_NOW_PLAYING.md)
+- [Music Map](MUSIC_MAP.md)
 
 ## LLM / AI configuration
 

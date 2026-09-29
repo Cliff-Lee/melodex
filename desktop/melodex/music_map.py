@@ -93,6 +93,9 @@ class MusicMapWidget(QWidget):
         self.model: dict[str, Any] = {}
         self.ref_map: dict[str, dict[str, Any]] = {}
         self.node_items: dict[str, _NodeItem] = {}
+        self.edge_items: list[Any] = []
+        self.positions: dict[str, tuple[float, float]] = {}
+        self.knowledge_graph: dict[str, Any] = {}
         self.selected_ref = ""
         self.current_identity = ""
 
@@ -105,11 +108,25 @@ class MusicMapWidget(QWidget):
         self.mode.addItem("Energy", "energy")
         self.mode.addItem("Taste", "taste")
         self.mode.addItem("Rediscovery", "rediscovery")
+        self.edge_mode = QComboBox()
+        self.edge_mode.addItem("Sounds similar · Flow", "sonic")
+        self.edge_mode.addItem("Actually connected · all", "knowledge")
+        self.edge_mode.addItem("Same artist", "artist")
+        self.edge_mode.addItem("Same album", "album")
+        self.edge_mode.addItem("Production", "production")
+        self.edge_mode.addItem("Performers", "performer")
+        self.edge_mode.addItem("Composition credits", "composition_credit")
+        self.edge_mode.addItem("Shared works", "work")
+        self.edge_mode.addItem("Samples / remixes / versions", "song_relation")
+        self.edge_mode.addItem("Artist relationships", "artist_relation")
+        self.edge_mode.addItem("Recording places", "place")
         self.search = QLineEdit()
         self.search.setPlaceholderText("Find artist or track on map…")
         reset = QPushButton("Reset view")
         controls.addWidget(QLabel("Colour"))
         controls.addWidget(self.mode)
+        controls.addWidget(QLabel("Connections"))
+        controls.addWidget(self.edge_mode)
         controls.addWidget(self.search, 1)
         controls.addWidget(reset)
         layout.addLayout(controls)
@@ -129,6 +146,7 @@ class MusicMapWidget(QWidget):
         layout.addWidget(self.status)
 
         self.mode.currentIndexChanged.connect(lambda *_: self._recolour())
+        self.edge_mode.currentIndexChanged.connect(lambda *_: self._redraw_edges())
         self.search.returnPressed.connect(self._find)
         reset.clicked.connect(self.reset_view)
 
@@ -158,43 +176,32 @@ class MusicMapWidget(QWidget):
         model: dict[str, Any],
         ref_map: dict[str, dict[str, Any]],
         current_track: dict[str, Any] | None = None,
+        knowledge_graph: dict[str, Any] | None = None,
     ) -> None:
         self.model = dict(model or {})
         self.ref_map = {str(key): dict(value) for key, value in ref_map.items()}
+        self.knowledge_graph = dict(knowledge_graph or {})
         self.current_identity = _track_identity(dict(current_track or {})) if current_track else ""
         self.selected_ref = ""
         self.scene.clear()
         self.node_items.clear()
+        self.edge_items.clear()
+        self.positions.clear()
 
         nodes = [dict(x) for x in list(self.model.get("nodes") or []) if isinstance(x, dict)]
-        edges = [dict(x) for x in list(self.model.get("edges") or []) if isinstance(x, dict)]
         by_ref = {str(node.get("ref") or ""): node for node in nodes}
 
         width, height, margin = 1280.0, 820.0, 60.0
-        positions: dict[str, tuple[float, float]] = {}
         for node in nodes:
             ref = str(node.get("ref") or "")
             x = margin + (float(node.get("x") or 0.0) + 1.0) * 0.5 * (width - 2 * margin)
             y = margin + (1.0 - (float(node.get("y") or 0.0) + 1.0) * 0.5) * (height - 2 * margin)
-            positions[ref] = (x, y)
-
-        for edge in edges:
-            a, b = str(edge.get("a") or ""), str(edge.get("b") or "")
-            if a not in positions or b not in positions:
-                continue
-            ax, ay = positions[a]
-            bx, by = positions[b]
-            similarity = max(0.0, min(1.0, float(edge.get("similarity") or 0.0)))
-            colour = QColor(118, 131, 153, int(35 + 85 * similarity))
-            pen = QPen(colour)
-            pen.setWidthF(0.35 + 1.1 * similarity)
-            line = self.scene.addLine(ax, ay, bx, by, pen)
-            line.setZValue(1)
+            self.positions[ref] = (x, y)
 
         for ref, node in by_ref.items():
-            if ref not in positions:
+            if ref not in self.positions:
                 continue
-            x, y = positions[ref]
+            x, y = self.positions[ref]
             taste = max(0.0, min(1.0, float(node.get("taste") or 0.0)))
             rediscovery = max(0.0, min(1.0, float(node.get("rediscovery") or 0.0)))
             radius = 4.5 + 3.5 * taste + 2.0 * rediscovery
@@ -205,18 +212,105 @@ class MusicMapWidget(QWidget):
             self.node_items[ref] = item
 
         self.scene.setSceneRect(0, 0, width, height)
+        self._redraw_edges()
         self._recolour()
         self.highlight_track(current_track or {})
         self.reset_view()
         analysed = int(self.model.get("analysed") or 0)
         total = int(self.model.get("input_profiles") or 0)
         if analysed:
+            known = int(self.knowledge_graph.get("known_tracks") or 0)
             self.status.setText(
-                f"{analysed:,} analysed tracks mapped from {total:,} local profiles. "
-                "Nearby dots have similar Flow features; lines show the closest local neighbours."
+                f"{analysed:,} analysed tracks mapped from {total:,} local profiles · "
+                f"{known:,} tracks have cached knowledge. "
+                "Switch Connections between sonic similarity and factual relationships."
             )
         else:
             self.status.setText("No cached Flow analysis yet. Use Analyse my library, then refresh the map.")
+
+    @staticmethod
+    def _knowledge_colour(kind: str) -> QColor:
+        colours = {
+            "artist": QColor(77, 190, 185, 150),
+            "album": QColor(92, 139, 230, 135),
+            "production": QColor(235, 185, 85, 170),
+            "performer": QColor(103, 205, 120, 165),
+            "composition_credit": QColor(191, 122, 230, 165),
+            "people": QColor(205, 160, 100, 150),
+            "work": QColor(174, 110, 235, 175),
+            "song_relation": QColor(235, 92, 126, 190),
+            "artist_relation": QColor(83, 210, 155, 175),
+            "place": QColor(235, 142, 72, 165),
+        }
+        return colours.get(str(kind), QColor(160, 170, 190, 135))
+
+    def _redraw_edges(self) -> None:
+        for item in list(self.edge_items):
+            try:
+                self.scene.removeItem(item)
+            except Exception:
+                pass
+        self.edge_items.clear()
+        if not self.positions:
+            return
+
+        mode = str(self.edge_mode.currentData() or "sonic")
+        if mode == "sonic":
+            edges = [
+                dict(x)
+                for x in list(self.model.get("edges") or [])
+                if isinstance(x, dict)
+            ]
+            for edge in edges:
+                a, b = str(edge.get("a") or ""), str(edge.get("b") or "")
+                if a not in self.positions or b not in self.positions:
+                    continue
+                ax, ay = self.positions[a]
+                bx, by = self.positions[b]
+                similarity = max(0.0, min(1.0, float(edge.get("similarity") or 0.0)))
+                colour = QColor(118, 131, 153, int(35 + 85 * similarity))
+                pen = QPen(colour)
+                pen.setWidthF(0.35 + 1.1 * similarity)
+                line = self.scene.addLine(ax, ay, bx, by, pen)
+                line.setZValue(1)
+                line.setToolTip(f"Sonic neighbour · similarity {similarity:.0%}")
+                self.edge_items.append(line)
+            return
+
+        edges = [
+            dict(x)
+            for x in list(self.knowledge_graph.get("edges") or [])
+            if isinstance(x, dict)
+        ]
+        allowed = None if mode == "knowledge" else {mode}
+        for edge in edges:
+            kind = str(edge.get("kind") or "")
+            if allowed is not None and kind not in allowed:
+                continue
+            a, b = str(edge.get("a") or ""), str(edge.get("b") or "")
+            if a not in self.positions or b not in self.positions:
+                continue
+            ax, ay = self.positions[a]
+            bx, by = self.positions[b]
+            strength = max(0.0, min(1.0, float(edge.get("strength") or 0.0)))
+            colour = self._knowledge_colour(kind)
+            pen = QPen(colour)
+            pen.setWidthF(0.7 + 2.0 * strength)
+            line = self.scene.addLine(ax, ay, bx, by, pen)
+            line.setZValue(2)
+            label = str(edge.get("label") or kind or "Knowledge connection")
+            evidence = str(edge.get("evidence") or "")
+            line.setToolTip(label + (f"\n{evidence}" if evidence else ""))
+            self.edge_items.append(line)
+
+        if mode != "sonic" and not self.edge_items:
+            self.status.setText(
+                "No cached connections of this type yet. Listen normally or use Enrich knowledge on the Music Map."
+            )
+
+    def set_knowledge_graph(self, graph: dict[str, Any]) -> None:
+        self.knowledge_graph = dict(graph or {})
+        self._redraw_edges()
 
     def reset_view(self) -> None:
         self.view.resetTransform()
@@ -251,16 +345,40 @@ class MusicMapWidget(QWidget):
         self._recolour()
         track = dict(self.ref_map[ref])
         node = self.node_items[ref].node
+        connections = []
+        for edge in list(self.knowledge_graph.get("edges") or []):
+            if not isinstance(edge, dict):
+                continue
+            if ref in {str(edge.get("a") or ""), str(edge.get("b") or "")}:
+                label = str(edge.get("label") or edge.get("kind") or "").strip()
+                if label and label not in connections:
+                    connections.append(label)
+        connection_text = (
+            " · connections: " + ", ".join(connections[:3])
+            if connections
+            else ""
+        )
         self.status.setText(
             f"{node.get('artist') or 'Unknown artist'} — {node.get('title') or 'Unknown track'} · "
             f"{float(node.get('bpm') or 0):.0f} BPM · energy {float(node.get('energy') or 0):.0%} · "
             f"taste {float(node.get('taste') or 0):.0%} · rediscovery {float(node.get('rediscovery') or 0):.0%}"
+            + connection_text
         )
         self.trackSelected.emit(track)
 
     def _activate_ref(self, ref: str) -> None:
         if ref in self.ref_map:
             self.trackActivated.emit(dict(self.ref_map[ref]))
+
+    def mapped_tracks(self) -> list[dict[str, Any]]:
+        return [
+            dict(self.ref_map[ref])
+            for ref in self.node_items
+            if ref in self.ref_map
+        ]
+
+    def mapped_refs(self) -> list[str]:
+        return [ref for ref in self.node_items if ref in self.ref_map]
 
     def selected_track(self) -> dict[str, Any]:
         if self.selected_ref and self.selected_ref in self.ref_map:

@@ -23,6 +23,8 @@ def _escape(value: Any) -> str:
 
 
 class RichNowPlayingWidget(QWidget):
+    knowledgeChanged = Signal(object, object)
+
     """Progressively enriched Now Playing view.
 
     Identity is deliberately emitted first. Artwork, artist data, credits,
@@ -169,6 +171,7 @@ class RichNowPlayingWidget(QWidget):
                 self.progress.setText(
                     "No MusicBrainz recording match — extension/local enrichment still active"
                 )
+            self._emit_knowledge()
             self._update_progress()
             return
 
@@ -218,8 +221,26 @@ class RichNowPlayingWidget(QWidget):
             self.releases.setHtml(self._discography_html(releases))
 
         self._maybe_start_context(key)
+        if stage in {"artist", "credits", "context"}:
+            self._emit_knowledge()
         self._refresh_info()
         self._update_progress()
+
+    def _emit_knowledge(self) -> None:
+        if not self.track:
+            return
+        payload: dict[str, Any] = {}
+        for key in ("identity", "artist", "credits", "context"):
+            if key in self.bundle:
+                value = self.bundle.get(key)
+                if isinstance(value, dict):
+                    payload[key] = dict(value)
+                elif isinstance(value, list):
+                    payload[key] = [
+                        dict(row) for row in value if isinstance(row, dict)
+                    ]
+        if payload:
+            self.knowledgeChanged.emit(dict(self.track), payload)
 
     def _maybe_start_context(self, key: str) -> None:
         if self._context_started or not self._identity:
