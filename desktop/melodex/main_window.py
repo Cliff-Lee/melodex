@@ -341,7 +341,7 @@ class MainWindow(QMainWindow):
                 )
                 config_status = dict(extension.get("configuration_status") or {})
                 if config_status.get("declared") and not config_status.get("ready", True):
-                    trust_status += " · CONFIG NEEDED"
+                    trust_status += " · SETUP NEEDED"
                 health = self.providers.plugin_health(str(extension.get("id") or ""))
                 health_text = health_badge(health)
                 item = QListWidgetItem(
