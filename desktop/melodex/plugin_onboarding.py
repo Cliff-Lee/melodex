@@ -19,9 +19,18 @@ def configuration_summary(info: dict[str, Any] | None) -> str:
         return "No setup required"
     if state == "ready":
         return "Ready"
-    status = dict((info or {}).get("status") or {})
+    info = dict(info or {})
+    status = dict(info.get("status") or {})
     missing = [str(x) for x in status.get("missing_required") or []]
-    return "Setup needed" + (f" — missing: {', '.join(missing)}" if missing else "")
+    labels = {
+        str(field.get("key") or ""): str(
+            field.get("label") or field.get("key") or ""
+        )
+        for field in info.get("fields") or []
+        if isinstance(field, dict)
+    }
+    names = [labels.get(key, key) for key in missing]
+    return "Setup needed" + (f" — missing: {', '.join(names)}" if names else "")
 
 
 def plugin_configuration_info(manager, plugin_id: str) -> dict[str, Any]:
