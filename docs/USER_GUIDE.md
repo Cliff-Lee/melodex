@@ -42,6 +42,8 @@ Normal Now Playing enrichment gradually grows the factual graph. **Enrich select
 
 **Pathfinder** can then route between two mapped tracks. Set a start and destination, choose **Balanced**, **Sonic** or **Knowledge-first**, and press **Find path**. The route is highlighted and every hop explains whether it used Flow similarity, a factual relationship, or both. **Play route** and **Queue route** turn the result directly into listening.
 
+**Journey Designer** adds ordered constraints/waypoints to those same endpoints. Load the **Calm → Darker → Forgotten → Energetic** preset, add individual semantic stages, or add the selected mapped track as an exact waypoint. **Build journey** chooses transparent stage fits, highlights the chosen waypoints in purple and preserves an explanation for every hop. If the library cannot honestly satisfy a requested stage, Melodex says so rather than silently weakening the meaning.
+
 For large analysed libraries, the first implementation displays a bounded representative map rather than trying to draw every track at once.
 
 See [Music Map](MUSIC_MAP.md) for the detailed model and privacy/network behaviour.
