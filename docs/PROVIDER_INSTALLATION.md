@@ -42,7 +42,7 @@ The setup form supports declared `string`, `boolean` and `secret` fields. Secret
 
 After installation, select the plugin in **Sources** and choose **Test selected**, or use **Test plugin** in the Plugin Directory.
 
-A provider test calls `provider.health`. An extension test verifies process startup because the current v0.1 extension contract does not yet define a universal network-health method. Melodex keeps those scopes distinct in the result rather than treating every READY state as equivalent.
+A provider test calls `provider.health`. A capability extension may declare the optional v0.1 `extension.health` method for a bounded active check; Melodex labels it as an upstream check only when the response says `upstream_checked=true`. Older extensions without that declaration keep the process-start fallback. Melodex keeps those scopes distinct rather than treating every READY state as equivalent.
 
 ## Local development / manual install
 
