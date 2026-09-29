@@ -138,13 +138,18 @@ def respond(request):
     raise RuntimeError("unsupported method")
 
 
-for line in sys.stdin:
-    if not line.strip():
-        continue
-    request = None
-    try:
-        request = json.loads(line)
-        payload = {"jsonrpc":"2.0","id":request.get("id"),"result":respond(request)}
-    except Exception as exc:
-        payload = {"jsonrpc":"2.0","id":request.get("id") if isinstance(request,dict) else None,"error":{"code":-32000,"message":str(exc)}}
-    print(json.dumps(payload, ensure_ascii=False), flush=True)
+def run_jsonrpc():
+    for line in sys.stdin:
+        if not line.strip():
+            continue
+        request = None
+        try:
+            request = json.loads(line)
+            payload = {"jsonrpc":"2.0","id":request.get("id"),"result":respond(request)}
+        except Exception as exc:
+            payload = {"jsonrpc":"2.0","id":request.get("id") if isinstance(request,dict) else None,"error":{"code":-32000,"message":str(exc)}}
+        print(json.dumps(payload, ensure_ascii=False), flush=True)
+
+
+if __name__ == "__main__":
+    run_jsonrpc()
