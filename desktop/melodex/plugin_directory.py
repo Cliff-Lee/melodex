@@ -101,7 +101,7 @@ class PluginDirectoryDialog(QDialog):
         actions = QHBoxLayout()
         self.install_button = QPushButton("Install")
         self.configure_button = QPushButton("Configure…")
-        self.test_button = QPushButton("Test connection")
+        self.test_button = QPushButton("Test plugin")
         self.source_button = QPushButton("View source")
         self.review_button = QPushButton("View review")
         close_button = QPushButton("Close")
