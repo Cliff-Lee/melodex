@@ -2294,6 +2294,13 @@ class MainWindow(QMainWindow):
             return
         if not result.get("found"):
             reason=str(result.get("reason") or "No adaptive route could be found")
+            self._journey_live_event(
+                "replan_failed",
+                {
+                    "reason":reason,
+                    "request":str(result.get("_live_request_reason") or ""),
+                },
+            )
             self._journey_live_update_label("replan failed · queue unchanged")
             self.statusBar().showMessage(
                 reason+" · existing queue kept unchanged",7000
@@ -2322,6 +2329,14 @@ class MainWindow(QMainWindow):
         self.player.replace_upcoming(tail)
         self.music_live_route=dict(result)
         self.music_path_result=dict(result)
+        self._journey_live_event(
+            "replan",
+            {
+                "reason":str(result.get("_live_request_reason") or result.get("reason") or ""),
+                "upcoming_tracks":len(tail),
+                "score":float(result.get("score") or 0.0),
+            },
+        )
         self.music_map.show_route(result)
         if hasattr(self,"music_live_steering"):
             self.music_live_steering.setCurrentIndex(0)
@@ -2356,6 +2371,15 @@ class MainWindow(QMainWindow):
         previous_ref=self._music_ref_for_track(dict(previous or {}))
         if previous_ref:
             self.music_live_avoid_refs.add(previous_ref)
+        self._journey_live_event(
+            "manual_skip",
+            {
+                "track":_track_text(dict(previous or {})),
+                "played_ms":int(played_ms or 0),
+                "duration_ms":int(duration_ms or 0),
+                "quick_skip":bool(int(played_ms or 0)<30000),
+            },
+        )
         reopen=set()
         # Preserve the existing taste model's conservative definition of an
         # immediate skip: under 30 seconds means the stage was not really
@@ -2470,6 +2494,11 @@ class MainWindow(QMainWindow):
             self.music_map.highlight_track(t)
         if self.music_live_active:
             current_ref=self._music_ref_for_track(self.current_track)
+            if current_ref and (
+                not self.music_live_played_refs
+                or self.music_live_played_refs[-1]!=current_ref
+            ):
+                self.music_live_played_refs.append(current_ref)
             if current_ref and current_ref==self.music_live_destination_ref:
                 self._journey_live_stop("destination reached")
             else:
@@ -2745,6 +2774,8 @@ class MainWindow(QMainWindow):
         threading.Thread(target=work,daemon=True).start()
 
     def closeEvent(self,event):
+        if self.music_live_active:
+            self._journey_live_stop("application closed")
         self._closing = True
         if self.bridge:self.bridge.stop()
         self.player.close(); self.metadata.close(); self.providers.close(); self.flow.close(); self.knowledge.close(); self.state.close(); super().closeEvent(event)
