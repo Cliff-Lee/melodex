@@ -64,6 +64,7 @@ class PluginDirectoryDialog(QDialog):
         self.kind.addItem("All types", "all")
         self.kind.addItem("Music providers", "provider")
         self.kind.addItem("Enrichment", "enrichment")
+        self.kind.addItem("Local tools", "tool")
         self.capability = QComboBox()
         self.capability.addItem("All capabilities", "all")
         for value in (
@@ -76,6 +77,7 @@ class PluginDirectoryDialog(QDialog):
             "artwork",
             "lyrics",
             "context",
+            "library_suggestions",
         ):
             self.capability.addItem(value, value)
         self.refresh_button = QPushButton("Refresh")

@@ -103,7 +103,8 @@
               "metadata",
               "artwork",
               "lyrics",
-              "context"
+              "context",
+              "library_suggestions"
             ]
           },
           "contract_version": {
@@ -116,7 +117,8 @@
               "metadata.enrich",
               "artwork.lookup",
               "lyrics.lookup",
-              "context.lookup"
+              "context.lookup",
+              "library.suggest"
             ]
           }
         }

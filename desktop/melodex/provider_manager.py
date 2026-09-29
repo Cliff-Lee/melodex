@@ -358,11 +358,13 @@ class ProviderManager:
         path = Path(path)
         info = self.capabilities.install_package(path)
         self._plugin_health_cache.pop(info.id, None)
+        registry_kind = str((registry_entry or {}).get("kind") or "")
+        recorded_kind = registry_kind if registry_kind in {"enrichment", "tool"} else "enrichment"
         self._record_installation(
             plugin_id=info.id,
             name=info.name,
             version=info.version,
-            kind="enrichment",
+            kind=recorded_kind,
             package=path,
             method=install_source,
             registry_entry=registry_entry,
@@ -685,7 +687,7 @@ class ProviderManager:
             return {
                 "id": info.id,
                 "name": info.name,
-                "kind": "enrichment",
+                "kind": str(entry.get("kind") or "enrichment"),
                 "package": str(package),
             }
         raise RuntimeError(f"Unsupported registry package format: {fmt}")

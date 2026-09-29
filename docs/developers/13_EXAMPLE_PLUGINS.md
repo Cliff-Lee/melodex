@@ -119,6 +119,39 @@ extension.health
 
 Shows aggregate listener/listen counts and popular recordings for the current artist using public ListenBrainz popularity endpoints. It demonstrates useful community context without requiring a ListenBrainz account or token.
 
+## Sonic Neighbours
+
+**Layer:** experimental v0.1 local-intelligence capability extension
+
+```text
+library.suggest
+intent: similar
+```
+
+Finds “more like this” candidates from the user's own library using host-supplied Flow features. The extension receives no audio files or filesystem paths.
+
+## Forgotten Favourites
+
+**Layer:** experimental v0.1 local-intelligence capability extension
+
+```text
+library.suggest
+intent: rediscover
+```
+
+Uses loves, keeps, completion rate, skips and relative recency to resurface strong-but-stale tracks. It is deliberately not equivalent to “most played”.
+
+## Bridge Builder
+
+**Layer:** experimental v0.1 local-intelligence capability extension
+
+```text
+library.suggest
+intent: bridge
+```
+
+Ranks local tracks that could form a plausible musical bridge between the current and next queued tracks using tempo, key, energy, timbre and mixability. It returns an explainable shortlist rather than claiming to be an automatic DJ.
+
 ## Public Domain Lyrics
 
 **Layer:** experimental v0.1 capability extension

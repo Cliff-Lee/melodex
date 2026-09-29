@@ -1,0 +1,28 @@
+{
+  "schema_version": "0.1",
+  "plugin_id": "org.melodex.example.forgotten-favourites",
+  "events": [
+    {
+      "reviewed_at": "2026-09-29T03:35:00Z",
+      "reviewer": "Melodex project",
+      "decision": "example-baseline",
+      "version": "0.1.0",
+      "package_sha256": "b1e86da0b11fd7db5b7c3ef109499981426a13fc9d8392da2efdf30d204f7465",
+      "summary": "Baseline review of Forgotten Favourites 0.1.0: exact package bytes, library.suggest descriptor, no requested permissions, deterministic spacing/taste fixture behavior and privacy boundary were checked.",
+      "checks": {
+        "registry_schema": true,
+        "package_integrity": true,
+        "manifest_descriptor": true,
+        "permissions": true,
+        "source_policy": true,
+        "tests": true,
+        "rights_notes": true
+      },
+      "limitations": [
+        "Rediscovery only becomes meaningful after Melodex has accumulated local play/feedback signals.",
+        "The spacing curve is a transparent heuristic and is not a psychological or clinical model of preference.",
+        "Melodex sends relative recency rather than absolute timestamps, but extension subprocesses are not yet protected by a complete OS sandbox."
+      ]
+    }
+  ]
+}

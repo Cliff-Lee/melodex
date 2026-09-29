@@ -1,0 +1,23 @@
+{
+  "schema_version": "0.1",
+  "extension_id": "org.melodex.example.forgotten-favourites",
+  "name": "Forgotten Favourites",
+  "version": "0.1.0",
+  "publisher": "Melodex examples",
+  "description": "Resurfaces strong-but-stale local favourites from private Melodex taste signals without using a cloud recommender.",
+  "permissions": {
+    "network_hosts": [],
+    "local_files": false,
+    "browser_auth": false
+  },
+  "entrypoints": {
+    "python": "plugin.py"
+  },
+  "contracts": [
+    {
+      "capability": "library_suggestions",
+      "contract_version": "0.1",
+      "method": "library.suggest"
+    }
+  ]
+}

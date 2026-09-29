@@ -28,6 +28,7 @@ class FakeExtension:
                         "artwork": "artwork.lookup",
                         "lyrics": "lyrics.lookup",
                         "context": "context.lookup",
+                        "library_suggestions": "library.suggest",
                     }[capability],
                 )
             ],
@@ -509,3 +510,64 @@ def test_metadata_service_exposes_context_cards(tmp_path: Path):
     )
     assert result["cards"][0]["title"] == "Story"
     assert result["cards"][0]["text"] == "Context works"
+
+
+def test_broker_library_suggestions_merges_and_ranks(tmp_path: Path):
+    broker = CapabilityBroker(tmp_path)
+    profiles = [
+        {
+            "ref": "t0",
+            "title": "Seed",
+            "artist": "A",
+            "album": "",
+            "duration_ms": 1000,
+            "analysis": None,
+            "taste": {},
+        },
+        {
+            "ref": "t1",
+            "title": "One",
+            "artist": "B",
+            "album": "",
+            "duration_ms": 1000,
+            "analysis": None,
+            "taste": {},
+        },
+        {
+            "ref": "t2",
+            "title": "Two",
+            "artist": "C",
+            "album": "",
+            "duration_ms": 1000,
+            "analysis": None,
+            "taste": {},
+        },
+    ]
+    broker.extensions = {
+        "org.example.low": FakeExtension(
+            "org.example.low",
+            "library_suggestions",
+            {
+                "intent": "similar",
+                "suggestions": [
+                    {"ref": "t1", "score": 0.61, "reason": "low"}
+                ],
+            },
+        ),
+        "org.example.high": FakeExtension(
+            "org.example.high",
+            "library_suggestions",
+            {
+                "intent": "similar",
+                "suggestions": [
+                    {"ref": "t2", "score": 0.91, "reason": "high"}
+                ],
+            },
+        ),
+    }
+    result = broker.suggest_library(
+        profiles, "similar", seed_refs=["t0"], limit=10, adventure=0.4
+    )
+    assert [row["ref"] for row in result["suggestions"]] == ["t2", "t1"]
+    assert result["suggestions"][0]["_extension_id"] == "org.example.high"
+    assert result["errors"] == []

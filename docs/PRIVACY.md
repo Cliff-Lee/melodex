@@ -70,6 +70,23 @@ Melodex can use the network when you deliberately use features that require it, 
 
 Local-file playback itself does not require those services.
 
+## Local intelligence plugins
+
+The `library.suggest` contract is designed so useful local recommendation tools do not need the user's filesystem paths or taste database.
+
+For each request Melodex creates ephemeral refs such as `t0` and can send:
+
+```text
+title / artist / album / duration
+cached Flow analysis values
+play/completion/skip/love/keep counts
+relative days since last play
+```
+
+The contract does not include absolute local paths, provider-local IDs, SQLite/database keys, raw audio or absolute listening timestamps. Core retains the real track objects and maps returned ephemeral refs back after the plugin responds.
+
+This is a **data-minimisation boundary**, not an OS sandbox. As with other desktop plugins, executable third-party extension code still runs with the current user's operating-system permissions unless stronger platform sandboxing is configured.
+
 ## Provider Bridge
 
 The desktop app starts a loopback-only authenticated control bridge for local integrations.

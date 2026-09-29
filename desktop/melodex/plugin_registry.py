@@ -123,6 +123,10 @@ def validate_registry(data: Any) -> list[str]:
             errors.append(
                 f"{prefix}.distribution.format must be mdxplugin for enrichment"
             )
+        if kind == "tool" and fmt != "mdxplugin":
+            errors.append(
+                f"{prefix}.distribution.format must be mdxplugin for tools"
+            )
         package_url = distribution.get("package_url")
         sha256 = distribution.get("sha256")
         if package_url:

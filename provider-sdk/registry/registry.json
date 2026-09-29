@@ -1,6 +1,6 @@
 {
   "schema_version": "0.1",
-  "updated_at": "2026-09-29T03:00:00Z",
+  "updated_at": "2026-09-29T03:35:00Z",
   "plugins": [
     {
       "id": "org.melodex.example.radio-browser",
@@ -472,6 +472,117 @@
       "review": {
         "record": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/registry/reviews/org.melodex.example.listenbrainz-community-pulse.json",
         "last_reviewed_at": "2026-09-29T03:00:00Z"
+      }
+    },
+    {
+      "id": "org.melodex.example.sonic-neighbours",
+      "name": "Sonic Neighbours",
+      "publisher": "Melodex examples",
+      "version": "0.1.0",
+      "kind": "tool",
+      "status": "example",
+      "description": "Private local 'more like this' discovery using Melodex Flow features; no network or direct filesystem/database access is requested.",
+      "capabilities": [
+        "library_suggestions"
+      ],
+      "license": "MIT",
+      "source": {
+        "repository": "https://github.com/Cliff-Lee/melodex/tree/main/provider-sdk/examples/ecosystem/sonic_neighbours",
+        "homepage": "https://github.com/Cliff-Lee/melodex",
+        "documentation": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/sonic_neighbours/README.md"
+      },
+      "distribution": {
+        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/main/provider-sdk/registry/packages/sonic-neighbours-0.1.0.mdxplugin",
+        "format": "mdxplugin",
+        "sha256": "213c1fcc0d5e564573f22b1851ddc92c2456611eb02de05c842c81da7f0bfe54",
+        "size_bytes": 11309
+      },
+      "compatibility": {
+        "melodex_min": "0.3.1",
+        "mpp": null,
+        "contracts": {
+          "library_suggestions": "0.1"
+        }
+      },
+      "permissions": [],
+      "source_policy": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/sonic_neighbours/SOURCE_POLICY.md",
+      "review": {
+        "record": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/registry/reviews/org.melodex.example.sonic-neighbours.json",
+        "last_reviewed_at": "2026-09-29T03:35:00Z"
+      }
+    },
+    {
+      "id": "org.melodex.example.forgotten-favourites",
+      "name": "Forgotten Favourites",
+      "publisher": "Melodex examples",
+      "version": "0.1.0",
+      "kind": "tool",
+      "status": "example",
+      "description": "Private local rediscovery that resurfaces strong-but-stale tracks from coarse Melodex taste signals rather than a cloud recommender.",
+      "capabilities": [
+        "library_suggestions"
+      ],
+      "license": "MIT",
+      "source": {
+        "repository": "https://github.com/Cliff-Lee/melodex/tree/main/provider-sdk/examples/ecosystem/forgotten_favourites",
+        "homepage": "https://github.com/Cliff-Lee/melodex",
+        "documentation": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/forgotten_favourites/README.md"
+      },
+      "distribution": {
+        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/main/provider-sdk/registry/packages/forgotten-favourites-0.1.0.mdxplugin",
+        "format": "mdxplugin",
+        "sha256": "b1e86da0b11fd7db5b7c3ef109499981426a13fc9d8392da2efdf30d204f7465",
+        "size_bytes": 8949
+      },
+      "compatibility": {
+        "melodex_min": "0.3.1",
+        "mpp": null,
+        "contracts": {
+          "library_suggestions": "0.1"
+        }
+      },
+      "permissions": [],
+      "source_policy": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/forgotten_favourites/SOURCE_POLICY.md",
+      "review": {
+        "record": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/registry/reviews/org.melodex.example.forgotten-favourites.json",
+        "last_reviewed_at": "2026-09-29T03:35:00Z"
+      }
+    },
+    {
+      "id": "org.melodex.example.bridge-builder",
+      "name": "Bridge Builder",
+      "publisher": "Melodex examples",
+      "version": "0.1.0",
+      "kind": "tool",
+      "status": "example",
+      "description": "Private local bridge discovery that ranks tracks able to connect the current and next queued songs using Flow tempo, key, energy, timbre and mixability.",
+      "capabilities": [
+        "library_suggestions"
+      ],
+      "license": "MIT",
+      "source": {
+        "repository": "https://github.com/Cliff-Lee/melodex/tree/main/provider-sdk/examples/ecosystem/bridge_builder",
+        "homepage": "https://github.com/Cliff-Lee/melodex",
+        "documentation": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/bridge_builder/README.md"
+      },
+      "distribution": {
+        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/main/provider-sdk/registry/packages/bridge-builder-0.1.0.mdxplugin",
+        "format": "mdxplugin",
+        "sha256": "02a4192afadf606c81fc9b2dcc2eb30659c5a3a2ef57637795e2ed9b8ecf72f2",
+        "size_bytes": 12558
+      },
+      "compatibility": {
+        "melodex_min": "0.3.1",
+        "mpp": null,
+        "contracts": {
+          "library_suggestions": "0.1"
+        }
+      },
+      "permissions": [],
+      "source_policy": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/bridge_builder/SOURCE_POLICY.md",
+      "review": {
+        "record": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/registry/reviews/org.melodex.example.bridge-builder.json",
+        "last_reviewed_at": "2026-09-29T03:35:00Z"
       }
     }
   ]

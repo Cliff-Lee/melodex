@@ -29,6 +29,7 @@ Melodex is intentionally developing in public. Some surfaces are implemented and
 | `.mdxplugin` installation | **Implemented** | Desktop capability-extension runtime |
 | identity / metadata / artwork / lyrics contracts | **Experimental v0.1** | Real and testable, but contract changes are still possible |
 | context card contract | **Experimental v0.1** | `context.lookup` adds sourced text/list/fact cards to Rich Now Playing; deliberately host-rendered rather than plugin-specific GUI |
+| local intelligence contract | **Experimental v0.1** | `library.suggest` ranks privacy-preserving local-library profiles; Core withholds paths, database keys and absolute listening timestamps |
 | `melodex-extension init/validate/doctor/pack` | **Implemented** | Scaffolding/tooling is usable today |
 | Plugin Directory | **Implemented** | Registry-backed discovery/install in desktop Sources |
 | Registry package SHA-256 + size verification | **Implemented** | Verifies bytes against registry metadata; does **not** identify the publisher cryptographically |

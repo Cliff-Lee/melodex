@@ -69,7 +69,8 @@ Melodex separates discovery/distribution from runtime capabilities and external 
              │                                   │
       Provider Manager                    Capability Broker
              │                                   │
-        catalog/playback             identity/metadata/artwork/lyrics
+        catalog/playback        identity/metadata/artwork/lyrics/context
+                                      local intelligence
              └─────────────────┬─────────────────┘
                                ▼
                     resolver + player + Flow
@@ -102,9 +103,11 @@ identity.resolve
 metadata.enrich
 artwork.lookup
 lyrics.lookup
+context.lookup
+library.suggest
 ```
 
-The aim is composition: playback from one source, canonical identity from another, artwork from another, and lyrics from another — while retaining provenance.
+The aim is composition: playback from one source, canonical identity from another, artwork/context from others, and privacy-preserving local intelligence over the user's own library.
 
 Install extensions through **Sources → Explore plugins…**, or start with [Build an enrichment plugin](docs/tutorials/BUILD_AN_ENRICHMENT_PLUGIN.md).
 
@@ -162,8 +165,14 @@ The ecosystem is being developed with small examples built around documented, le
 | LibriVox | public-domain search + playback + offline |
 | MusicBrainz | canonical identity + metadata provenance |
 | Wikimedia Commons | artwork + per-file licence/attribution |
+| MusicBrainz Song Connections | samples/remixes/works/recording-place context |
+| Wikimedia Liner Notes | sourced encyclopedic context cards |
+| ListenBrainz Community Pulse | aggregate community listening context |
+| Sonic Neighbours | local Flow-feature “more like this” |
+| Forgotten Favourites | private local rediscovery |
+| Bridge Builder | local transition bridge suggestions |
 
-The examples are designed to be copied, studied and changed. All four are also published as registry-verified example packages in the desktop [Plugin Directory](docs/PLUGIN_DIRECTORY.md).
+The examples are designed to be copied, studied and changed. Canonical examples are packaged with exact SHA-256/size metadata and surfaced through the desktop [Plugin Directory](docs/PLUGIN_DIRECTORY.md).
 
 ## Community philosophy
 

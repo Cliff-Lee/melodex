@@ -11,6 +11,7 @@ metadata.enrich
 artwork.lookup
 lyrics.lookup
 context.lookup
+library.suggest
 ```
 
 Optional extension-level method:
@@ -35,5 +36,7 @@ This deliberately keeps health out of capability ranking/filtering. Extensions t
 A health response must report whether it actually checked an upstream service using `upstream_checked`. This lets Melodex distinguish a real connectivity check from an extension-local self-check.
 
 The `context.lookup` contract returns sourced cards for the Now Playing Context surface. v0.1 card kinds are `text`, `list`, and `facts`; this keeps plugins expressive while preserving a predictable host renderer.
+
+The `library.suggest` contract powers local intelligence. Melodex Core supplies a bounded privacy-preserving snapshot using request-local refs, display metadata, Flow features and coarse taste signals. Absolute paths, database keys and absolute listening timestamps are deliberately excluded from the wire contract.
 
 Shared entity/provenance/cache types are in `common.schema.json`.

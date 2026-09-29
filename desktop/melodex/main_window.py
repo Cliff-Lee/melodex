@@ -19,6 +19,7 @@ from .paths import app_data_dir
 from .provider_manager import ProviderManager
 from .flow import FlowEngine
 from .mind import MindEngine
+from .local_intelligence import LocalIntelligenceService
 from .user_state import UserState
 from .player import FlowPlayer
 from .llm_bridge import LLMClient, LLMSettings, llm_track_summary
@@ -58,6 +59,9 @@ class MainWindow(QMainWindow):
         self.state = UserState(self.data_dir / "taste.sqlite3")
         self.flow = FlowEngine(self.data_dir / "flow.sqlite3")
         self.mind = MindEngine(self.state, self.flow)
+        self.local_intelligence = LocalIntelligenceService(
+            self.state, self.flow, self.providers.capabilities
+        )
         self.llm = LLMClient()
         self.metadata = RichMetadataService(self.data_dir, capability_broker=self.providers.capabilities)
         self.bridge: ProviderBridge | None = None
@@ -184,7 +188,21 @@ class MainWindow(QMainWindow):
         row=QHBoxLayout(); self.mode=QComboBox(); self.mode.addItems(["balanced","comfort","rediscover","explore"]); self.minutes=QComboBox(); self.minutes.addItems(["30","60","90","120"]); self.adventure=QSlider(Qt.Horizontal); self.adventure.setRange(0,100); self.adventure.setValue(35)
         row.addWidget(QLabel("Mode")); row.addWidget(self.mode); row.addWidget(QLabel("Minutes")); row.addWidget(self.minutes); row.addWidget(QLabel("Familiar")); row.addWidget(self.adventure,1); row.addWidget(QLabel("Surprising")); l.addLayout(row)
         go=QPushButton("▶ Build this journey"); go.clicked.connect(lambda:self._play_for_me(self.mode.currentText(),int(self.minutes.currentText()),self.adventure.value()/100)); l.addWidget(go)
-        self.taste_label=QLabel(); self.taste_label.setWordWrap(True); l.addWidget(self.taste_label); l.addStretch(1)
+        self.taste_label=QLabel(); self.taste_label.setWordWrap(True); l.addWidget(self.taste_label)
+
+        intel_title=QLabel("Local intelligence plugins"); intel_title.setStyleSheet("font-size:18px;font-weight:650;margin-top:10px"); l.addWidget(intel_title)
+        intel_help=QLabel("Private, local suggestions from your own library. Melodex sends plugins sanitized Flow/taste profiles and does not include file paths or database rows in the request."); intel_help.setWordWrap(True); intel_help.setStyleSheet("color:#aab0ba"); l.addWidget(intel_help)
+        intel_row=QHBoxLayout()
+        similar=QPushButton("More like current"); similar.clicked.connect(lambda:self._run_local_intelligence("similar"))
+        rediscover=QPushButton("Forgotten favourites"); rediscover.clicked.connect(lambda:self._run_local_intelligence("rediscover"))
+        bridge=QPushButton("Bridge current → next"); bridge.clicked.connect(lambda:self._run_local_intelligence("bridge"))
+        analyse=QPushButton("Analyse my library"); analyse.clicked.connect(self._analyse_library_for_intelligence)
+        intel_row.addWidget(similar); intel_row.addWidget(rediscover); intel_row.addWidget(bridge); intel_row.addWidget(analyse); intel_row.addStretch(1); l.addLayout(intel_row)
+        self.intelligence_results=QListWidget(); self.intelligence_results.itemDoubleClicked.connect(self._play_intelligence_result); l.addWidget(self.intelligence_results,1)
+        intel_actions=QHBoxLayout()
+        play_pick=QPushButton("Play selected"); play_pick.clicked.connect(self._play_selected_intelligence)
+        queue_pick=QPushButton("Add selected to queue"); queue_pick.clicked.connect(self._queue_selected_intelligence)
+        intel_actions.addWidget(play_pick); intel_actions.addWidget(queue_pick); intel_actions.addStretch(1); l.addLayout(intel_actions)
 
     def _build_discover(self):
         l=self._page_layout("discover","Discover","Search all connected music sources. Add a source in Sources if you want more places to search.")
@@ -821,6 +839,137 @@ class MainWindow(QMainWindow):
         t=dict(item.data(Qt.UserRole) or {}); q=list(self.player.queue)
         if not q: self.player.set_queue([t],0,False)
         else: self.player.queue.append(t); self.player.queueChanged.emit(self.player.queue)
+
+    # ------------------------------- local intelligence
+    def _intelligence_seeds(self, intent: str) -> list[dict[str, Any]]:
+        if intent == "rediscover":
+            return []
+        current = dict(self.current_track or {})
+        if not current or not current.get("local_path"):
+            return []
+        if intent == "similar":
+            return [current]
+        if intent == "bridge":
+            idx = int(getattr(self.player, "index", -1))
+            queue = list(getattr(self.player, "queue", []) or [])
+            if idx < 0 or idx + 1 >= len(queue):
+                return []
+            nxt = dict(queue[idx + 1] or {})
+            if not nxt.get("local_path"):
+                return []
+            return [current, nxt]
+        return []
+
+    def _run_local_intelligence(self, intent: str) -> None:
+        catalog = self.providers.local_catalog()
+        if not catalog:
+            QMessageBox.information(
+                self, "Add music first",
+                "Local intelligence needs your local library. Add a folder, then try again."
+            )
+            return
+        seeds = self._intelligence_seeds(intent)
+        if intent == "similar" and len(seeds) != 1:
+            QMessageBox.information(
+                self, "Play a local track first",
+                "More like current needs a local track as the seed."
+            )
+            return
+        if intent == "bridge" and len(seeds) != 2:
+            QMessageBox.information(
+                self, "Queue two local tracks",
+                "Bridge current → next needs the current track and the next queued track to be local."
+            )
+            return
+        self.intelligence_results.clear()
+        self.statusBar().showMessage("Asking local intelligence plugins…")
+        adventure = self.adventure.value() / 100.0
+        self._run_async(
+            lambda: self.local_intelligence.suggest(
+                intent, catalog, seeds, limit=16, adventure=adventure
+            ),
+            self._show_intelligence_results,
+        )
+
+    def _show_intelligence_results(self, result: dict[str, Any]) -> None:
+        self.intelligence_results.clear()
+        tracks = [dict(x) for x in list(result.get("tracks") or []) if isinstance(x, dict)]
+        for track in tracks:
+            reason = str(track.get("_intelligence_reason") or "")
+            score = float(track.get("_intelligence_score") or 0.0)
+            badges = ", ".join(str(x) for x in list(track.get("_intelligence_badges") or []) if x)
+            suffix = " · ".join(x for x in (reason, badges, f"{score:.0%}") if x)
+            item = QListWidgetItem(_track_text(track) + (f"\n{suffix}" if suffix else ""))
+            item.setData(Qt.UserRole, track)
+            self.intelligence_results.addItem(item)
+        if tracks:
+            self.statusBar().showMessage(
+                f"{len(tracks)} local suggestions · {int(result.get('analysed') or 0)} of {int(result.get('profiles') or 0)} profiles have Flow analysis",
+                7000,
+            )
+            return
+        errors = [str(x) for x in list(result.get("errors") or []) if x]
+        analysed = int(result.get("analysed") or 0)
+        if errors:
+            message = errors[0]
+        elif analysed == 0 and result.get("intent") in {"similar", "bridge"}:
+            message = "No analysed comparison tracks yet. Use ‘Analyse my library’, then try again."
+        else:
+            message = "No local-intelligence plugin returned suggestions. Install one from Explore plugins."
+        self.intelligence_results.addItem(message)
+        self.statusBar().showMessage(message, 7000)
+
+    def _selected_intelligence_track(self) -> dict[str, Any]:
+        item = self.intelligence_results.currentItem()
+        data = item.data(Qt.UserRole) if item else None
+        return dict(data) if isinstance(data, dict) else {}
+
+    def _play_intelligence_result(self, item) -> None:
+        data = item.data(Qt.UserRole)
+        if isinstance(data, dict):
+            self.player.set_queue([dict(data)], 0, True)
+
+    def _play_selected_intelligence(self) -> None:
+        track = self._selected_intelligence_track()
+        if track:
+            self.player.set_queue([track], 0, True)
+
+    def _queue_selected_intelligence(self) -> None:
+        track = self._selected_intelligence_track()
+        if not track:
+            return
+        if not self.player.queue:
+            self.player.set_queue([track], 0, False)
+        else:
+            self.player.queue.append(track)
+            self.player.queueChanged.emit(self.player.queue)
+        self.statusBar().showMessage("Added local-intelligence suggestion to queue", 3000)
+
+    def _analyse_library_for_intelligence(self) -> None:
+        catalog = self.providers.local_catalog()
+        if not catalog:
+            QMessageBox.information(
+                self, "Add music first",
+                "Add a local music folder before analysing your library."
+            )
+            return
+        if not self.flow.analysis_available:
+            QMessageBox.information(
+                self, "Audio analysis unavailable",
+                "Deep local analysis needs ffmpeg and NumPy. Melodex can still use taste-only rediscovery."
+            )
+            return
+        self.statusBar().showMessage("Analysing local library for Flow and local intelligence…")
+        self._run_async(
+            lambda: self.local_intelligence.analyse_catalog(catalog),
+            self._library_analysis_finished,
+        )
+
+    def _library_analysis_finished(self, result: dict[str, Any]) -> None:
+        self.statusBar().showMessage(
+            f"Library analysis ready · {int(result.get('analysed') or 0)}/{int(result.get('total') or 0)} analysed · {int(result.get('newly_analysed') or 0)} new",
+            8000,
+        )
 
     # ------------------------------- Flow / Mind
     def _path_for(self,t):
