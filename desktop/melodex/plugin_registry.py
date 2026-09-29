@@ -164,11 +164,12 @@ class PluginRegistryClient:
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.download_dir = self.cache_dir / "downloads"
         self.download_dir.mkdir(parents=True, exist_ok=True)
-        self.cache_path = self.cache_dir / "registry-cache.json"
         self.registry_url = (
             str(registry_url or os.environ.get("MELODEX_REGISTRY_URL") or DEFAULT_REGISTRY_URL)
             .strip()
         )
+        source_key = hashlib.sha256(self.registry_url.encode("utf-8")).hexdigest()[:12]
+        self.cache_path = self.cache_dir / f"registry-cache-{source_key}.json"
         self.session = session or requests.Session()
         self.timeout = float(timeout)
         self.user_agent = (
