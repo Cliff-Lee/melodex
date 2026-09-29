@@ -11,7 +11,8 @@
   ],
   "permissions": {
     "network_hosts": [
-      "ws.audioscrobbler.com"
+      "ws.audioscrobbler.com",
+      "lastfm.freetls.fastly.net"
     ],
     "offline_downloads": false,
     "local_files": false,
