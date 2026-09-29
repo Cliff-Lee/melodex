@@ -2,8 +2,8 @@
 
 A source-neutral provider protocol and developer SDK for **Melodex**.
 
-> Melodex owns playback, Flow, taste, queueing and LLM control. Providers supply
-> catalog and authorized playback access.
+> Melodex owns playback, Flow, taste, queueing and LLM control. Providers can supply
+> catalog/playback access or narrower source-side discovery capabilities such as recommendations.
 
 ## Status
 
@@ -93,7 +93,7 @@ Do not put actual credentials in manifests, packages, fixtures or registry metad
 
 ## Provider doctor
 
-`melodex-provider doctor` checks the manifest, README, licence, `SOURCE_POLICY.md` and, for Python entrypoints, `provider.info`, `provider.health`, `catalog.search`, and `playback.resolve`.
+`melodex-provider doctor` checks the manifest, README, licence, `SOURCE_POLICY.md` and the Python entrypoint. Runtime checks are capability-aware: it calls `catalog.search` only when `search` is declared and checks `playback.resolve` only when a search result exists for a playback-capable provider. Recommendation-only providers can therefore be validated without pretending to implement search.
 
 The generated provider scaffold includes all three documentation files so a first-time developer starts from the same public-release expectations used by the registry.
 
