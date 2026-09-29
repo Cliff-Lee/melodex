@@ -17,6 +17,7 @@ from typing import Any
 
 from .process_env import scrubbed_child_env
 from .child_host import python_child_command
+from .child_host import python_child_command
 from .plugin_config import PluginConfigBroker, normalise_configuration
 from .package_safety import (
     entrypoint_errors,
