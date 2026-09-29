@@ -28,27 +28,26 @@ def _model(nodes, edges=None):
     }
 
 
-def test_pathfinder_sonic_mode_can_prefer_smoother_intermediate_route():
-    model = _model(
-        [
-            _node("a", [0.0, 0.0]),
-            _node("b", [0.35, 0.0]),
-            _node("c", [0.70, 0.0]),
-            _node("d", [2.8, 0.0]),
-        ]
-    )
+def test_pathfinder_sonic_mode_uses_intermediate_tracks_for_distant_regions():
+    nodes = [
+        _node(chr(ord("a") + i), [i * 0.55, 0.0])
+        for i in range(9)
+    ]
+    model = _model(nodes)
     result = find_music_path(
         model,
         {"edges": []},
         "a",
-        "c",
+        "i",
         mode="sonic",
-        max_hops=6,
+        max_hops=8,
     )
 
     assert result["found"] is True
-    assert result["path_refs"] == ["a", "b", "c"]
-    assert result["used_sonic_hops"] == 2
+    assert result["path_refs"][0] == "a"
+    assert result["path_refs"][-1] == "i"
+    assert len(result["path_refs"]) > 2
+    assert result["used_sonic_hops"] == len(result["hops"])
     assert result["used_knowledge_hops"] == 0
     assert all("Flow similarity" in hop["reason"] for hop in result["hops"])
 
