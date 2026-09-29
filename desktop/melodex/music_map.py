@@ -94,8 +94,12 @@ class MusicMapWidget(QWidget):
         self.ref_map: dict[str, dict[str, Any]] = {}
         self.node_items: dict[str, _NodeItem] = {}
         self.edge_items: list[Any] = []
+        self.route_items: list[Any] = []
         self.positions: dict[str, tuple[float, float]] = {}
         self.knowledge_graph: dict[str, Any] = {}
+        self.route_result: dict[str, Any] = {}
+        self.route_start_ref = ""
+        self.route_end_ref = ""
         self.selected_ref = ""
         self.current_identity = ""
 
@@ -186,7 +190,11 @@ class MusicMapWidget(QWidget):
         self.scene.clear()
         self.node_items.clear()
         self.edge_items.clear()
+        self.route_items.clear()
         self.positions.clear()
+        self.route_result = {}
+        self.route_start_ref = ""
+        self.route_end_ref = ""
 
         nodes = [dict(x) for x in list(self.model.get("nodes") or []) if isinstance(x, dict)]
         by_ref = {str(node.get("ref") or ""): node for node in nodes}
@@ -213,6 +221,7 @@ class MusicMapWidget(QWidget):
 
         self.scene.setSceneRect(0, 0, width, height)
         self._redraw_edges()
+        self._redraw_route()
         self._recolour()
         self.highlight_track(current_track or {})
         self.reset_view()
@@ -307,10 +316,83 @@ class MusicMapWidget(QWidget):
             self.status.setText(
                 "No cached connections of this type yet. Listen normally or use Enrich knowledge on the Music Map."
             )
+        self._redraw_route()
 
     def set_knowledge_graph(self, graph: dict[str, Any]) -> None:
         self.knowledge_graph = dict(graph or {})
         self._redraw_edges()
+
+    def selected_ref_value(self) -> str:
+        return str(self.selected_ref or "")
+
+    def set_route_endpoints(self, start_ref: str = "", end_ref: str = "") -> None:
+        self.route_start_ref = str(start_ref or "")
+        self.route_end_ref = str(end_ref or "")
+        self.route_result = {}
+        self._redraw_route()
+        self._recolour()
+
+    def show_route(self, result: dict[str, Any]) -> None:
+        self.route_result = dict(result or {})
+        refs = [str(x) for x in list(self.route_result.get("path_refs") or []) if str(x)]
+        if refs:
+            self.route_start_ref = refs[0]
+            self.route_end_ref = refs[-1]
+        self._redraw_route()
+        self._recolour()
+        if self.route_result.get("found"):
+            self.status.setText(
+                "Pathfinder · "
+                + str(self.route_result.get("reason") or "route ready")
+                + f" · score {float(self.route_result.get('score') or 0.0):.0%}"
+            )
+        else:
+            self.status.setText(
+                "Pathfinder · " + str(self.route_result.get("reason") or "no route found")
+            )
+
+    def clear_route(self) -> None:
+        self.route_result = {}
+        self.route_start_ref = ""
+        self.route_end_ref = ""
+        self._redraw_route()
+        self._recolour()
+
+    def _redraw_route(self) -> None:
+        for item in list(self.route_items):
+            try:
+                self.scene.removeItem(item)
+            except Exception:
+                pass
+        self.route_items.clear()
+        refs = [str(x) for x in list(self.route_result.get("path_refs") or []) if str(x)]
+        hops = [
+            dict(x)
+            for x in list(self.route_result.get("hops") or [])
+            if isinstance(x, dict)
+        ]
+        if len(refs) < 2:
+            return
+        for index, (a, b) in enumerate(zip(refs, refs[1:])):
+            if a not in self.positions or b not in self.positions:
+                continue
+            ax, ay = self.positions[a]
+            bx, by = self.positions[b]
+            pen = QPen(QColor("#71d8ff"))
+            pen.setWidthF(4.2)
+            line = self.scene.addLine(ax, ay, bx, by, pen)
+            line.setZValue(6)
+            reason = str(hops[index].get("reason") or "Pathfinder hop") if index < len(hops) else "Pathfinder hop"
+            line.setToolTip(f"Step {index + 1}: {reason}")
+            self.route_items.append(line)
+
+            label = self.scene.addText(str(index + 1))
+            label.setDefaultTextColor(QColor("#dff7ff"))
+            label.setZValue(7)
+            label.setScale(0.75)
+            label.setPos((ax + bx) / 2.0 - 5.0, (ay + by) / 2.0 - 10.0)
+            label.setToolTip(reason)
+            self.route_items.append(label)
 
     def reset_view(self) -> None:
         self.view.resetTransform()
@@ -326,7 +408,17 @@ class MusicMapWidget(QWidget):
             track = self.ref_map.get(ref, {})
             is_current = bool(self.current_identity and _track_identity(track) == self.current_identity)
             is_selected = ref == self.selected_ref
-            if is_current:
+            route_refs = set(str(x) for x in list(self.route_result.get("path_refs") or []))
+            if ref == self.route_start_ref:
+                pen = QPen(QColor("#6ee7c8"))
+                pen.setWidthF(3.5)
+            elif ref == self.route_end_ref:
+                pen = QPen(QColor("#ff8fb1"))
+                pen.setWidthF(3.5)
+            elif ref in route_refs:
+                pen = QPen(QColor("#7ed0ff"))
+                pen.setWidthF(2.7)
+            elif is_current:
                 pen = QPen(QColor("#ffffff"))
                 pen.setWidthF(3.0)
             elif is_selected:
