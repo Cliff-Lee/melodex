@@ -1,0 +1,129 @@
+{
+  "schema_version": 1,
+  "recipes": [
+    {
+      "id": "org.melodex.recipe.deep-work-arc",
+      "name": "Deep Work Arc",
+      "version": "1.0.0",
+      "author": "Melodex Project",
+      "description": "Settle in, find a groove, stay familiar, then finish with more energy.",
+      "tags": ["focus", "work", "calm", "rhythmic", "energy"],
+      "license": "CC0-1.0",
+      "status": "example",
+      "compatibility": {"melodex_min": "0.3.1.dev0", "journey_schema": 1},
+      "source": {"repository": "https://github.com/Cliff-Lee/melodex"},
+      "sha256": "dd4f3048ecb22fe0374388bbb26700a698d6ffe7d5be9d5af8812c2419bdeec0",
+      "recipe": {
+        "melodex_journey": 1,
+        "name": "Deep Work Arc",
+        "description": "Settle in, find a groove, stay familiar, then finish with more energy.",
+        "routing_mode": "balanced",
+        "stages": [
+          {"type": "constraint", "constraint": "calm", "label": "Calm"},
+          {"type": "constraint", "constraint": "rhythmic", "label": "Rhythmic"},
+          {"type": "constraint", "constraint": "familiar", "label": "Familiar"},
+          {"type": "constraint", "constraint": "energetic", "label": "Energetic"}
+        ]
+      }
+    },
+    {
+      "id": "org.melodex.recipe.late-night-descent",
+      "name": "Late Night Descent",
+      "version": "1.0.0",
+      "author": "Melodex Project",
+      "description": "Begin familiar, move darker, slow the energy, then rediscover something half-forgotten.",
+      "tags": ["night", "dark", "calm", "rediscovery"],
+      "license": "CC0-1.0",
+      "status": "example",
+      "compatibility": {"melodex_min": "0.3.1.dev0", "journey_schema": 1},
+      "source": {"repository": "https://github.com/Cliff-Lee/melodex"},
+      "sha256": "4794329a6fa3dc5a61c6eadfc646b45f08795ac163b1ed151afaeefc387590a7",
+      "recipe": {
+        "melodex_journey": 1,
+        "name": "Late Night Descent",
+        "description": "Begin familiar, move darker, slow the energy, then rediscover something half-forgotten.",
+        "routing_mode": "balanced",
+        "stages": [
+          {"type": "constraint", "constraint": "familiar", "label": "Familiar"},
+          {"type": "constraint", "constraint": "dark", "label": "Darker"},
+          {"type": "constraint", "constraint": "calm", "label": "Calm"},
+          {"type": "constraint", "constraint": "forgotten", "label": "Forgotten"}
+        ]
+      }
+    },
+    {
+      "id": "org.melodex.recipe.rediscovery-sunday",
+      "name": "Rediscovery Sunday",
+      "version": "1.0.0",
+      "author": "Melodex Project",
+      "description": "A gentle route from known favourites into forgotten music and a brighter finish.",
+      "tags": ["weekend", "rediscovery", "familiar", "bright"],
+      "license": "CC0-1.0",
+      "status": "example",
+      "compatibility": {"melodex_min": "0.3.1.dev0", "journey_schema": 1},
+      "source": {"repository": "https://github.com/Cliff-Lee/melodex"},
+      "sha256": "ffa46d9459feb61ab42b5139e324fb9e2e4e44bc613e5f3bf6027587ac4cb7d4",
+      "recipe": {
+        "melodex_journey": 1,
+        "name": "Rediscovery Sunday",
+        "description": "A gentle route from known favourites into forgotten music and a brighter finish.",
+        "routing_mode": "balanced",
+        "stages": [
+          {"type": "constraint", "constraint": "familiar", "label": "Familiar"},
+          {"type": "constraint", "constraint": "forgotten", "label": "Forgotten"},
+          {"type": "constraint", "constraint": "bright", "label": "Bright"}
+        ]
+      }
+    },
+    {
+      "id": "org.melodex.recipe.dark-to-bright",
+      "name": "Dark to Bright",
+      "version": "1.0.0",
+      "author": "Melodex Project",
+      "description": "Start in a darker region, build rhythm and energy, then emerge somewhere brighter.",
+      "tags": ["dark", "rhythmic", "energy", "bright"],
+      "license": "CC0-1.0",
+      "status": "example",
+      "compatibility": {"melodex_min": "0.3.1.dev0", "journey_schema": 1},
+      "source": {"repository": "https://github.com/Cliff-Lee/melodex"},
+      "sha256": "f087096df0de77116ed3bb10166facf7a7fa9bd419302a516b5aab6993312ebf",
+      "recipe": {
+        "melodex_journey": 1,
+        "name": "Dark to Bright",
+        "description": "Start in a darker region, build rhythm and energy, then emerge somewhere brighter.",
+        "routing_mode": "balanced",
+        "stages": [
+          {"type": "constraint", "constraint": "dark", "label": "Darker"},
+          {"type": "constraint", "constraint": "rhythmic", "label": "Rhythmic"},
+          {"type": "constraint", "constraint": "energetic", "label": "Energetic"},
+          {"type": "constraint", "constraint": "bright", "label": "Bright"}
+        ]
+      }
+    },
+    {
+      "id": "org.melodex.recipe.discovery-drift",
+      "name": "Discovery Drift",
+      "version": "1.0.0",
+      "author": "Melodex Project",
+      "description": "A softer exploratory arc that deliberately makes room for surprise before returning to light.",
+      "tags": ["discovery", "surprising", "calm", "bright"],
+      "license": "CC0-1.0",
+      "status": "example",
+      "compatibility": {"melodex_min": "0.3.1.dev0", "journey_schema": 1},
+      "source": {"repository": "https://github.com/Cliff-Lee/melodex"},
+      "sha256": "d3b3dd7bc0f32100861750d2535edaac5185d145cdf66a200a823656b3ba6bc1",
+      "recipe": {
+        "melodex_journey": 1,
+        "name": "Discovery Drift",
+        "description": "A softer exploratory arc that deliberately makes room for surprise before returning to light.",
+        "routing_mode": "sonic",
+        "stages": [
+          {"type": "constraint", "constraint": "calm", "label": "Calm"},
+          {"type": "constraint", "constraint": "surprising", "label": "Surprising"},
+          {"type": "constraint", "constraint": "dark", "label": "Darker"},
+          {"type": "constraint", "constraint": "bright", "label": "Bright"}
+        ]
+      }
+    }
+  ]
+}
