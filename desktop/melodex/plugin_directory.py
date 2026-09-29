@@ -142,6 +142,7 @@ class PluginDirectoryDialog(QDialog):
         def failed(message):
             self.status.setText(message)
             self.install_button.setEnabled(False)
+            self.configure_button.setEnabled(False)
             if signals in self._signals:
                 self._signals.remove(signals)
 
@@ -281,6 +282,7 @@ class PluginDirectoryDialog(QDialog):
         if not entry:
             self.details.clear()
             self.install_button.setEnabled(False)
+            self.configure_button.setEnabled(False)
             self.source_button.setEnabled(False)
             self.review_button.setEnabled(False)
             return
