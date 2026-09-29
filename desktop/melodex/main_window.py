@@ -1573,6 +1573,257 @@ class MainWindow(QMainWindow):
             8000,
         )
 
+    # ------------------------------- Journey Live
+    def _music_ref_for_track(self,track):
+        if not isinstance(track,dict) or not hasattr(self,"music_map"):
+            return ""
+        candidate=dict(track or {})
+        for ref,mapped in self.music_map.ref_map.items():
+            mapped=dict(mapped or {})
+            for key in ("rel","local_path","track_id"):
+                a=str(candidate.get(key) or "").strip()
+                b=str(mapped.get(key) or "").strip()
+                if a and b and a==b:
+                    return str(ref)
+        artist=str(candidate.get("artist") or "").strip().casefold()
+        title=str(candidate.get("title") or "").strip().casefold()
+        album=str(candidate.get("album") or "").strip().casefold()
+        matches=[]
+        for ref,mapped in self.music_map.ref_map.items():
+            if (
+                str(mapped.get("artist") or "").strip().casefold()==artist
+                and str(mapped.get("title") or "").strip().casefold()==title
+                and (
+                    not album
+                    or str(mapped.get("album") or "").strip().casefold()==album
+                )
+            ):
+                matches.append(str(ref))
+        return matches[0] if len(matches)==1 else ""
+
+    def _journey_live_update_label(self,text=""):
+        if not hasattr(self,"music_live_label"):
+            return
+        if text:
+            self.music_live_label.setText("Journey Live · "+str(text))
+            return
+        if not self.music_live_active:
+            self.music_live_label.setText("Journey Live · inactive")
+            return
+        current_ref=self._music_ref_for_track(self.current_track or {})
+        current=self._music_path_name(current_ref)
+        destination=self._music_path_name(self.music_live_destination_ref)
+        avoided=len(self.music_live_avoid_refs)+len(self.music_live_avoid_artists)
+        suffix=f" · {avoided} avoid rule{'s' if avoided!=1 else ''}" if avoided else ""
+        self.music_live_label.setText(
+            f"Journey Live · {current} → {destination}{suffix}"
+        )
+
+    def _journey_live_start(self):
+        route=dict(self.music_path_result or {})
+        if not route.get("found") or not route.get("journey"):
+            self.statusBar().showMessage(
+                "Build a Journey Designer route before starting Journey Live",4000
+            ); return
+        refs=[str(x) for x in list(route.get("path_refs") or []) if str(x)]
+        tracks=[
+            dict(self.music_map.ref_map[ref])
+            for ref in refs
+            if ref in self.music_map.ref_map
+        ]
+        if len(tracks)<1 or len(tracks)!=len(refs):
+            self.statusBar().showMessage(
+                "Journey Live needs every route track to remain on the current Music Map",4500
+            ); return
+        self.music_live_active=True
+        self.music_live_route=dict(route)
+        self.music_live_original_route=dict(route)
+        self.music_live_destination_ref=refs[-1]
+        self.music_live_avoid_refs=set()
+        self.music_live_avoid_artists=set()
+        self.music_live_replanning=False
+        if hasattr(self,"music_live_steering"):
+            self.music_live_steering.setCurrentIndex(0)
+        self.player.set_queue(tracks,0,True)
+        self.music_map.show_route(route)
+        self._journey_live_update_label()
+        self.statusBar().showMessage(
+            "Journey Live active · manual Next will adapt the remaining route",6000
+        )
+
+    def _journey_live_stop(self,message="inactive"):
+        self.music_live_active=False
+        self.music_live_replanning=False
+        self._journey_live_update_label(message)
+
+    def _journey_live_apply_steer(self):
+        if not self.music_live_active:
+            self.statusBar().showMessage("Start Journey Live first",3000); return
+        steering=str(self.music_live_steering.currentData() or "") if hasattr(self,"music_live_steering") else ""
+        if not steering:
+            self.statusBar().showMessage("Choose a Journey Live steering direction first",3000); return
+        self._journey_live_replan(steering)
+
+    def _journey_live_avoid_current_artist(self):
+        if not self.music_live_active or not self.current_track:
+            self.statusBar().showMessage("Start Journey Live and play a mapped track first",3500); return
+        artist=str(self.current_track.get("artist") or "").strip()
+        if not artist:
+            self.statusBar().showMessage("The current track has no artist metadata to avoid",3500); return
+        self.music_live_avoid_artists.add(artist)
+        self.statusBar().showMessage(f"Journey Live will avoid {artist} in the remaining route",4500)
+        self._journey_live_replan("")
+
+    def _journey_live_restore(self):
+        if not self.music_live_active:
+            self.statusBar().showMessage("Start Journey Live first",3000); return
+        self.music_live_avoid_refs=set()
+        self.music_live_avoid_artists=set()
+        self._journey_live_replan(
+            "",
+            base_route=dict(self.music_live_original_route or {}),
+            reason="restore designed route",
+        )
+
+    def _journey_live_replan(
+        self,
+        steering="",
+        *,
+        reopen_stage_refs=None,
+        base_route=None,
+        reason="",
+    ):
+        if not self.music_live_active:
+            self.statusBar().showMessage("Start Journey Live first",3000); return
+        if self.music_live_replanning:
+            self.statusBar().showMessage("Journey Live is already replanning…",2500); return
+        current_ref=self._music_ref_for_track(self.current_track or {})
+        if not current_ref:
+            self.statusBar().showMessage(
+                "The current track is not available on the active Music Map",4500
+            ); return
+        if current_ref==self.music_live_destination_ref:
+            self._journey_live_stop("destination reached")
+            return
+        route=dict(base_route or self.music_live_route or {})
+        mode=str(self.music_path_mode.currentData() or route.get("mode") or "balanced")
+        self.music_live_replanning=True
+        self._journey_live_update_label("replanning…")
+        avoid_refs=set(self.music_live_avoid_refs)
+        avoid_artists=set(self.music_live_avoid_artists)
+        reopen=set(reopen_stage_refs or set())
+        destination=str(self.music_live_destination_ref)
+        request_reason=str(reason or "")
+        def work():
+            result=replan_live_journey(
+                dict(self.music_map.model or {}),
+                dict(self.music_map.knowledge_graph or {}),
+                route,
+                current_ref,
+                destination,
+                mode=mode,
+                steering=str(steering or ""),
+                avoid_refs=avoid_refs,
+                avoid_artists=avoid_artists,
+                reopen_stage_refs=reopen,
+                max_hops_per_segment=8,
+            )
+            result=dict(result or {})
+            result["_live_from_ref"]=current_ref
+            result["_live_request_reason"]=request_reason
+            return result
+        self._run_async(work,self._journey_live_apply_result)
+
+    def _journey_live_apply_result(self,result):
+        self.music_live_replanning=False
+        if not self.music_live_active:
+            return
+        result=dict(result or {})
+        expected=str(result.get("_live_from_ref") or "")
+        current_ref=self._music_ref_for_track(self.current_track or {})
+        if expected and current_ref and current_ref!=expected:
+            self.statusBar().showMessage(
+                "Journey Live moved while replanning · recalculating from the current track",4500
+            )
+            QTimer.singleShot(0,lambda:self._journey_live_replan(""))
+            return
+        if not result.get("found"):
+            reason=str(result.get("reason") or "No adaptive route could be found")
+            self._journey_live_update_label("replan failed · queue unchanged")
+            self.statusBar().showMessage(
+                reason+" · existing queue kept unchanged",7000
+            )
+            return
+
+        refs=[str(x) for x in list(result.get("path_refs") or []) if str(x)]
+        if not refs or refs[0]!=current_ref:
+            self._journey_live_update_label("invalid replan · queue unchanged")
+            self.statusBar().showMessage(
+                "Journey Live returned an invalid route start · existing queue kept unchanged",6500
+            )
+            return
+        tail=[
+            dict(self.music_map.ref_map[ref])
+            for ref in refs[1:]
+            if ref in self.music_map.ref_map
+        ]
+        if len(tail)!=max(0,len(refs)-1):
+            self._journey_live_update_label("map changed · queue unchanged")
+            self.statusBar().showMessage(
+                "A replanned track is no longer on the Music Map · existing queue kept unchanged",6500
+            )
+            return
+
+        self.player.replace_upcoming(tail)
+        self.music_live_route=dict(result)
+        self.music_path_result=dict(result)
+        self.music_map.show_route(result)
+        if hasattr(self,"music_live_steering"):
+            self.music_live_steering.setCurrentIndex(0)
+        self.music_path_steps.clear()
+        stages_by_ref={
+            str(stage.get("ref") or ""):dict(stage)
+            for stage in list(result.get("stages") or [])
+            if isinstance(stage,dict) and str(stage.get("ref") or "")
+        }
+        hops=[dict(x) for x in list(result.get("hops") or []) if isinstance(x,dict)]
+        for index,hop in enumerate(hops,start=1):
+            a=self._music_path_name(hop.get("from") or "")
+            b=self._music_path_name(hop.get("to") or "")
+            detail=str(hop.get("reason") or "graph connection")
+            stage=stages_by_ref.get(str(hop.get("to") or ""))
+            if stage:
+                detail+=(
+                    f"\n→ Live stage: {stage.get('label') or 'Stage'} · "
+                    f"fit {float(stage.get('score') or 0):.0%} · {stage.get('reason') or ''}"
+                )
+            self.music_path_steps.addItem(f"{index}. {a}  →  {b}\n{detail}")
+        self._journey_live_update_label()
+        self.statusBar().showMessage(
+            f"Journey Live replanned · {len(tail)} upcoming track{'s' if len(tail)!=1 else ''} · "
+            f"score {float(result.get('score') or 0):.0%}",
+            6500,
+        )
+
+    def _on_manual_advance(self,previous,current,played_ms,duration_ms):
+        if not self.music_live_active:
+            return
+        previous_ref=self._music_ref_for_track(dict(previous or {}))
+        if previous_ref:
+            self.music_live_avoid_refs.add(previous_ref)
+        reopen=set()
+        # Preserve the existing taste model's conservative definition of an
+        # immediate skip: under 30 seconds means the stage was not really
+        # experienced, so a skipped semantic waypoint is reopened.
+        if previous_ref and int(played_ms or 0)<30000:
+            reopen.add(previous_ref)
+        self.statusBar().showMessage("Journey Live adapting after manual skip…",3500)
+        self._journey_live_replan(
+            "",
+            reopen_stage_refs=reopen,
+            reason="manual skip",
+        )
+
     def _analyse_library_for_map(self):
         catalog=self.providers.local_catalog()
         if not catalog:
