@@ -25,7 +25,7 @@ from .music_map_model import build_music_map
 from .music_knowledge import MusicKnowledgeStore, build_knowledge_graph
 from .music_pathfinder import find_music_path
 from .music_journey import STAGE_LABELS, build_music_journey
-from .music_journey_live import STEERING_STAGES, replan_live_journey
+from .music_journey_live import replan_live_journey
 from .user_state import UserState
 from .player import FlowPlayer
 from .llm_bridge import LLMClient, LLMSettings, llm_track_summary
