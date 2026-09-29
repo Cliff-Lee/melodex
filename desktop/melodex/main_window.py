@@ -9,6 +9,7 @@ from typing import Any
 
 from PySide6.QtCore import QEvent, Qt, QTimer, Signal, QObject
 from PySide6.QtGui import QAction, QDesktopServices, QPixmap
+from PySide6.QtMultimedia import QMediaPlayer
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QListWidget,
     QListWidgetItem, QStackedWidget, QLineEdit, QComboBox, QFileDialog, QMessageBox,
@@ -2577,7 +2578,12 @@ class MainWindow(QMainWindow):
             return
         self._visual_position_ms = int(pos)
         self._visual_duration_ms = int(dur)
-        if hasattr(self,"living_canvas"):self.living_canvas.set_position(pos,dur)
+        if hasattr(self,"living_canvas"):
+            self.living_canvas.set_position(pos, dur)
+            active_player = self.player.players[self.player.active]
+            self.living_canvas.set_playing(
+                active_player.playbackState() == QMediaPlayer.PlayingState
+            )
         if hasattr(self,"rich_now"):self.rich_now.set_position(pos)
         if dur>0:self.seek.setValue(int(1000*pos/dur))
         if dur>0 and pos>=dur-1500 and self.current_history_id:
