@@ -170,6 +170,7 @@ def build_music_journey(
     mode: str = "balanced",
     max_hops_per_segment: int = 8,
     candidates_per_stage: int = 10,
+    forbidden_refs: set[str] | None = None,
 ) -> dict[str, Any]:
     """Build an explainable staged journey using reusable Pathfinder segments."""
 
@@ -177,6 +178,9 @@ def build_music_journey(
     nodes = network.nodes
     start_ref, end_ref = str(start_ref), str(end_ref)
     normalised = [stage for stage in (_normalise_stage(x) for x in stages) if stage]
+    forbidden = {str(ref) for ref in set(forbidden_refs or set()) if str(ref)}
+    forbidden.discard(start_ref)
+    forbidden.discard(end_ref)
 
     if start_ref not in nodes or end_ref not in nodes:
         return {
@@ -193,6 +197,7 @@ def build_music_journey(
             end_ref,
             mode=mode,
             max_hops=max_hops_per_segment,
+            forbidden_refs=forbidden,
         )
         direct["stages"] = []
         direct["waypoint_refs"] = []
@@ -227,7 +232,7 @@ def build_music_journey(
             constraint = str(stage.get("constraint") or "")
             ranked: list[tuple[float, str, float, str]] = []
             for ref, node in nodes.items():
-                if ref in used_refs or ref == end_ref:
+                if ref in used_refs or ref == end_ref or ref in forbidden:
                     continue
                 satisfaction, explanation = stage_score(node, constraint)
                 progress = _progress_score(node, start_node, end_node, fraction)
@@ -249,6 +254,7 @@ def build_music_journey(
                 candidate_ref,
                 mode=mode,
                 max_hops=max_hops_per_segment,
+                forbidden_refs=forbidden,
             )
             if not segment.get("found"):
                 continue
@@ -266,6 +272,7 @@ def build_music_journey(
                 end_ref,
                 mode=mode,
                 max_hops=max_hops_per_segment,
+                forbidden_refs=forbidden,
             )
             if not future.get("found"):
                 continue
@@ -320,6 +327,7 @@ def build_music_journey(
         end_ref,
         mode=mode,
         max_hops=max_hops_per_segment,
+        forbidden_refs=forbidden,
     )
     if not final_segment.get("found"):
         return {
