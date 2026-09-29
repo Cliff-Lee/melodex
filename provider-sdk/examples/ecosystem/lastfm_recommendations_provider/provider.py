@@ -156,7 +156,8 @@ def recommendations_get(params):
     title = str(seed.get("title") or "").strip()
     if not artist or not title:
         raise RuntimeError("recommendations.get requires seed.artist and seed.title")
-    limit = max(1, min(int(params.get("limit") or 25), 100))
+    raw_limit = params.get("limit")
+    limit = 25 if raw_limit is None else max(1, min(int(raw_limit), 100))
     data = _get_json(artist, title, limit, _api_key(params))
     block = data.get("similartracks") if isinstance(data, dict) else {}
     rows = block.get("track") if isinstance(block, dict) else []
