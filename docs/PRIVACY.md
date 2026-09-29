@@ -80,6 +80,8 @@ The map's projection and knowledge graph are computed locally and are not sent t
 
 Normal Now Playing enrichment can be remembered in the local Music Map knowledge index. The explicit **Enrich selected** and **Enrich map (+8)** controls may contact MusicBrainz and enabled context plugins; they are user-initiated network enrichment, not background crawling.
 
+**Pathfinder** is local. Route finding uses the current map's cached standardized Flow vectors and cached factual edges. It does not contact metadata services, plugins, an LLM or a remote recommender merely to find a path.
+
 ## Local intelligence plugins
 
 The `library.suggest` contract is designed so useful local recommendation tools do not need the user's filesystem paths or taste database.

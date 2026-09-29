@@ -79,6 +79,7 @@ def test_music_map_is_deterministic_and_bounded():
     assert first["input_profiles"] == 4
     assert all(-1.0 <= node["x"] <= 1.0 for node in first["nodes"])
     assert all(-1.0 <= node["y"] <= 1.0 for node in first["nodes"])
+    assert all(len(node["route_vector"]) == 8 for node in first["nodes"])
 
 
 def test_music_map_links_close_sonic_neighbours():

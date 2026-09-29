@@ -23,6 +23,7 @@ from .local_intelligence import LocalIntelligenceService
 from .music_map import MusicMapWidget
 from .music_map_model import build_music_map
 from .music_knowledge import MusicKnowledgeStore, build_knowledge_graph
+from .music_pathfinder import find_music_path
 from .user_state import UserState
 from .player import FlowPlayer
 from .llm_bridge import LLMClient, LLMSettings, llm_track_summary
@@ -74,6 +75,9 @@ class MainWindow(QMainWindow):
         self.current_history_id = 0
         self.current_track_started = 0.0
         self.current_track: dict[str, Any] | None = None
+        self.music_path_start_ref = ""
+        self.music_path_end_ref = ""
+        self.music_path_result: dict[str, Any] = {}
         self.current_page = "home"
         self._closing = False
         self.externalCommand.connect(self._on_external_command)
@@ -228,7 +232,7 @@ class MainWindow(QMainWindow):
         l=self._page_layout(
             "music_map",
             "Music map",
-            "Explore your library as both a sonic landscape and a knowledge graph. Keep the dots fixed, then switch Connections between what sounds similar and what is actually related."
+            "Explore your library as both a sonic landscape and a knowledge graph. Keep the dots fixed, switch Connections, or ask Pathfinder to build an explainable listening route between two tracks."
         )
         actions=QHBoxLayout()
         refresh=QPushButton("Refresh map"); refresh.clicked.connect(self._refresh_music_map)
@@ -240,9 +244,34 @@ class MainWindow(QMainWindow):
         journey=QPushButton("Start journey here"); journey.clicked.connect(self._journey_from_music_map)
         actions.addWidget(refresh); actions.addWidget(analyse); actions.addWidget(enrich_selected); actions.addWidget(enrich_map); actions.addWidget(play); actions.addWidget(queue); actions.addWidget(journey); actions.addStretch(1)
         l.addLayout(actions)
+
+        path_row=QHBoxLayout()
+        self.music_path_mode=QComboBox()
+        self.music_path_mode.addItem("Balanced", "balanced")
+        self.music_path_mode.addItem("Sonic", "sonic")
+        self.music_path_mode.addItem("Knowledge-first", "knowledge")
+        set_start=QPushButton("Set start"); set_start.clicked.connect(self._music_path_set_start)
+        set_end=QPushButton("Set destination"); set_end.clicked.connect(self._music_path_set_end)
+        find_path=QPushButton("Find path"); find_path.clicked.connect(self._music_path_find)
+        play_path=QPushButton("Play route"); play_path.clicked.connect(self._music_path_play)
+        queue_path=QPushButton("Queue route"); queue_path.clicked.connect(self._music_path_queue)
+        clear_path=QPushButton("Clear path"); clear_path.clicked.connect(self._music_path_clear)
+        self.music_path_label=QLabel("Pathfinder · start —  →  destination —")
+        self.music_path_label.setStyleSheet("color:#aab0ba")
+        path_row.addWidget(QLabel("Pathfinder"))
+        path_row.addWidget(self.music_path_mode)
+        path_row.addWidget(set_start); path_row.addWidget(set_end); path_row.addWidget(find_path)
+        path_row.addWidget(play_path); path_row.addWidget(queue_path); path_row.addWidget(clear_path)
+        path_row.addWidget(self.music_path_label,1)
+        l.addLayout(path_row)
+
         self.music_map=MusicMapWidget(self)
         self.music_map.trackActivated.connect(self._play_music_map_track)
         l.addWidget(self.music_map,1)
+        self.music_path_steps=QListWidget()
+        self.music_path_steps.setMaximumHeight(132)
+        self.music_path_steps.addItem("Pathfinder explanations will appear here.")
+        l.addWidget(self.music_path_steps)
 
     def _build_playlists(self):
         l=self._page_layout("playlists","Playlists","Saved journeys and imported playlists live locally. Import or export XSPF, M3U and M3U8.")
@@ -1045,6 +1074,13 @@ class MainWindow(QMainWindow):
             self.current_track,
             dict(payload.get("knowledge_graph") or {}),
         )
+        self.music_path_start_ref=""
+        self.music_path_end_ref=""
+        self.music_path_result={}
+        self._music_path_update_label()
+        if hasattr(self,"music_path_steps"):
+            self.music_path_steps.clear()
+            self.music_path_steps.addItem("Select a mapped track, set start/destination, then Find path.")
         mapped=int((payload.get("model") or {}).get("analysed") or 0)
         if mapped:
             self.statusBar().showMessage(f"Music Map ready · {mapped} analysed tracks",5000)
@@ -1207,6 +1243,113 @@ class MainWindow(QMainWindow):
             9000,
         )
         self._refresh_music_map()
+
+    # ------------------------------- Music Map Pathfinder
+    def _music_path_name(self,ref):
+        track=dict(self.music_map.ref_map.get(str(ref),{}) or {}) if hasattr(self,"music_map") else {}
+        if not track:return "—"
+        artist=str(track.get("artist") or "Unknown artist")
+        title=str(track.get("title") or "Unknown track")
+        return f"{artist} — {title}"
+
+    def _music_path_update_label(self):
+        if not hasattr(self,"music_path_label"):return
+        self.music_path_label.setText(
+            f"Pathfinder · start {self._music_path_name(self.music_path_start_ref)}"
+            f"  →  destination {self._music_path_name(self.music_path_end_ref)}"
+        )
+
+    def _music_path_set_start(self):
+        ref=self.music_map.selected_ref_value() if hasattr(self,"music_map") else ""
+        if not ref:
+            self.statusBar().showMessage("Select a Music Map track first",3000); return
+        self.music_path_start_ref=ref
+        self.music_path_result={}
+        self.music_map.set_route_endpoints(self.music_path_start_ref,self.music_path_end_ref)
+        self._music_path_update_label()
+        self.statusBar().showMessage("Pathfinder start set",2500)
+
+    def _music_path_set_end(self):
+        ref=self.music_map.selected_ref_value() if hasattr(self,"music_map") else ""
+        if not ref:
+            self.statusBar().showMessage("Select a Music Map track first",3000); return
+        self.music_path_end_ref=ref
+        self.music_path_result={}
+        self.music_map.set_route_endpoints(self.music_path_start_ref,self.music_path_end_ref)
+        self._music_path_update_label()
+        self.statusBar().showMessage("Pathfinder destination set",2500)
+
+    def _music_path_find(self):
+        if not self.music_path_start_ref or not self.music_path_end_ref:
+            self.statusBar().showMessage("Set both Pathfinder start and destination",3500); return
+        mode=str(self.music_path_mode.currentData() or "balanced")
+        result=find_music_path(
+            dict(self.music_map.model or {}),
+            dict(self.music_map.knowledge_graph or {}),
+            self.music_path_start_ref,
+            self.music_path_end_ref,
+            mode=mode,
+            max_hops=12,
+        )
+        self.music_path_result=dict(result or {})
+        self.music_map.show_route(self.music_path_result)
+        self.music_path_steps.clear()
+        if not self.music_path_result.get("found"):
+            reason=str(self.music_path_result.get("reason") or "No route found")
+            self.music_path_steps.addItem(reason)
+            self.statusBar().showMessage(reason,6000)
+            return
+
+        refs=[str(x) for x in list(self.music_path_result.get("path_refs") or []) if str(x)]
+        hops=[dict(x) for x in list(self.music_path_result.get("hops") or []) if isinstance(x,dict)]
+        for index,hop in enumerate(hops):
+            a=self._music_path_name(hop.get("from") or (refs[index] if index<len(refs) else ""))
+            b=self._music_path_name(hop.get("to") or (refs[index+1] if index+1<len(refs) else ""))
+            reason=str(hop.get("reason") or "graph connection")
+            self.music_path_steps.addItem(f"{index+1}. {a}  →  {b}\n{reason}")
+        self.statusBar().showMessage(
+            f"Pathfinder ready · {len(hops)} hop{'s' if len(hops)!=1 else ''} · "
+            f"score {float(self.music_path_result.get('score') or 0):.0%}",
+            7000,
+        )
+
+    def _music_path_tracks(self):
+        if not self.music_path_result.get("found"):return []
+        refs=[str(x) for x in list(self.music_path_result.get("path_refs") or []) if str(x)]
+        return [
+            dict(self.music_map.ref_map[ref])
+            for ref in refs
+            if ref in self.music_map.ref_map
+        ]
+
+    def _music_path_play(self):
+        tracks=self._music_path_tracks()
+        if not tracks:
+            self.statusBar().showMessage("Find a Pathfinder route first",3000); return
+        self.player.set_queue(tracks,0,True)
+        self.statusBar().showMessage(f"Playing Pathfinder route · {len(tracks)} tracks",4000)
+
+    def _music_path_queue(self):
+        tracks=self._music_path_tracks()
+        if not tracks:
+            self.statusBar().showMessage("Find a Pathfinder route first",3000); return
+        if not self.player.queue:
+            self.player.set_queue(tracks,0,False)
+        else:
+            self.player.queue.extend(dict(track) for track in tracks)
+            self.player.queueChanged.emit(self.player.queue)
+        self.statusBar().showMessage(f"Queued Pathfinder route · {len(tracks)} tracks",4000)
+
+    def _music_path_clear(self):
+        self.music_path_start_ref=""
+        self.music_path_end_ref=""
+        self.music_path_result={}
+        if hasattr(self,"music_map"):self.music_map.clear_route()
+        self._music_path_update_label()
+        if hasattr(self,"music_path_steps"):
+            self.music_path_steps.clear()
+            self.music_path_steps.addItem("Pathfinder explanations will appear here.")
+        self.statusBar().showMessage("Pathfinder cleared",2500)
 
     def _analyse_library_for_map(self):
         catalog=self.providers.local_catalog()
