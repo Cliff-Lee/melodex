@@ -271,7 +271,10 @@ class MainWindow(QMainWindow):
     def _refresh_source_combo(self):
         current=self.search_source.currentData(); self.search_source.clear(); self.search_source.addItem("All sources","all")
         for pid in self.providers.provider_order():
-            p=self.providers.providers[pid]; self.search_source.addItem(p.info.name,pid)
+            p=self.providers.providers[pid]
+            if "search" not in list(p.info.capabilities or []):
+                continue
+            self.search_source.addItem(p.info.name,pid)
         idx=self.search_source.findData(current); self.search_source.setCurrentIndex(idx if idx>=0 else 0)
 
     def _refresh_sources(self):
