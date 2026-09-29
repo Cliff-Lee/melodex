@@ -54,7 +54,7 @@ for line in sys.stdin:
         elif key == "good":
             result = {"status":"ready","message":"Connected"}
         else:
-            result = {"status":"auth_required","message":"Invalid api_key=" + str(key)}
+            result = {"status":"auth_required","message":"Invalid credential " + str(key)}
     elif method == "catalog.search":
         result = {"items":[]}
     else:
@@ -152,7 +152,7 @@ def test_provider_health_requires_setup_then_redacts_auth_failure(tmp_path: Path
         assert result["status"] == "authentication_required"
         assert result["provider_status"] == "auth_required"
         assert "bad-secret" not in json.dumps(result)
-        assert "[redacted]" in result["message"]
+        assert "bad-secret" not in result["message"]
 
         manager.set_plugin_configuration(plugin_id, {"api_key": "good"})
         ready = manager.test_plugin_health(plugin_id, timeout=1)
