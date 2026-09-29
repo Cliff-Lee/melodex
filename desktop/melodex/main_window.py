@@ -1169,6 +1169,8 @@ class MainWindow(QMainWindow):
 
     def _apply_music_map_payload(self,payload):
         payload=dict(payload or {})
+        if self.music_live_active:
+            self._journey_live_stop("map refreshed · adaptation stopped")
         self.music_map.set_map(
             dict(payload.get("model") or {}),
             dict(payload.get("ref_map") or {}),
@@ -1427,6 +1429,8 @@ class MainWindow(QMainWindow):
         ]
 
     def _music_path_play(self):
+        if self.music_live_active:
+            self._journey_live_stop("normal route playback")
         tracks=self._music_path_tracks()
         if not tracks:
             self.statusBar().showMessage("Find a Pathfinder route first",3000); return
@@ -1445,6 +1449,8 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(f"Queued Pathfinder route · {len(tracks)} tracks",4000)
 
     def _music_path_clear(self):
+        if self.music_live_active:
+            self._journey_live_stop("route cleared")
         self.music_path_start_ref=""
         self.music_path_end_ref=""
         self.music_path_result={}
@@ -1515,6 +1521,8 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Journey stages cleared",2500)
 
     def _music_journey_build(self):
+        if self.music_live_active:
+            self._journey_live_stop("design changed")
         if not self.music_path_start_ref or not self.music_path_end_ref:
             self.statusBar().showMessage(
                 "Set Pathfinder start and destination before building a journey",4000
@@ -1923,6 +1931,12 @@ class MainWindow(QMainWindow):
         self.current_track=dict(t); self.current_track_started=time.time(); self.current_history_id=self.state.record_play(t)
         if hasattr(self,"music_map"):
             self.music_map.highlight_track(t)
+        if self.music_live_active:
+            current_ref=self._music_ref_for_track(self.current_track)
+            if current_ref and current_ref==self.music_live_destination_ref:
+                self._journey_live_stop("destination reached")
+            else:
+                self._journey_live_update_label()
         self.now_title.setText(str(t.get("title") or "Unknown track")); base=f"{t.get('artist','Unknown artist')}   ·   {t.get('album','')}   ·   {t.get('provider_id','')}"; src=str(t.get("source_page") or ""); attr=str(t.get("attribution") or ""); self.now_meta.setText(base + ((f"   ·   <a href=\"{src}\">{attr or 'Source'}</a>") if src else ""))
         if hasattr(self,"rich_now"):self.rich_now.set_track(dict(t))
 
