@@ -114,10 +114,59 @@ def materialize_route_snapshot(
             refs.append("")
         else:
             refs.append(ref)
+    complete = not unresolved and bool(refs)
+    hops: list[dict[str, Any]] = []
+    if complete:
+        for raw in list(snapshot.get("hops") or []):
+            if not isinstance(raw, dict):
+                continue
+            try:
+                a = refs[int(raw.get("from_index"))]
+                b = refs[int(raw.get("to_index"))]
+            except Exception:
+                continue
+            row = dict(raw)
+            row.pop("from_index", None)
+            row.pop("to_index", None)
+            row["from"] = a
+            row["to"] = b
+            hops.append(row)
+
+    stages: list[dict[str, Any]] = []
+    waypoint_refs: list[str] = []
+    if complete:
+        for raw in list(snapshot.get("stages") or []):
+            if not isinstance(raw, dict):
+                continue
+            stage = dict(raw)
+            index = stage.pop("track_index", None)
+            if index is not None:
+                try:
+                    ref = refs[int(index)]
+                except Exception:
+                    ref = ""
+                if ref:
+                    stage["ref"] = ref
+                    waypoint_refs.append(ref)
+            stages.append(stage)
+
+    route = {
+        "found": complete,
+        "journey": bool(snapshot.get("journey")),
+        "mode": str(snapshot.get("mode") or "balanced"),
+        "score": float(snapshot.get("score") or 0.0),
+        "reason": str(snapshot.get("reason") or "Historical journey replay"),
+        "path_refs": refs if complete else [],
+        "hops": hops,
+        "stages": stages,
+        "waypoint_refs": waypoint_refs,
+        "replay": True,
+    }
     return {
         "refs": refs,
         "unresolved": unresolved,
-        "complete": not unresolved and bool(refs),
+        "complete": complete,
+        "route": route,
     }
 
 
