@@ -7,7 +7,7 @@ A source-neutral provider protocol and developer SDK for **Melodex**.
 
 ## Status
 
-**SDK v0.7.0 / MPP 1.0 preview.**
+**SDK v0.8.0 / MPP 1.0 preview.**
 
 The SDK/tooling is usable today, but the package remains 0.x and MPP 1.0 is still a **preview compatibility target**, not a frozen final protocol.
 
