@@ -64,6 +64,10 @@ def build_diagnostics(manager: Any) -> dict[str, Any]:
                 row["configuration_status"] = manager.plugin_config.status(
                     provider_id, info.configuration
                 )
+            try:
+                row["plugin_health"] = manager.plugin_health(provider_id)
+            except Exception:
+                row["plugin_health"] = {}
             row["installation"] = _installation_summary(
                 manager.installation_record(provider_id)
             )
@@ -87,6 +91,11 @@ def build_diagnostics(manager: Any) -> dict[str, Any]:
                     str(value) for value in extension.get("preferred_for") or []
                 ],
                 "health": dict(extension.get("health") or {}),
+                "plugin_health": (
+                    manager.plugin_health(extension_id)
+                    if extension_id
+                    else {}
+                ),
                 "configuration_status": dict(
                     extension.get("configuration_status") or {}
                 ),
