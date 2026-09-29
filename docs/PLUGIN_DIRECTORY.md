@@ -39,7 +39,7 @@ The point is not merely convenience. The directory makes the trust boundary visi
 
 ```text
 .mdxprovider   music providers (search, playback, recommendations, etc.)
-.mdxplugin     identity/metadata/artwork/lyrics extensions
+.mdxplugin     identity/metadata/artwork/lyrics/context/local-intelligence extensions
 ```
 
 Both are installed through their existing isolated provider/extension runtimes.
@@ -205,14 +205,13 @@ Registry package URLs must still use HTTPS and valid SHA-256 metadata.
 
 ## Reference packages
 
-The first directory contains installable examples for:
+The directory includes installable examples for providers, enrichment, context and local tools. Local-intelligence examples include:
 
-- Radio Browser — playback provider;
-- LibriVox — public-domain audiobook provider;
-- MusicBrainz — identity/metadata enrichment;
-- Wikimedia Commons — artwork enrichment.
+- **Sonic Neighbours** — local “more like this” from Flow features;
+- **Forgotten Favourites** — private taste/recency rediscovery;
+- **Bridge Builder** — local transition-bridge suggestions.
 
-These examples exist to teach the extension model using documented legal/open-access sources.
+These local tools request no network or local-file permission in their descriptors. Melodex Core supplies them a sanitized `library.suggest` snapshot instead of brokering filesystem paths or database rows. The general desktop extension process is still not a complete OS sandbox.
 
 ## For plugin authors
 
