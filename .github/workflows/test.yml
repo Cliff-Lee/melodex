@@ -19,6 +19,7 @@ jobs:
       - run: python scripts/navigation_check.py
       - run: python scripts/terminology_check.py
       - run: python scripts/ecosystem_check.py
+      - run: python scripts/journey_registry_check.py
       - run: python scripts/version_check.py
       - run: python scripts/release_check.py
       - name: Provider SDK tests
