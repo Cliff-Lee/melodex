@@ -1,0 +1,75 @@
+name: Personal stabilized desktop build
+
+on:
+  push:
+    branches:
+      - testing/v0.3.1-dev-stabilized
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            name: macOS-arm64
+          - os: macos-15-intel
+            name: macOS-intel
+          - os: windows-latest
+            name: Windows-x64
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Verify development version
+        shell: bash
+        run: python scripts/version_check.py
+
+      - name: Build macOS
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          cd desktop
+          chmod +x build_macos.sh
+          ./build_macos.sh
+          if [ -f dist/Melodex.dmg ]; then
+            mv dist/Melodex.dmg dist/Melodex-${{ matrix.name }}-v0.3.1-dev-stabilized.dmg
+          fi
+
+      - name: Build Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          cd desktop
+          .\build_windows.ps1
+          choco install innosetup -y --no-progress
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
+          Copy-Item "dist\Melodex-Windows-portable.zip" "dist\Melodex-Windows-portable-v0.3.1-dev-stabilized.zip"
+          Copy-Item "dist\Melodex-Windows-x64-Setup.exe" "dist\Melodex-Windows-x64-Setup-v0.3.1-dev-stabilized.exe"
+
+      - name: Upload macOS artifact
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Melodex-${{ matrix.name }}-v0.3.1-dev-stabilized
+          path: desktop/dist/Melodex-${{ matrix.name }}-v0.3.1-dev-stabilized.dmg
+          retention-days: 14
+
+      - name: Upload Windows artifacts
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Melodex-Windows-x64-v0.3.1-dev-stabilized
+          path: |
+            desktop/dist/Melodex-Windows-portable-v0.3.1-dev-stabilized.zip
+            desktop/dist/Melodex-Windows-x64-Setup-v0.3.1-dev-stabilized.exe
+          retention-days: 14
