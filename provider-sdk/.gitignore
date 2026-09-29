@@ -14,6 +14,7 @@ venv/
 
 # Provider bundles / generated artifacts
 *.mdxprovider
+!registry/packages/*.mdxprovider
 *.zip
 
 # IDE / OS
