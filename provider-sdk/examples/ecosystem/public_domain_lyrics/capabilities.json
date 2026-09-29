@@ -1,0 +1,23 @@
+{
+  "schema_version": "0.1",
+  "extension_id": "org.melodex.example.public-domain-lyrics",
+  "name": "Public Domain Lyrics Example",
+  "version": "0.1.0",
+  "publisher": "Melodex examples",
+  "description": "Small bundled public-domain lyrics corpus demonstrating lyrics.lookup without redistributing modern copyrighted lyrics.",
+  "permissions": {
+    "network_hosts": [],
+    "local_files": false,
+    "browser_auth": false
+  },
+  "entrypoints": {
+    "python": "plugin.py"
+  },
+  "contracts": [
+    {
+      "capability": "lyrics",
+      "contract_version": "0.1",
+      "method": "lyrics.lookup"
+    }
+  ]
+}
