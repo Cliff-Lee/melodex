@@ -70,6 +70,55 @@ def test_wikimedia_artwork_with_fixture(monkeypatch):
     assert asset["provenance"]["attribution"]
 
 
+
+def test_openverse_audio_example_with_fixture(monkeypatch):
+    monkeypatch.setenv("MELODEX_EXAMPLE_FIXTURES", "1")
+    module = _load("openverse_audio_example", EXAMPLES / "openverse_audio_provider" / "provider.py")
+    result = module.respond(
+        {"method": "catalog.search", "params": {"query": "ambient", "limit": 3}}
+    )
+    track = result["items"][0]
+    assert track["title"] == "Example Open Track"
+    assert track["metadata"]["license"] == "BY 4.0"
+    play = module.respond(
+        {"method": "playback.resolve", "params": {"provider_track_id": track["provider_track_id"]}}
+    )
+    assert play["url"].endswith(".mp3")
+    assert play["seekable"] is True
+
+
+def test_cover_art_archive_example_with_fixture(monkeypatch):
+    monkeypatch.setenv("MELODEX_EXAMPLE_FIXTURES", "1")
+    module = _load(
+        "cover_art_archive_example",
+        EXAMPLES / "cover_art_archive_artwork" / "plugin.py",
+    )
+    subject = {
+        "entity_type": "album",
+        "canonical_ids": {
+            "musicbrainz_release_id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+        },
+    }
+    result = module.artwork_lookup({"subject": subject, "max_results": 5})
+    asset = result["assets"][0]
+    assert asset["role"] == "cover"
+    assert "archive.org" in asset["url"]
+    assert asset["provenance"]["source_extension_id"] == "org.melodex.example.cover-art-archive"
+
+
+def test_listenbrainz_tags_example_with_fixture(monkeypatch):
+    monkeypatch.setenv("MELODEX_EXAMPLE_FIXTURES", "1")
+    module = _load("listenbrainz_tags_example", EXAMPLES / "listenbrainz_tags" / "plugin.py")
+    subject = {
+        "entity_type": "track",
+        "canonical_ids": {
+            "musicbrainz_recording_id": "e97f805a-ab48-4c52-855e-07049142113d"
+        },
+    }
+    result = module.metadata_enrich({"subject": subject})
+    assert result["fields"]["community_tags"]["value"][0] == "trip hop"
+    assert result["fields"]["community_tag_counts"]["value"][0]["count"] == 8
+
 def test_registry_references_all_examples():
     registry = json.loads((ROOT / "registry" / "example-registry.json").read_text(encoding="utf-8"))
     ids = {row["id"] for row in registry["plugins"]}
@@ -78,4 +127,7 @@ def test_registry_references_all_examples():
         "org.melodex.example.librivox",
         "org.melodex.example.musicbrainz",
         "org.melodex.example.wikimedia-commons",
+        "org.melodex.example.openverse-audio",
+        "org.melodex.example.cover-art-archive",
+        "org.melodex.example.listenbrainz-tags",
     }.issubset(ids)
