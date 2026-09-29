@@ -48,9 +48,12 @@ def _get_json(path, params=None):
 def _artist_credit(row):
     parts = []
     for credit in row.get("artist-credit") or []:
-        name = credit.get("name") or (credit.get("artist") or {}).get("name") or ""
+        if not isinstance(credit, dict):
+            continue
+        artist = credit.get("artist") if isinstance(credit.get("artist"), dict) else {}
+        name = credit.get("name") or artist.get("name") or ""
         if name:
-            parts.append(name + str(credit.get("joinphrase") or ""))
+            parts.append(str(name) + str(credit.get("joinphrase") or ""))
     return "".join(parts).strip()
 
 
@@ -68,7 +71,10 @@ def _provenance(item_id, score=None, evidence=None):
 
 
 def _candidate(recording):
-    ids = {"musicbrainz_recording_id": recording["id"]}
+    recording_id = str(recording.get("id") or "").strip()
+    if not recording_id:
+        return None
+    ids = {"musicbrainz_recording_id": recording_id}
     credits = recording.get("artist-credit") or []
     if credits and (credits[0].get("artist") or {}).get("id"):
         ids["musicbrainz_artist_id"] = credits[0]["artist"]["id"]
@@ -92,7 +98,7 @@ def _candidate(recording):
         },
         "score": score,
         "provenance": _provenance(
-            recording["id"], score, ["MusicBrainz recording search score"]
+            recording_id, score, ["MusicBrainz recording search score"]
         ),
     }
 
@@ -102,13 +108,26 @@ def identity_resolve(params):
     canonical = subject.get("canonical_ids") or {}
     existing = canonical.get("musicbrainz_recording_id")
     if existing:
+        preserved_ids = {
+            key: value
+            for key, value in canonical.items()
+            if key in {
+                "musicbrainz_recording_id",
+                "musicbrainz_artist_id",
+                "musicbrainz_release_id",
+                "musicbrainz_release_group_id",
+                "isrc",
+                "wikidata_id",
+            }
+            and value
+        }
         return {
             "schema_version": "0.1",
             "capability": "identity",
             "status": "matched",
             "subject": subject,
             "candidates": [{
-                "canonical_ids": {"musicbrainz_recording_id": existing},
+                "canonical_ids": preserved_ids,
                 "display": subject.get("hints") or {},
                 "score": 1.0,
                 "provenance": _provenance(existing, 1.0, ["MBID supplied by caller"]),
@@ -134,9 +153,16 @@ def identity_resolve(params):
         }
 
     data = _get_json("/recording/", {
-        "query": query, "fmt": "json", "limit": min(int(params.get("max_candidates") or 5), 20)
+        "query": query, "fmt": "json",
+        "limit": max(1, min(int(params.get("max_candidates") or 5), 20)),
     })
-    candidates = [_candidate(row) for row in data.get("recordings") or []]
+    candidates = [
+        candidate
+        for row in data.get("recordings") or []
+        if isinstance(row, dict)
+        for candidate in [_candidate(row)]
+        if candidate is not None
+    ]
     if not candidates:
         status = "not_found"
     elif len(candidates) == 1 or (candidates[0]["score"] - candidates[1]["score"] >= 0.08):
@@ -162,7 +188,7 @@ def metadata_enrich(params):
         raise RuntimeError("metadata.enrich requires musicbrainz_recording_id in v0.1 example")
 
     row = _get_json(
-        f"/recording/{recording_id}",
+        f"/recording/{urllib.parse.quote(str(recording_id), safe='')}",
         {"fmt": "json", "inc": "artist-credits+isrcs+releases+release-groups+genres"},
     )
     requested = set(params.get("requested_fields") or [])
@@ -184,8 +210,9 @@ def metadata_enrich(params):
     if releases:
         add("album", releases[0].get("title"), 0.95)
         date = releases[0].get("date") or row.get("first-release-date")
-        if date:
-            add("year", int(str(date)[:4]), 0.95)
+        year_text = str(date or "")[:4]
+        if year_text.isdigit():
+            add("year", int(year_text), 0.95)
 
     genres = [g.get("name") for g in (row.get("genres") or []) if g.get("name")]
     add("genres", genres, 0.8)
