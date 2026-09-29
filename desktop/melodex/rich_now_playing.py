@@ -221,7 +221,8 @@ class RichNowPlayingWidget(QWidget):
             self.releases.setHtml(self._discography_html(releases))
 
         self._maybe_start_context(key)
-        self._emit_knowledge()
+        if stage in {"artist", "credits", "context"}:
+            self._emit_knowledge()
         self._refresh_info()
         self._update_progress()
 
