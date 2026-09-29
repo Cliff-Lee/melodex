@@ -296,3 +296,317 @@ def test_registry_references_all_examples():
         "org.melodex.example.forgotten-favourites",
         "org.melodex.example.bridge-builder",
     }.issubset(ids)
+
+
+
+def test_sonic_neighbours_preserves_explicit_zero_adventure(monkeypatch):
+    module = _load(
+        "sonic_neighbours_zero_adventure",
+        EXAMPLES / "sonic_neighbours" / "plugin.py",
+    )
+    seen = []
+
+    def fake_score(seed, candidate, adventure):
+        seen.append(adventure)
+        return 0.5, "ok", []
+
+    monkeypatch.setattr(module, "_score", fake_score)
+    result = module.suggest(
+        {
+            "intent": "similar",
+            "adventure": 0.0,
+            "limit": 1,
+            "seed_refs": ["seed"],
+            "tracks": [
+                {"ref": "seed", "analysis": {"energy": 0.2}},
+                {"ref": "candidate", "analysis": {"energy": 0.3}},
+            ],
+        }
+    )
+    assert result["suggestions"][0]["ref"] == "candidate"
+    assert seen == [0.0]
+
+
+def test_bridge_builder_preserves_explicit_zero_values(monkeypatch):
+    module = _load(
+        "bridge_builder_zero_values",
+        EXAMPLES / "bridge_builder" / "plugin.py",
+    )
+    left = {
+        "bpm": 100,
+        "key_pc": 0,
+        "key_mode": "minor",
+        "energy": 0.4,
+        "energy_end": 0.4,
+        "spectral_centroid": 1000,
+        "outro_mixability": 0.0,
+    }
+    right = {
+        "bpm": 100,
+        "key_pc": 0,
+        "key_mode": "minor",
+        "energy": 0.4,
+        "energy_start": 0.4,
+        "spectral_centroid": 1000,
+        "intro_mixability": 0.0,
+    }
+    _score, dimensions = module._pair(left, right)
+    assert dimensions["mix"] == 0.0
+
+    seen = []
+
+    def fake_score(start, candidate, end, adventure):
+        seen.append(adventure)
+        return 0.5, "ok", []
+
+    monkeypatch.setattr(module, "_score", fake_score)
+    module.suggest(
+        {
+            "intent": "bridge",
+            "adventure": 0.0,
+            "limit": 1,
+            "seed_refs": ["a", "b"],
+            "tracks": [
+                {"ref": "a", "analysis": {}},
+                {"ref": "b", "analysis": {}},
+                {"ref": "c", "analysis": {}},
+            ],
+        }
+    )
+    assert seen == [0.0]
+
+
+def test_wikimedia_artwork_clamps_zero_limit_and_skips_missing_url(monkeypatch):
+    module = _load(
+        "wikimedia_artwork_defensive",
+        EXAMPLES / "wikimedia_artwork" / "plugin.py",
+    )
+    seen = {}
+
+    def fake_get_json(params):
+        seen.update(params)
+        return {
+            "query": {
+                "pages": [
+                    {"pageid": 1, "title": "Missing URL", "imageinfo": [{"extmetadata": {}}]},
+                    {
+                        "pageid": 2,
+                        "title": "Good",
+                        "imageinfo": [
+                            {
+                                "url": "https://upload.wikimedia.org/example.jpg",
+                                "width": 100,
+                                "height": 100,
+                                "mime": "image/jpeg",
+                                "extmetadata": {},
+                            }
+                        ],
+                    },
+                ]
+            }
+        }
+
+    monkeypatch.setattr(module, "_get_json", fake_get_json)
+    result = module.artwork_lookup(
+        {
+            "subject": {"entity_type": "artist", "hints": {"name": "Demo"}},
+            "max_results": 0,
+        }
+    )
+    assert seen["gsrlimit"] == "1"
+    assert [asset["url"] for asset in result["assets"]] == [
+        "https://upload.wikimedia.org/example.jpg"
+    ]
+
+
+def test_wikimedia_liner_notes_rejects_invalid_wikidata_id_without_network(monkeypatch):
+    module = _load(
+        "wikimedia_liner_invalid_qid",
+        EXAMPLES / "wikimedia_liner_notes" / "plugin.py",
+    )
+
+    def should_not_call(*args, **kwargs):
+        raise AssertionError("network helper should not be called")
+
+    monkeypatch.setattr(module, "_wikidata", should_not_call)
+    result = module.context_lookup(
+        {
+            "subject": {
+                "entity_type": "artist",
+                "canonical_ids": {"wikidata_id": "../Q123"},
+            }
+        }
+    )
+    assert result["cards"] == []
+
+
+def test_musicbrainz_identity_preserves_existing_canonical_ids(monkeypatch):
+    module = _load(
+        "musicbrainz_existing_ids",
+        EXAMPLES / "musicbrainz_enrichment" / "plugin.py",
+    )
+    subject = {
+        "entity_type": "track",
+        "canonical_ids": {
+            "musicbrainz_recording_id": "rec",
+            "musicbrainz_artist_id": "artist",
+            "musicbrainz_release_id": "release",
+            "isrc": "ISRC123",
+        },
+        "hints": {"title": "Track", "artist": "Artist"},
+    }
+    result = module.identity_resolve({"subject": subject})
+    ids = result["candidates"][0]["canonical_ids"]
+    assert ids["musicbrainz_recording_id"] == "rec"
+    assert ids["musicbrainz_artist_id"] == "artist"
+    assert ids["musicbrainz_release_id"] == "release"
+    assert ids["isrc"] == "ISRC123"
+
+
+def test_musicbrainz_metadata_ignores_malformed_release_year(monkeypatch):
+    module = _load(
+        "musicbrainz_bad_date",
+        EXAMPLES / "musicbrainz_enrichment" / "plugin.py",
+    )
+    monkeypatch.setattr(
+        module,
+        "_get_json",
+        lambda *args, **kwargs: {
+            "id": "rec",
+            "title": "Track",
+            "artist-credit": [{"name": "Artist"}],
+            "releases": [{"title": "Album", "date": "????-01-01"}],
+            "genres": [],
+        },
+    )
+    result = module.metadata_enrich(
+        {
+            "subject": {
+                "entity_type": "track",
+                "canonical_ids": {"musicbrainz_recording_id": "rec"},
+            }
+        }
+    )
+    assert result["fields"]["title"]["value"] == "Track"
+    assert "year" not in result["fields"]
+
+
+def test_musicbrainz_search_clamps_explicit_zero_candidates(monkeypatch):
+    module = _load(
+        "musicbrainz_zero_limit",
+        EXAMPLES / "musicbrainz_enrichment" / "plugin.py",
+    )
+    seen = {}
+
+    def fake_get_json(path, params=None):
+        seen.update(params or {})
+        return {"recordings": []}
+
+    monkeypatch.setattr(module, "_get_json", fake_get_json)
+    module.identity_resolve(
+        {
+            "subject": {
+                "entity_type": "track",
+                "hints": {"title": "Track"},
+            },
+            "max_candidates": 0,
+        }
+    )
+    assert seen["limit"] == 1
+
+
+def test_listenbrainz_tags_accepts_list_shape_and_malformed_counts(monkeypatch):
+    module = _load(
+        "listenbrainz_tags_defensive",
+        EXAMPLES / "listenbrainz_tags" / "plugin.py",
+    )
+    monkeypatch.setattr(
+        module,
+        "_get_json",
+        lambda _mbid: [
+            {
+                "recording_mbid": "rec",
+                "tag": {
+                    "recording": [
+                        {"tag": "trip hop", "count": "bad"},
+                        {"tag": "ambient", "count": "4"},
+                    ]
+                },
+            }
+        ],
+    )
+    result = module.metadata_enrich(
+        {
+            "subject": {
+                "entity_type": "track",
+                "canonical_ids": {"musicbrainz_recording_id": "rec"},
+            }
+        }
+    )
+    counts = result["fields"]["community_tag_counts"]["value"]
+    assert counts[0]["tag"] == "ambient"
+    assert counts[0]["count"] == 4
+    assert counts[1]["count"] == 0
+
+
+def test_musicbrainz_connections_does_not_label_unrelated_place_as_recording_place(monkeypatch):
+    module = _load(
+        "musicbrainz_connections_places",
+        EXAMPLES / "musicbrainz_connections" / "plugin.py",
+    )
+    monkeypatch.setattr(
+        module,
+        "_get_json",
+        lambda _mbid: {
+            "relations": [
+                {
+                    "type": "held at",
+                    "direction": "forward",
+                    "place": {"id": "venue", "name": "Concert Hall"},
+                },
+                {
+                    "type": "recorded at",
+                    "direction": "forward",
+                    "place": {"id": "studio", "name": "Studio"},
+                },
+            ]
+        },
+    )
+    result = module.context_lookup(
+        {
+            "subject": {
+                "entity_type": "track",
+                "canonical_ids": {"musicbrainz_recording_id": "rec"},
+            }
+        }
+    )
+    cards = {card["id"]: card for card in result["cards"]}
+    assert [item["title"] for item in cards["recording-places"]["items"]] == ["Studio"]
+
+
+def test_source_provider_health_checks_are_fixture_deterministic(monkeypatch):
+    monkeypatch.setenv("MELODEX_EXAMPLE_FIXTURES", "1")
+    cases = [
+        ("radio_health", "radio_browser_provider"),
+        ("openverse_health", "openverse_audio_provider"),
+        ("librivox_health", "librivox_provider"),
+        ("lastfm_health", "lastfm_recommendations_provider"),
+    ]
+    for module_name, folder in cases:
+        module = _load(module_name, EXAMPLES / folder / "provider.py")
+        health = module.respond({"method": "provider.health", "params": {}})
+        assert health["status"] == "ready"
+
+
+def test_source_provider_explicit_zero_search_limit_is_clamped(monkeypatch):
+    monkeypatch.setenv("MELODEX_EXAMPLE_FIXTURES", "1")
+    for module_name, folder in [
+        ("radio_zero_limit", "radio_browser_provider"),
+        ("openverse_zero_limit", "openverse_audio_provider"),
+        ("librivox_zero_limit", "librivox_provider"),
+    ]:
+        module = _load(module_name, EXAMPLES / folder / "provider.py")
+        result = module.respond(
+            {"method": "catalog.search", "params": {"query": "demo", "limit": 0}}
+        )
+        assert 1 <= len(result["items"])
