@@ -22,7 +22,8 @@
       "enum": [
         "similar",
         "rediscover",
-        "bridge"
+        "bridge",
+        "detour"
       ]
     },
     "suggestions": {

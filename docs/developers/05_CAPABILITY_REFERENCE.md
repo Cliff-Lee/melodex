@@ -34,7 +34,7 @@ These contracts now have a runnable desktop Capability Broker but remain **v0.1 
 | artwork | `artwork.lookup` | Return sourced visual assets |
 | lyrics | `lyrics.lookup` | Return sourced lyrics |
 | context | `context.lookup` | Add sourced text/list/fact cards to the Now Playing Context surface |
-| library_suggestions | `library.suggest` | Rank sanitized local-library profiles for similar-track, rediscovery and bridge workflows |
+| library_suggestions | `library.suggest` | Rank sanitized local-library profiles for similarity, rediscovery, queue bridges and deliberate sonic detours |
 
 Packages use `.mdxplugin`.
 

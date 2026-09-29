@@ -47,6 +47,7 @@ def test_example_capability_descriptors_validate():
         ROOT / "examples" / "ecosystem" / "sonic_neighbours" / "capabilities.json",
         ROOT / "examples" / "ecosystem" / "forgotten_favourites" / "capabilities.json",
         ROOT / "examples" / "ecosystem" / "bridge_builder" / "capabilities.json",
+        ROOT / "examples" / "ecosystem" / "musical_detours" / "capabilities.json",
     ]
     for path in examples:
         errors = list(validator.iter_errors(_load(path)))
@@ -213,3 +214,25 @@ def test_library_suggest_request_and_response_examples_validate():
             }
         )
     ) == []
+
+
+
+def test_detour_intent_is_valid_library_suggestion_request_and_response():
+    request_schema = _load(SPEC / "library-suggest-request.schema.json")
+    response_schema = _load(SPEC / "library-suggest-response.schema.json")
+    request = {
+        "schema_version": "0.1",
+        "capability": "library_suggestions",
+        "intent": "detour",
+        "tracks": [],
+        "limit": 8,
+        "adventure": 0.35,
+    }
+    response = {
+        "schema_version": "0.1",
+        "capability": "library_suggestions",
+        "intent": "detour",
+        "suggestions": [],
+    }
+    assert list(Draft202012Validator(request_schema).iter_errors(request)) == []
+    assert list(Draft202012Validator(response_schema).iter_errors(response)) == []

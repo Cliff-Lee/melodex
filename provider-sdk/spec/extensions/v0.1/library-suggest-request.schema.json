@@ -194,7 +194,8 @@
       "enum": [
         "similar",
         "rediscover",
-        "bridge"
+        "bridge",
+        "detour"
       ]
     },
     "tracks": {

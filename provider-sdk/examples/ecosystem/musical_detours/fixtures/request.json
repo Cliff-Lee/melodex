@@ -1,0 +1,109 @@
+{
+  "schema_version": "0.1",
+  "capability": "library_suggestions",
+  "intent": "detour",
+  "seed_refs": ["t0"],
+  "limit": 6,
+  "adventure": 0.35,
+  "tracks": [
+    {
+      "ref": "t0",
+      "title": "The Familiar Signal",
+      "artist": "Demo Artist",
+      "album": "Reference Point",
+      "duration_ms": 240000,
+      "analysis": {
+        "bpm": 120,
+        "key_pc": 0,
+        "key_mode": "minor",
+        "energy": 0.72,
+        "spectral_centroid": 1800,
+        "onset_density": 0.16,
+        "intro_mixability": 0.6,
+        "outro_mixability": 0.65
+      },
+      "taste": {"plays": 6, "completes": 5, "skips": 0, "loves": 1, "dislikes": 0, "keeps": 1, "completion_rate": 0.83, "skip_rate": 0, "days_since_last_played": 2}
+    },
+    {
+      "ref": "t1",
+      "title": "A Different Skyline",
+      "artist": "Demo Artist B",
+      "album": "Side Street",
+      "duration_ms": 228000,
+      "analysis": {
+        "bpm": 120,
+        "key_pc": 6,
+        "key_mode": "major",
+        "energy": 0.18,
+        "spectral_centroid": 550,
+        "onset_density": 0.04,
+        "intro_mixability": 0.8,
+        "outro_mixability": 0.8
+      },
+      "taste": {"plays": 0, "completes": 0, "skips": 0, "loves": 0, "dislikes": 0, "keeps": 0, "completion_rate": 0, "skip_rate": 0, "days_since_last_played": null}
+    },
+    {
+      "ref": "t2",
+      "title": "A Shared Current",
+      "artist": "Demo Artist C",
+      "album": "Low Orbit",
+      "duration_ms": 254000,
+      "analysis": {
+        "bpm": 72,
+        "key_pc": 3,
+        "key_mode": "major",
+        "energy": 0.73,
+        "spectral_centroid": 400,
+        "onset_density": 0.05,
+        "intro_mixability": 0.1,
+        "outro_mixability": 0.1
+      },
+      "taste": {"plays": 1, "completes": 1, "skips": 0, "loves": 0, "dislikes": 0, "keeps": 0, "completion_rate": 1, "skip_rate": 0, "days_since_last_played": 45}
+    },
+    {
+      "ref": "t3",
+      "title": "Almost the Same",
+      "artist": "Demo Artist D",
+      "album": "Reference Point",
+      "duration_ms": 241000,
+      "analysis": {
+        "bpm": 121,
+        "key_pc": 0,
+        "key_mode": "minor",
+        "energy": 0.7,
+        "spectral_centroid": 1750,
+        "onset_density": 0.15,
+        "intro_mixability": 0.62,
+        "outro_mixability": 0.66
+      },
+      "taste": {"plays": 2, "completes": 2, "skips": 0, "loves": 0, "dislikes": 0, "keeps": 0, "completion_rate": 1, "skip_rate": 0, "days_since_last_played": 20}
+    },
+    {
+      "ref": "t4",
+      "title": "Disliked Detour",
+      "artist": "Demo Artist E",
+      "album": "Never Again",
+      "duration_ms": 220000,
+      "analysis": {
+        "bpm": 120,
+        "key_pc": 6,
+        "key_mode": "major",
+        "energy": 0.18,
+        "spectral_centroid": 550,
+        "onset_density": 0.04,
+        "intro_mixability": 0.8,
+        "outro_mixability": 0.8
+      },
+      "taste": {"plays": 3, "completes": 0, "skips": 3, "loves": 0, "dislikes": 1, "keeps": 0, "completion_rate": 0, "skip_rate": 1, "days_since_last_played": 60}
+    },
+    {
+      "ref": "t5",
+      "title": "Not Analysed Yet",
+      "artist": "Demo Artist F",
+      "album": "Unknown",
+      "duration_ms": 210000,
+      "analysis": null,
+      "taste": {"plays": 0, "completes": 0, "skips": 0, "loves": 0, "dislikes": 0, "keeps": 0, "completion_rate": 0, "skip_rate": 0, "days_since_last_played": null}
+    }
+  ]
+}

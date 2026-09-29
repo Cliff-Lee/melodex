@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from datetime import datetime
 import re
 import shutil
 import stat
@@ -18,6 +19,7 @@ PACKAGES = SDK / "registry" / "packages"
 REVIEWS = SDK / "registry" / "reviews"
 
 REVIEWED_AT = "2026-09-29T10:30:00Z"
+REVIEWED_AT_OVERRIDES = {"musical_detours": "2026-09-29T12:48:04Z"}
 
 TARGETS = {
     "bridge_builder": "0.1.1",
@@ -33,6 +35,7 @@ TARGETS = {
     "sonic_neighbours": "0.1.1",
     "wikimedia_artwork": "0.1.1",
     "wikimedia_liner_notes": "0.1.1",
+    "musical_detours": "0.1.0",
 }
 
 
@@ -61,8 +64,9 @@ def _package_basename(old_url: str, version: str, suffix: str) -> str:
     return f"{match.group(1)}-{version}.{suffix}"
 
 
-def _zip_info(path: Path, arcname: str) -> zipfile.ZipInfo:
-    info = zipfile.ZipInfo(arcname, date_time=(2026, 9, 29, 10, 30, 0))
+def _zip_info(path: Path, arcname: str, reviewed_at: str) -> zipfile.ZipInfo:
+    date_time = datetime.fromisoformat(reviewed_at.replace("Z", "+00:00")).timetuple()[:6]
+    info = zipfile.ZipInfo(arcname, date_time=date_time)
     info.compress_type = zipfile.ZIP_DEFLATED
     mode = path.stat().st_mode
     perms = stat.S_IMODE(mode) or 0o644
@@ -71,7 +75,7 @@ def _zip_info(path: Path, arcname: str) -> zipfile.ZipInfo:
     return info
 
 
-def _build_package(folder: Path, destination: Path) -> None:
+def _build_package(folder: Path, destination: Path, reviewed_at: str) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
     temp = destination.with_suffix(destination.suffix + ".tmp")
     with zipfile.ZipFile(temp, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
@@ -83,11 +87,11 @@ def _build_package(folder: Path, destination: Path) -> None:
                 continue
             if path.name in {".DS_Store"} or path.suffix == ".pyc":
                 continue
-            zf.writestr(_zip_info(path, rel.as_posix()), path.read_bytes())
+            zf.writestr(_zip_info(path, rel.as_posix(), reviewed_at), path.read_bytes())
     temp.replace(destination)
 
 
-def _review_event(previous: dict, *, version: str, digest: str) -> dict:
+def _review_event(previous: dict, *, version: str, digest: str, reviewed_at: str) -> dict:
     event = {
         key: value
         for key, value in previous.items()
@@ -95,7 +99,7 @@ def _review_event(previous: dict, *, version: str, digest: str) -> dict:
     }
     event.update(
         {
-            "reviewed_at": REVIEWED_AT,
+            "reviewed_at": reviewed_at,
             "version": version,
             "package_sha256": digest,
             "summary": (
@@ -119,6 +123,7 @@ def main() -> int:
 
     changed = 0
     for folder_name, target_version in TARGETS.items():
+        reviewed_at = REVIEWED_AT_OVERRIDES.get(folder_name, REVIEWED_AT)
         entry = entries.get(folder_name)
         if entry is None:
             raise RuntimeError(f"Registry has no entry for {folder_name}")
@@ -139,7 +144,7 @@ def main() -> int:
             str(distribution.get("package_url") or ""), target_version, suffix
         )
         package_path = PACKAGES / filename
-        _build_package(folder, package_path)
+        _build_package(folder, package_path, reviewed_at)
         payload = package_path.read_bytes()
         digest = hashlib.sha256(payload).hexdigest()
 
@@ -153,7 +158,7 @@ def main() -> int:
         distribution["sha256"] = digest
         distribution["size_bytes"] = len(payload)
         entry["distribution"] = distribution
-        entry.setdefault("review", {})["last_reviewed_at"] = REVIEWED_AT
+        entry.setdefault("review", {})["last_reviewed_at"] = reviewed_at
         if old_version != target_version or old_dist != distribution:
             changed += 1
 
@@ -164,18 +169,25 @@ def main() -> int:
             raise RuntimeError(f"{entry['id']}: review record has no events")
         latest = dict(events[-1])
         if not (
-            str(latest.get("reviewed_at") or "") == REVIEWED_AT
+            str(latest.get("reviewed_at") or "") == reviewed_at
             and str(latest.get("version") or "") == target_version
             and str(latest.get("package_sha256") or "") == digest
         ):
             events.append(
-                _review_event(latest, version=target_version, digest=digest)
+                _review_event(
+                    latest,
+                    version=target_version,
+                    digest=digest,
+                    reviewed_at=reviewed_at,
+                )
             )
             review["events"] = events
             _write_json(review_path, review)
             changed += 1
 
-    registry["updated_at"] = REVIEWED_AT
+    registry["updated_at"] = max(
+        [str(registry.get("updated_at") or ""), REVIEWED_AT, *REVIEWED_AT_OVERRIDES.values()]
+    )
     _write_json(REGISTRY_PATH, registry)
     shutil.copyfile(REGISTRY_PATH, EXAMPLE_REGISTRY_PATH)
     print(f"Rebuilt {len(TARGETS)} audited packages; changed markers: {changed}")

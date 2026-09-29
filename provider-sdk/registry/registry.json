@@ -1,6 +1,6 @@
 {
   "schema_version": "0.1",
-  "updated_at": "2026-09-29T10:30:00Z",
+  "updated_at": "2026-09-29T12:48:04Z",
   "plugins": [
     {
       "id": "org.melodex.example.radio-browser",
@@ -583,6 +583,43 @@
       "review": {
         "record": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/registry/reviews/org.melodex.example.bridge-builder.json",
         "last_reviewed_at": "2026-09-29T10:30:00Z"
+      }
+    },
+    {
+      "id": "org.melodex.example.musical-detours",
+      "name": "Musical Detours",
+      "publisher": "Melodex examples",
+      "version": "0.1.0",
+      "kind": "tool",
+      "status": "example",
+      "description": "Private local discovery that keeps one strong Flow feature and deliberately changes two others, with an explanation of each musical pivot.",
+      "capabilities": [
+        "library_suggestions"
+      ],
+      "license": "MIT",
+      "source": {
+        "repository": "https://github.com/Cliff-Lee/melodex/tree/main/provider-sdk/examples/ecosystem/musical_detours",
+        "homepage": "https://github.com/Cliff-Lee/melodex",
+        "documentation": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/musical_detours/README.md"
+      },
+      "distribution": {
+        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/main/provider-sdk/registry/packages/musical-detours-0.1.0.mdxplugin",
+        "format": "mdxplugin",
+        "sha256": "e4ba24115506013cbbdd2341d5621c64a09d17d1eb36c6a1f397d0fd8e6b69d2",
+        "size_bytes": 6428
+      },
+      "compatibility": {
+        "melodex_min": "0.3.1",
+        "mpp": null,
+        "contracts": {
+          "library_suggestions": "0.1"
+        }
+      },
+      "permissions": [],
+      "source_policy": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/musical_detours/SOURCE_POLICY.md",
+      "review": {
+        "record": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/registry/reviews/org.melodex.example.musical-detours.json",
+        "last_reviewed_at": "2026-09-29T12:48:04Z"
       }
     }
   ]
