@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://melodex.example/schema/extensions/v0.1/library-suggest-response.schema.json",
+  "title": "Melodex local library suggestion response v0.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "capability",
+    "intent",
+    "suggestions"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "0.1"
+    },
+    "capability": {
+      "const": "library_suggestions"
+    },
+    "intent": {
+      "type": "string",
+      "enum": [
+        "similar",
+        "rediscover",
+        "bridge"
+      ]
+    },
+    "suggestions": {
+      "type": "array",
+      "maxItems": 50,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "ref",
+          "score",
+          "reason"
+        ],
+        "properties": {
+          "ref": {
+            "type": "string",
+            "pattern": "^t[0-9]+$"
+          },
+          "score": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300
+          },
+          "badges": {
+            "type": "array",
+            "uniqueItems": true,
+            "maxItems": 8,
+            "items": {
+              "type": "string",
+              "maxLength": 40
+            }
+          }
+        }
+      }
+    }
+  }
+}
