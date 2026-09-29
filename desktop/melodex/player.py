@@ -167,8 +167,12 @@ class FlowPlayer(QObject):
             previous = dict(self.queue[self.index]) if 0 <= self.index < len(self.queue) else {}
             played_ms = int(self.players[self.active].position())
             duration_ms = int(self.players[self.active].duration())
-            self.players[self.active].stop()
+            for player in self.players:
+                player.stop()
+            self.outputs[self.active].setVolume(1.0)
+            self.outputs[1 - self.active].setVolume(0.0)
             self._crossfading = False
+            self._transition_ms = 0
             self._load_index(self.index + 1, True)
             current = dict(self.queue[self.index]) if 0 <= self.index < len(self.queue) else {}
             self.manualAdvanced.emit(previous, current, played_ms, duration_ms)
@@ -179,6 +183,13 @@ class FlowPlayer(QObject):
         if not self.queue or self.index < 0:
             self.set_queue(incoming, 0, False)
             return
+        if self._crossfading:
+            next_deck = 1 - self.active
+            self.players[next_deck].stop()
+            self.outputs[next_deck].setVolume(0.0)
+            self.outputs[self.active].setVolume(1.0)
+            self._crossfading = False
+            self._transition_ms = 0
         self.queue = self.queue[: self.index + 1] + incoming
         self.queueChanged.emit(self.queue)
 
