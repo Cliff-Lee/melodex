@@ -10,6 +10,7 @@ identity.resolve
 metadata.enrich
 artwork.lookup
 lyrics.lookup
+context.lookup
 ```
 
 Optional extension-level method:
@@ -32,5 +33,7 @@ An extension declares active health separately from its capability contracts:
 This deliberately keeps health out of capability ranking/filtering. Extensions that omit the declaration remain valid and Melodex falls back to a process-start check.
 
 A health response must report whether it actually checked an upstream service using `upstream_checked`. This lets Melodex distinguish a real connectivity check from an extension-local self-check.
+
+The `context.lookup` contract returns sourced cards for the Now Playing Context surface. v0.1 card kinds are `text`, `list`, and `facts`; this keeps plugins expressive while preserving a predictable host renderer.
 
 Shared entity/provenance/cache types are in `common.schema.json`.
