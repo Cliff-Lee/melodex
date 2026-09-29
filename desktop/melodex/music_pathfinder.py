@@ -237,6 +237,171 @@ def _edge_cost(
     }
 
 
+class MusicPathNetwork:
+    """Reusable prepared Pathfinder graph for repeated local route queries."""
+
+    def __init__(
+        self,
+        model: dict[str, Any],
+        knowledge_graph: dict[str, Any],
+        *,
+        sonic_neighbours: int = 6,
+    ):
+        self.model = dict(model or {})
+        self.knowledge_graph = dict(knowledge_graph or {})
+        self.nodes, self.pairs = _build_connections(
+            self.model,
+            self.knowledge_graph,
+            sonic_neighbours=sonic_neighbours,
+        )
+        self._adjacency_cache: dict[
+            str, dict[str, list[tuple[str, float, dict[str, Any]]]]
+        ] = {}
+
+    def adjacency(
+        self, mode: str
+    ) -> dict[str, list[tuple[str, float, dict[str, Any]]]]:
+        mode = str(mode or "balanced")
+        if mode not in {"balanced", "sonic", "knowledge"}:
+            mode = "balanced"
+        cached = self._adjacency_cache.get(mode)
+        if cached is not None:
+            return cached
+        adjacency: dict[str, list[tuple[str, float, dict[str, Any]]]] = defaultdict(list)
+        for connection in self.pairs.values():
+            weighted = _edge_cost(connection, mode=mode)
+            if weighted is None:
+                continue
+            cost, explanation = weighted
+            a, b = str(connection["a"]), str(connection["b"])
+            adjacency[a].append((b, cost, dict(explanation)))
+            adjacency[b].append((a, cost, dict(explanation)))
+        for ref in adjacency:
+            adjacency[ref].sort(key=lambda row: (row[1], row[0]))
+        self._adjacency_cache[mode] = adjacency
+        return adjacency
+
+    def find(
+        self,
+        start_ref: str,
+        end_ref: str,
+        *,
+        mode: str = "balanced",
+        max_hops: int = 12,
+    ) -> dict[str, Any]:
+        start_ref, end_ref = str(start_ref), str(end_ref)
+        mode = str(mode or "balanced")
+        if mode not in {"balanced", "sonic", "knowledge"}:
+            mode = "balanced"
+
+        if start_ref not in self.nodes or end_ref not in self.nodes:
+            return {
+                "found": False,
+                "mode": mode,
+                "path_refs": [],
+                "hops": [],
+                "reason": "Both endpoints must be visible mapped tracks.",
+            }
+        if start_ref == end_ref:
+            return {
+                "found": True,
+                "mode": mode,
+                "path_refs": [start_ref],
+                "hops": [],
+                "score": 1.0,
+                "cost": 0.0,
+                "reason": "Start and destination are the same track.",
+            }
+
+        adjacency = self.adjacency(mode)
+        max_hops = max(1, min(24, int(max_hops)))
+        queue: list[tuple[float, int, str]] = [(0.0, 0, start_ref)]
+        best: dict[tuple[str, int], float] = {(start_ref, 0): 0.0}
+        previous: dict[
+            tuple[str, int],
+            tuple[tuple[str, int], dict[str, Any]],
+        ] = {}
+        final_state: tuple[str, int] | None = None
+
+        while queue:
+            cost_so_far, hops, ref = heapq.heappop(queue)
+            state = (ref, hops)
+            if cost_so_far > best.get(state, float("inf")) + 1e-12:
+                continue
+            if ref == end_ref:
+                final_state = state
+                break
+            if hops >= max_hops:
+                continue
+            for other, edge_cost, explanation in adjacency.get(ref, []):
+                nxt = (other, hops + 1)
+                candidate = cost_so_far + edge_cost
+                if candidate + 1e-12 >= best.get(nxt, float("inf")):
+                    continue
+                best[nxt] = candidate
+                previous[nxt] = (state, dict(explanation))
+                heapq.heappush(queue, (candidate, hops + 1, other))
+
+        if final_state is None:
+            message = (
+                "No sonic route was found between these mapped tracks."
+                if mode == "sonic"
+                else "No route was found within the current mapped sonic/knowledge graph."
+            )
+            return {
+                "found": False,
+                "mode": mode,
+                "path_refs": [],
+                "hops": [],
+                "reason": message,
+            }
+
+        states: list[tuple[str, int]] = [final_state]
+        hop_explanations: list[dict[str, Any]] = []
+        cursor = final_state
+        while cursor != (start_ref, 0):
+            parent, explanation = previous[cursor]
+            hop_explanations.append(dict(explanation))
+            states.append(parent)
+            cursor = parent
+        states.reverse()
+        hop_explanations.reverse()
+
+        refs = [state[0] for state in states]
+        hops_out: list[dict[str, Any]] = []
+        used_knowledge = 0
+        used_sonic = 0
+        for index, explanation in enumerate(hop_explanations):
+            if explanation.get("knowledge_kinds"):
+                used_knowledge += 1
+            if float(explanation.get("sonic_similarity") or 0.0) > 0:
+                used_sonic += 1
+            hops_out.append(
+                {
+                    "from": refs[index],
+                    "to": refs[index + 1],
+                    **explanation,
+                }
+            )
+
+        total_cost = float(best[final_state])
+        score = _clamp(math.exp(-0.34 * total_cost))
+        return {
+            "found": True,
+            "mode": mode,
+            "path_refs": refs,
+            "hops": hops_out,
+            "cost": total_cost,
+            "score": score,
+            "used_knowledge_hops": used_knowledge,
+            "used_sonic_hops": used_sonic,
+            "reason": (
+                f"{len(hops_out)} hop{'s' if len(hops_out) != 1 else ''} · "
+                f"{used_knowledge} factual · {used_sonic} sonic"
+            ),
+        }
+
+
 def find_music_path(
     model: dict[str, Any],
     knowledge_graph: dict[str, Any],
@@ -246,140 +411,15 @@ def find_music_path(
     mode: str = "balanced",
     max_hops: int = 12,
 ) -> dict[str, Any]:
-    """Find an explainable route through mapped local tracks.
+    """Find an explainable route through mapped local tracks."""
 
-    Modes:
-      balanced  — combine Flow similarity and factual connections;
-      sonic     — use Flow similarity only;
-      knowledge — prefer factual links, permitting expensive sonic bridges when
-                  they are needed to connect otherwise separate factual regions.
-    """
-
-    start_ref, end_ref = str(start_ref), str(end_ref)
-    mode = str(mode or "balanced")
-    if mode not in {"balanced", "sonic", "knowledge"}:
-        mode = "balanced"
-
-    nodes, pairs = _build_connections(model, knowledge_graph)
-    if start_ref not in nodes or end_ref not in nodes:
-        return {
-            "found": False,
-            "mode": mode,
-            "path_refs": [],
-            "hops": [],
-            "reason": "Both endpoints must be visible mapped tracks.",
-        }
-    if start_ref == end_ref:
-        return {
-            "found": True,
-            "mode": mode,
-            "path_refs": [start_ref],
-            "hops": [],
-            "score": 1.0,
-            "cost": 0.0,
-            "reason": "Start and destination are the same track.",
-        }
-
-    adjacency: dict[str, list[tuple[str, float, dict[str, Any]]]] = defaultdict(list)
-    for connection in pairs.values():
-        weighted = _edge_cost(connection, mode=mode)
-        if weighted is None:
-            continue
-        cost, explanation = weighted
-        a, b = str(connection["a"]), str(connection["b"])
-        adjacency[a].append((b, cost, dict(explanation)))
-        adjacency[b].append((a, cost, dict(explanation)))
-
-    max_hops = max(1, min(24, int(max_hops)))
-    # State includes hop count so the hard cap is enforced during search.
-    queue: list[tuple[float, int, str]] = [(0.0, 0, start_ref)]
-    best: dict[tuple[str, int], float] = {(start_ref, 0): 0.0}
-    previous: dict[
-        tuple[str, int],
-        tuple[tuple[str, int], dict[str, Any]],
-    ] = {}
-    final_state: tuple[str, int] | None = None
-
-    while queue:
-        cost_so_far, hops, ref = heapq.heappop(queue)
-        state = (ref, hops)
-        if cost_so_far > best.get(state, float("inf")) + 1e-12:
-            continue
-        if ref == end_ref:
-            final_state = state
-            break
-        if hops >= max_hops:
-            continue
-        for other, edge_cost, explanation in sorted(
-            adjacency.get(ref, []),
-            key=lambda row: (row[1], row[0]),
-        ):
-            nxt = (other, hops + 1)
-            candidate = cost_so_far + edge_cost
-            if candidate + 1e-12 >= best.get(nxt, float("inf")):
-                continue
-            best[nxt] = candidate
-            previous[nxt] = (state, dict(explanation))
-            heapq.heappush(queue, (candidate, hops + 1, other))
-
-    if final_state is None:
-        message = (
-            "No sonic route was found between these mapped tracks."
-            if mode == "sonic"
-            else "No route was found within the current mapped sonic/knowledge graph."
-        )
-        return {
-            "found": False,
-            "mode": mode,
-            "path_refs": [],
-            "hops": [],
-            "reason": message,
-        }
-
-    states: list[tuple[str, int]] = [final_state]
-    hop_explanations: list[dict[str, Any]] = []
-    cursor = final_state
-    while cursor != (start_ref, 0):
-        parent, explanation = previous[cursor]
-        hop_explanations.append(dict(explanation))
-        states.append(parent)
-        cursor = parent
-    states.reverse()
-    hop_explanations.reverse()
-
-    refs = [state[0] for state in states]
-    hops_out: list[dict[str, Any]] = []
-    used_knowledge = 0
-    used_sonic = 0
-    for index, explanation in enumerate(hop_explanations):
-        if explanation.get("knowledge_kinds"):
-            used_knowledge += 1
-        if float(explanation.get("sonic_similarity") or 0.0) > 0:
-            used_sonic += 1
-        hops_out.append(
-            {
-                "from": refs[index],
-                "to": refs[index + 1],
-                **explanation,
-            }
-        )
-
-    total_cost = float(best[final_state])
-    score = _clamp(math.exp(-0.34 * total_cost))
-    return {
-        "found": True,
-        "mode": mode,
-        "path_refs": refs,
-        "hops": hops_out,
-        "cost": total_cost,
-        "score": score,
-        "used_knowledge_hops": used_knowledge,
-        "used_sonic_hops": used_sonic,
-        "reason": (
-            f"{len(hops_out)} hop{'s' if len(hops_out) != 1 else ''} · "
-            f"{used_knowledge} factual · {used_sonic} sonic"
-        ),
-    }
+    network = MusicPathNetwork(model, knowledge_graph)
+    return network.find(
+        start_ref,
+        end_ref,
+        mode=mode,
+        max_hops=max_hops,
+    )
 
 
-__all__ = ["find_music_path"]
+__all__ = ["MusicPathNetwork", "find_music_path"]

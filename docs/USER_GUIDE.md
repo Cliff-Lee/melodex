@@ -29,7 +29,7 @@ Use the colour selector to view the same landscape through different lenses:
 - **Taste** — stronger positive local taste signals;
 - **Rediscovery** — tracks that have positive history and may be ready to return.
 
-Click a node to inspect it. Double-click to play it. The page can also **Add selected to queue** or **Start journey here**, which hands that track back to Mind + Flow as the session anchor.
+Click a node to inspect it. Double-click to play it. The page can also **Add selected to queue** or **Start Mind journey here**, which hands that track back to Mind + Flow as the session anchor.
 
 The map uses cached local analysis only. **Analyse my library** is an explicit action; simply opening the map does not silently analyse every file.
 
@@ -41,6 +41,8 @@ The **Connections** selector separates two questions:
 Normal Now Playing enrichment gradually grows the factual graph. **Enrich selected** enriches one mapped track; **Enrich map (+8)** explicitly enriches a bounded batch using MusicBrainz and enabled context plugins.
 
 **Pathfinder** can then route between two mapped tracks. Set a start and destination, choose **Balanced**, **Sonic** or **Knowledge-first**, and press **Find path**. The route is highlighted and every hop explains whether it used Flow similarity, a factual relationship, or both. **Play route** and **Queue route** turn the result directly into listening.
+
+**Journey Designer** adds ordered constraints/waypoints to those same endpoints. Load the **Calm → Darker → Forgotten → Energetic** preset, add individual semantic stages, or add the selected mapped track as an exact waypoint. **Build journey** chooses transparent stage fits, highlights the chosen waypoints in purple and preserves an explanation for every hop. If the library cannot honestly satisfy a requested stage, Melodex says so rather than silently weakening the meaning.
 
 For large analysed libraries, the first implementation displays a bounded representative map rather than trying to draw every track at once.
 

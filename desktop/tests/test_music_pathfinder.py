@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from melodex.music_pathfinder import find_music_path
+from melodex.music_pathfinder import MusicPathNetwork, find_music_path
 
 
 def _node(ref: str, vector: list[float], x: float = 0.0, y: float = 0.0):
@@ -169,3 +169,28 @@ def test_pathfinder_same_start_and_destination_is_zero_hop_route():
     assert result["path_refs"] == ["a"]
     assert result["hops"] == []
     assert result["score"] == 1.0
+
+
+def test_reusable_path_network_matches_wrapper():
+    model = _model(
+        [
+            _node("a", [0.0, 0.0]),
+            _node("b", [0.4, 0.0]),
+            _node("c", [0.8, 0.0]),
+        ]
+    )
+    knowledge = {
+        "edges": [
+            {
+                "a": "a",
+                "b": "b",
+                "kind": "artist",
+                "label": "Same Artist",
+                "strength": 0.86,
+            }
+        ]
+    }
+    network = MusicPathNetwork(model, knowledge)
+    direct = network.find("a", "c", mode="balanced")
+    wrapped = find_music_path(model, knowledge, "a", "c", mode="balanced")
+    assert direct == wrapped

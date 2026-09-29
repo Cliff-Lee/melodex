@@ -340,15 +340,16 @@ class MusicMapWidget(QWidget):
             self.route_end_ref = refs[-1]
         self._redraw_route()
         self._recolour()
+        surface = "Journey Designer" if self.route_result.get("journey") else "Pathfinder"
         if self.route_result.get("found"):
             self.status.setText(
-                "Pathfinder · "
+                surface + " · "
                 + str(self.route_result.get("reason") or "route ready")
                 + f" · score {float(self.route_result.get('score') or 0.0):.0%}"
             )
         else:
             self.status.setText(
-                "Pathfinder · " + str(self.route_result.get("reason") or "no route found")
+                surface + " · " + str(self.route_result.get("reason") or "no route found")
             )
 
     def clear_route(self) -> None:
@@ -383,6 +384,13 @@ class MusicMapWidget(QWidget):
             line = self.scene.addLine(ax, ay, bx, by, pen)
             line.setZValue(6)
             reason = str(hops[index].get("reason") or "Pathfinder hop") if index < len(hops) else "Pathfinder hop"
+            if index < len(hops) and hops[index].get("journey_stage"):
+                stage = str(hops[index].get("journey_stage") or "")
+                fit = float(hops[index].get("journey_stage_score") or 0.0)
+                stage_reason = str(hops[index].get("journey_stage_reason") or "")
+                reason += f"\nJourney stage: {stage} · fit {fit:.0%}"
+                if stage_reason:
+                    reason += f"\n{stage_reason}"
             line.setToolTip(f"Step {index + 1}: {reason}")
             self.route_items.append(line)
 
@@ -409,12 +417,16 @@ class MusicMapWidget(QWidget):
             is_current = bool(self.current_identity and _track_identity(track) == self.current_identity)
             is_selected = ref == self.selected_ref
             route_refs = set(str(x) for x in list(self.route_result.get("path_refs") or []))
+            waypoint_refs = set(str(x) for x in list(self.route_result.get("waypoint_refs") or []))
             if ref == self.route_start_ref:
                 pen = QPen(QColor("#6ee7c8"))
                 pen.setWidthF(3.5)
             elif ref == self.route_end_ref:
                 pen = QPen(QColor("#ff8fb1"))
                 pen.setWidthF(3.5)
+            elif ref in waypoint_refs:
+                pen = QPen(QColor("#c89bff"))
+                pen.setWidthF(3.4)
             elif ref in route_refs:
                 pen = QPen(QColor("#7ed0ff"))
                 pen.setWidthF(2.7)
