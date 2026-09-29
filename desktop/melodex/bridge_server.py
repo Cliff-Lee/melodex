@@ -221,6 +221,20 @@ class ProviderBridge:
                         pid = q.get("provider", ["all"])[0]
                         limit = max(1, min(100, int(q.get("limit", ["100"])[0] or 100)))
                         return self._send(200, {"items": [bridge._public_track(x) for x in bridge.manager.search(text, pid, limit)]})
+                    if u.path == "/v1/recommendations":
+                        seed = {
+                            "artist": q.get("artist", [""])[0],
+                            "title": q.get("title", [""])[0],
+                            "album": q.get("album", [""])[0],
+                            "isrc": q.get("isrc", [""])[0],
+                            "musicbrainz_recording_id": q.get("musicbrainz_recording_id", [""])[0],
+                        }
+                        pid = q.get("provider", ["all"])[0]
+                        limit = max(1, min(100, int(q.get("limit", ["25"])[0] or 25)))
+                        return self._send(
+                            200,
+                            {"items": [bridge._public_track(x) for x in bridge.manager.recommend(seed, pid, limit)]},
+                        )
                     if u.path == "/v1/browse":
                         pid = q.get("provider", ["local"])[0]
                         kind = q.get("kind", ["featured"])[0]
