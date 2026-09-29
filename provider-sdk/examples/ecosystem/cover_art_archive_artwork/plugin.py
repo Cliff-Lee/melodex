@@ -58,11 +58,11 @@ def artwork_lookup(params):
     release_group_id = str(canonical.get("musicbrainz_release_group_id") or "").strip()
 
     if release_id:
-        path = f"/release/{urllib.parse.quote(release_id)}/"
+        path = f"/release/{urllib.parse.quote(release_id, safe="")}/"
         source_id = release_id
         evidence = ["MusicBrainz release ID supplied by caller"]
     elif release_group_id:
-        path = f"/release-group/{urllib.parse.quote(release_group_id)}/"
+        path = f"/release-group/{urllib.parse.quote(release_group_id, safe="")}/"
         source_id = release_group_id
         evidence = ["MusicBrainz release-group ID supplied by caller"]
     else:
