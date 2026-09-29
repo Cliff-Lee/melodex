@@ -59,3 +59,11 @@ On macOS Apple Silicon, verify these first:
 7. Music Map / Pathfinder / Journey workflows after plugins have been exercised.
 
 Report the exact action, plugin/source name and visible error text for any remaining failure.
+
+## Additional regression gates
+
+- Windowed macOS and Windows builds now launch a bundled child worker and exchange a JSON-RPC request over inherited pipes.
+- Desktop CI tests Python 3.11 and 3.12 and compiles the bundled ecosystem examples.
+- A separate-process test checks that a second launch activates the existing instance and exits.
+- Package checks reject unsafe IDs, portable path collisions and oversized extracted data.
+- Playback drops authorization and cookie headers when a redirect changes origin.
