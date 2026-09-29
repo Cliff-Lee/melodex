@@ -1,0 +1,27 @@
+{
+  "schema_version": "0.1",
+  "plugin_id": "org.melodex.example.listenbrainz-tags",
+  "events": [
+    {
+      "reviewed_at": "2026-09-29T01:00:00Z",
+      "reviewer": "Melodex project",
+      "decision": "example-baseline",
+      "version": "0.1.0",
+      "package_sha256": "035615d90aec65e60d8a9b0bcfb592ec65d74b7df9c3ad3fd76695f0cf391027",
+      "summary": "Baseline review of the project-maintained ListenBrainz tags example: registry metadata, package bytes, capability descriptor, declared network access, privacy-minimal composition, provenance/source policy and deterministic fixture tests were checked for the published 0.1.0 example.",
+      "checks": {
+        "registry_schema": true,
+        "package_integrity": true,
+        "manifest_descriptor": true,
+        "permissions": true,
+        "source_policy": true,
+        "tests": true,
+        "rights_notes": true
+      },
+      "limitations": [
+        "The example emits the ListenBrainz recording tag block; broader MetaBrainz metadata can have field- or dataset-specific licensing.",
+        "Runtime process isolation is not a complete operating-system sandbox."
+      ]
+    }
+  ]
+}

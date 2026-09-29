@@ -1,6 +1,6 @@
 {
   "schema_version": "0.1",
-  "updated_at": "2026-09-29T00:00:00Z",
+  "updated_at": "2026-09-29T01:00:00Z",
   "plugins": [
     {
       "id": "org.melodex.example.radio-browser",
@@ -162,6 +162,123 @@
       "review": {
         "record": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/registry/reviews/org.melodex.example.wikimedia-commons.json",
         "last_reviewed_at": "2026-09-29T00:00:00Z"
+      }
+    },
+    {
+      "id": "org.melodex.example.openverse-audio",
+      "name": "Openverse Audio Example",
+      "publisher": "Melodex examples",
+      "version": "0.1.0",
+      "kind": "provider",
+      "status": "example",
+      "description": "Openly licensed audio search/playback example that preserves source, licence and attribution metadata without inferring offline rights.",
+      "capabilities": [
+        "search",
+        "track",
+        "playback"
+      ],
+      "license": "MIT",
+      "source": {
+        "repository": "https://github.com/Cliff-Lee/melodex/tree/main/provider-sdk/examples/ecosystem/openverse_audio_provider",
+        "homepage": "https://openverse.org/",
+        "documentation": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/openverse_audio_provider/README.md"
+      },
+      "distribution": {
+        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/main/provider-sdk/registry/packages/openverse-audio-0.1.0.mdxprovider",
+        "format": "mdxprovider",
+        "sha256": "6d07609213dc86e6902da361ceede86ee4058d813dbd8e090883e391b94976ec",
+        "size_bytes": 5123
+      },
+      "compatibility": {
+        "melodex_min": "0.1.0",
+        "mpp": "1.0",
+        "contracts": {}
+      },
+      "permissions": [
+        "network:api.openverse.org"
+      ],
+      "source_policy": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/openverse_audio_provider/SOURCE_POLICY.md",
+      "review": {
+        "record": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/registry/reviews/org.melodex.example.openverse-audio.json",
+        "last_reviewed_at": "2026-09-29T01:00:00Z"
+      }
+    },
+    {
+      "id": "org.melodex.example.cover-art-archive",
+      "name": "Cover Art Archive Artwork Example",
+      "publisher": "Melodex examples",
+      "version": "0.1.0",
+      "kind": "enrichment",
+      "status": "example",
+      "description": "Cover artwork lookup by MusicBrainz release or release-group ID with independent provenance and conservative rights notes.",
+      "capabilities": [
+        "artwork"
+      ],
+      "license": "MIT",
+      "source": {
+        "repository": "https://github.com/Cliff-Lee/melodex/tree/main/provider-sdk/examples/ecosystem/cover_art_archive_artwork",
+        "homepage": "https://coverartarchive.org/",
+        "documentation": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/cover_art_archive_artwork/README.md"
+      },
+      "distribution": {
+        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/main/provider-sdk/registry/packages/cover-art-archive-0.1.0.mdxplugin",
+        "format": "mdxplugin",
+        "sha256": "6217910182e4f84e1c9909a718d620fd6348e6bab813d99fbe967081006c88a4",
+        "size_bytes": 4419
+      },
+      "compatibility": {
+        "melodex_min": "0.1.0",
+        "mpp": null,
+        "contracts": {
+          "artwork": "0.1"
+        }
+      },
+      "permissions": [
+        "network:coverartarchive.org"
+      ],
+      "source_policy": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/cover_art_archive_artwork/SOURCE_POLICY.md",
+      "review": {
+        "record": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/registry/reviews/org.melodex.example.cover-art-archive.json",
+        "last_reviewed_at": "2026-09-29T01:00:00Z"
+      }
+    },
+    {
+      "id": "org.melodex.example.listenbrainz-tags",
+      "name": "ListenBrainz Tags Example",
+      "publisher": "Melodex examples",
+      "version": "0.1.0",
+      "kind": "enrichment",
+      "status": "example",
+      "description": "Community tag enrichment for tracks that already have a MusicBrainz recording ID, demonstrating chained metadata composition.",
+      "capabilities": [
+        "metadata"
+      ],
+      "license": "MIT",
+      "source": {
+        "repository": "https://github.com/Cliff-Lee/melodex/tree/main/provider-sdk/examples/ecosystem/listenbrainz_tags",
+        "homepage": "https://listenbrainz.org/",
+        "documentation": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/listenbrainz_tags/README.md"
+      },
+      "distribution": {
+        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/main/provider-sdk/registry/packages/listenbrainz-tags-0.1.0.mdxplugin",
+        "format": "mdxplugin",
+        "sha256": "035615d90aec65e60d8a9b0bcfb592ec65d74b7df9c3ad3fd76695f0cf391027",
+        "size_bytes": 4451
+      },
+      "compatibility": {
+        "melodex_min": "0.1.0",
+        "mpp": null,
+        "contracts": {
+          "metadata": "0.1"
+        }
+      },
+      "permissions": [
+        "network:api.listenbrainz.org"
+      ],
+      "source_policy": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/listenbrainz_tags/SOURCE_POLICY.md",
+      "review": {
+        "record": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/registry/reviews/org.melodex.example.listenbrainz-tags.json",
+        "last_reviewed_at": "2026-09-29T01:00:00Z"
       }
     }
   ]
