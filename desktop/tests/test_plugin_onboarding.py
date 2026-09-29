@@ -22,7 +22,7 @@ def test_configuration_state_distinguishes_none_ready_and_setup_needed():
 
 def test_configuration_summary_does_not_expose_values():
     info = {
-        "fields": [{"key": "api_key"}],
+        "fields": [{"key": "api_key", "label": "API key"}],
         "values": {"api_key": "should-never-be-shown"},
         "status": {
             "ready": False,
@@ -30,7 +30,7 @@ def test_configuration_summary_does_not_expose_values():
         },
     }
     summary = configuration_summary(info)
-    assert summary == "Setup needed — missing: api_key"
+    assert summary == "Setup needed — missing: API key"
     assert "should-never-be-shown" not in summary
 
 
