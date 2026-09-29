@@ -125,13 +125,18 @@ class FlowPlayer(QObject):
         url = str(resolved.get("stream_url") or resolved.get("url") or "")
         if not url:
             raise RuntimeError("This source did not provide a playable stream")
+        guarded_external = "_playback_allowed_hosts" in resolved
+        kind = str(resolved.get("kind") or "http").casefold()
         needs_gateway = bool(
             resolved.get("headers")
             or resolved.get("cookies")
             or resolved.get("gateway_required")
+            or (guarded_external and kind != "hls")
         )
         if needs_gateway:
             url = self.gateway.register(resolved)
+        elif guarded_external:
+            self.gateway.validate_resource(resolved)
         return QUrl(url)
 
     def _load_index(self, index: int, play: bool = True, deck: int | None = None) -> None:
