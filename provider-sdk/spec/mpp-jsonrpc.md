@@ -23,8 +23,9 @@ match the HTTP/OpenAPI mapping, using newline-delimited JSON-RPC 2.0.
 | catalog.get_artist | `catalog.get_artist` | `GET /v1/artists/{id}` |
 | playback.resolve | `playback.resolve` | `POST /v1/playback/resolve` |
 | playback.refresh | `playback.refresh` | `POST /v1/playback/refresh` |
+| recommendations.get | `recommendations.get` | `POST /v1/recommendations` |
 
-`playback.refresh` is optional in SDK v0.2. If it is absent, Melodex falls back
+`playback.refresh` is optional in SDK v0.2. `recommendations.get` is optional and only called for providers that declare the `recommendations` capability. If `playback.refresh` is absent, Melodex falls back
 to a fresh `playback.resolve` call. This keeps v0.1 providers compatible.
 
 A playback resource may include `headers`, `cookies`, `expires_at`,

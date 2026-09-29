@@ -11,6 +11,7 @@ def test_openapi_has_control_surface():
         "/v1/providers",
         "/v1/extensions",
         "/v1/search",
+        "/v1/recommendations",
         "/v1/resolve",
         "/v1/resolve-candidates",
         "/v1/status",
@@ -28,6 +29,7 @@ def test_openai_tool_dialects_cover_same_names():
     response_names = {item["name"] for item in RESPONSES_TOOLS}
     assert chat_names == response_names
     assert "melodex_search" in chat_names
+    assert "melodex_recommendations" in chat_names
     assert "melodex_extensions" in chat_names
     assert "melodex_play" in chat_names
 
@@ -55,6 +57,15 @@ class FakeClient:
     def search(self, query, provider="all", limit=20):
         return [{"query": query, "provider": provider, "limit": limit}]
 
+    def recommendations(self, artist, title, album="", provider="all", limit=20):
+        return [{
+            "artist": artist,
+            "title": title,
+            "album": album,
+            "provider": provider,
+            "limit": limit,
+        }]
+
     def control(self, action, **args):
         return {"action": action, "args": args}
 
@@ -64,6 +75,20 @@ def test_tool_executor_defaults_and_clamps():
     result = execute_tool(client, "melodex_search", {"query": "ambient", "provider": None, "limit": None})
     assert result[0]["provider"] == "all"
     assert result[0]["limit"] == 20
+
+    recs = execute_tool(
+        client,
+        "melodex_recommendations",
+        {
+            "artist": "Massive Attack",
+            "title": "Teardrop",
+            "album": None,
+            "provider": None,
+            "limit": None,
+        },
+    )
+    assert recs[0]["provider"] == "all"
+    assert recs[0]["limit"] == 20
 
     result = execute_tool(client, "melodex_volume", {"volume": 2})
     assert result["action"] == "set_volume"

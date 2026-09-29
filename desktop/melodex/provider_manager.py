@@ -243,15 +243,62 @@ class ProviderManager:
 
     def search(self, query: str, provider_id: str = "all", limit: int = 50) -> list[dict[str, Any]]:
         if provider_id != "all":
-            return self.providers[provider_id].search(query, limit)
+            provider = self.providers[provider_id]
+            if "search" not in list(provider.info.capabilities or []):
+                return []
+            return provider.search(query, limit)
+        searchable = [
+            pid
+            for pid in self.provider_order()
+            if "search" in list(self.providers[pid].info.capabilities or [])
+        ]
         out: list[dict[str, Any]] = []
-        per_provider = max(10, limit // max(1, len(self.providers)))
-        for pid in self.provider_order():
+        per_provider = max(10, limit // max(1, len(searchable)))
+        for pid in searchable:
             provider = self.providers[pid]
             try:
                 out.extend(provider.search(query, per_provider))
             except Exception:
                 continue
+        return out[:limit]
+
+    def recommend(
+        self,
+        seed: dict[str, Any],
+        provider_id: str = "all",
+        limit: int = 25,
+    ) -> list[dict[str, Any]]:
+        limit = max(1, min(100, int(limit)))
+        if provider_id != "all":
+            provider = self.providers[provider_id]
+            if "recommendations" not in list(provider.info.capabilities or []):
+                return []
+            return provider.recommend(seed, limit)
+
+        recommendation_providers = [
+            pid
+            for pid in self.provider_order()
+            if "recommendations" in list(self.providers[pid].info.capabilities or [])
+        ]
+        out: list[dict[str, Any]] = []
+        seen: set[tuple[str, str]] = set()
+        per_provider = max(10, limit // max(1, len(recommendation_providers)))
+        for pid in recommendation_providers:
+            try:
+                rows = self.providers[pid].recommend(seed, per_provider)
+            except Exception:
+                continue
+            for row in rows:
+                key = (
+                    str(row.get("artist") or "").casefold().strip(),
+                    str(row.get("title") or "").casefold().strip(),
+                )
+                if key == ("", "") or key in seen:
+                    continue
+                seen.add(key)
+                out.append(row)
+                if len(out) >= limit:
+                    return out
         return out[:limit]
 
     def browse(self, provider_id: str, kind: str = "featured", limit: int = 50) -> list[dict[str, Any]]:

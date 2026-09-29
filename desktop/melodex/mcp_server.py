@@ -44,6 +44,17 @@ def build_server(client: MelodexControlClient):
         """Search connected Melodex providers for tracks. provider may be 'all' or a provider id."""
         return client.search(query, provider=provider, limit=limit)
 
+    @mcp.tool(name="melodex_recommendations", title="Get recommendations", annotations=read_only)
+    def melodex_recommendations(
+        artist: str,
+        title: str,
+        album: str = "",
+        provider: str = "all",
+        limit: int = 20,
+    ) -> list[dict[str, Any]]:
+        """Get provider-side recommendations for a seed track. Results may require resolving through another provider before playback."""
+        return client.recommendations(artist, title, album, provider=provider, limit=limit)
+
     @mcp.tool(name="melodex_resolve", title="Resolve a track", annotations=read_only)
     def melodex_resolve(artist: str, title: str, album: str = "") -> dict[str, Any]:
         """Resolve artist/title/album metadata to Melodex's best playable source without changing playback."""

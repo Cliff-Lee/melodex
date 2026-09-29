@@ -107,6 +107,27 @@ class MelodexControlClient:
         result = self._request("GET", "/v1/search", params={"q": query, "provider": provider, "limit": max(1, min(100, int(limit)))}) or {}
         return list(result.get("items") or [])
 
+    def recommendations(
+        self,
+        artist: str,
+        title: str,
+        album: str = "",
+        provider: str = "all",
+        limit: int = 20,
+    ) -> list[dict[str, Any]]:
+        result = self._request(
+            "GET",
+            "/v1/recommendations",
+            params={
+                "artist": artist,
+                "title": title,
+                "album": album,
+                "provider": provider,
+                "limit": max(1, min(100, int(limit))),
+            },
+        ) or {}
+        return list(result.get("items") or [])
+
     def resolve(self, artist: str, title: str, album: str = "") -> dict[str, Any]:
         return dict(self._request("GET", "/v1/resolve", params={"artist": artist, "title": title, "album": album}) or {})
 

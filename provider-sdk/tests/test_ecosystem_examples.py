@@ -119,6 +119,49 @@ def test_listenbrainz_tags_example_with_fixture(monkeypatch):
     assert result["fields"]["community_tags"]["value"][0] == "trip hop"
     assert result["fields"]["community_tag_counts"]["value"][0]["count"] == 8
 
+def test_public_domain_lyrics_example():
+    module = _load(
+        "public_domain_lyrics_example",
+        EXAMPLES / "public_domain_lyrics" / "plugin.py",
+    )
+    subject = {
+        "entity_type": "track",
+        "hints": {"title": "Auld Lang Syne", "artist": "Traditional"},
+    }
+    result = module.lyrics_lookup({"subject": subject})
+    assert result["entries"][0]["kind"] == "plain"
+    assert "auld acquaintance" in result["entries"][0]["text"].casefold()
+    assert result["entries"][0]["provenance"]["source_extension_id"] == (
+        "org.melodex.example.public-domain-lyrics"
+    )
+    synced_only = module.lyrics_lookup(
+        {"subject": subject, "kinds": ["synchronized"]}
+    )
+    assert synced_only["entries"] == []
+
+
+def test_lastfm_recommendations_example_with_fixture(monkeypatch):
+    monkeypatch.setenv("MELODEX_EXAMPLE_FIXTURES", "1")
+    module = _load(
+        "lastfm_recommendations_example",
+        EXAMPLES / "lastfm_recommendations_provider" / "provider.py",
+    )
+    result = module.respond(
+        {
+            "method": "recommendations.get",
+            "params": {
+                "seed": {"artist": "Massive Attack", "title": "Teardrop"},
+                "limit": 5,
+            },
+        }
+    )
+    assert result["items"][0]["title"] == "Roads"
+    assert result["items"][0]["artist"] == "Portishead"
+    assert result["items"][0]["metadata"]["playable"] is False
+    health = module.respond({"method": "provider.health", "params": {}})
+    assert health["status"] == "ready"
+
+
 def test_registry_references_all_examples():
     registry = json.loads((ROOT / "registry" / "example-registry.json").read_text(encoding="utf-8"))
     ids = {row["id"] for row in registry["plugins"]}
@@ -130,4 +173,6 @@ def test_registry_references_all_examples():
         "org.melodex.example.openverse-audio",
         "org.melodex.example.cover-art-archive",
         "org.melodex.example.listenbrainz-tags",
+        "org.melodex.example.public-domain-lyrics",
+        "org.melodex.example.lastfm-recommendations",
     }.issubset(ids)

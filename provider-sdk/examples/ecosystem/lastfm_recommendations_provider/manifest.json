@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "id": "org.melodex.example.lastfm-recommendations",
+  "name": "Last.fm Recommendations Example",
+  "version": "0.1.0",
+  "publisher": "Melodex examples",
+  "protocol_version": "1.0",
+  "description": "Recommendation-only provider using Last.fm track.getSimilar and a user-supplied API key. It supplies discovery metadata, not playback.",
+  "capabilities": [
+    "recommendations"
+  ],
+  "permissions": {
+    "network_hosts": [
+      "ws.audioscrobbler.com",
+      "lastfm.freetls.fastly.net"
+    ],
+    "offline_downloads": false,
+    "local_files": false,
+    "browser_auth": false,
+    "lan_discovery": false
+  },
+  "configuration": [
+    {
+      "key": "api_key",
+      "label": "Last.fm API key",
+      "type": "secret",
+      "required": true,
+      "help": "Create/use your own Last.fm API key. Melodex does not ship a shared credential."
+    }
+  ],
+  "entrypoints": {
+    "python": "provider.py"
+  }
+}

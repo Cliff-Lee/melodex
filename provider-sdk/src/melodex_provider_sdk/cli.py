@@ -278,14 +278,19 @@ def command_doctor(args: argparse.Namespace) -> int:
         print(f"✓ provider.info: {str(info.get('name') or manifest['name'])}")
         health = _rpc(proc, "provider.health") or {}
         print(f"✓ provider.health: {str(health.get('status') or 'unknown')}")
-        search = _rpc(
-            proc,
-            "catalog.search",
-            {"query": args.query, "types": ["track"], "limit": 3, "cursor": None},
-        ) or {}
-        items = list(search.get("items") or [])
-        print(f"✓ catalog.search: {len(items)} item(s)")
-        if items and "playback" in list(manifest.get("capabilities") or []):
+        capabilities = list(manifest.get("capabilities") or [])
+        items: list[dict[str, Any]] = []
+        if "search" in capabilities:
+            search = _rpc(
+                proc,
+                "catalog.search",
+                {"query": args.query, "types": ["track"], "limit": 3, "cursor": None},
+            ) or {}
+            items = list(search.get("items") or [])
+            print(f"✓ catalog.search: {len(items)} item(s)")
+        else:
+            print("✓ catalog.search skipped: capability not declared")
+        if items and "playback" in capabilities:
             item = items[0]
             track_id = str(item.get("provider_track_id") or item.get("track_id") or "")
             resource = _rpc(
@@ -300,6 +305,8 @@ def command_doctor(args: argparse.Namespace) -> int:
             if not (resource.get("url") or resource.get("stream_url")):
                 raise RuntimeError("playback.resolve returned no URL")
             print("✓ playback.resolve returned a playable resource shape")
+        if "recommendations" in capabilities:
+            print("✓ recommendations capability declared; host-configured runtime call tested separately")
     except Exception as exc:
         print(f"✗ runtime check failed: {exc}")
         return 1

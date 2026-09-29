@@ -40,6 +40,7 @@ def test_example_capability_descriptors_validate():
         ROOT / "examples" / "ecosystem" / "wikimedia_artwork" / "capabilities.json",
         ROOT / "examples" / "ecosystem" / "cover_art_archive_artwork" / "capabilities.json",
         ROOT / "examples" / "ecosystem" / "listenbrainz_tags" / "capabilities.json",
+        ROOT / "examples" / "ecosystem" / "public_domain_lyrics" / "capabilities.json",
     ]
     for path in examples:
         errors = list(validator.iter_errors(_load(path)))
