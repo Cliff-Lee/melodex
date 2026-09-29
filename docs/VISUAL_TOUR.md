@@ -87,11 +87,13 @@ A future version of this tour will show the same queue **before and after Flow**
 
 Open **Music map** after some local tracks have Flow analysis.
 
-The map is a zoomable local sonic landscape: nearby dots share similar Flow features, and nearest-neighbour lines reveal small musical regions. Change the colour mode to look at energy, taste memory or rediscovery potential.
+The map is a zoomable local sonic landscape: nearby dots share similar Flow features. Change the colour mode to look at energy, taste memory or rediscovery potential.
+
+The separate **Connections** selector lets the same fixed map answer a different question. Use **Sounds similar · Flow** for sonic-neighbour edges, or **Actually connected · all** for cached factual links such as common artists, producers, performers, works, samples/remixes and recording places.
 
 Select a mapped track to play it, queue it, or choose **Start journey here**. That turns visual exploration back into a normal Melodex listening session.
 
-The map uses cached analysis; **Analyse my library** remains an explicit user action.
+The map uses cached analysis/knowledge by default; **Analyse my library** and the knowledge-enrichment buttons remain explicit user actions.
 
 ## 8. Moments
 
