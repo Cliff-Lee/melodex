@@ -11,6 +11,7 @@ from .plugin_onboarding import (
     configuration_summary,
     plugin_configuration_info,
 )
+from .plugin_health import health_badge, health_summary
 
 from PySide6.QtWidgets import (
     QComboBox,
@@ -100,15 +101,18 @@ class PluginDirectoryDialog(QDialog):
         actions = QHBoxLayout()
         self.install_button = QPushButton("Install")
         self.configure_button = QPushButton("Configure…")
+        self.test_button = QPushButton("Test connection")
         self.source_button = QPushButton("View source")
         self.review_button = QPushButton("View review")
         close_button = QPushButton("Close")
         self.install_button.setEnabled(False)
         self.configure_button.setEnabled(False)
+        self.test_button.setEnabled(False)
         self.source_button.setEnabled(False)
         self.review_button.setEnabled(False)
         actions.addWidget(self.install_button)
         actions.addWidget(self.configure_button)
+        actions.addWidget(self.test_button)
         actions.addWidget(self.source_button)
         actions.addWidget(self.review_button)
         actions.addStretch(1)
@@ -122,6 +126,7 @@ class PluginDirectoryDialog(QDialog):
         self.refresh_button.clicked.connect(lambda: self.load_registry(force=True))
         self.install_button.clicked.connect(self._install_selected)
         self.configure_button.clicked.connect(self._configure_selected)
+        self.test_button.clicked.connect(self._test_selected)
         self.source_button.clicked.connect(self._open_source)
         self.review_button.clicked.connect(self._open_review)
         close_button.clicked.connect(self.accept)
@@ -251,6 +256,12 @@ class PluginDirectoryDialog(QDialog):
                 else {}
             )
             config_state = configuration_state(config_info)
+            health = (
+                self.manager.plugin_health(plugin_id)
+                if installed
+                else {}
+            )
+            health_state = health_badge(health) if installed else ""
             badge = (
                 "UPDATE · SETUP NEEDED"
                 if update_available and config_state == "setup_needed"
@@ -258,6 +269,8 @@ class PluginDirectoryDialog(QDialog):
                 if update_available
                 else "SETUP NEEDED"
                 if installed and config_state == "setup_needed"
+                else f"INSTALLED · {health_state}"
+                if installed and health_state
                 else "INSTALLED"
                 if installed
                 else str(entry.get("status") or "").upper()
@@ -274,6 +287,7 @@ class PluginDirectoryDialog(QDialog):
             self.details.setPlainText("No registry entries match these filters.")
             self.install_button.setEnabled(False)
             self.configure_button.setEnabled(False)
+            self.test_button.setEnabled(False)
             self.source_button.setEnabled(False)
             self.review_button.setEnabled(False)
 
@@ -306,6 +320,8 @@ class PluginDirectoryDialog(QDialog):
             else {}
         )
         config_text = configuration_summary(config_info) if installed else "Not installed"
+        health = self.manager.plugin_health(plugin_id) if installed else {}
+        health_text = health_summary(health) if installed else "Not installed"
         compatible, compatibility_reason = self.manager.registry.compatibility(entry)
         sha256 = str(distribution.get("sha256") or "")
         if installation:
@@ -338,6 +354,7 @@ class PluginDirectoryDialog(QDialog):
             f"Installed version: {installed_version or '—'}\n"
             f"Update available: {'Yes' if update_available else 'No'}\n"
             f"Configuration: {config_text}\n"
+            f"Health: {health_text}\n"
             f"Install origin: {install_origin}\n"
             f"Installed at: {installed_at}\n"
             f"Installed package SHA-256: {install_hash}\n"
@@ -370,6 +387,7 @@ class PluginDirectoryDialog(QDialog):
         self.configure_button.setEnabled(
             bool(installed and list(config_info.get("fields") or []))
         )
+        self.test_button.setEnabled(bool(installed))
         self.source_button.setEnabled(bool(source.get("repository")))
         self.review_button.setEnabled(bool(review.get("record")))
 
@@ -481,6 +499,25 @@ class PluginDirectoryDialog(QDialog):
             self.status.setText(
                 f"{entry.get('name') or plugin_id} is configured and ready."
             )
+
+    def _test_selected(self) -> None:
+        entry = self._selected()
+        if not entry or not self._is_installed(entry):
+            return
+        plugin_id = str(entry.get("id") or "")
+        self.status.setText(f"Testing {entry.get('name') or plugin_id}…")
+        self.test_button.setEnabled(False)
+        self._run_async(
+            lambda: self.manager.test_plugin_health(plugin_id),
+            lambda result: self._health_tested(entry, result),
+        )
+
+    def _health_tested(self, entry: dict[str, Any], result: Any) -> None:
+        result = dict(result or {})
+        self._apply_filter()
+        self.status.setText(
+            f"{entry.get('name') or entry.get('id')}: {health_summary(result)}"
+        )
 
     def _open_source(self) -> None:
         entry = self._selected()
