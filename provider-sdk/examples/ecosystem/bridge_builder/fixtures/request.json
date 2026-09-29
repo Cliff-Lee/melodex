@@ -1,0 +1,149 @@
+{
+  "schema_version": "0.1",
+  "capability": "library_suggestions",
+  "intent": "bridge",
+  "seed_refs": [
+    "t0",
+    "t1"
+  ],
+  "limit": 5,
+  "adventure": 0.35,
+  "tracks": [
+    {
+      "ref": "t0",
+      "title": "Start",
+      "artist": "A",
+      "album": "X",
+      "duration_ms": 240000,
+      "analysis": {
+        "bpm": 100,
+        "rhythm_confidence": 0.8,
+        "key_pc": 0,
+        "key_mode": "minor",
+        "key_confidence": 0.8,
+        "loudness_db": -12,
+        "energy": 0.35,
+        "energy_start": 0.25,
+        "energy_end": 0.4,
+        "spectral_centroid": 1300,
+        "onset_density": 0.1,
+        "intro_mixability": 0.6,
+        "outro_mixability": 0.7,
+        "ending_type": "natural"
+      },
+      "taste": {
+        "plays": 3,
+        "completes": 3,
+        "skips": 0,
+        "loves": 0,
+        "dislikes": 0,
+        "keeps": 0,
+        "completion_rate": 1,
+        "skip_rate": 0,
+        "days_since_last_played": 2
+      }
+    },
+    {
+      "ref": "t1",
+      "title": "End",
+      "artist": "B",
+      "album": "Y",
+      "duration_ms": 240000,
+      "analysis": {
+        "bpm": 126,
+        "rhythm_confidence": 0.8,
+        "key_pc": 7,
+        "key_mode": "minor",
+        "key_confidence": 0.8,
+        "loudness_db": -9,
+        "energy": 0.78,
+        "energy_start": 0.72,
+        "energy_end": 0.8,
+        "spectral_centroid": 2200,
+        "onset_density": 0.2,
+        "intro_mixability": 0.65,
+        "outro_mixability": 0.6,
+        "ending_type": "natural"
+      },
+      "taste": {
+        "plays": 3,
+        "completes": 3,
+        "skips": 0,
+        "loves": 0,
+        "dislikes": 0,
+        "keeps": 0,
+        "completion_rate": 1,
+        "skip_rate": 0,
+        "days_since_last_played": 4
+      }
+    },
+    {
+      "ref": "t2",
+      "title": "Bridge",
+      "artist": "C",
+      "album": "Z",
+      "duration_ms": 230000,
+      "analysis": {
+        "bpm": 112,
+        "rhythm_confidence": 0.85,
+        "key_pc": 7,
+        "key_mode": "minor",
+        "key_confidence": 0.75,
+        "loudness_db": -10,
+        "energy": 0.57,
+        "energy_start": 0.45,
+        "energy_end": 0.7,
+        "spectral_centroid": 1750,
+        "onset_density": 0.15,
+        "intro_mixability": 0.72,
+        "outro_mixability": 0.74,
+        "ending_type": "natural"
+      },
+      "taste": {
+        "plays": 1,
+        "completes": 1,
+        "skips": 0,
+        "loves": 0,
+        "dislikes": 0,
+        "keeps": 0,
+        "completion_rate": 1,
+        "skip_rate": 0,
+        "days_since_last_played": 60
+      }
+    },
+    {
+      "ref": "t3",
+      "title": "Bad Bridge",
+      "artist": "D",
+      "album": "Q",
+      "duration_ms": 250000,
+      "analysis": {
+        "bpm": 70,
+        "rhythm_confidence": 0.4,
+        "key_pc": 1,
+        "key_mode": "major",
+        "key_confidence": 0.4,
+        "loudness_db": -24,
+        "energy": 0.14,
+        "energy_start": 0.1,
+        "energy_end": 0.1,
+        "spectral_centroid": 500,
+        "onset_density": 0.02,
+        "intro_mixability": 0.2,
+        "outro_mixability": 0.2,
+        "ending_type": "abrupt"
+      },
+      "taste": {
+        "plays": 2,
+        "completes": 0,
+        "skips": 2,
+        "loves": 0,
+        "dislikes": 0,
+        "keeps": 0,
+        "completion_rate": 0,
+        "skip_rate": 1,
+        "days_since_last_played": 80
+      }
+    }
+  ]
+}
