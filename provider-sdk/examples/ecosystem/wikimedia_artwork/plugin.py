@@ -63,7 +63,8 @@ def artwork_lookup(params):
         return {"schema_version":"0.1","capability":"artwork","subject":subject,"assets":[],
                 "cache":{"policy":"session","ttl_seconds":None}}
 
-    limit = max(1, min(int(params.get("max_results") or 5), 20))
+    raw_limit = params.get("max_results")
+    limit = 5 if raw_limit is None else max(1, min(int(raw_limit), 20))
     data = _get_json({
         "action":"query","format":"json","formatversion":"2",
         "generator":"search","gsrsearch":query,"gsrnamespace":"6","gsrlimit":str(limit),
