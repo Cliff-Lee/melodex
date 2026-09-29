@@ -39,7 +39,8 @@ def test_route_snapshot_is_ref_independent_and_path_safe():
     }
     snapshot = portable_route_snapshot(route, ref_map)
     assert snapshot["tracks"][0]["display"] == "A — One"
-    assert "a" not in str(snapshot)
+    assert "local_path" not in snapshot["tracks"][0]["selector"]
+    assert "local_path" not in snapshot["tracks"][1]["selector"]
     assert "/secret" not in str(snapshot)
     assert snapshot["hops"][0]["from_index"] == 0
     assert snapshot["hops"][0]["to_index"] == 1
