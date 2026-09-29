@@ -29,6 +29,7 @@ from .rich_now_playing import RichNowPlayingWidget
 from .plugin_directory import PluginDirectoryDialog
 from .plugin_configuration_dialog import configure_plugin
 from .plugin_onboarding import plugin_needs_setup
+from .plugin_health import health_badge, health_summary
 from .diagnostics import write_diagnostics
 
 
@@ -225,7 +226,8 @@ class MainWindow(QMainWindow):
         jam=QPushButton("Jamendo settings…"); jam.clicked.connect(self._jamendo_settings)
         streams=QPushButton("User Streams…"); streams.clicked.connect(self._user_streams_dialog)
         directory=QPushButton("Explore plugins…"); directory.clicked.connect(self._plugin_directory)
-        row.addWidget(local); row.addWidget(jam); row.addWidget(streams); row.addWidget(directory)
+        test_plugin=QPushButton("Test selected"); test_plugin.clicked.connect(self._test_selected_plugin)
+        row.addWidget(local); row.addWidget(jam); row.addWidget(streams); row.addWidget(directory); row.addWidget(test_plugin)
         row.addStretch(1); l.addLayout(row)
 
         self.source_power_panel = QWidget()
@@ -309,7 +311,10 @@ class MainWindow(QMainWindow):
                         pid, p.info.configuration
                     )
                     if not config_status.get("ready", True):
-                        status += " · CONFIG NEEDED"
+                        status += " · SETUP NEEDED"
+                health = self.providers.plugin_health(pid)
+                if health.get("status") not in {"setup_required"}:
+                    status += f" · {health_badge(health)}"
                 kind = "PROVIDER"
             item=QListWidgetItem(
                 f"{name}    ·    {kind}    ·    {status}\n{p.info.description}"
@@ -337,14 +342,8 @@ class MainWindow(QMainWindow):
                 config_status = dict(extension.get("configuration_status") or {})
                 if config_status.get("declared") and not config_status.get("ready", True):
                     trust_status += " · CONFIG NEEDED"
-                health = dict(extension.get("health") or {})
-                runtime_status = str(health.get("status") or "idle").upper()
-                failure_count = int(health.get("failures") or 0)
-                health_text = (
-                    f"{runtime_status}"
-                    if not failure_count
-                    else f"{runtime_status} · {failure_count} failure{'s' if failure_count != 1 else ''}"
-                )
+                health = self.providers.plugin_health(str(extension.get("id") or ""))
+                health_text = health_badge(health)
                 item = QListWidgetItem(
                     f"{extension.get('name') or extension.get('id')}    ·    EXTENSION    ·    {enabled_status}    ·    {trust_status}    ·    {health_text}\n"
                     f"{capabilities} · {extension.get('description') or ''}"
@@ -560,6 +559,41 @@ class MainWindow(QMainWindow):
         if value.startswith("extension:"):
             return value.split(":",1)[1]
         return value if value not in {"local", "jamendo", "streams"} else ""
+
+    def _test_selected_plugin(self):
+        plugin_id=self._selected_plugin_id()
+        if not plugin_id:
+            self.statusBar().showMessage(
+                "Select an installed third-party provider or extension first",3000
+            )
+            return
+        self.statusBar().showMessage("Testing plugin…")
+        self._run_async(
+            lambda:self.providers.test_plugin_health(plugin_id),
+            lambda result:self._finish_plugin_health_test(plugin_id,result),
+        )
+
+    def _finish_plugin_health_test(self,plugin_id,result):
+        result=dict(result or {})
+        self._refresh_sources()
+        self.statusBar().showMessage(health_summary(result),6000)
+        if result.get("status")=="setup_required":
+            answer=QMessageBox.question(
+                self,
+                "Plugin setup required",
+                f"{result.get('name') or plugin_id} needs setup before it can be tested.\n\nConfigure it now?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.Yes,
+            )
+            if answer==QMessageBox.Yes:
+                configure_plugin(self,self.providers,plugin_id,setup=True)
+                self._refresh_sources()
+            return
+        QMessageBox.information(
+            self,
+            "Plugin health",
+            f"{result.get('name') or plugin_id}\n\n{health_summary(result)}",
+        )
 
     def _configure_selected_plugin(self):
         plugin_id=self._selected_plugin_id()
