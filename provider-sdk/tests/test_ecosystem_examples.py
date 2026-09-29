@@ -165,6 +165,73 @@ def test_lastfm_recommendations_example_with_fixture(monkeypatch):
     assert health["status"] == "ready"
 
 
+def test_musicbrainz_connections_example_with_fixture(monkeypatch):
+    monkeypatch.setenv("MELODEX_EXAMPLE_FIXTURES", "1")
+    module = _load(
+        "musicbrainz_connections_example",
+        EXAMPLES / "musicbrainz_connections" / "plugin.py",
+    )
+    subject = {
+        "entity_type": "track",
+        "canonical_ids": {"musicbrainz_recording_id": "demo-recording"},
+    }
+    result = module.context_lookup({"subject": subject})
+    cards = {card["id"]: card for card in result["cards"]}
+    assert cards["song-connections"]["items"][0]["badge"] == "sample"
+    assert any(
+        item["badge"] == "remix"
+        for item in cards["song-connections"]["items"]
+    )
+    assert cards["recording-places"]["items"][0]["title"] == "Example Studio"
+
+
+def test_wikimedia_liner_notes_example_with_fixture(monkeypatch):
+    monkeypatch.setenv("MELODEX_EXAMPLE_FIXTURES", "1")
+    module = _load(
+        "wikimedia_liner_notes_example",
+        EXAMPLES / "wikimedia_liner_notes" / "plugin.py",
+    )
+    subject = {
+        "entity_type": "track",
+        "canonical_ids": {"wikidata_id": "Q123"},
+    }
+    result = module.context_lookup({"subject": subject})
+    card = result["cards"][0]
+    assert card["id"] == "liner-note"
+    assert "fictional musician" in card["text"]
+    assert "CC BY-SA" in card["provenance"]["license"]
+    assert "wikipedia.org" in card["provenance"]["source_url"]
+
+
+def test_listenbrainz_community_pulse_example_with_fixture(monkeypatch):
+    monkeypatch.setenv("MELODEX_EXAMPLE_FIXTURES", "1")
+    module = _load(
+        "listenbrainz_community_pulse_example",
+        EXAMPLES / "listenbrainz_community_pulse" / "plugin.py",
+    )
+    subject = {
+        "entity_type": "track",
+        "canonical_ids": {
+            "musicbrainz_recording_id": "demo-recording",
+            "musicbrainz_artist_id": "demo-artist",
+        },
+    }
+    result = module.context_lookup({"subject": subject})
+    cards = {card["id"]: card for card in result["cards"]}
+    facts = {row["label"]: row["value"] for row in cards["community-pulse"]["facts"]}
+    assert facts["Listens"] == 128450
+    assert facts["Listeners"] == 7421
+    assert cards["artist-popular-recordings"]["items"][0]["title"] == "Night Signal"
+    health = module.respond(
+        {
+            "method": "extension.health",
+            "params": {"schema_version": "0.1", "check": "live"},
+        }
+    )
+    assert health["status"] == "ready"
+    assert health["upstream_checked"] is True
+
+
 def test_registry_references_all_examples():
     registry = json.loads((ROOT / "registry" / "example-registry.json").read_text(encoding="utf-8"))
     ids = {row["id"] for row in registry["plugins"]}
@@ -178,4 +245,7 @@ def test_registry_references_all_examples():
         "org.melodex.example.listenbrainz-tags",
         "org.melodex.example.public-domain-lyrics",
         "org.melodex.example.lastfm-recommendations",
+        "org.melodex.example.musicbrainz-connections",
+        "org.melodex.example.wikimedia-liner-notes",
+        "org.melodex.example.listenbrainz-community-pulse",
     }.issubset(ids)
