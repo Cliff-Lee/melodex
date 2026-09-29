@@ -1,13 +1,23 @@
+from types import SimpleNamespace
+
 from melodex.resolver import UniversalResolver
 
 
 class FakeProvider:
-    def __init__(self, pid, rows):
+    def __init__(self, pid, rows, capabilities=None):
         self.pid = pid
         self.rows = rows
+        self.info = SimpleNamespace(
+            id=pid,
+            capabilities=list(capabilities or ["search", "playback"]),
+        )
+        self.search_calls = 0
+        self.resolve_calls = 0
     def search(self, query, limit=50):
+        self.search_calls += 1
         return [dict(x) for x in self.rows[:limit]]
     def resolve(self, track):
+        self.resolve_calls += 1
         out = dict(track)
         out.setdefault("stream_url", f"https://example.invalid/{self.pid}/{out.get('track_id')}")
         return out
@@ -73,3 +83,44 @@ def test_resolve_many_keeps_failures_separate():
     ])
     assert len(result["tracks"]) == 1
     assert len(result["unresolved"]) == 1
+
+
+def test_resolver_skips_recommendation_only_provider():
+    recommend = FakeProvider(
+        "recommend",
+        [{"provider_id":"recommend","track_id":"r1","artist":"Massive Attack","title":"Teardrop"}],
+        capabilities=["recommendations"],
+    )
+    playable = FakeProvider(
+        "playable",
+        [{"provider_id":"playable","track_id":"p1","artist":"Massive Attack","title":"Teardrop"}],
+    )
+    m = Manager({"recommend": recommend, "playable": playable})
+    out = UniversalResolver(m).resolve({"artist":"Massive Attack","title":"Teardrop"})
+    assert out["provider_id"] == "playable"
+    assert recommend.search_calls == 0
+    assert playable.search_calls >= 1
+
+
+def test_recommendation_result_resolves_through_playback_provider_without_direct_call():
+    recommend = FakeProvider(
+        "recommend",
+        [],
+        capabilities=["recommendations"],
+    )
+    playable = FakeProvider(
+        "playable",
+        [{"provider_id":"playable","track_id":"p1","artist":"Portishead","title":"Roads"}],
+    )
+    m = Manager({"recommend": recommend, "playable": playable})
+    out = UniversalResolver(m).resolve({
+        "provider_id": "recommend",
+        "track_id": "rec-1",
+        "artist": "Portishead",
+        "title": "Roads",
+        "metadata": {"playable": False},
+    })
+    assert out["provider_id"] == "playable"
+    assert recommend.resolve_calls == 0
+    assert recommend.search_calls == 0
+    assert playable.resolve_calls == 1

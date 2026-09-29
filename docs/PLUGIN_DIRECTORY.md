@@ -38,11 +38,31 @@ The point is not merely convenience. The directory makes the trust boundary visi
 ## Package types
 
 ```text
-.mdxprovider   music-source/catalog/playback providers
+.mdxprovider   music providers (search, playback, recommendations, etc.)
 .mdxplugin     identity/metadata/artwork/lyrics extensions
 ```
 
 Both are installed through their existing isolated provider/extension runtimes.
+
+## End-user install and setup flow
+
+For a normal user the complete flow stays inside the directory:
+
+```text
+Sources
+→ Explore plugins…
+→ select a plugin
+→ review permissions/source/review information
+→ Install
+→ configure required fields when prompted
+→ Ready
+```
+
+If an installed plugin declares required configuration that is still missing, the directory marks it **SETUP NEEDED** rather than merely **INSTALLED**. Select it and use **Configure…** to finish setup later.
+
+Plugins with no required setup install normally without an extra prompt. Existing configuration is preserved across reinstall/update unless the plugin's declared configuration changes.
+
+The same shared configuration dialog is used from the Sources page and from the Plugin Directory. Secret values are never displayed back to the user; a stored secret is represented only as configured/not configured.
 
 ## Review records
 
@@ -94,7 +114,7 @@ Existing plugins installed before provenance tracking may show their origin as u
 
 ## Update awareness
 
-When a registry entry has a higher version than the installed plugin, the directory marks it as **UPDATE** and offers an explicit user-initiated update.
+When a registry entry has a higher version than the installed plugin, the directory marks it as **UPDATE** and offers an explicit user-initiated update. If setup is also incomplete, the directory can show **UPDATE · SETUP NEEDED** so those two states are not confused.
 
 Melodex does not silently auto-update third-party code.
 

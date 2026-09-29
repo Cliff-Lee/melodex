@@ -27,6 +27,8 @@ from .playlist_io import load_playlist, save_playlist
 from .metadata import RichMetadataService
 from .rich_now_playing import RichNowPlayingWidget
 from .plugin_directory import PluginDirectoryDialog
+from .plugin_configuration_dialog import configure_plugin
+from .plugin_onboarding import plugin_needs_setup
 from .diagnostics import write_diagnostics
 
 
@@ -270,7 +272,10 @@ class MainWindow(QMainWindow):
     def _refresh_source_combo(self):
         current=self.search_source.currentData(); self.search_source.clear(); self.search_source.addItem("All sources","all")
         for pid in self.providers.provider_order():
-            p=self.providers.providers[pid]; self.search_source.addItem(p.info.name,pid)
+            p=self.providers.providers[pid]
+            if "search" not in list(p.info.capabilities or []):
+                continue
+            self.search_source.addItem(p.info.name,pid)
         idx=self.search_source.findData(current); self.search_source.setCurrentIndex(idx if idx>=0 else 0)
 
     def _refresh_sources(self):
@@ -504,7 +509,20 @@ class MainWindow(QMainWindow):
         path,_=QFileDialog.getOpenFileName(self,"Install provider",filter="Melodex Provider (*.mdxprovider *.zip)")
         if not path:return
         try:
-            p=self.providers.install_package(Path(path)); QMessageBox.information(self,"Provider installed",f"Installed {p.info.name}"); self._refresh_sources()
+            p=self.providers.install_package(Path(path))
+            self._refresh_sources()
+            if plugin_needs_setup(self.providers,p.info.id):
+                configure_plugin(self,self.providers,p.info.id,setup=True)
+                self._refresh_sources()
+            QMessageBox.information(
+                self,
+                "Provider installed",
+                f"Installed {p.info.name}" + (
+                    "\n\nSetup is still required before this provider is ready."
+                    if plugin_needs_setup(self.providers,p.info.id)
+                    else "\n\nReady to use."
+                ),
+            )
         except Exception as exc: QMessageBox.critical(self,"Could not install provider",str(exc))
 
     def _install_extension(self):
@@ -517,12 +535,20 @@ class MainWindow(QMainWindow):
             return
         try:
             info=self.providers.install_extension(Path(path))
+            self._refresh_sources()
+            if plugin_needs_setup(self.providers,info.id):
+                configure_plugin(self,self.providers,info.id,setup=True)
+                self._refresh_sources()
             QMessageBox.information(
                 self,
                 "Extension installed",
-                f"Installed {info.name}\n\nCapabilities: {', '.join(info.capabilities)}",
+                f"Installed {info.name}\n\nCapabilities: {', '.join(info.capabilities)}"
+                + (
+                    "\n\nSetup is still required before this extension is ready."
+                    if plugin_needs_setup(self.providers,info.id)
+                    else "\n\nReady to use."
+                ),
             )
-            self._refresh_sources()
         except Exception as exc:
             QMessageBox.critical(self,"Could not install extension",str(exc))
 
@@ -540,87 +566,12 @@ class MainWindow(QMainWindow):
         if not plugin_id:
             self.statusBar().showMessage("Select an installed provider or extension first",3000)
             return
-        try:
-            info=self.providers.plugin_configuration(plugin_id)
-        except Exception as exc:
-            QMessageBox.warning(self,"Plugin configuration",str(exc))
-            return
-        fields=list(info.get("fields") or [])
-        if not fields:
-            QMessageBox.information(
-                self,
-                "Plugin configuration",
-                f"{info.get('name') or plugin_id} does not declare any configuration fields.",
-            )
-            return
-
-        dialog=QDialog(self)
-        dialog.setWindowTitle(f"Configure {info.get('name') or plugin_id}")
-        layout=QVBoxLayout(dialog)
-        intro=QLabel(
-            "Melodex sends only the values declared by this plugin. "
-            "Secret fields are stored in the system credential store when available."
-        )
-        intro.setWordWrap(True); layout.addWidget(intro)
-        form=QFormLayout(); layout.addLayout(form)
-        current=dict(info.get("values") or {})
-        status=dict(info.get("status") or {})
-        configured=dict(status.get("configured") or {})
-        widgets: dict[str, tuple[dict[str, Any], QWidget]] = {}
-        for field in fields:
-            key=str(field.get("key") or "")
-            label=str(field.get("label") or key)
-            if field.get("required"):
-                label += " *"
-            field_type=str(field.get("type") or "string")
-            if field_type == "boolean":
-                widget=QCheckBox()
-                widget.setChecked(bool(current.get(key, False)))
-            else:
-                widget=QLineEdit()
-                if field_type == "secret":
-                    widget.setEchoMode(QLineEdit.EchoMode.Password)
-                    widget.setPlaceholderText(
-                        "Stored — leave blank to keep" if configured.get(key) else "Enter secret"
-                    )
-                else:
-                    widget.setText(str(current.get(key) or ""))
-                help_text=str(field.get("help") or "")
-                if help_text:
-                    widget.setToolTip(help_text)
-            widgets[key]=(field,widget)
-            form.addRow(label,widget)
-        storage=str(status.get("secret_storage") or "")
-        if any(str(field.get("type")) == "secret" for field in fields):
-            note=QLabel(f"Secret storage: {storage or 'unavailable'}")
-            note.setWordWrap(True); layout.addWidget(note)
-        buttons=QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
-        buttons.accepted.connect(dialog.accept); buttons.rejected.connect(dialog.reject)
-        layout.addWidget(buttons)
-        if dialog.exec() != QDialog.Accepted:
-            return
-
-        changes: dict[str, Any] = {}
-        for key,(field,widget) in widgets.items():
-            field_type=str(field.get("type") or "string")
-            if field_type == "boolean":
-                assert isinstance(widget,QCheckBox)
-                changes[key]=widget.isChecked()
-            else:
-                assert isinstance(widget,QLineEdit)
-                text=widget.text()
-                changes[key]=None if field_type == "secret" and not text else text
-        try:
-            updated=self.providers.set_plugin_configuration(plugin_id,changes)
-        except Exception as exc:
-            QMessageBox.critical(self,"Could not save configuration",str(exc))
-            return
+        result=configure_plugin(self,self.providers,plugin_id)
         self._refresh_sources()
-        if updated.get("ready",True):
+        if result is None:
+            return
+        if result.get("ready",True):
             self.statusBar().showMessage("Plugin configuration updated",3000)
-        else:
-            missing=", ".join(str(x) for x in updated.get("missing_required") or [])
-            self.statusBar().showMessage(f"Configuration saved · required values missing: {missing}",5000)
 
     def _selected_extension_id(self) -> str:
         item=self.sources_list.currentItem()

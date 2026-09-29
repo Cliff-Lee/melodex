@@ -5,6 +5,13 @@ from typing import Any, Callable
 
 from PySide6.QtCore import QObject, Qt, QUrl, Signal
 from PySide6.QtGui import QDesktopServices
+from .plugin_configuration_dialog import configure_plugin
+from .plugin_onboarding import (
+    configuration_state,
+    configuration_summary,
+    plugin_configuration_info,
+)
+
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -62,6 +69,7 @@ class PluginDirectoryDialog(QDialog):
             "search",
             "playback",
             "offline",
+            "recommendations",
             "identity",
             "metadata",
             "artwork",
@@ -91,13 +99,16 @@ class PluginDirectoryDialog(QDialog):
 
         actions = QHBoxLayout()
         self.install_button = QPushButton("Install")
+        self.configure_button = QPushButton("Configure…")
         self.source_button = QPushButton("View source")
         self.review_button = QPushButton("View review")
         close_button = QPushButton("Close")
         self.install_button.setEnabled(False)
+        self.configure_button.setEnabled(False)
         self.source_button.setEnabled(False)
         self.review_button.setEnabled(False)
         actions.addWidget(self.install_button)
+        actions.addWidget(self.configure_button)
         actions.addWidget(self.source_button)
         actions.addWidget(self.review_button)
         actions.addStretch(1)
@@ -110,6 +121,7 @@ class PluginDirectoryDialog(QDialog):
         self.capability.currentIndexChanged.connect(lambda *_: self._apply_filter())
         self.refresh_button.clicked.connect(lambda: self.load_registry(force=True))
         self.install_button.clicked.connect(self._install_selected)
+        self.configure_button.clicked.connect(self._configure_selected)
         self.source_button.clicked.connect(self._open_source)
         self.review_button.clicked.connect(self._open_review)
         close_button.clicked.connect(self.accept)
@@ -130,6 +142,7 @@ class PluginDirectoryDialog(QDialog):
         def failed(message):
             self.status.setText(message)
             self.install_button.setEnabled(False)
+            self.configure_button.setEnabled(False)
             if signals in self._signals:
                 self._signals.remove(signals)
 
@@ -232,9 +245,19 @@ class PluginDirectoryDialog(QDialog):
             )
             capabilities = ", ".join(str(x) for x in entry.get("capabilities") or [])
             update_available = installed and self._update_available(entry)
+            config_info = (
+                plugin_configuration_info(self.manager, plugin_id)
+                if installed
+                else {}
+            )
+            config_state = configuration_state(config_info)
             badge = (
-                "UPDATE"
+                "UPDATE · SETUP NEEDED"
+                if update_available and config_state == "setup_needed"
+                else "UPDATE"
                 if update_available
+                else "SETUP NEEDED"
+                if installed and config_state == "setup_needed"
                 else "INSTALLED"
                 if installed
                 else str(entry.get("status") or "").upper()
@@ -250,6 +273,7 @@ class PluginDirectoryDialog(QDialog):
         else:
             self.details.setPlainText("No registry entries match these filters.")
             self.install_button.setEnabled(False)
+            self.configure_button.setEnabled(False)
             self.source_button.setEnabled(False)
             self.review_button.setEnabled(False)
 
@@ -258,6 +282,7 @@ class PluginDirectoryDialog(QDialog):
         if not entry:
             self.details.clear()
             self.install_button.setEnabled(False)
+            self.configure_button.setEnabled(False)
             self.source_button.setEnabled(False)
             self.review_button.setEnabled(False)
             return
@@ -273,7 +298,14 @@ class PluginDirectoryDialog(QDialog):
         installed = self._is_installed(entry)
         installed_version = self._installed_version(entry) if installed else ""
         update_available = self._update_available(entry) if installed else False
-        installation = self.manager.installation_record(str(entry.get("id") or ""))
+        plugin_id = str(entry.get("id") or "")
+        installation = self.manager.installation_record(plugin_id)
+        config_info = (
+            plugin_configuration_info(self.manager, plugin_id)
+            if installed
+            else {}
+        )
+        config_text = configuration_summary(config_info) if installed else "Not installed"
         compatible, compatibility_reason = self.manager.registry.compatibility(entry)
         sha256 = str(distribution.get("sha256") or "")
         if installation:
@@ -305,6 +337,7 @@ class PluginDirectoryDialog(QDialog):
             f"Installed: {'Yes' if installed else 'No'}\n"
             f"Installed version: {installed_version or '—'}\n"
             f"Update available: {'Yes' if update_available else 'No'}\n"
+            f"Configuration: {config_text}\n"
             f"Install origin: {install_origin}\n"
             f"Installed at: {installed_at}\n"
             f"Installed package SHA-256: {install_hash}\n"
@@ -333,6 +366,9 @@ class PluginDirectoryDialog(QDialog):
         )
         self.install_button.setText(
             "Update" if update_available else "Reinstall" if installed else "Install"
+        )
+        self.configure_button.setEnabled(
+            bool(installed and list(config_info.get("fields") or []))
         )
         self.source_button.setEnabled(bool(source.get("repository")))
         self.review_button.setEnabled(bool(review.get("record")))
@@ -395,18 +431,56 @@ class PluginDirectoryDialog(QDialog):
 
     def _installed(self, entry: dict[str, Any], result: Any) -> None:
         result = dict(result or {})
+        plugin_id = str(result.get("id") or entry.get("id") or "")
+        name = str(result.get("name") or entry.get("name") or plugin_id)
         if self.on_installed:
             self.on_installed()
-        self.status.setText(
-            f"Installed {result.get('name') or entry.get('name')}. "
-            "The package hash matched the registry."
-        )
         self._apply_filter()
+
+        config_info = plugin_configuration_info(self.manager, plugin_id)
+        if configuration_state(config_info) == "setup_needed":
+            self.status.setText(
+                f"Installed {name}; setup is required before it is ready."
+            )
+            configure_plugin(self, self.manager, plugin_id, setup=True)
+            if self.on_installed:
+                self.on_installed()
+            self._apply_filter()
+            config_info = plugin_configuration_info(self.manager, plugin_id)
+
+        ready = configuration_state(config_info) != "setup_needed"
+        self.status.setText(
+            f"Installed {name}. "
+            + (
+                "Ready to use."
+                if ready
+                else "Setup is still required; select it and choose Configure…."
+            )
+        )
         QMessageBox.information(
             self,
             "Plugin installed",
-            f"Installed {result.get('name') or entry.get('name')} successfully.",
+            f"Installed {name} successfully.\n\n"
+            + (
+                "Ready to use."
+                if ready
+                else "Setup is still required before this plugin is ready."
+            ),
         )
+
+    def _configure_selected(self) -> None:
+        entry = self._selected()
+        if not entry or not self._is_installed(entry):
+            return
+        plugin_id = str(entry.get("id") or "")
+        result = configure_plugin(self, self.manager, plugin_id)
+        if self.on_installed:
+            self.on_installed()
+        self._apply_filter()
+        if result and result.get("ready", True):
+            self.status.setText(
+                f"{entry.get('name') or plugin_id} is configured and ready."
+            )
 
     def _open_source(self) -> None:
         entry = self._selected()
