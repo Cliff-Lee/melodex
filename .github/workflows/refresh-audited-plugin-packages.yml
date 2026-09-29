@@ -5,6 +5,7 @@ on:
     branches:
       - fix/stabilize-v0.3.1-dev
     paths:
+      - .github/workflows/refresh-audited-plugin-packages.yml
       - scripts/rebuild_audited_plugin_packages.py
       - provider-sdk/examples/ecosystem/**
   workflow_dispatch:
