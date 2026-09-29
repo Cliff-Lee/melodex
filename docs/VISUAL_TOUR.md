@@ -95,7 +95,9 @@ Select a mapped track to play it, queue it, or choose **Start journey here**. Th
 
 For a more deliberate route, use **Pathfinder**: set a start and destination, choose Balanced/Sonic/Knowledge-first, then inspect the numbered route and the reason for every hop before playing or queueing it.
 
-The map uses cached analysis/knowledge by default; **Analyse my library** and the knowledge-enrichment buttons remain explicit user actions. Pathfinder itself is local and does not trigger network enrichment.
+**Journey Designer** goes one step further: add semantic stages such as Calm, Darker, Forgotten or Energetic—or an exact selected-track waypoint—and Melodex will build a staged route through them. The included first preset is **Calm → Darker → Forgotten → Energetic**.
+
+The map uses cached analysis/knowledge by default; **Analyse my library** and the knowledge-enrichment buttons remain explicit user actions. Pathfinder and Journey Designer themselves are local and do not trigger network enrichment.
 
 ## 8. Moments
 
