@@ -574,7 +574,14 @@ class ProviderManager:
                     checked=True,
                 )
             else:
-                raw = dict(extension.process_check() or {})
+                declarations = list(extension.info.configuration or [])
+                configured_values = self.plugin_config.values(plugin_id, declarations)
+                secret_values = [
+                    str(configured_values.get(str(field.get("key") or "")) or "")
+                    for field in declarations
+                    if str(field.get("type") or "") == "secret"
+                ]
+                raw = dict(extension.active_health_check(timeout=timeout) or {})
                 result = self._health_result(
                     plugin_id=plugin_id,
                     name=extension.info.name,
@@ -584,7 +591,14 @@ class ProviderManager:
                     check_scope=str(raw.get("check_scope") or "process"),
                     reason=str(raw.get("reason") or ""),
                     checked=True,
+                    redact_values=secret_values,
                 )
+                if raw.get("upstream_checked") is not None:
+                    result["upstream_checked"] = bool(raw.get("upstream_checked"))
+                if raw.get("latency_ms") is not None:
+                    result["latency_ms"] = raw.get("latency_ms")
+                if raw.get("retry_after_seconds") is not None:
+                    result["retry_after_seconds"] = raw.get("retry_after_seconds")
             self._plugin_health_cache[plugin_id] = result
             return dict(result)
 
