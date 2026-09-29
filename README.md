@@ -22,7 +22,7 @@
 
 Melodex is a source-neutral music player that tries to make listening sessions **go somewhere**.
 
-It combines your library and connected sources with taste memory, optional audio analysis, **Flow** sequencing, **Play for me**, Moments, and a resolver that can match requested music across multiple providers.
+It combines your library and connected sources with taste memory, optional audio analysis, **Flow** sequencing, **Play for me**, a local **Music Map**, Moments, and a resolver that can match requested music across multiple providers.
 
 But Melodex is also becoming something broader:
 
@@ -154,6 +154,12 @@ melodex_feedback
 ```
 
 Use [MCP with OpenWebUI](docs/tutorials/CONNECT_OPENWEBUI_MCP.md) or [OpenAI function calling](docs/tutorials/USE_OPENAI_FUNCTIONS.md).
+
+## Explore your library spatially
+
+The desktop **Music Map** turns cached Flow analysis into a zoomable local sonic landscape. Nearby tracks share similar combinations of tempo, energy, key, timbre, rhythmic density and mixability; colour modes can expose energy, taste strength or rediscovery potential. A selected node can be played, queued, or used as the anchor for a new Mind + Flow journey.
+
+The first implementation is deterministic, local and dependency-light rather than using a remote embedding service or opaque ML model.
 
 ## Reference extensions
 

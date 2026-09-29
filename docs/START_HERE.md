@@ -14,9 +14,10 @@ It shows the actual application and covers:
 4. Familiar ↔ Surprising;
 5. teaching Melodex your taste;
 6. Flow;
-7. Moments;
-8. music sources;
-9. optional LLM control.
+7. Music map;
+8. Moments;
+9. music sources;
+10. optional LLM control.
 
 ## Install
 
@@ -44,6 +45,7 @@ Everything involving Jamendo, third-party providers, Provider Bridge or an LLM i
 
 - **Play for me** — build a listening session.
 - **Flow queue** — resequence the upcoming queue.
+- **Music map** — explore analysed local music as a sonic landscape and start a journey from any mapped track.
 - **Keep** — tell Melodex this belongs in your taste.
 - **♥** — strong positive feedback.
 - **••• → Save a moment** — remember the exact point in a song.

@@ -20,6 +20,8 @@ from .provider_manager import ProviderManager
 from .flow import FlowEngine
 from .mind import MindEngine
 from .local_intelligence import LocalIntelligenceService
+from .music_map import MusicMapWidget
+from .music_map_model import build_music_map
 from .user_state import UserState
 from .player import FlowPlayer
 from .llm_bridge import LLMClient, LLMSettings, llm_track_summary
@@ -113,7 +115,7 @@ class MainWindow(QMainWindow):
         titles.addWidget(logo); titles.addWidget(tagline)
         brand.addWidget(mark); brand.addLayout(titles, 1)
         side.addLayout(brand); side.addSpacing(12)
-        for text, page in [("Home","home"),("Now playing","now_playing"),("Play for me","for_you"),("Discover","discover"),("My music","library"),("Playlists","playlists"),("Moments","moments"),("Ask Melodex","ask"),("Sources","sources")]:
+        for text, page in [("Home","home"),("Now playing","now_playing"),("Play for me","for_you"),("Discover","discover"),("My music","library"),("Music map","music_map"),("Playlists","playlists"),("Moments","moments"),("Ask Melodex","ask"),("Sources","sources")]:
             b = QPushButton(text); b.setCursor(Qt.PointingHandCursor); b.clicked.connect(lambda _=False,p=page:self.open_page(p)); side.addWidget(b)
         side.addStretch(1)
         self.power_toggle = QCheckBox("Show power tools")
@@ -123,9 +125,9 @@ class MainWindow(QMainWindow):
 
         self.stack = QStackedWidget(); body_l.addWidget(self.stack, 1)
         self.pages: dict[str, QWidget] = {}
-        for name in ["home","now_playing","for_you","discover","library","playlists","moments","ask","sources"]:
+        for name in ["home","now_playing","for_you","discover","library","music_map","playlists","moments","ask","sources"]:
             w = QWidget(); self.pages[name]=w; self.stack.addWidget(w)
-        self._build_home(); self._build_now_playing(); self._build_for_you(); self._build_discover(); self._build_library(); self._build_playlists(); self._build_moments(); self._build_ask(); self._build_sources()
+        self._build_home(); self._build_now_playing(); self._build_for_you(); self._build_discover(); self._build_library(); self._build_music_map(); self._build_playlists(); self._build_moments(); self._build_ask(); self._build_sources()
 
         self.queue_panel = QWidget(); self.queue_panel.setFixedWidth(320)
         ql = QVBoxLayout(self.queue_panel); ql.setContentsMargins(12,12,12,12)
@@ -216,6 +218,24 @@ class MainWindow(QMainWindow):
         row=QHBoxLayout(); add=QPushButton("Add folder…"); add.clicked.connect(self._choose_music_folder); scan=QPushButton("Rescan"); scan.clicked.connect(self._rescan); row.addWidget(add); row.addWidget(scan); row.addStretch(1); l.addLayout(row)
         self.library_list=QListWidget(); self.library_list.itemDoubleClicked.connect(self._play_library); l.addWidget(self.library_list,1)
 
+    def _build_music_map(self):
+        l=self._page_layout(
+            "music_map",
+            "Music map",
+            "Explore your own library as a local sonic landscape. Nearby tracks share Flow characteristics; colour can reveal key, energy, taste or forgotten regions."
+        )
+        actions=QHBoxLayout()
+        refresh=QPushButton("Refresh map"); refresh.clicked.connect(self._refresh_music_map)
+        analyse=QPushButton("Analyse my library"); analyse.clicked.connect(self._analyse_library_for_map)
+        play=QPushButton("Play selected"); play.clicked.connect(self._play_music_map_selected)
+        queue=QPushButton("Add selected to queue"); queue.clicked.connect(self._queue_music_map_selected)
+        journey=QPushButton("Start journey here"); journey.clicked.connect(self._journey_from_music_map)
+        actions.addWidget(refresh); actions.addWidget(analyse); actions.addWidget(play); actions.addWidget(queue); actions.addWidget(journey); actions.addStretch(1)
+        l.addLayout(actions)
+        self.music_map=MusicMapWidget(self)
+        self.music_map.trackActivated.connect(self._play_music_map_track)
+        l.addWidget(self.music_map,1)
+
     def _build_playlists(self):
         l=self._page_layout("playlists","Playlists","Saved journeys and imported playlists live locally. Import or export XSPF, M3U and M3U8.")
         self.playlists_list=QListWidget(); self.playlists_list.itemDoubleClicked.connect(self._play_saved_playlist); l.addWidget(self.playlists_list,1)
@@ -272,6 +292,7 @@ class MainWindow(QMainWindow):
         self.current_page=name; self.stack.setCurrentWidget(self.pages[name])
         if name=="home": self._show_home()
         elif name=="library": self._refresh_library()
+        elif name=="music_map": self._refresh_music_map()
         elif name=="sources": self._refresh_sources()
         elif name=="moments": self._refresh_moments()
         elif name=="playlists": self._refresh_playlists()
@@ -971,6 +992,102 @@ class MainWindow(QMainWindow):
             8000,
         )
 
+    # ------------------------------- Music Map
+    def _build_music_map_payload(self):
+        catalog=self.providers.local_catalog()
+        profiles, _seed_refs, ref_map, _analysed = self.local_intelligence.build_snapshot(
+            catalog,
+            [],
+            max_tracks=5000,
+            analyse_seeds=False,
+        )
+        model=build_music_map(profiles,max_nodes=700,neighbours=2)
+        return {"model":model,"ref_map":ref_map}
+
+    def _refresh_music_map(self):
+        catalog=self.providers.local_catalog()
+        if not catalog:
+            self.music_map.set_map({}, {}, self.current_track)
+            self.statusBar().showMessage("Add local music to build a Music Map",4000)
+            return
+        self.statusBar().showMessage("Building Music Map from cached Flow analysis…")
+        self._run_async(self._build_music_map_payload,self._apply_music_map_payload)
+
+    def _apply_music_map_payload(self,payload):
+        payload=dict(payload or {})
+        self.music_map.set_map(
+            dict(payload.get("model") or {}),
+            dict(payload.get("ref_map") or {}),
+            self.current_track,
+        )
+        mapped=int((payload.get("model") or {}).get("analysed") or 0)
+        if mapped:
+            self.statusBar().showMessage(f"Music Map ready · {mapped} analysed tracks",5000)
+        else:
+            self.statusBar().showMessage("Music Map needs cached Flow analysis · choose Analyse my library",6000)
+
+    def _analyse_library_for_map(self):
+        catalog=self.providers.local_catalog()
+        if not catalog:
+            QMessageBox.information(self,"Add music first","Add a local music folder before analysing your library.")
+            return
+        if not self.flow.analysis_available:
+            QMessageBox.information(
+                self,
+                "Audio analysis unavailable",
+                "Music Map analysis needs ffmpeg and NumPy. Install/enable them, then try again."
+            )
+            return
+        self.statusBar().showMessage("Analysing local library for Music Map…")
+        self._run_async(
+            lambda:self.local_intelligence.analyse_catalog(catalog),
+            self._music_map_analysis_finished,
+        )
+
+    def _music_map_analysis_finished(self,result):
+        self.statusBar().showMessage(
+            f"Library analysis ready · {int(result.get('analysed') or 0)}/{int(result.get('total') or 0)} analysed",
+            5000,
+        )
+        self._refresh_music_map()
+
+    def _music_map_selected(self):
+        return self.music_map.selected_track() if hasattr(self,"music_map") else {}
+
+    def _play_music_map_track(self,track):
+        if isinstance(track,dict) and track:
+            self.player.set_queue([dict(track)],0,True)
+
+    def _play_music_map_selected(self):
+        track=self._music_map_selected()
+        if track:self._play_music_map_track(track)
+
+    def _queue_music_map_selected(self):
+        track=self._music_map_selected()
+        if not track:return
+        if not self.player.queue:self.player.set_queue([track],0,False)
+        else:
+            self.player.queue.append(dict(track)); self.player.queueChanged.emit(self.player.queue)
+        self.statusBar().showMessage("Added Music Map track to queue",3000)
+
+    def _journey_from_music_map(self):
+        track=self._music_map_selected()
+        if not track:
+            self.statusBar().showMessage("Select a Music Map track first",3000); return
+        catalog=self.providers.local_catalog()
+        self.statusBar().showMessage("Building a journey from this part of your map…")
+        self._run_async(
+            lambda:self.mind.build_session(
+                catalog,
+                self._path_for,
+                minutes=int(self.minutes.currentText()),
+                adventure=self.adventure.value()/100,
+                mode=self.mode.currentText(),
+                start_track=track,
+            ),
+            lambda plan:self._apply_mind(plan),
+        )
+
     # ------------------------------- Flow / Mind
     def _path_for(self,t):
         p=str(t.get("local_path") or ""); return Path(p) if p else None
@@ -1006,6 +1123,8 @@ class MainWindow(QMainWindow):
         if self.current_track and self.current_track_started and time.time()-self.current_track_started<30:
             self.state.record_skip(self.current_track)
         self.current_track=dict(t); self.current_track_started=time.time(); self.current_history_id=self.state.record_play(t)
+        if hasattr(self,"music_map"):
+            self.music_map.highlight_track(t)
         self.now_title.setText(str(t.get("title") or "Unknown track")); base=f"{t.get('artist','Unknown artist')}   ·   {t.get('album','')}   ·   {t.get('provider_id','')}"; src=str(t.get("source_page") or ""); attr=str(t.get("attribution") or ""); self.now_meta.setText(base + ((f"   ·   <a href=\"{src}\">{attr or 'Source'}</a>") if src else ""))
         if hasattr(self,"rich_now"):self.rich_now.set_track(dict(t))
 

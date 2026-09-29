@@ -83,7 +83,17 @@ Flow then tries to order the queue so the movement between tracks feels more del
 
 A future version of this tour will show the same queue **before and after Flow** side-by-side.
 
-## 7. Moments
+## 7. Music map
+
+Open **Music map** after some local tracks have Flow analysis.
+
+The map is a zoomable local sonic landscape: nearby dots share similar Flow features, and nearest-neighbour lines reveal small musical regions. Change the colour mode to look at energy, taste memory or rediscovery potential.
+
+Select a mapped track to play it, queue it, or choose **Start journey here**. That turns visual exploration back into a normal Melodex listening session.
+
+The map uses cached analysis; **Analyse my library** remains an explicit user action.
+
+## 8. Moments
 
 ![Moments](images/moments.png)
 
@@ -91,7 +101,7 @@ Sometimes the thing you want to remember is not a whole song.
 
 Press **•••** in the player bar and use **Save a moment** to remember an exact playback position: a bass entrance, lyric, solo, breakdown or transition.
 
-## 8. Music sources
+## 9. Music sources
 
 ![Music Sources](images/sources.png)
 
@@ -109,7 +119,7 @@ Turn on **Show power tools** only when you need manual `.mdxprovider` / `.mdxplu
 Melodex's queue, taste and Flow systems sit above those sources.
 
 <a id="ask-melodex"></a>
-## 9. Ask Melodex
+## 10. Ask Melodex
 
 ![Ask Melodex](images/ask-melodex.png)
 
