@@ -86,6 +86,26 @@ metadata.enrich
 
 Teaches chained enrichment: a provider or identity resolver supplies a MusicBrainz recording ID, then ListenBrainz contributes community tags without repeating fuzzy identity matching. It also demonstrates privacy-minimal API use because only the recording identifier is sent.
 
+## Public Domain Lyrics
+
+**Layer:** experimental v0.1 capability extension
+
+```text
+lyrics.lookup
+```
+
+Teaches the lyrics response contract, language/kind filtering, provenance and the important distinction between API accessibility and lyric-text redistribution rights. The bundled corpus is deliberately tiny and historical/public-domain rather than a modern commercial lyrics catalogue.
+
+## Last.fm Recommendations
+
+**Layer:** MPP provider, recommendation-only preview
+
+```text
+recommendations.get
+```
+
+Teaches discovery/playback separation, a provider that does not pretend to host playable media, and a required user-supplied API key using Melodex's brokered `secret` configuration. A chosen suggestion is expected to go back through the Melodex resolver to find an installed playback source.
+
 ## Running an example as an installed extension
 
 Copy an example to a working folder, validate it, then package it:
@@ -103,6 +123,8 @@ Install the generated `.mdxplugin` locally from **Melodex → Sources → Show p
 
 Each canonical example also has a baseline record under `provider-sdk/registry/reviews/`, tied to the exact published package SHA-256. In the Plugin Directory, **View review** opens that record.
 
-## Why not a project-maintained lyrics reference yet?
+## Why the lyrics reference is intentionally tiny
 
-A public lyrics endpoint does not automatically imply redistribution rights. The first public reference lyrics extension should use a source whose API access and content rights are sufficiently clear for a reusable example.
+A public lyrics endpoint does not automatically imply redistribution rights. The project-maintained lyrics example therefore uses a tiny bundled historical/public-domain corpus to exercise the contract without presenting access to a modern lyrics API as permission to redistribute its text.
+
+A future network-backed lyrics reference should only be added when API terms, content rights, attribution and caching rules are clear enough for a reusable public example.
