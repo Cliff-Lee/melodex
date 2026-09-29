@@ -38,6 +38,7 @@ Melodex is intentionally developing in public. Some surfaces are implemented and
 | Declared plugin permissions | **Implemented** | Visible metadata/review contract; not universal OS enforcement |
 | Declared plugin configuration broker | **Implemented / Preview** | Schema-driven `string`/`secret`/`boolean` configuration; only declared values are brokered to the plugin |
 | Plugin install/setup onboarding | **Implemented** | Registry and manual installs automatically prompt for missing required configuration; incomplete installs remain visible as `SETUP NEEDED` |
+| Plugin health/testing UI | **Implemented / Preview** | Providers use bounded `provider.health`; extensions expose process/runtime health without claiming a universal upstream connectivity test |
 | Secret configuration storage | **Implemented** | System credential store when available; otherwise session-only memory rather than plaintext JSON |
 | Playback-host allowlist enforcement | **Implemented** | Playback Gateway checks external provider HTTP(S) playback URLs and redirects against declared hosts; this is not process-wide network isolation |
 | OS-enforced plugin network/filesystem sandbox | **Not implemented** | Provider/extension processes still run with the current user's OS permissions |
