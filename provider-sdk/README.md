@@ -17,7 +17,7 @@ Melodex now has two package types:
 
 ```text
 .mdxprovider   catalog/playback providers
-.mdxplugin     identity/metadata/artwork/lyrics/context extensions
+.mdxplugin     identity/metadata/artwork/lyrics/context/local-intelligence extensions
 ```
 
 ## Fastest start
@@ -46,6 +46,8 @@ melodex-extension pack my-artwork
 ```
 
 Context extensions use `context.lookup` to return sourced text/list/fact cards that Melodex can render in Rich Now Playing without plugin-specific GUI code.
+
+Local-intelligence extensions use `library.suggest`. Melodex brokers a sanitized local-library snapshot with ephemeral refs, Flow features and coarse taste signals; plugins do not need direct access to the user's music folders or taste database.
 
 Network-backed extensions may optionally declare the v0.1 `extension.health` method. This is lifecycle metadata rather than an enrichment capability; extensions that omit it remain compatible and use Melodex's process-check fallback. See the experimental extension contract reference for the request/response schema.
 
