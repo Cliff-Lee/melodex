@@ -15,6 +15,7 @@ This page is intentionally exhaustive. For a shorter route by goal, use the [doc
 ## Installation
 
 - [Installation chooser](INSTALL.md)
+- [Linux (Ubuntu, Debian, AppImage)](INSTALL_LINUX.md)
 - [macOS](INSTALL_MACOS.md)
 - [Windows](INSTALL_WINDOWS.md)
 - [Android](INSTALL_ANDROID.md)
@@ -91,6 +92,7 @@ This page is intentionally exhaustive. For a shorter route by goal, use the [doc
 - [Testing plugins](developers/08_TESTING.md)
 - [Publishing and registry](developers/10_PUBLISHING_REGISTRY.md)
 - [Registry governance](developers/17_REGISTRY_GOVERNANCE.md)
+- [Linux distribution design](developers/19_LINUX_DISTRIBUTION.md)
 - [Plugin review checklist](developers/12_PLUGIN_REVIEW_CHECKLIST.md)
 - [Glossary](developers/15_GLOSSARY.md)
 
@@ -99,7 +101,7 @@ This page is intentionally exhaustive. For a shorter route by goal, use the [doc
 - [Build from source](BUILD_FROM_SOURCE.md)
 - [Releases, `main`, and version numbers](RELEASES_AND_MAIN.md)
 - [Releasing](RELEASING.md)
-- [Melodex v0.4.0 release notes](releases/v0.4.0.md)
+- [Melodex v0.5.0 release notes](releases/v0.5.0.md)
 
 ## Trust and security
 

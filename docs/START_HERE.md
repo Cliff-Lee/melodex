@@ -22,6 +22,7 @@ It shows the actual application and covers:
 
 ## Install
 
+- [Linux (Ubuntu, Debian, AppImage)](INSTALL_LINUX.md)
 - [macOS](INSTALL_MACOS.md)
 - [Windows](INSTALL_WINDOWS.md)
 - [Android](INSTALL_ANDROID.md)

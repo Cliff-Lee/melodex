@@ -26,10 +26,11 @@ Then use:
 ## I want to install Melodex
 
 - [Installation chooser](INSTALL.md)
+- [Linux (Ubuntu, Debian, AppImage)](INSTALL_LINUX.md)
 - [macOS](INSTALL_MACOS.md)
 - [Windows](INSTALL_WINDOWS.md)
 - [Android](INSTALL_ANDROID.md)
-- [Latest release notes](releases/v0.4.0.md)
+- [Latest release notes](releases/v0.5.0.md)
 
 ## I want optional AI control
 
