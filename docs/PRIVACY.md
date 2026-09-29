@@ -82,6 +82,8 @@ Normal Now Playing enrichment can be remembered in the local Music Map knowledge
 
 **Pathfinder** is local. Route finding uses the current map's cached standardized Flow vectors and cached factual edges. It does not contact metadata services, plugins, an LLM or a remote recommender merely to find a path.
 
+**Journey Designer** is also local. Semantic stages are scored from Flow/taste values already present in the current map, and staged routes reuse the prepared Pathfinder graph. Building a journey does not send the stage sequence or your library to an LLM or remote planner.
+
 ## Local intelligence plugins
 
 The `library.suggest` contract is designed so useful local recommendation tools do not need the user's filesystem paths or taste database.
