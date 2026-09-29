@@ -236,3 +236,87 @@ The map draws the resulting route as a numbered overlay while a step list shows 
 Choose **Play route** to replace the queue with the route, or **Queue route** to append it.
 
 Pathfinder is deterministic and local. Finding a route does not contact MusicBrainz, context plugins, an LLM or a remote recommender. It only uses the sonic vectors and factual knowledge already present in the current map.
+
+## 12. Journey Designer
+
+Journey Designer adds ordered waypoints and semantic constraints on top of Pathfinder.
+
+It uses the same **start**, **destination** and routing mode as Pathfinder, but the route can be required to pass through stages such as:
+
+- **Calm**
+- **Darker**
+- **Forgotten**
+- **Energetic**
+- **Bright**
+- **Rhythmic**
+- **Familiar**
+- **Surprising**
+
+You can also add the currently selected mapped track as an exact waypoint.
+
+A journey can therefore express:
+
+```text
+Start
+  ↓
+Calm
+  ↓
+Darker
+  ↓
+specific track waypoint
+  ↓
+Forgotten
+  ↓
+Energetic
+  ↓
+Destination
+```
+
+The included first preset is:
+
+**Calm → Darker → Forgotten → Energetic**
+
+### How semantic stages are scored
+
+These labels are not LLM judgements.
+
+They are transparent combinations of fields already present in the map:
+
+- **Calm** — low energy, gentler tempo and lower rhythmic density;
+- **Darker** — lower spectral brightness, minor-mode character and suitable mid/low energy;
+- **Forgotten** — high local rediscovery signal plus positive taste history;
+- **Energetic** — energy, tempo drive and rhythmic density;
+- **Bright** — higher spectral brightness, major-mode character and energy;
+- **Rhythmic** — rhythmic density, tempo drive and mixability;
+- **Familiar** — positive taste plus prior plays;
+- **Surprising** — low prior exposure and lower familiarity.
+
+Each chosen waypoint stores its stage-fit score and the component explanation.
+
+If a requested stage is not represented strongly enough in the current mapped library, Journey Designer fails explicitly rather than assigning a misleading label to a weak candidate.
+
+### Route construction
+
+Journey Designer:
+
+1. scores potential waypoints for the requested stage;
+2. prefers candidates near the appropriate part of the start→destination sonic trajectory;
+3. checks that the candidate is actually routable;
+4. checks that the final destination remains reachable;
+5. builds the complete journey from reusable Pathfinder segments.
+
+The expensive sonic/knowledge routing network is prepared once and reused while waypoint candidates are evaluated.
+
+Purple-outlined nodes are semantic or explicit Journey waypoints. The route remains numbered and every normal Pathfinder hop explanation is preserved.
+
+### Network and privacy behavior
+
+Journey design is local.
+
+It uses only:
+
+- current Music Map Flow vectors;
+- local taste/rediscovery values already in the map;
+- cached factual knowledge edges.
+
+Building a journey does not call an LLM or trigger metadata enrichment. Network enrichment remains a separate explicit user action.
