@@ -16,7 +16,7 @@ from . import __version__ as MELODEX_VERSION
 
 
 DEFAULT_REGISTRY_URL = (
-    "https://raw.githubusercontent.com/Cliff-Lee/melodex/main/"
+    "https://raw.githubusercontent.com/Cliff-Lee/melodex/testing/v0.3.1-dev-stabilized/"
     "provider-sdk/registry/registry.json"
 )
 MAX_PACKAGE_BYTES = 25 * 1024 * 1024
