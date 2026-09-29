@@ -339,7 +339,7 @@
         "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/main/provider-sdk/registry/packages/lastfm-recommendations-0.1.0.mdxprovider",
         "format": "mdxprovider",
         "sha256": "f0fbd747e25761d5fa9cc3c9575ce8c037415edde2985dfb60610822d325a3c4",
-        "size_bytes": 5298
+        "size_bytes": 5211
       },
       "compatibility": {
         "melodex_min": "0.1.0",
