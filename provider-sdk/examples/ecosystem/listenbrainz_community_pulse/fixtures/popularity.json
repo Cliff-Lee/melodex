@@ -1,0 +1,32 @@
+{
+  "recording": [
+    {
+      "recording_mbid": "demo-recording",
+      "total_listen_count": 128450,
+      "total_user_count": 7421
+    }
+  ],
+  "top_recordings": [
+    {
+      "recording_mbid": "popular-1",
+      "recording_name": "Night Signal",
+      "artist_name": "Example Artist",
+      "total_listen_count": 950000,
+      "total_user_count": 60200
+    },
+    {
+      "recording_mbid": "popular-2",
+      "recording_name": "Quiet Machine",
+      "artist_name": "Example Artist",
+      "total_listen_count": 610000,
+      "total_user_count": 44100
+    },
+    {
+      "recording_mbid": "popular-3",
+      "recording_name": "Open Circuit",
+      "artist_name": "Example Artist",
+      "total_listen_count": 380000,
+      "total_user_count": 27800
+    }
+  ]
+}
