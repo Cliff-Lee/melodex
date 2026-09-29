@@ -13,6 +13,11 @@ from .resolver import UniversalResolver
 from .capabilities import CapabilityBroker, ExtensionInfo
 from .plugin_registry import PluginRegistryClient, RegistryResult
 from .plugin_config import PluginConfigBroker
+from .plugin_health import (
+    health_summary,
+    normalise_health_status,
+    safe_health_text,
+)
 
 
 class ProviderManager:
@@ -42,6 +47,7 @@ class ProviderManager:
             self.data_dir, config_broker=self.plugin_config
         )
         self.registry = PluginRegistryClient(self.data_dir)
+        self._plugin_health_cache: dict[str, dict[str, Any]] = {}
 
     def _load_settings(self) -> dict[str, Any]:
         try:
@@ -230,6 +236,7 @@ class ProviderManager:
             if callable(close):
                 close()
         self.providers[provider.info.id] = provider
+        self._plugin_health_cache.pop(provider.info.id, None)
         self._record_installation(
             plugin_id=provider.info.id,
             name=provider.info.name,
@@ -350,6 +357,7 @@ class ProviderManager:
     ) -> ExtensionInfo:
         path = Path(path)
         info = self.capabilities.install_package(path)
+        self._plugin_health_cache.pop(info.id, None)
         self._record_installation(
             plugin_id=info.id,
             name=info.name,
@@ -406,7 +414,181 @@ class ProviderManager:
         extension = self.capabilities.extensions.get(plugin_id)
         if extension is not None:
             extension.configure(values)
+        self._plugin_health_cache.pop(str(plugin_id), None)
         return status
+
+    def _health_result(
+        self,
+        *,
+        plugin_id: str,
+        name: str,
+        kind: str,
+        status: str,
+        message: str = "",
+        check_scope: str = "",
+        reason: str = "",
+        checked: bool = False,
+        provider_status: str = "",
+        redact_values: list[str] | None = None,
+    ) -> dict[str, Any]:
+        result = {
+            "id": str(plugin_id),
+            "name": str(name),
+            "kind": str(kind),
+            "status": normalise_health_status(status),
+            "message": safe_health_text(message, redact_values),
+            "check_scope": str(check_scope or ""),
+            "reason": safe_health_text(reason, redact_values),
+            "checked": bool(checked),
+            "provider_status": safe_health_text(provider_status, redact_values)[:80],
+        }
+        if checked:
+            result["checked_at"] = datetime.now(timezone.utc).isoformat()
+        result["summary"] = health_summary(result)
+        return result
+
+    def plugin_health(self, plugin_id: str) -> dict[str, Any]:
+        plugin_id = str(plugin_id or "").strip()
+        if not plugin_id:
+            raise KeyError("Missing plugin id")
+
+        try:
+            config = self.plugin_configuration(plugin_id)
+        except KeyError:
+            config = {}
+        status = dict(config.get("status") or {})
+        if status.get("declared") and not status.get("ready", True):
+            return self._health_result(
+                plugin_id=plugin_id,
+                name=str(config.get("name") or plugin_id),
+                kind=str(config.get("kind") or "plugin"),
+                status="setup_required",
+                message="Required configuration is incomplete",
+                check_scope="configuration",
+            )
+
+        provider = self.providers.get(plugin_id)
+        if provider is not None and plugin_id not in {"local", "jamendo", "streams"}:
+            cached = self._plugin_health_cache.get(plugin_id)
+            if cached:
+                return dict(cached)
+            return self._health_result(
+                plugin_id=plugin_id,
+                name=provider.info.name,
+                kind="provider",
+                status="untested",
+                message="Connection has not been tested in this session",
+                check_scope="provider",
+            )
+
+        extension = self.capabilities.extensions.get(plugin_id)
+        if extension is not None:
+            if not self.capabilities.enabled(plugin_id):
+                return self._health_result(
+                    plugin_id=plugin_id,
+                    name=extension.info.name,
+                    kind="extension",
+                    status="disabled",
+                    message="Extension is disabled",
+                    check_scope="runtime",
+                )
+            runtime = extension.health()
+            runtime_status = str(runtime.get("status") or "idle")
+            if runtime_status == "ok":
+                return self._health_result(
+                    plugin_id=plugin_id,
+                    name=extension.info.name,
+                    kind="extension",
+                    status="ready",
+                    message="Recent extension calls succeeded",
+                    check_scope="runtime",
+                )
+            if runtime_status == "error":
+                return self._health_result(
+                    plugin_id=plugin_id,
+                    name=extension.info.name,
+                    kind="extension",
+                    status="error",
+                    message="Recent extension call failed",
+                    check_scope="runtime",
+                    reason=str(runtime.get("last_error") or "call_error"),
+                )
+            cached = self._plugin_health_cache.get(plugin_id)
+            if cached:
+                return dict(cached)
+            return self._health_result(
+                plugin_id=plugin_id,
+                name=extension.info.name,
+                kind="extension",
+                status="untested",
+                message="Extension has not been exercised in this session",
+                check_scope="runtime",
+            )
+
+        raise KeyError(f"Unknown plugin: {plugin_id}")
+
+    def test_plugin_health(
+        self, plugin_id: str, timeout: float = 8.0
+    ) -> dict[str, Any]:
+        plugin_id = str(plugin_id or "").strip()
+        current = self.plugin_health(plugin_id)
+        if current.get("status") == "setup_required":
+            return current
+
+        provider = self.providers.get(plugin_id)
+        if provider is not None and plugin_id not in {"local", "jamendo", "streams"}:
+            declarations = list(provider.info.configuration or [])
+            configured_values = self.plugin_config.values(plugin_id, declarations)
+            secret_values = [
+                str(configured_values.get(str(field.get("key") or "")) or "")
+                for field in declarations
+                if str(field.get("type") or "") == "secret"
+            ]
+            raw = dict(provider.health_check(timeout=timeout) or {})
+            provider_status = str(raw.get("status") or "")
+            result = self._health_result(
+                plugin_id=plugin_id,
+                name=provider.info.name,
+                kind="provider",
+                status=provider_status,
+                message=str(raw.get("message") or ""),
+                check_scope=str(raw.get("check_scope") or "provider"),
+                reason=str(raw.get("reason") or ""),
+                checked=True,
+                provider_status=provider_status,
+                redact_values=secret_values,
+            )
+            self._plugin_health_cache[plugin_id] = result
+            return dict(result)
+
+        extension = self.capabilities.extensions.get(plugin_id)
+        if extension is not None:
+            if not self.capabilities.enabled(plugin_id):
+                result = self._health_result(
+                    plugin_id=plugin_id,
+                    name=extension.info.name,
+                    kind="extension",
+                    status="disabled",
+                    message="Extension is disabled",
+                    check_scope="process",
+                    checked=True,
+                )
+            else:
+                raw = dict(extension.process_check() or {})
+                result = self._health_result(
+                    plugin_id=plugin_id,
+                    name=extension.info.name,
+                    kind="extension",
+                    status=str(raw.get("status") or ""),
+                    message=str(raw.get("message") or ""),
+                    check_scope=str(raw.get("check_scope") or "process"),
+                    reason=str(raw.get("reason") or ""),
+                    checked=True,
+                )
+            self._plugin_health_cache[plugin_id] = result
+            return dict(result)
+
+        raise KeyError(f"Unknown plugin: {plugin_id}")
 
     def plugin_registry(self, force: bool = False) -> RegistryResult:
         return self.registry.fetch(force=force)
@@ -484,6 +666,8 @@ class ProviderManager:
         if changed and extension_id in self._installations:
             self._installations.pop(extension_id, None)
             self._save_installations()
+        if changed:
+            self._plugin_health_cache.pop(str(extension_id), None)
         return changed
 
     def extensions(self) -> list[dict[str, Any]]:
@@ -491,6 +675,7 @@ class ProviderManager:
 
     def set_extension_enabled(self, extension_id: str, enabled: bool) -> None:
         self.capabilities.set_enabled(extension_id, enabled)
+        self._plugin_health_cache.pop(str(extension_id), None)
 
     def set_capability_preference(
         self, capability: str, extension_ids: list[str]

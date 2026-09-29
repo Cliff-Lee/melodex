@@ -45,6 +45,13 @@ class MusicProvider(ABC):
     def recommend(self, seed: dict[str, Any], limit: int = 25) -> list[dict[str, Any]]:
         return []
 
+    def health_check(self, timeout: float = 8.0) -> dict[str, Any]:
+        return {
+            "status": "ready",
+            "message": "Built-in provider is available",
+            "check_scope": "local",
+        }
+
     @abstractmethod
     def resolve(self, track: dict[str, Any]) -> dict[str, Any]: ...
 
@@ -209,6 +216,47 @@ class ExternalProvider(MusicProvider):
             return self._merge_playback(track, dict(result))
         except RuntimeError:
             return self.resolve(track)
+
+    def health_check(self, timeout: float = 8.0) -> dict[str, Any]:
+        result_box: list[Any] = []
+        error_box: list[Exception] = []
+
+        def work() -> None:
+            try:
+                result_box.append(self._rpc("provider.health", {}))
+            except Exception as exc:
+                error_box.append(exc)
+
+        thread = threading.Thread(target=work, daemon=True)
+        thread.start()
+        thread.join(max(0.5, float(timeout)))
+        if thread.is_alive():
+            self.close()
+            return {
+                "status": "unavailable",
+                "message": f"Provider health check timed out after {float(timeout):.1f}s",
+                "check_scope": "provider",
+                "reason": "timeout",
+            }
+        if error_box:
+            return {
+                "status": "error",
+                "message": "Provider health check failed",
+                "check_scope": "provider",
+                "reason": "provider_error",
+            }
+        result = result_box[0] if result_box else {}
+        if not isinstance(result, dict):
+            return {
+                "status": "error",
+                "message": "Provider returned an invalid health response",
+                "check_scope": "provider",
+                "reason": "protocol_error",
+            }
+        out = dict(result)
+        out["status"] = str(out.get("status") or "unknown")
+        out["check_scope"] = "provider"
+        return out
 
     def close(self) -> None:
         if self._proc and self._proc.poll() is None:

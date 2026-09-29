@@ -353,6 +353,36 @@ class ExternalExtension:
         )
         return health
 
+    def process_check(self) -> dict[str, Any]:
+        """Verify the extension can start without claiming upstream connectivity."""
+        try:
+            proc = self._ensure()
+        except Exception:
+            return {
+                "status": "error",
+                "message": "Extension process could not start",
+                "check_scope": "process",
+                "reason": "process_start_failed",
+            }
+        time.sleep(0.05)
+        if proc.poll() is not None:
+            details = " | ".join(list(self._stderr)[-3:])
+            return {
+                "status": "error",
+                "message": "Extension process exited during startup",
+                "check_scope": "process",
+                "reason": "process_exited",
+                "details": details[:500] if details else "",
+            }
+        return {
+            "status": "ready",
+            "message": (
+                "Extension process started successfully. "
+                "Upstream service access is tested when the extension is used."
+            ),
+            "check_scope": "process",
+        }
+
     def call(
         self,
         capability: str,

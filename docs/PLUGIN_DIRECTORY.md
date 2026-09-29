@@ -64,6 +64,31 @@ Plugins with no required setup install normally without an extra prompt. Existin
 
 The same shared configuration dialog is used from the Sources page and from the Plugin Directory. Secret values are never displayed back to the user; a stored secret is represented only as configured/not configured.
 
+## Health and connection testing
+
+Installed plugins can be checked from the GUI with **Test plugin**.
+
+Melodex reports a small shared status vocabulary:
+
+```text
+READY
+NOT TESTED
+SETUP NEEDED
+AUTH REQUIRED
+UNAVAILABLE
+ERROR
+DISABLED
+```
+
+The meaning of a test depends on the plugin type:
+
+- **MPP providers:** Melodex calls the provider's standard `provider.health` method with the plugin's brokered configuration. The provider decides what its health method verifies, so a READY response is described as a **provider check**, not automatically as proof that every upstream operation works.
+- **Capability extensions:** v0.1 has no standard live health RPC. Melodex therefore verifies that the extension process can start and labels the result as a **process check**. Actual runtime successes/failures continue to update extension health when the extension is used.
+
+Health checks are bounded so a broken provider cannot leave the GUI waiting indefinitely. Configuration changes, reinstalls and enable/disable actions invalidate cached results.
+
+Health messages are redacted for common secret/token patterns before display or caching.
+
 ## Review records
 
 Each canonical registry entry links to an append-only review record. In the desktop directory, select an entry and use **View review** to open it.
