@@ -26,6 +26,17 @@ from .music_knowledge import MusicKnowledgeStore, build_knowledge_graph
 from .music_pathfinder import find_music_path
 from .music_journey import STAGE_LABELS, build_music_journey
 from .music_journey_live import replan_live_journey
+from .journey_recipe import (
+    load_journey_recipe,
+    make_journey_recipe,
+    materialize_recipe_stages,
+    save_journey_recipe,
+)
+from .journey_replay import (
+    materialize_route_snapshot,
+    portable_route_snapshot,
+    summarize_journey_run,
+)
 from .user_state import UserState
 from .player import FlowPlayer
 from .llm_bridge import LLMClient, LLMSettings, llm_track_summary
@@ -88,6 +99,12 @@ class MainWindow(QMainWindow):
         self.music_live_avoid_refs: set[str] = set()
         self.music_live_avoid_artists: set[str] = set()
         self.music_live_replanning = False
+        self.music_live_run_id = ""
+        self.music_live_played_refs: list[str] = []
+        self.music_active_recipe_id = ""
+        self.music_active_recipe: dict[str, Any] = {}
+        self.pending_journey_recipe: dict[str, Any] | None = None
+        self.pending_journey_replay: tuple[dict[str, Any], str] | None = None
         self.current_page = "home"
         self._closing = False
         self.externalCommand.connect(self._on_external_command)
@@ -134,7 +151,7 @@ class MainWindow(QMainWindow):
         titles.addWidget(logo); titles.addWidget(tagline)
         brand.addWidget(mark); brand.addLayout(titles, 1)
         side.addLayout(brand); side.addSpacing(12)
-        for text, page in [("Home","home"),("Now playing","now_playing"),("Play for me","for_you"),("Discover","discover"),("My music","library"),("Music map","music_map"),("Playlists","playlists"),("Moments","moments"),("Ask Melodex","ask"),("Sources","sources")]:
+        for text, page in [("Home","home"),("Now playing","now_playing"),("Play for me","for_you"),("Discover","discover"),("My music","library"),("Music map","music_map"),("Journeys","journeys"),("Playlists","playlists"),("Moments","moments"),("Ask Melodex","ask"),("Sources","sources")]:
             b = QPushButton(text); b.setCursor(Qt.PointingHandCursor); b.clicked.connect(lambda _=False,p=page:self.open_page(p)); side.addWidget(b)
         side.addStretch(1)
         self.power_toggle = QCheckBox("Show power tools")
@@ -144,9 +161,9 @@ class MainWindow(QMainWindow):
 
         self.stack = QStackedWidget(); body_l.addWidget(self.stack, 1)
         self.pages: dict[str, QWidget] = {}
-        for name in ["home","now_playing","for_you","discover","library","music_map","playlists","moments","ask","sources"]:
+        for name in ["home","now_playing","for_you","discover","library","music_map","journeys","playlists","moments","ask","sources"]:
             w = QWidget(); self.pages[name]=w; self.stack.addWidget(w)
-        self._build_home(); self._build_now_playing(); self._build_for_you(); self._build_discover(); self._build_library(); self._build_music_map(); self._build_playlists(); self._build_moments(); self._build_ask(); self._build_sources()
+        self._build_home(); self._build_now_playing(); self._build_for_you(); self._build_discover(); self._build_library(); self._build_music_map(); self._build_journeys(); self._build_playlists(); self._build_moments(); self._build_ask(); self._build_sources()
 
         self.queue_panel = QWidget(); self.queue_panel.setFixedWidth(320)
         ql = QVBoxLayout(self.queue_panel); ql.setContentsMargins(12,12,12,12)
@@ -433,6 +450,7 @@ class MainWindow(QMainWindow):
         elif name=="music_map": self._refresh_music_map()
         elif name=="sources": self._refresh_sources()
         elif name=="moments": self._refresh_moments()
+        elif name=="journeys": self._refresh_journeys()
         elif name=="playlists": self._refresh_playlists()
         elif name=="for_you": self._refresh_taste()
         elif name=="discover": self._refresh_source_combo()
