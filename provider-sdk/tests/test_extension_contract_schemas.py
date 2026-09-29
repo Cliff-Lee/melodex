@@ -41,6 +41,9 @@ def test_example_capability_descriptors_validate():
         ROOT / "examples" / "ecosystem" / "cover_art_archive_artwork" / "capabilities.json",
         ROOT / "examples" / "ecosystem" / "listenbrainz_tags" / "capabilities.json",
         ROOT / "examples" / "ecosystem" / "public_domain_lyrics" / "capabilities.json",
+        ROOT / "examples" / "ecosystem" / "musicbrainz_connections" / "capabilities.json",
+        ROOT / "examples" / "ecosystem" / "wikimedia_liner_notes" / "capabilities.json",
+        ROOT / "examples" / "ecosystem" / "listenbrainz_community_pulse" / "capabilities.json",
     ]
     for path in examples:
         errors = list(validator.iter_errors(_load(path)))
@@ -80,3 +83,61 @@ def test_extension_health_request_and_response_examples_validate():
         )
     )
     assert invalid
+
+
+def test_context_request_and_response_examples_validate():
+    request_schema = _load(SPEC / "context-request.schema.json")
+    response_schema = _load(SPEC / "context-response.schema.json")
+    common_schema = _load(SPEC / "common.schema.json")
+    registry = Registry().with_resources(
+        [
+            (common_schema["$id"], Resource.from_contents(common_schema)),
+            (response_schema["$id"], Resource.from_contents(response_schema)),
+            (request_schema["$id"], Resource.from_contents(request_schema)),
+        ]
+    )
+    subject = {
+        "entity_type": "track",
+        "canonical_ids": {"musicbrainz_recording_id": "rec-1"},
+    }
+    assert list(
+        Draft202012Validator(request_schema, registry=registry).iter_errors(
+            {
+                "schema_version": "0.1",
+                "capability": "context",
+                "subject": subject,
+                "max_cards": 10,
+            }
+        )
+    ) == []
+    assert list(
+        Draft202012Validator(response_schema, registry=registry).iter_errors(
+            {
+                "schema_version": "0.1",
+                "capability": "context",
+                "subject": subject,
+                "cards": [
+                    {
+                        "id": "story",
+                        "title": "Story",
+                        "kind": "text",
+                        "text": "A sourced note",
+                        "provenance": {
+                            "source_extension_id": "org.example.context",
+                            "retrieved_at": "2026-09-29T00:00:00Z",
+                        },
+                    },
+                    {
+                        "id": "pulse",
+                        "title": "Pulse",
+                        "kind": "facts",
+                        "facts": [{"label": "Listeners", "value": 42}],
+                        "provenance": {
+                            "source_extension_id": "org.example.context",
+                            "retrieved_at": "2026-09-29T00:00:00Z",
+                        },
+                    },
+                ],
+            }
+        )
+    ) == []
