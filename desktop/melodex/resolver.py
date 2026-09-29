@@ -374,7 +374,10 @@ class UniversalResolver:
         pid = str(item.get("provider_id") or "").strip()
         if not pid or pid not in self.manager.providers:
             raise RuntimeError("The selected source is no longer installed")
-        resolved = dict(self.manager.providers[pid].resolve(item))
+        provider = self.manager.providers[pid]
+        if "playback" not in list(provider.info.capabilities or []):
+            raise RuntimeError("The selected source does not provide playback")
+        resolved = dict(provider.resolve(item))
         if not _playable(resolved):
             raise RuntimeError("The selected match is not currently playable")
         resolved.setdefault("provider_id", pid)
@@ -405,7 +408,7 @@ class UniversalResolver:
             return target
         if pid and pid in self.manager.providers and (
             target.get("track_id") or target.get("local_path") or target.get("stream_url")
-        ):
+        ) and "playback" in list(self.manager.providers[pid].info.capabilities or []):
             try:
                 direct = dict(self.manager.providers[pid].resolve(target))
                 if _playable(direct):
