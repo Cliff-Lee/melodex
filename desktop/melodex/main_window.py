@@ -191,7 +191,7 @@ class MainWindow(QMainWindow):
         self.taste_label=QLabel(); self.taste_label.setWordWrap(True); l.addWidget(self.taste_label)
 
         intel_title=QLabel("Local intelligence plugins"); intel_title.setStyleSheet("font-size:18px;font-weight:650;margin-top:10px"); l.addWidget(intel_title)
-        intel_help=QLabel("Private, local suggestions from your own library. Plugins receive sanitized Flow/taste profiles — never file paths or your database."); intel_help.setWordWrap(True); intel_help.setStyleSheet("color:#aab0ba"); l.addWidget(intel_help)
+        intel_help=QLabel("Private, local suggestions from your own library. Melodex sends plugins sanitized Flow/taste profiles and does not include file paths or database rows in the request."); intel_help.setWordWrap(True); intel_help.setStyleSheet("color:#aab0ba"); l.addWidget(intel_help)
         intel_row=QHBoxLayout()
         similar=QPushButton("More like current"); similar.clicked.connect(lambda:self._run_local_intelligence("similar"))
         rediscover=QPushButton("Forgotten favourites"); rediscover.clicked.connect(lambda:self._run_local_intelligence("rediscover"))
