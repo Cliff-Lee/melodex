@@ -504,6 +504,25 @@ class ProviderManager:
                     check_scope="runtime",
                 )
             if runtime_status == "error":
+                cached = self._plugin_health_cache.get(plugin_id)
+                if (
+                    cached
+                    and cached.get("status") == "ready"
+                    and cached.get("check_scope") == "upstream"
+                ):
+                    return self._health_result(
+                        plugin_id=plugin_id,
+                        name=extension.info.name,
+                        kind="extension",
+                        status="degraded",
+                        message=(
+                            "Upstream health check passed, but a recent "
+                            "extension capability call failed"
+                        ),
+                        check_scope="combined",
+                        reason=str(runtime.get("last_error") or "call_error"),
+                        checked=bool(cached.get("checked")),
+                    )
                 return self._health_result(
                     plugin_id=plugin_id,
                     name=extension.info.name,
@@ -600,7 +619,7 @@ class ProviderManager:
                 if raw.get("retry_after_seconds") is not None:
                     result["retry_after_seconds"] = raw.get("retry_after_seconds")
             self._plugin_health_cache[plugin_id] = result
-            return dict(result)
+            return self.plugin_health(plugin_id)
 
         raise KeyError(f"Unknown plugin: {plugin_id}")
 
