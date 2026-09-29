@@ -240,6 +240,8 @@ def build_music_journey(
         for _priority, candidate_ref, satisfaction, explanation in candidates:
             if not candidate_ref or candidate_ref not in nodes:
                 continue
+            if stage["type"] == "constraint" and satisfaction < 0.30:
+                continue
             segment = network.find(
                 current_ref,
                 candidate_ref,
