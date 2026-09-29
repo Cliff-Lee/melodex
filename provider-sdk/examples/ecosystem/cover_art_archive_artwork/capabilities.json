@@ -1,0 +1,25 @@
+{
+  "schema_version": "0.1",
+  "extension_id": "org.melodex.example.cover-art-archive",
+  "name": "Cover Art Archive Artwork Example",
+  "version": "0.1.0",
+  "publisher": "Melodex examples",
+  "description": "Album and track artwork lookup from Cover Art Archive using MusicBrainz release or release-group IDs.",
+  "permissions": {
+    "network_hosts": [
+      "coverartarchive.org"
+    ],
+    "local_files": false,
+    "browser_auth": false
+  },
+  "entrypoints": {
+    "python": "plugin.py"
+  },
+  "contracts": [
+    {
+      "capability": "artwork",
+      "contract_version": "0.1",
+      "method": "artwork.lookup"
+    }
+  ]
+}
