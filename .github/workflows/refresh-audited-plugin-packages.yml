@@ -1,0 +1,50 @@
+name: Refresh audited plugin packages
+
+on:
+  push:
+    branches:
+      - fix/stabilize-v0.3.1-dev
+    paths:
+      - scripts/rebuild_audited_plugin_packages.py
+      - provider-sdk/examples/ecosystem/**
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  rebuild:
+    if: github.actor != 'github-actions[bot]' || !contains(github.event.head_commit.message, 'Refresh audited first-party plugin packages')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/stabilize-v0.3.1-dev
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Rebuild deterministic first-party archives
+        run: python scripts/rebuild_audited_plugin_packages.py
+
+      - name: Validate registry and package bytes
+        run: |
+          python -m pip install -e 'provider-sdk[dev]'
+          melodex-registry validate provider-sdk/registry/registry.json
+          melodex-registry validate-reviews provider-sdk/registry/registry.json --reviews provider-sdk/registry/reviews
+          melodex-registry verify-packages provider-sdk/registry/registry.json --packages provider-sdk/registry/packages
+
+      - name: Commit refreshed packages and metadata
+        shell: bash
+        run: |
+          if git diff --quiet -- provider-sdk/examples/ecosystem provider-sdk/registry; then
+            echo "No package refresh changes."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add provider-sdk/examples/ecosystem provider-sdk/registry
+          git commit -m "Refresh audited first-party plugin packages"
+          git push origin HEAD:fix/stabilize-v0.3.1-dev
