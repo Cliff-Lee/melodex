@@ -228,7 +228,7 @@ class MainWindow(QMainWindow):
         l=self._page_layout(
             "music_map",
             "Music map",
-            "Explore your own library as a local sonic landscape. Nearby tracks share Flow characteristics; colour can reveal key, energy, taste or forgotten regions."
+            "Explore your library as both a sonic landscape and a knowledge graph. Keep the dots fixed, then switch Connections between what sounds similar and what is actually related."
         )
         actions=QHBoxLayout()
         refresh=QPushButton("Refresh map"); refresh.clicked.connect(self._refresh_music_map)
