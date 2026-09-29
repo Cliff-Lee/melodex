@@ -50,6 +50,7 @@ class ExtensionInfo:
     contracts: list[ExtensionContract] = field(default_factory=list)
     permissions: dict[str, Any] = field(default_factory=dict)
     configuration: list[dict[str, Any]] = field(default_factory=list)
+    health_contract: dict[str, str] = field(default_factory=dict)
 
     @property
     def capabilities(self) -> list[str]:
@@ -65,6 +66,7 @@ class ExtensionInfo:
             "contracts": [item.as_dict() for item in self.contracts],
             "permissions": dict(self.permissions),
             "configuration": list(self.configuration),
+            "health": dict(self.health_contract),
         }
 
 
@@ -105,6 +107,16 @@ def validate_descriptor(descriptor: dict[str, Any]) -> list[str]:
         if capability in seen:
             errors.append(f"duplicate capability contract: {capability}")
         seen.add(capability)
+
+    health = descriptor.get("health")
+    if health is not None:
+        if not isinstance(health, dict):
+            errors.append("health must be an object when present")
+        else:
+            if str(health.get("contract_version") or "") != "0.1":
+                errors.append("health.contract_version must be '0.1'")
+            if str(health.get("method") or "") != "extension.health":
+                errors.append("health.method must be 'extension.health'")
 
     entrypoints = descriptor.get("entrypoints")
     if entrypoints is not None and not isinstance(entrypoints, dict):
@@ -165,6 +177,10 @@ class ExternalExtension:
             contracts=contracts,
             permissions=dict(self.descriptor.get("permissions") or {}),
             configuration=normalise_configuration(self.descriptor.get("configuration")),
+            health_contract={
+                str(key): str(value)
+                for key, value in dict(self.descriptor.get("health") or {}).items()
+            },
         )
 
     def configure(self, settings: dict[str, Any]) -> None:
@@ -260,17 +276,12 @@ class ExternalExtension:
         except subprocess.TimeoutExpired:
             proc.kill()
 
-    def _call_once(
+    def _rpc_method(
         self,
-        capability: str,
+        method: str,
         params: dict[str, Any],
         timeout: float | None = None,
     ) -> Any:
-        contract = self.contract(capability)
-        if contract is None:
-            raise RuntimeError(
-                f"Extension {self.info.name} does not implement {capability}"
-            )
         with self._lock:
             proc = self._ensure()
             self._seq += 1
@@ -333,6 +344,58 @@ class ExternalExtension:
                     )
                     raise RuntimeError(str(message or "Extension error"))
                 return response.get("result")
+
+    def _call_once(
+        self,
+        capability: str,
+        params: dict[str, Any],
+        timeout: float | None = None,
+    ) -> Any:
+        contract = self.contract(capability)
+        if contract is None:
+            raise RuntimeError(
+                f"Extension {self.info.name} does not implement {capability}"
+            )
+        return self._rpc_method(contract.method, params, timeout=timeout)
+
+    def active_health_check(self, timeout: float = 8.0) -> dict[str, Any]:
+        declaration = dict(self.info.health_contract or {})
+        if not declaration:
+            return self.process_check()
+        try:
+            raw = self._rpc_method(
+                str(declaration.get("method") or "extension.health"),
+                {"schema_version": "0.1", "check": "live"},
+                timeout=max(0.5, float(timeout)),
+            )
+        except Exception as exc:
+            category = self._diagnostic_error(exc)
+            return {
+                "status": "unavailable" if category in {"timeout", "process_error"} else "error",
+                "message": "Extension health check failed",
+                "check_scope": "upstream",
+                "reason": category,
+                "upstream_checked": False,
+            }
+        if not isinstance(raw, dict):
+            return {
+                "status": "error",
+                "message": "Extension returned an invalid health response",
+                "check_scope": "upstream",
+                "reason": "protocol_error",
+                "upstream_checked": False,
+            }
+        status = str(raw.get("status") or "error")
+        upstream_checked = bool(raw.get("upstream_checked"))
+        return {
+            "status": status,
+            "message": str(raw.get("message") or ""),
+            "check_scope": "upstream" if upstream_checked else "extension",
+            "reason": "",
+            "upstream_checked": upstream_checked,
+            "latency_ms": raw.get("latency_ms"),
+            "retry_after_seconds": raw.get("retry_after_seconds"),
+        }
 
     @staticmethod
     def _diagnostic_error(exc: Exception) -> str:
