@@ -42,6 +42,9 @@ class MusicProvider(ABC):
     def browse(self, kind: str = "featured", limit: int = 50) -> list[dict[str, Any]]:
         return []
 
+    def recommend(self, seed: dict[str, Any], limit: int = 25) -> list[dict[str, Any]]:
+        return []
+
     @abstractmethod
     def resolve(self, track: dict[str, Any]) -> dict[str, Any]: ...
 
@@ -146,6 +149,27 @@ class ExternalProvider(MusicProvider):
         result = self._rpc(
             "catalog.search",
             {"query": query, "types": ["track"], "limit": limit, "cursor": None},
+        ) or {}
+        return [
+            _normalise_track(item, self.info.id)
+            for item in result.get("items", [])
+            if isinstance(item, dict)
+        ]
+
+    def recommend(self, seed: dict[str, Any], limit: int = 25) -> list[dict[str, Any]]:
+        result = self._rpc(
+            "recommendations.get",
+            {
+                "seed": {
+                    "artist": str(seed.get("artist") or ""),
+                    "title": str(seed.get("title") or ""),
+                    "album": str(seed.get("album") or ""),
+                    "isrc": seed.get("isrc"),
+                    "musicbrainz_recording_id": seed.get("musicbrainz_recording_id"),
+                },
+                "limit": max(1, min(100, int(limit))),
+                "cursor": None,
+            },
         ) or {}
         return [
             _normalise_track(item, self.info.id)
