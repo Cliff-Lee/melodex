@@ -34,6 +34,7 @@ These contracts now have a runnable desktop Capability Broker but remain **v0.1 
 | artwork | `artwork.lookup` | Return sourced visual assets |
 | lyrics | `lyrics.lookup` | Return sourced lyrics |
 | context | `context.lookup` | Add sourced text/list/fact cards to the Now Playing Context surface |
+| library_suggestions | `library.suggest` | Rank sanitized local-library profiles for similar-track, rediscovery and bridge workflows |
 
 Packages use `.mdxplugin`.
 
@@ -76,7 +77,7 @@ A `.mdxplugin` may declare:
 }
 ```
 
-This is extension-level lifecycle metadata, **not** a fifth enrichment capability. It therefore does not participate in identity/metadata/artwork/lyrics/context ranking.
+This is extension-level lifecycle metadata, **not** a fifth enrichment capability. It therefore does not participate in identity/metadata/artwork/lyrics/context/library-suggestions ranking.
 
 Melodex sends a bounded live check and expects a v0.1 response with a health status plus `upstream_checked`. Only `upstream_checked=true` is presented as a genuine upstream connectivity check. Extensions that omit the declaration remain valid and use the process-start fallback.
 
