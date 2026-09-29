@@ -195,3 +195,51 @@ def test_live_replan_keeps_destination_even_if_artist_is_avoided():
     )
     assert result["found"] is True
     assert result["path_refs"][-1] == "end"
+
+
+def test_quickly_skipped_stage_is_reopened_with_alternative_waypoint():
+    nodes = [
+        _node("current", [-0.5] * 8, energy=0.35),
+        _node("skipped", [0.0] * 8, taste=0.9, rediscovery=0.95, plays=10),
+        _node("alternate", [0.1] * 8, taste=0.82, rediscovery=0.88, plays=7),
+        _node("end", [0.7] * 8, energy=0.75),
+    ]
+    active = {
+        "found": True,
+        "journey": True,
+        "path_refs": ["current", "skipped", "end"],
+        "stages": [
+            {
+                "type": "constraint",
+                "constraint": "forgotten",
+                "label": "Forgotten",
+                "ref": "skipped",
+            }
+        ],
+    }
+    # Replanning begins after playback has already advanced beyond the skipped
+    # waypoint. reopen_stage_refs keeps the semantic intent alive.
+    result = replan_live_journey(
+        _model(nodes),
+        {"edges": []},
+        active,
+        "end",
+        "end",
+        avoid_refs={"skipped"},
+        reopen_stage_refs={"skipped"},
+    )
+    # At the fixed destination no further route can be built; use an earlier
+    # current point to verify alternative selection.
+    result = replan_live_journey(
+        _model(nodes),
+        {"edges": []},
+        active,
+        "current",
+        "end",
+        avoid_refs={"skipped"},
+        reopen_stage_refs={"skipped"},
+    )
+    assert result["found"] is True
+    assert result["stages"][0]["constraint"] == "forgotten"
+    assert result["stages"][0]["ref"] == "alternate"
+    assert "skipped" not in result["path_refs"]
