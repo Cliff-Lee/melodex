@@ -14,6 +14,7 @@ If you want a working scaffold immediately, use the [5-minute developer quicksta
 | Canonical system map and code locations | [Ecosystem architecture](01_ECOSYSTEM_ARCHITECTURE.md) |
 | Trust/maturity wording | [Terminology and claim policy](02_TERMINOLOGY_AND_CLAIMS.md) |
 | Terminology | [Glossary](15_GLOSSARY.md) |
+| Now Playing visualizer design and performance budget | [Living Canvas](18_LIVING_CANVAS.md) |
 
 ## Capability extensions
 
