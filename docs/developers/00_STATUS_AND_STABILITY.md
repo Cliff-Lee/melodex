@@ -23,6 +23,7 @@ Melodex is intentionally developing in public. Some surfaces are implemented and
 | `.mdxprovider` installation | **Implemented** | Desktop only; package extraction rejects traversal/symlinks |
 | MPP JSON-RPC subprocess transport | **Implemented** | **MPP 1.0 preview**; do not read “1.0” as a final compatibility guarantee yet |
 | Provider SDK | **Implemented** | SDK package is currently **0.x** and may evolve |
+| MPP `recommendations.get` | **Implemented / Preview** | Optional recommendation-only provider operation; results are discovery metadata and may require resolution through another playback provider |
 | `melodex-provider init/validate/doctor/pack` | **Implemented** | Recommended fast path for provider authors |
 | Capability Broker | **Implemented** | Broker runtime exists |
 | `.mdxplugin` installation | **Implemented** | Desktop capability-extension runtime |
