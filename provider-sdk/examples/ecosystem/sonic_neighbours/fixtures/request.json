@@ -1,0 +1,114 @@
+{
+  "schema_version": "0.1",
+  "capability": "library_suggestions",
+  "intent": "similar",
+  "seed_refs": [
+    "t0"
+  ],
+  "limit": 5,
+  "adventure": 0.35,
+  "tracks": [
+    {
+      "ref": "t0",
+      "title": "Seed",
+      "artist": "A",
+      "album": "X",
+      "duration_ms": 240000,
+      "analysis": {
+        "bpm": 120,
+        "rhythm_confidence": 0.9,
+        "key_pc": 0,
+        "key_mode": "minor",
+        "key_confidence": 0.8,
+        "loudness_db": -10,
+        "energy": 0.72,
+        "energy_start": 0.4,
+        "energy_end": 0.7,
+        "spectral_centroid": 1800,
+        "onset_density": 0.16,
+        "intro_mixability": 0.6,
+        "outro_mixability": 0.65,
+        "ending_type": "natural"
+      },
+      "taste": {
+        "plays": 5,
+        "completes": 4,
+        "skips": 0,
+        "loves": 1,
+        "dislikes": 0,
+        "keeps": 1,
+        "completion_rate": 0.8,
+        "skip_rate": 0,
+        "days_since_last_played": 3
+      }
+    },
+    {
+      "ref": "t1",
+      "title": "Close",
+      "artist": "B",
+      "album": "Y",
+      "duration_ms": 230000,
+      "analysis": {
+        "bpm": 122,
+        "rhythm_confidence": 0.8,
+        "key_pc": 0,
+        "key_mode": "minor",
+        "key_confidence": 0.7,
+        "loudness_db": -11,
+        "energy": 0.69,
+        "energy_start": 0.42,
+        "energy_end": 0.68,
+        "spectral_centroid": 1750,
+        "onset_density": 0.15,
+        "intro_mixability": 0.62,
+        "outro_mixability": 0.6,
+        "ending_type": "natural"
+      },
+      "taste": {
+        "plays": 1,
+        "completes": 1,
+        "skips": 0,
+        "loves": 0,
+        "dislikes": 0,
+        "keeps": 0,
+        "completion_rate": 1,
+        "skip_rate": 0,
+        "days_since_last_played": 40
+      }
+    },
+    {
+      "ref": "t2",
+      "title": "Far",
+      "artist": "C",
+      "album": "Z",
+      "duration_ms": 210000,
+      "analysis": {
+        "bpm": 82,
+        "rhythm_confidence": 0.7,
+        "key_pc": 6,
+        "key_mode": "major",
+        "key_confidence": 0.6,
+        "loudness_db": -22,
+        "energy": 0.22,
+        "energy_start": 0.2,
+        "energy_end": 0.2,
+        "spectral_centroid": 650,
+        "onset_density": 0.03,
+        "intro_mixability": 0.8,
+        "outro_mixability": 0.8,
+        "ending_type": "fade"
+      },
+      "taste": {
+        "plays": 1,
+        "completes": 0,
+        "skips": 1,
+        "loves": 0,
+        "dislikes": 0,
+        "keeps": 0,
+        "completion_rate": 0,
+        "skip_rate": 1,
+        "days_since_last_played": 120
+      }
+    }
+  ]
+}
