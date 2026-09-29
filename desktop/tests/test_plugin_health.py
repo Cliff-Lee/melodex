@@ -171,6 +171,9 @@ for line in sys.stdin:
             }
     elif method == "metadata.enrich":
         subject = params.get("subject") or {}
+        title = (subject.get("hints") or {}).get("title")
+        if title == "Fail":
+            raise RuntimeError("metadata failure")
         result = {
             "schema_version":"0.1",
             "capability":"metadata",
@@ -351,14 +354,10 @@ def test_active_health_ready_plus_recent_runtime_failure_is_degraded(tmp_path: P
             info.id, {"credential": "fixture-extension-key"}
         )
 
-        # First create real runtime failure state using the legacy-style failing
-        # package behavior by directly marking the extension runtime record.
-        extension = manager.capabilities.extensions[info.id]
-        with extension._health_lock:
-            extension._health["status"] = "error"
-            extension._health["failures"] = 1
-            extension._health["consecutive_failures"] = 1
-            extension._health["last_error"] = "call_error"
+        failed = manager.capabilities.enrich_metadata(
+            {"entity_type": "track", "hints": {"title": "Fail"}}
+        )
+        assert failed["errors"]
 
         result = manager.test_plugin_health(info.id, timeout=1)
         assert result["status"] == "degraded"
