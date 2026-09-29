@@ -19,6 +19,27 @@ _FORWARD_RESPONSE_HEADERS = {
 }
 _REDIRECT_STATUSES = {301, 302, 303, 307, 308}
 _MAX_REDIRECTS = 8
+_CREDENTIAL_HEADERS = {
+    "authorization",
+    "proxy-authorization",
+    "cookie",
+    "cookie2",
+}
+
+
+def _origin_key(url: str) -> tuple[str, str, int]:
+    parsed = urlparse(url)
+    scheme = parsed.scheme.casefold()
+    host = parsed.hostname or ""
+    try:
+        host = host.encode("idna").decode("ascii").casefold()
+    except UnicodeError:
+        host = host.casefold()
+    try:
+        port = parsed.port
+    except ValueError as exc:
+        raise PermissionError("Provider supplied an invalid playback URL") from exc
+    return scheme, host.rstrip("."), port or (443 if scheme == "https" else 80)
 
 
 def _host_allowed(host: str, patterns: list[str]) -> bool:
@@ -104,6 +125,8 @@ class PlaybackGateway:
         stream: bool,
     ) -> requests.Response:
         current = url
+        current_origin = _origin_key(current)
+        headers = dict(headers)
         for _redirect_count in range(_MAX_REDIRECTS + 1):
             parsed = urlparse(current)
             if parsed.scheme not in {"http", "https"} or not parsed.hostname:
@@ -136,7 +159,15 @@ class PlaybackGateway:
                     f"Provider redirected outside declared hosts: {next_host}"
                 )
             response.close()
+            next_origin = _origin_key(next_url)
+            if next_origin != current_origin:
+                headers = {
+                    name: value
+                    for name, value in headers.items()
+                    if name.casefold() not in _CREDENTIAL_HEADERS
+                }
             current = next_url
+            current_origin = next_origin
 
         raise requests.TooManyRedirects(
             f"Playback resource exceeded {_MAX_REDIRECTS} redirects"

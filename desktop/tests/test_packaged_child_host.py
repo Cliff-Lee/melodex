@@ -115,3 +115,25 @@ def test_single_instance_server_name_is_stable_and_per_data_dir(tmp_path: Path):
     assert a == b
     assert a != c
     assert a.startswith("melodex-")
+
+
+
+def test_child_worker_restores_missing_standard_streams(monkeypatch):
+    import io
+
+    import melodex.child_host as child_host
+
+    streams = {0: io.StringIO(), 1: io.StringIO(), 2: io.StringIO()}
+    monkeypatch.setattr(child_host.sys, "stdin", None)
+    monkeypatch.setattr(child_host.sys, "stdout", None)
+    monkeypatch.setattr(child_host.sys, "stderr", None)
+    monkeypatch.setattr(
+        child_host,
+        "_open_inherited_stdio",
+        lambda fd, mode: streams[fd],
+    )
+
+    assert child_host._restore_child_stdio()
+    assert child_host.sys.stdin is streams[0]
+    assert child_host.sys.stdout is streams[1]
+    assert child_host.sys.stderr is streams[2]

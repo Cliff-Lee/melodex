@@ -4,9 +4,62 @@ import os
 import runpy
 import sys
 from pathlib import Path
-from typing import Sequence
+from typing import Sequence, TextIO
 
 CHILD_FLAG = "--melodex-python-child"
+
+
+def _open_inherited_stdio(fd: int, mode: str) -> TextIO | None:
+    """Recreate a text stream for a Popen-provided standard handle."""
+
+    descriptor: int | None = None
+    try:
+        if os.name == "nt":
+            import ctypes
+            import msvcrt
+
+            standard_handle = {0: -10, 1: -11, 2: -12}[fd]
+            get_std_handle = ctypes.windll.kernel32.GetStdHandle
+            get_std_handle.argtypes = [ctypes.c_ulong]
+            get_std_handle.restype = ctypes.c_void_p
+            handle = get_std_handle(ctypes.c_ulong(standard_handle & 0xFFFFFFFF))
+            if handle is None or handle == ctypes.c_void_p(-1).value:
+                return None
+            flags = os.O_BINARY | (os.O_RDONLY if mode == "r" else os.O_WRONLY)
+            descriptor = msvcrt.open_osfhandle(int(handle), flags)
+        else:
+            descriptor = os.dup(fd)
+        return os.fdopen(
+            descriptor,
+            mode,
+            encoding="utf-8",
+            errors="replace",
+            buffering=1,
+        )
+    except (AttributeError, OSError, ValueError):
+        if descriptor is not None:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+        return None
+
+
+def _restore_child_stdio() -> bool:
+    """Restore inherited pipes hidden by a windowed/frozen application."""
+
+    for name, fd, mode in (
+        ("stdin", 0, "r"),
+        ("stdout", 1, "w"),
+        ("stderr", 2, "w"),
+    ):
+        if getattr(sys, name, None) is not None:
+            continue
+        stream = _open_inherited_stdio(fd, mode)
+        if stream is None:
+            return False
+        setattr(sys, name, stream)
+    return True
 
 
 def python_child_command(script: Path) -> list[str]:
@@ -35,6 +88,9 @@ def _line_buffer_stdio() -> None:
 
 def run_child_script(script: Path, argv: Sequence[str] = ()) -> int:
     """Execute a provider/plugin script inside the bundled Python runtime."""
+
+    if not _restore_child_stdio():
+        return 2
 
     target = Path(script).resolve()
     if not target.is_file():
@@ -80,7 +136,8 @@ def maybe_run_child_from_argv(argv: Sequence[str] | None = None) -> int | None:
     if not values or values[0] != CHILD_FLAG:
         return None
     if len(values) < 2:
-        print("Melodex child-worker mode requires a script path", file=sys.stderr)
+        if _restore_child_stdio():
+            print("Melodex child-worker mode requires a script path", file=sys.stderr)
         return 2
     return run_child_script(Path(values[1]), values[2:])
 

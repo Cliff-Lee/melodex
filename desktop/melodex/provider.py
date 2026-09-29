@@ -19,7 +19,6 @@ from urllib.parse import urlparse
 
 from .process_env import scrubbed_child_env
 from .child_host import python_child_command
-from .child_host import python_child_command
 from .plugin_config import normalise_configuration
 from .package_safety import (
     entrypoint_errors,
@@ -27,6 +26,7 @@ from .package_safety import (
     replace_directory,
     resolve_entrypoint,
     staged_install_dir,
+    validate_plugin_identifier,
 )
 
 
@@ -411,9 +411,10 @@ class ProviderInstaller:
         manifest = json.loads(zf.read(manifest_name))
         if not isinstance(manifest, dict):
             raise ValueError("manifest.json must contain a JSON object")
-        pid = str(manifest.get("id", "")).strip()
-        if not pid or ".." in pid or "/" in pid or "\\" in pid:
-            raise ValueError("Invalid provider id")
+        try:
+            pid = validate_plugin_identifier(manifest.get("id", ""))
+        except ValueError as exc:
+            raise ValueError("Invalid provider id") from exc
         normalise_configuration(manifest.get("configuration"))
         errors = entrypoint_errors(manifest.get("entrypoints"))
         if errors:

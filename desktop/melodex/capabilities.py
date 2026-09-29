@@ -17,7 +17,6 @@ from typing import Any
 
 from .process_env import scrubbed_child_env
 from .child_host import python_child_command
-from .child_host import python_child_command
 from .plugin_config import PluginConfigBroker, normalise_configuration
 from .package_safety import (
     entrypoint_errors,
@@ -25,6 +24,7 @@ from .package_safety import (
     replace_directory,
     resolve_entrypoint,
     staged_install_dir,
+    validate_plugin_identifier,
 )
 
 
@@ -85,13 +85,10 @@ def validate_descriptor(descriptor: dict[str, Any]) -> list[str]:
     errors: list[str] = []
     if str(descriptor.get("schema_version") or "") != "0.1":
         errors.append("schema_version must be '0.1'")
-    extension_id = str(descriptor.get("extension_id") or "").strip()
-    if not extension_id:
-        errors.append("extension_id is required")
-    if extension_id and (
-        ".." in extension_id or "/" in extension_id or "\\" in extension_id
-    ):
-        errors.append("extension_id contains an unsafe path sequence")
+    try:
+        validate_plugin_identifier(descriptor.get("extension_id"))
+    except ValueError as exc:
+        errors.append(f"extension_id is invalid: {exc}")
 
     contracts = descriptor.get("contracts")
     if not isinstance(contracts, list) or not contracts:
@@ -577,11 +574,15 @@ class ExtensionInstaller:
         return out
 
     def remove(self, extension_id: str) -> bool:
-        extension_id = str(extension_id or "").strip()
-        if not extension_id or ".." in extension_id or "/" in extension_id or "\\" in extension_id:
+        try:
+            safe_id = validate_plugin_identifier(extension_id)
+        except ValueError:
             return False
-        destination = self.extensions_dir / extension_id
-        if not destination.exists():
+        root = self.extensions_dir.resolve()
+        destination = (root / safe_id).resolve()
+        if destination == root or not destination.is_relative_to(root):
+            return False
+        if not destination.exists() or destination.is_symlink():
             return False
         shutil.rmtree(destination)
         return True

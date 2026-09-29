@@ -7,14 +7,22 @@ on:
 jobs:
   python:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.11', '3.12']
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
-      - run: pip install pytest numpy mutagen requests
-      - run: python -m compileall -q desktop/melodex
-      - run: PYTHONPATH=desktop pytest -q desktop/tests
+          python-version: ${{ matrix.python-version }}
+      - run: pip install pytest numpy mutagen requests PySide6
+      - run: python -m compileall -q desktop/melodex provider-sdk/examples/ecosystem
+      - name: Desktop tests
+        env:
+          PYTHONPATH: desktop
+          QT_QPA_PLATFORM: offscreen
+        run: pytest -q desktop/tests
       - run: python scripts/docs_check.py
       - run: python scripts/navigation_check.py
       - run: python scripts/terminology_check.py

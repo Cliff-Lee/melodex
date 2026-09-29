@@ -5,4 +5,5 @@ py -3.12 -m venv .venv-build
 & .\.venv-build\Scripts\pip.exe install -r requirements-build.txt
 Remove-Item -Recurse -Force build,dist -ErrorAction SilentlyContinue
 & .\.venv-build\Scripts\pyinstaller.exe --noconfirm --windowed --name Melodex --icon ..\assets\icon.ico --add-data "melodex/assets/melodex-mark.png;melodex/assets" --collect-all PySide6 --collect-all keyring run.py
+& .\.venv-build\Scripts\python.exe .\frozen_child_smoke.py .\dist\Melodex\Melodex.exe
 Compress-Archive -Path dist\Melodex\* -DestinationPath dist\Melodex-Windows-portable.zip -Force

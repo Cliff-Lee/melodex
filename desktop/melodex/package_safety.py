@@ -4,6 +4,7 @@ import os
 import re
 import shutil
 import tempfile
+import unicodedata
 import uuid
 import zipfile
 from pathlib import Path, PurePosixPath
@@ -11,7 +12,29 @@ from typing import Any
 
 MAX_EXTRACTED_FILES = 2048
 MAX_EXTRACTED_BYTES = 100 * 1024 * 1024
+MAX_ARCHIVE_ENTRIES = 4096
 _DRIVE_RE = re.compile(r"^[A-Za-z]:$")
+_PLUGIN_ID_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,126}[A-Za-z0-9])?$")
+_WINDOWS_RESERVED_NAMES = {
+    "CON", "PRN", "AUX", "NUL",
+    *(f"COM{i}" for i in range(1, 10)),
+    *(f"LPT{i}" for i in range(1, 10)),
+}
+
+
+def validate_plugin_identifier(value: Any) -> str:
+    """Return a portable plugin ID or raise ValueError."""
+
+    if not isinstance(value, str):
+        raise ValueError("Plugin identifier must be a string")
+    identifier = value.strip()
+    if (
+        not _PLUGIN_ID_RE.fullmatch(identifier)
+        or ".." in identifier
+        or identifier.split(".", 1)[0].upper() in _WINDOWS_RESERVED_NAMES
+    ):
+        raise ValueError("Plugin identifier must be a safe 1–128 character ID")
+    return identifier
 
 
 def _portable_relative_path(value: Any) -> PurePosixPath:
@@ -23,6 +46,15 @@ def _portable_relative_path(value: Any) -> PurePosixPath:
         raise ValueError(f"Entrypoint must stay inside the package: {text!r}")
     if path.parts and _DRIVE_RE.fullmatch(path.parts[0]):
         raise ValueError(f"Entrypoint must be relative: {text!r}")
+    for part in path.parts:
+        if (
+            ":" in part
+            or part.endswith((".", " "))
+            or any(ord(char) < 32 or ord(char) == 127 for char in part)
+            or any(char in '<>:"|?*' for char in part)
+            or part.split(".", 1)[0].upper() in _WINDOWS_RESERVED_NAMES
+        ):
+            raise ValueError(f"Entrypoint contains a non-portable path component: {text!r}")
     cleaned = PurePosixPath(*[part for part in path.parts if part not in {"", "."}])
     if not cleaned.parts:
         raise ValueError("Entrypoint path is empty")
@@ -57,10 +89,11 @@ def resolve_entrypoint(root: Path, value: Any) -> Path:
     return target
 
 
-def _relative_member(member_name: str, prefix: Path) -> Path | None:
-    source = Path(member_name.replace("\\", "/"))
+def _relative_member(member_name: str, prefix: Path) -> PurePosixPath | None:
+    source = PurePosixPath(member_name.replace("\\", "/"))
+    portable_prefix = PurePosixPath(str(prefix).replace("\\", "/"))
     try:
-        relative = source.relative_to(prefix) if str(prefix) != "." else source
+        relative = source.relative_to(portable_prefix) if str(portable_prefix) != "." else source
     except ValueError:
         return None
     if not relative.parts or relative.name == "":
@@ -80,12 +113,19 @@ def extract_archive(
     destination.mkdir(parents=True, exist_ok=True)
     files = 0
     total = 0
+    entries = 0
     targets: set[str] = set()
 
     for member in archive.infolist():
         relative = _relative_member(member.filename, prefix)
         if relative is None:
             continue
+
+        entries += 1
+        if entries > MAX_ARCHIVE_ENTRIES:
+            raise ValueError(
+                f"Plugin package contains more than {MAX_ARCHIVE_ENTRIES} archive entries"
+            )
 
         unix_type = (member.external_attr >> 16) & 0o170000
         if unix_type == 0o120000:
@@ -98,7 +138,7 @@ def extract_archive(
         target = (destination / relative).resolve()
         if not target.is_relative_to(destination):
             raise ValueError("Unsafe path in plugin package")
-        key = str(target)
+        key = unicodedata.normalize("NFC", relative.as_posix()).casefold()
         if key in targets:
             raise ValueError(f"Duplicate path in plugin package: {relative}")
         targets.add(key)
@@ -108,19 +148,32 @@ def extract_archive(
             continue
 
         files += 1
-        total += max(0, int(member.file_size))
         if files > MAX_EXTRACTED_FILES:
             raise ValueError(
                 f"Plugin package contains more than {MAX_EXTRACTED_FILES} files"
             )
-        if total > MAX_EXTRACTED_BYTES:
+        declared_size = int(member.file_size)
+        if declared_size < 0 or declared_size > MAX_EXTRACTED_BYTES - total:
             raise ValueError(
                 "Plugin package expands beyond the 100 MB safety limit"
             )
 
         target.parent.mkdir(parents=True, exist_ok=True)
+        actual_size = 0
         with archive.open(member) as source_file, target.open("wb") as output:
-            shutil.copyfileobj(source_file, output, length=1024 * 1024)
+            while True:
+                chunk = source_file.read(64 * 1024)
+                if not chunk:
+                    break
+                actual_size += len(chunk)
+                if actual_size > declared_size or actual_size > MAX_EXTRACTED_BYTES - total:
+                    raise ValueError(
+                        "Plugin package expands beyond the 100 MB safety limit"
+                    )
+                output.write(chunk)
+        if actual_size != declared_size:
+            raise ValueError("Plugin package member size does not match its ZIP directory")
+        total += actual_size
 
         mode = (member.external_attr >> 16) & 0o777
         if mode and os.name != "nt":
@@ -159,6 +212,8 @@ def replace_directory(staged: Path, destination: Path) -> None:
 __all__ = [
     "MAX_EXTRACTED_FILES",
     "MAX_EXTRACTED_BYTES",
+    "MAX_ARCHIVE_ENTRIES",
+    "validate_plugin_identifier",
     "entrypoint_errors",
     "resolve_entrypoint",
     "extract_archive",

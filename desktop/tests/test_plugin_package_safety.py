@@ -18,11 +18,12 @@ def _write_provider_package(
     path: Path,
     *,
     entrypoint: str = "provider.py",
+    provider_id: str = "org.example.safe",
     extra: list[tuple[str, bytes | str | zipfile.ZipInfo]] | None = None,
 ) -> None:
     manifest = {
         "schema_version": 1,
-        "id": "org.example.safe",
+        "id": provider_id,
         "name": "Safe",
         "version": "1.0.0",
         "capabilities": ["search"],
@@ -217,3 +218,62 @@ def test_archive_preserves_executable_bits(tmp_path: Path):
     with zipfile.ZipFile(package) as archive:
         extract_archive(archive, prefix=Path("."), destination=out)
     assert os.access(out / "bin" / "worker", os.X_OK)
+
+
+
+@pytest.mark.parametrize("provider_id", [".", "..", "../escape", "bad/id", "CON"])
+def test_provider_package_rejects_unsafe_identifier(tmp_path: Path, provider_id: str):
+    package = tmp_path / "unsafe-id.mdxprovider"
+    _write_provider_package(package, provider_id=provider_id)
+    with pytest.raises(ValueError, match="provider id"):
+        ProviderInstaller(tmp_path / "providers").install(package)
+
+
+@pytest.mark.parametrize("extension_id", [".", "..", "../escape", "bad/id", "CON"])
+def test_extension_descriptor_rejects_unsafe_identifier(extension_id: str):
+    descriptor = {
+        "schema_version": "0.1",
+        "extension_id": extension_id,
+        "name": "Unsafe",
+        "contracts": [
+            {
+                "capability": "metadata",
+                "contract_version": "0.1",
+                "method": "metadata.enrich",
+            }
+        ],
+    }
+    assert any("extension_id" in error for error in validate_descriptor(descriptor))
+
+
+def test_extension_remove_rejects_root_like_identifier(tmp_path: Path):
+    root = tmp_path / "extensions"
+    sentinel = root / "installed"
+    sentinel.mkdir(parents=True)
+    (sentinel / "marker.txt").write_text("keep", "utf-8")
+
+    assert not ExtensionInstaller(root).remove(".")
+    assert (sentinel / "marker.txt").read_text("utf-8") == "keep"
+
+
+@pytest.mark.parametrize(
+    ("first", "second"),
+    [
+        ("Track.txt", "track.txt"),
+        ("caf\u00e9.txt", "cafe\u0301.txt"),
+    ],
+)
+def test_archive_rejects_portable_case_or_unicode_collisions(
+    tmp_path: Path, first: str, second: str
+):
+    package = tmp_path / "portable-collision.zip"
+    with zipfile.ZipFile(package, "w") as archive:
+        archive.writestr(first, "one")
+        archive.writestr(second, "two")
+    with zipfile.ZipFile(package) as archive:
+        with pytest.raises(ValueError, match="Duplicate path"):
+            extract_archive(
+                archive,
+                prefix=Path("."),
+                destination=tmp_path / "out",
+            )
