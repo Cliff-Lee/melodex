@@ -101,8 +101,277 @@ class UserState:
                 );
                 CREATE INDEX IF NOT EXISTS idx_vibes_updated_at
                     ON vibes(updated_at DESC);
+                CREATE TABLE IF NOT EXISTS journey_recipes (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    description TEXT NOT NULL DEFAULT '',
+                    payload_json TEXT NOT NULL,
+                    created_at REAL NOT NULL,
+                    updated_at REAL NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_journey_recipes_updated_at
+                    ON journey_recipes(updated_at DESC);
+                CREATE TABLE IF NOT EXISTS journey_runs (
+                    id TEXT PRIMARY KEY,
+                    recipe_id TEXT NOT NULL DEFAULT '',
+                    recipe_json TEXT NOT NULL,
+                    original_route_json TEXT NOT NULL,
+                    final_route_json TEXT NOT NULL DEFAULT '{}',
+                    status TEXT NOT NULL DEFAULT 'active',
+                    started_at REAL NOT NULL,
+                    ended_at REAL NOT NULL DEFAULT 0
+                );
+                CREATE INDEX IF NOT EXISTS idx_journey_runs_started_at
+                    ON journey_runs(started_at DESC);
+                CREATE TABLE IF NOT EXISTS journey_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    run_id TEXT NOT NULL,
+                    event_type TEXT NOT NULL,
+                    payload_json TEXT NOT NULL,
+                    created_at REAL NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_journey_events_run
+                    ON journey_events(run_id, created_at ASC);
                 """
             )
+
+    def save_journey_recipe(
+        self,
+        recipe_id: str,
+        name: str,
+        description: str,
+        payload: dict[str, Any],
+    ) -> None:
+        recipe_id = str(recipe_id or "").strip()
+        if not recipe_id:
+            raise ValueError("recipe_id is required")
+        now = time.time()
+        data = json.dumps(dict(payload or {}), ensure_ascii=False)
+        with self._lock, self._conn:
+            self._conn.execute(
+                """
+                INSERT INTO journey_recipes(id,name,description,payload_json,created_at,updated_at)
+                VALUES(?,?,?,?,?,?)
+                ON CONFLICT(id) DO UPDATE SET
+                    name=excluded.name,
+                    description=excluded.description,
+                    payload_json=excluded.payload_json,
+                    updated_at=excluded.updated_at
+                """,
+                (
+                    recipe_id,
+                    str(name or "Journey recipe"),
+                    str(description or ""),
+                    data,
+                    now,
+                    now,
+                ),
+            )
+
+    def journey_recipes(self, limit: int = 200) -> list[dict[str, Any]]:
+        with self._lock:
+            rows = self._conn.execute(
+                """
+                SELECT id,name,description,payload_json,created_at,updated_at
+                FROM journey_recipes
+                ORDER BY updated_at DESC
+                LIMIT ?
+                """,
+                (max(1, int(limit)),),
+            ).fetchall()
+        out: list[dict[str, Any]] = []
+        for row in rows:
+            try:
+                payload = json.loads(row["payload_json"])
+                if not isinstance(payload, dict):
+                    payload = {}
+            except Exception:
+                payload = {}
+            out.append(
+                {
+                    "id": str(row["id"]),
+                    "name": str(row["name"]),
+                    "description": str(row["description"] or ""),
+                    "payload": payload,
+                    "created_at": float(row["created_at"] or 0),
+                    "updated_at": float(row["updated_at"] or 0),
+                }
+            )
+        return out
+
+    def get_journey_recipe(self, recipe_id: str) -> dict[str, Any] | None:
+        with self._lock:
+            row = self._conn.execute(
+                """
+                SELECT id,name,description,payload_json,created_at,updated_at
+                FROM journey_recipes
+                WHERE id=?
+                """,
+                (str(recipe_id or ""),),
+            ).fetchone()
+        if row is None:
+            return None
+        try:
+            payload = json.loads(row["payload_json"])
+            if not isinstance(payload, dict):
+                payload = {}
+        except Exception:
+            payload = {}
+        return {
+            "id": str(row["id"]),
+            "name": str(row["name"]),
+            "description": str(row["description"] or ""),
+            "payload": payload,
+            "created_at": float(row["created_at"] or 0),
+            "updated_at": float(row["updated_at"] or 0),
+        }
+
+    def delete_journey_recipe(self, recipe_id: str) -> None:
+        with self._lock, self._conn:
+            self._conn.execute(
+                "DELETE FROM journey_recipes WHERE id=?",
+                (str(recipe_id or ""),),
+            )
+
+    def start_journey_run(
+        self,
+        run_id: str,
+        *,
+        recipe_id: str = "",
+        recipe: dict[str, Any] | None = None,
+        original_route: dict[str, Any] | None = None,
+    ) -> None:
+        run_id = str(run_id or "").strip()
+        if not run_id:
+            raise ValueError("run_id is required")
+        now = time.time()
+        with self._lock, self._conn:
+            self._conn.execute(
+                """
+                INSERT INTO journey_runs(
+                    id,recipe_id,recipe_json,original_route_json,final_route_json,
+                    status,started_at,ended_at
+                ) VALUES(?,?,?,?,?,'active',?,0)
+                """,
+                (
+                    run_id,
+                    str(recipe_id or ""),
+                    json.dumps(dict(recipe or {}), ensure_ascii=False),
+                    json.dumps(dict(original_route or {}), ensure_ascii=False),
+                    "{}",
+                    now,
+                ),
+            )
+
+    def record_journey_event(
+        self,
+        run_id: str,
+        event_type: str,
+        payload: dict[str, Any] | None = None,
+    ) -> int:
+        run_id = str(run_id or "").strip()
+        event_type = str(event_type or "").strip()
+        if not run_id or not event_type:
+            return 0
+        with self._lock, self._conn:
+            cur = self._conn.execute(
+                """
+                INSERT INTO journey_events(run_id,event_type,payload_json,created_at)
+                VALUES(?,?,?,?)
+                """,
+                (
+                    run_id,
+                    event_type,
+                    json.dumps(dict(payload or {}), ensure_ascii=False),
+                    time.time(),
+                ),
+            )
+            return int(cur.lastrowid or 0)
+
+    def finish_journey_run(
+        self,
+        run_id: str,
+        *,
+        status: str,
+        final_route: dict[str, Any] | None = None,
+    ) -> None:
+        with self._lock, self._conn:
+            self._conn.execute(
+                """
+                UPDATE journey_runs
+                SET status=?,final_route_json=?,ended_at=?
+                WHERE id=?
+                """,
+                (
+                    str(status or "stopped"),
+                    json.dumps(dict(final_route or {}), ensure_ascii=False),
+                    time.time(),
+                    str(run_id or ""),
+                ),
+            )
+
+    def journey_runs(self, limit: int = 100) -> list[dict[str, Any]]:
+        with self._lock:
+            rows = self._conn.execute(
+                """
+                SELECT id,recipe_id,recipe_json,original_route_json,final_route_json,
+                       status,started_at,ended_at
+                FROM journey_runs
+                ORDER BY started_at DESC
+                LIMIT ?
+                """,
+                (max(1, int(limit)),),
+            ).fetchall()
+        out: list[dict[str, Any]] = []
+        for row in rows:
+            def parsed(key: str) -> dict[str, Any]:
+                try:
+                    value = json.loads(row[key])
+                    return value if isinstance(value, dict) else {}
+                except Exception:
+                    return {}
+            out.append(
+                {
+                    "id": str(row["id"]),
+                    "recipe_id": str(row["recipe_id"] or ""),
+                    "recipe": parsed("recipe_json"),
+                    "original_route": parsed("original_route_json"),
+                    "final_route": parsed("final_route_json"),
+                    "status": str(row["status"] or ""),
+                    "started_at": float(row["started_at"] or 0),
+                    "ended_at": float(row["ended_at"] or 0),
+                }
+            )
+        return out
+
+    def journey_events(self, run_id: str) -> list[dict[str, Any]]:
+        with self._lock:
+            rows = self._conn.execute(
+                """
+                SELECT id,event_type,payload_json,created_at
+                FROM journey_events
+                WHERE run_id=?
+                ORDER BY created_at ASC,id ASC
+                """,
+                (str(run_id or ""),),
+            ).fetchall()
+        out: list[dict[str, Any]] = []
+        for row in rows:
+            try:
+                payload = json.loads(row["payload_json"])
+                if not isinstance(payload, dict):
+                    payload = {}
+            except Exception:
+                payload = {}
+            out.append(
+                {
+                    "id": int(row["id"]),
+                    "event_type": str(row["event_type"] or ""),
+                    "payload": payload,
+                    "created_at": float(row["created_at"] or 0),
+                }
+            )
+        return out
 
     def close(self) -> None:
         with self._lock:
