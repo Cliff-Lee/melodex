@@ -2,7 +2,7 @@
   "schema_version": "0.1",
   "extension_id": "org.melodex.example.listenbrainz-community-pulse",
   "name": "ListenBrainz Community Pulse",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "Melodex examples",
   "description": "Shows aggregate ListenBrainz listener/listen counts and popular recordings for the current artist.",
   "permissions": {

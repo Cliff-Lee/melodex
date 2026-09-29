@@ -2,7 +2,7 @@
   "schema_version": 1,
   "id": "org.melodex.example.librivox",
   "name": "LibriVox Example",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "Melodex examples",
   "protocol_version": "1.0",
   "description": "Public-domain audiobook provider using the official LibriVox API. Search titles or authors such as Odyssey, Austen or Dickens.",

@@ -2,7 +2,7 @@
   "schema_version": "0.1",
   "extension_id": "org.melodex.example.wikimedia-liner-notes",
   "name": "Wikimedia Liner Notes",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "Melodex examples",
   "description": "Adds a sourced short-form artist liner note from Wikidata-linked Wikipedia context.",
   "permissions": {

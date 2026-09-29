@@ -2,7 +2,7 @@
   "schema_version": "0.1",
   "extension_id": "org.melodex.example.musicbrainz-connections",
   "name": "MusicBrainz Song Connections",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "Melodex examples",
   "description": "Shows samples, remixes, versions, linked works and recording places from the MusicBrainz relationship graph.",
   "permissions": {

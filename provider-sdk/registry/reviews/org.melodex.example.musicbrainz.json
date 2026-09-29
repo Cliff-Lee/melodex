@@ -22,6 +22,27 @@
         "Project-maintained example review; this does not cryptographically verify a publisher identity or provide a legal/content endorsement.",
         "Runtime process isolation is not a complete operating-system sandbox."
       ]
+    },
+    {
+      "reviewer": "Melodex project",
+      "decision": "example-baseline",
+      "checks": {
+        "registry_schema": true,
+        "package_integrity": true,
+        "manifest_descriptor": true,
+        "permissions": true,
+        "source_policy": true,
+        "tests": true,
+        "rights_notes": true
+      },
+      "limitations": [
+        "Project-maintained example review; this does not cryptographically verify a publisher identity or provide a legal/content endorsement.",
+        "Runtime process isolation is not a complete operating-system sandbox."
+      ],
+      "reviewed_at": "2026-09-29T10:30:00Z",
+      "version": "0.1.1",
+      "package_sha256": "f3168d559443b628a48b414bc2825531ee76ab5a268596933557863d62587e7a",
+      "summary": "Stabilization review after packaged-host/plugin audit: source parsing/boundary fixes, package descriptor, permissions, source policy, adversarial fixtures and rebuilt package bytes were checked for this patch release."
     }
   ]
 }

@@ -2,7 +2,7 @@
   "schema_version": 1,
   "id": "org.melodex.example.lastfm-recommendations",
   "name": "Last.fm Recommendations Example",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "Melodex examples",
   "protocol_version": "1.0",
   "description": "Recommendation-only provider using Last.fm track.getSimilar and a user-supplied API key. It supplies discovery metadata, not playback.",

@@ -2,7 +2,7 @@
   "schema_version": 1,
   "id": "org.melodex.example.openverse-audio",
   "name": "Openverse Audio Example",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "Melodex examples",
   "protocol_version": "1.0",
   "description": "Search and play openly licensed audio indexed by Openverse while preserving source, licence and attribution metadata.",
