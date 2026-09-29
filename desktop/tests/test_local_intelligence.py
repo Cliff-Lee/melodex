@@ -136,3 +136,24 @@ def test_local_intelligence_maps_ephemeral_refs_back_inside_core(tmp_path: Path)
         assert "/music/" not in wire
     finally:
         state.close()
+
+
+
+def test_local_intelligence_maps_detour_refs_back_inside_core(tmp_path: Path):
+    state = UserState(tmp_path / "taste.sqlite3")
+    broker = CaptureBroker()
+    service = LocalIntelligenceService(state, FakeFlow(), broker)
+    try:
+        first = _track("/music/one.flac", "One")
+        second = _track("/music/two.flac", "Two")
+        result = service.suggest("detour", [first, second], [first], limit=5)
+
+        assert broker.received is not None
+        assert broker.received["intent"] == "detour"
+        assert broker.received["seed_refs"] == ["t0"]
+        assert result["intent"] == "detour"
+        assert result["tracks"][0]["title"] == "Two"
+        assert result["tracks"][0]["local_path"] == "/music/two.flac"
+        assert "/music/" not in json.dumps(broker.received["tracks"])
+    finally:
+        state.close()

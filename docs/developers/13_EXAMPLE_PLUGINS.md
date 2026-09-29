@@ -152,6 +152,17 @@ intent: bridge
 
 Ranks local tracks that could form a plausible musical bridge between the current and next queued tracks using tempo, key, energy, timbre and mixability. It returns an explainable shortlist rather than claiming to be an automatic DJ.
 
+## Musical Detours
+
+**Layer:** experimental v0.1 local-intelligence capability extension
+
+```text
+library.suggest
+intent: detour
+```
+
+Keeps one strong Flow feature—such as pulse or energy—while deliberately changing at least two others. Results explain the shared feature and strongest contrasts, with no network access or raw audio transfer.
+
 ## Public Domain Lyrics
 
 **Layer:** experimental v0.1 capability extension

@@ -276,6 +276,24 @@ def test_bridge_builder_example_with_fixture():
     assert result["suggestions"][0]["score"] > 0.5
 
 
+def test_musical_detours_example_with_fixture():
+    module = _load(
+        "musical_detours_example",
+        EXAMPLES / "musical_detours" / "plugin.py",
+    )
+    params = json.loads(
+        (EXAMPLES / "musical_detours" / "fixtures" / "request.json").read_text("utf-8")
+    )
+    result = module.suggest(params)
+    rows = result["suggestions"]
+
+    assert result["intent"] == "detour"
+    assert [row["ref"] for row in rows] == ["t1", "t2"]
+    assert rows[0]["reason"] == "Shares the pulse; moves away from energy and tone colour."
+    assert rows[0]["badges"] == ["shared pulse", "new energy", "new tone"]
+    assert "shared energy" in rows[1]["badges"]
+
+
 def test_registry_references_all_examples():
     registry = json.loads((ROOT / "registry" / "example-registry.json").read_text(encoding="utf-8"))
     ids = {row["id"] for row in registry["plugins"]}
@@ -295,6 +313,7 @@ def test_registry_references_all_examples():
         "org.melodex.example.sonic-neighbours",
         "org.melodex.example.forgotten-favourites",
         "org.melodex.example.bridge-builder",
+        "org.melodex.example.musical-detours",
     }.issubset(ids)
 
 

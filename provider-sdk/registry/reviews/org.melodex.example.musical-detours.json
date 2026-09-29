@@ -1,0 +1,28 @@
+{
+  "schema_version": "0.1",
+  "plugin_id": "org.melodex.example.musical-detours",
+  "events": [
+    {
+      "reviewed_at": "2026-09-29T12:48:04Z",
+      "reviewer": "Melodex project",
+      "decision": "example-baseline",
+      "version": "0.1.0",
+      "package_sha256": "e4ba24115506013cbbdd2341d5621c64a09d17d1eb36c6a1f397d0fd8e6b69d2",
+      "summary": "Baseline review of Musical Detours 0.1.0: exact package bytes, the detour library.suggest contract, zero requested permissions, deterministic contrast fixtures and the local-only source policy were checked.",
+      "checks": {
+        "registry_schema": true,
+        "package_integrity": true,
+        "manifest_descriptor": true,
+        "permissions": true,
+        "source_policy": true,
+        "tests": true,
+        "rights_notes": true
+      },
+      "limitations": [
+        "The seed and candidate tracks need enough cached Flow features for comparison; unanalysed or incomplete candidates are skipped.",
+        "Flow scores describe feature relationships. They are not objective judgments of artistic quality or a guarantee of listener preference.",
+        "Melodex does not broker local paths or raw audio to this plugin, but extension subprocesses are not yet protected by a complete OS sandbox."
+      ]
+    }
+  ]
+}

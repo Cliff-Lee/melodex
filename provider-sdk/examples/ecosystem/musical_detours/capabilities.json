@@ -1,0 +1,23 @@
+{
+  "schema_version": "0.1",
+  "extension_id": "org.melodex.example.musical-detours",
+  "name": "Musical Detours",
+  "version": "0.1.0",
+  "publisher": "Melodex examples",
+  "description": "Finds local tracks that keep one recognizable Flow feature while taking a clear turn in other sonic dimensions.",
+  "permissions": {
+    "network_hosts": [],
+    "local_files": false,
+    "browser_auth": false
+  },
+  "entrypoints": {
+    "python": "plugin.py"
+  },
+  "contracts": [
+    {
+      "capability": "library_suggestions",
+      "contract_version": "0.1",
+      "method": "library.suggest"
+    }
+  ]
+}

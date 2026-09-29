@@ -79,6 +79,17 @@ Modes:
 
 The Familiar ↔ Surprising slider controls how adventurous the session may be.
 
+### Local intelligence
+
+The Play for me page can ask installed plugins to work with a sanitized snapshot of your own library:
+
+- **More like current** finds close sonic neighbours;
+- **Forgotten favourites** resurfaces positive-but-stale tracks;
+- **Bridge current → next** suggests a local track that could connect the two;
+- **Find a detour** keeps one sonic feature and deliberately changes two others.
+
+Use **Analyse my library** to prepare Flow features first. Suggestions and taste history stay local; plugins receive no audio, file paths or database IDs.
+
 ## Taste controls
 
 - **Keep**: positive ownership/interest signal.

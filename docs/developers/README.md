@@ -31,6 +31,8 @@ identity.resolve
 metadata.enrich
 artwork.lookup
 lyrics.lookup
+context.lookup
+library.suggest
 ```
 
 ## Provider development

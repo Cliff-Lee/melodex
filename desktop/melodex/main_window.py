@@ -231,13 +231,14 @@ class MainWindow(QMainWindow):
         self.taste_label=QLabel(); self.taste_label.setWordWrap(True); l.addWidget(self.taste_label)
 
         intel_title=QLabel("Local intelligence plugins"); intel_title.setStyleSheet("font-size:18px;font-weight:650;margin-top:10px"); l.addWidget(intel_title)
-        intel_help=QLabel("Private, local suggestions from your own library. Melodex sends plugins sanitized Flow/taste profiles and does not include file paths or database rows in the request."); intel_help.setWordWrap(True); intel_help.setStyleSheet("color:#aab0ba"); l.addWidget(intel_help)
+        intel_help=QLabel("Private, local suggestions from your own library. A detour keeps one Flow feature and changes two others; Melodex does not send file paths or database rows."); intel_help.setWordWrap(True); intel_help.setStyleSheet("color:#aab0ba"); l.addWidget(intel_help)
         intel_row=QHBoxLayout()
         similar=QPushButton("More like current"); similar.clicked.connect(lambda:self._run_local_intelligence("similar"))
         rediscover=QPushButton("Forgotten favourites"); rediscover.clicked.connect(lambda:self._run_local_intelligence("rediscover"))
         bridge=QPushButton("Bridge current → next"); bridge.clicked.connect(lambda:self._run_local_intelligence("bridge"))
+        detour=QPushButton("Find a detour"); detour.clicked.connect(lambda:self._run_local_intelligence("detour"))
         analyse=QPushButton("Analyse my library"); analyse.clicked.connect(self._analyse_library_for_intelligence)
-        intel_row.addWidget(similar); intel_row.addWidget(rediscover); intel_row.addWidget(bridge); intel_row.addWidget(analyse); intel_row.addStretch(1); l.addLayout(intel_row)
+        intel_row.addWidget(similar); intel_row.addWidget(rediscover); intel_row.addWidget(bridge); intel_row.addWidget(detour); intel_row.addWidget(analyse); intel_row.addStretch(1); l.addLayout(intel_row)
         self.intelligence_results=QListWidget(); self.intelligence_results.itemDoubleClicked.connect(self._play_intelligence_result); l.addWidget(self.intelligence_results,1)
         intel_actions=QHBoxLayout()
         play_pick=QPushButton("Play selected"); play_pick.clicked.connect(self._play_selected_intelligence)
@@ -1428,7 +1429,7 @@ class MainWindow(QMainWindow):
         current = dict(self.current_track or {})
         if not current or not current.get("local_path"):
             return []
-        if intent == "similar":
+        if intent in {"similar", "detour"}:
             return [current]
         if intent == "bridge":
             idx = int(getattr(self.player, "index", -1))
@@ -1450,11 +1451,13 @@ class MainWindow(QMainWindow):
             )
             return
         seeds = self._intelligence_seeds(intent)
-        if intent == "similar" and len(seeds) != 1:
-            QMessageBox.information(
-                self, "Play a local track first",
-                "More like current needs a local track as the seed."
+        if intent in {"similar", "detour"} and len(seeds) != 1:
+            message = (
+                "Find a detour needs the current track to be local."
+                if intent == "detour"
+                else "More like current needs a local track as the seed."
             )
+            QMessageBox.information(self, "Play a local track first", message)
             return
         if intent == "bridge" and len(seeds) != 2:
             QMessageBox.information(
@@ -1493,7 +1496,7 @@ class MainWindow(QMainWindow):
         analysed = int(result.get("analysed") or 0)
         if errors:
             message = errors[0]
-        elif analysed == 0 and result.get("intent") in {"similar", "bridge"}:
+        elif analysed == 0 and result.get("intent") in {"similar", "bridge", "detour"}:
             message = "No analysed comparison tracks yet. Use ‘Analyse my library’, then try again."
         else:
             message = "No local-intelligence plugin returned suggestions. Install one from Explore plugins."
