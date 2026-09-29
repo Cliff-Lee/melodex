@@ -366,7 +366,7 @@ class MainWindow(QMainWindow):
         apply_steer=QPushButton("Apply steer"); apply_steer.clicked.connect(self._journey_live_apply_steer)
         avoid_artist=QPushButton("Avoid current artist"); avoid_artist.clicked.connect(self._journey_live_avoid_current_artist)
         skip_replan=QPushButton("Skip + replan"); skip_replan.clicked.connect(self.player.next)
-        replan=QPushButton("Replan remaining"); replan.clicked.connect(lambda:self._journey_live_replan(""))
+        replan=QPushButton("Replan remaining"); replan.clicked.connect(lambda:self._journey_live_replan("",reason="manual replan"))
         restore=QPushButton("Restore designed route"); restore.clicked.connect(self._journey_live_restore)
         stop_live=QPushButton("Stop live"); stop_live.clicked.connect(self._journey_live_stop)
         self.music_live_label=QLabel("Journey Live · inactive")
@@ -1905,6 +1905,8 @@ class MainWindow(QMainWindow):
             self.music_journey_stages.addItem(item)
 
     def _music_journey_load_preset(self):
+        self.music_active_recipe_id=""
+        self.music_active_recipe={}
         raw=self.music_journey_preset.currentData() if hasattr(self,"music_journey_preset") else []
         self.music_journey_stages_data=[
             {"type":"constraint","constraint":str(key),"label":STAGE_LABELS.get(str(key),str(key).title())}
@@ -1914,6 +1916,8 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Journey preset loaded",2500)
 
     def _music_journey_add_constraint(self):
+        self.music_active_recipe_id=""
+        self.music_active_recipe={}
         key=str(self.music_journey_constraint.currentData() or "") if hasattr(self,"music_journey_constraint") else ""
         if not key:return
         self.music_journey_stages_data.append(
@@ -1922,6 +1926,8 @@ class MainWindow(QMainWindow):
         self._music_journey_render_stages()
 
     def _music_journey_add_track(self):
+        self.music_active_recipe_id=""
+        self.music_active_recipe={}
         ref=self.music_map.selected_ref_value() if hasattr(self,"music_map") else ""
         if not ref:
             self.statusBar().showMessage("Select a mapped track first",3000); return
@@ -1932,6 +1938,8 @@ class MainWindow(QMainWindow):
 
     def _music_journey_remove_stage(self):
         if not self.music_journey_stages_data:return
+        self.music_active_recipe_id=""
+        self.music_active_recipe={}
         row=self.music_journey_stages.currentRow() if hasattr(self,"music_journey_stages") else -1
         if row<0 or row>=len(self.music_journey_stages_data):
             row=len(self.music_journey_stages_data)-1
@@ -1939,6 +1947,8 @@ class MainWindow(QMainWindow):
         self._music_journey_render_stages()
 
     def _music_journey_clear_stages(self):
+        self.music_active_recipe_id=""
+        self.music_active_recipe={}
         self.music_journey_stages_data=[]
         self._music_journey_render_stages()
         self.statusBar().showMessage("Journey stages cleared",2500)
