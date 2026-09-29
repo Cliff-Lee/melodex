@@ -52,6 +52,40 @@ artwork.lookup
 
 Teaches artwork as an independent capability and preservation of per-file licence/attribution.
 
+## Openverse Audio Provider
+
+**Layer:** current MPP provider
+
+Capabilities:
+
+```text
+search
+track
+playback
+```
+
+Teaches legal/open catalog discovery, preservation of per-item licence and attribution metadata, direct-media playback resolution and an important boundary: an index result does not automatically imply that Melodex should advertise provider-authorized offline downloads.
+
+## Cover Art Archive Artwork
+
+**Layer:** experimental v0.1 capability extension
+
+```text
+artwork.lookup
+```
+
+Teaches capability composition through canonical MusicBrainz release/release-group IDs, front-cover preference, independent failure and conservative rights provenance for artwork whose reuse terms can vary by image.
+
+## ListenBrainz Tags
+
+**Layer:** experimental v0.1 capability extension
+
+```text
+metadata.enrich
+```
+
+Teaches chained enrichment: a provider or identity resolver supplies a MusicBrainz recording ID, then ListenBrainz contributes community tags without repeating fuzzy identity matching. It also demonstrates privacy-minimal API use because only the recording identifier is sent.
+
 ## Running an example as an installed extension
 
 Copy an example to a working folder, validate it, then package it:
