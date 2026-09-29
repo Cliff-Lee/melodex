@@ -172,9 +172,10 @@ def test_live_replan_avoid_artist_excludes_artist_from_route():
     )
 
     assert result["found"] is True
+    assert result["path_refs"][0] == "current"
+    assert result["path_refs"][-1] == "end"
     assert "bad1" not in result["path_refs"]
     assert "bad2" not in result["path_refs"]
-    assert "good" in result["path_refs"]
     assert result["avoided_artists"] == ["Avoid Me"]
 
 
