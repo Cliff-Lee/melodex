@@ -180,7 +180,7 @@ The map is therefore an exploration view, not an assertion that every indexed tr
 
 Select a track and choose:
 
-**Start journey here**
+**Start Mind journey here**
 
 The selected mapped track becomes the starting anchor for Mind + Flow.
 
@@ -193,7 +193,7 @@ inspect its sonic / factual relationships
     ↓
 choose a track
     ↓
-Start journey here
+Start Mind journey here
     ↓
 Mind + Flow builds the listening path
 ```
