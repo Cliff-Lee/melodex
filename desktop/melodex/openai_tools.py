@@ -194,6 +194,16 @@ def execute_tool(client: Any, name: str, arguments: dict[str, Any] | None = None
         provider = str(args.get("provider") or "all")
         limit = int(args.get("limit") or 20)
         return client.search(str(args["query"]), provider, limit)
+    if name == "melodex_recommendations":
+        provider = str(args.get("provider") or "all")
+        limit = int(args.get("limit") or 20)
+        return client.recommendations(
+            str(args["artist"]),
+            str(args["title"]),
+            str(args.get("album") or ""),
+            provider,
+            limit,
+        )
     if name == "melodex_resolve":
         return client.resolve(str(args["artist"]), str(args["title"]), str(args.get("album") or ""))
     if name == "melodex_resolution_candidates":
