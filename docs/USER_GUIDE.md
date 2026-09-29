@@ -60,7 +60,9 @@ Exact track waypoints are exported using portable identity selectors rather than
 
 A **Run** is private local history of a Journey Live session. **Inspect** compares the designed route with the final adapted route and lists steering/skip/avoid/replan decisions. **Replay designed** and **Replay final** rematch the recorded tracks onto the current Music Map; missing tracks are reported rather than silently substituted.
 
-See [Journey Library](JOURNEY_LIBRARY.md) for the file format, privacy boundary and replay behavior.
+Use **Explore gallery…** to browse community/project Recipes by tag, preview their stages, and add validated copies to your local Journey Library. Gallery Recipes are data-only and SHA-256 checked before being added.
+
+See [Journey Library](JOURNEY_LIBRARY.md) for the file format, privacy boundary and replay behavior, and [Journey Recipe Gallery](JOURNEY_GALLERY.md) for discovery/publishing details.
 
 ## Flow queue
 
