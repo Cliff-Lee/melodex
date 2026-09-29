@@ -47,6 +47,7 @@ from .playlist_io import load_playlist, save_playlist
 from .metadata import RichMetadataService
 from .rich_now_playing import RichNowPlayingWidget
 from .living_canvas import LivingCanvasView
+from .visualization_models import build_constellation, build_visual_memory
 from .plugin_directory import PluginDirectoryDialog
 from .plugin_configuration_dialog import configure_plugin
 from .plugin_onboarding import plugin_needs_setup
@@ -61,6 +62,10 @@ class WorkerSignals(QObject):
 
 class _VisualAnalysisSignals(QObject):
     ready = Signal(str, object)
+
+
+class _VisualContextSignals(QObject):
+    ready = Signal(int, str, object)
 
 
 def _track_text(t: dict[str, Any]) -> str:
@@ -99,6 +104,10 @@ class MainWindow(QMainWindow):
         self._visual_duration_ms = 0
         self._visual_analysis_signals = _VisualAnalysisSignals(self)
         self._visual_analysis_signals.ready.connect(self._visual_analysis_loaded)
+        self._visual_context_signals = _VisualContextSignals(self)
+        self._visual_context_signals.ready.connect(self._visual_context_loaded)
+        self._visual_context_sequence = 0
+        self._visual_neighbour_tracks: dict[int, dict[str, Any]] = {}
         self.music_path_start_ref = ""
         self.music_path_end_ref = ""
         self.music_path_result: dict[str, Any] = {}
@@ -235,11 +244,15 @@ class MainWindow(QMainWindow):
             "A living, seekable musical fingerprint alongside artwork, lyrics and track context.",
         )
         self.now_views = QTabWidget()
-        self.living_canvas = LivingCanvasView(self)
+        self.living_canvas = LivingCanvasView(self, self.data_dir / "visualizers")
         self.rich_now = RichNowPlayingWidget(self.metadata, self)
         self.rich_now.knowledgeChanged.connect(self._remember_now_playing_knowledge)
         self.rich_now.accentChanged.connect(self.living_canvas.set_accent_color)
+        self.rich_now.paletteChanged.connect(self.living_canvas.set_palette)
+        self.rich_now.lyricsChanged.connect(self.living_canvas.set_lyrics)
         self.living_canvas.seekRequested.connect(self.player.seek)
+        self.living_canvas.modeDataRequested.connect(self._request_visual_mode_data)
+        self.living_canvas.neighbourActivated.connect(self._queue_visual_neighbour)
         self.player.playingChanged.connect(self.living_canvas.set_playing)
         self.now_views.addTab(self.living_canvas, "Living Canvas")
         self.now_views.addTab(self.rich_now, "Details")
@@ -2551,6 +2564,8 @@ class MainWindow(QMainWindow):
                 self._journey_live_update_label()
         self.now_title.setText(str(t.get("title") or "Unknown track")); base=f"{t.get('artist','Unknown artist')}   ·   {t.get('album','')}   ·   {t.get('provider_id','')}"; src=str(t.get("source_page") or ""); attr=str(t.get("attribution") or ""); self.now_meta.setText(base + ((f"   ·   <a href=\"{src}\">{attr or 'Source'}</a>") if src else ""))
         if hasattr(self,"rich_now"):self.rich_now.set_track(dict(t))
+        if hasattr(self, "living_canvas"):
+            self.living_canvas.refresh_context()
 
     def _request_cached_visual_analysis(self, track: dict[str, Any]) -> None:
         local_path = str(track.get("local_path") or "").strip()
@@ -2570,8 +2585,100 @@ class MainWindow(QMainWindow):
         current_path = str((self.current_track or {}).get("local_path") or "")
         if self._closing or not local_path or local_path != current_path:
             return
-        self.living_canvas.set_track(dict(self.current_track or {}), analysis)
+        self.living_canvas.set_analysis(analysis)
         self.living_canvas.set_position(self._visual_position_ms, self._visual_duration_ms)
+
+    def _request_visual_mode_data(self, request: str) -> None:
+        if self._closing or not hasattr(self, "living_canvas"):
+            return
+        mode, _, scale = str(request or "").partition(":")
+        scale = scale or str(self.living_canvas.memory_scale.currentData() or "sessions")
+        if mode not in {"constellation", "memory"}:
+            return
+
+        self._visual_context_sequence += 1
+        sequence = self._visual_context_sequence
+        queue_candidates: list[dict[str, Any]] = []
+        if mode == "constellation":
+            queue = list(getattr(self.player, "queue", []) or [])
+            current_index = int(getattr(self.player, "index", -1))
+            start = max(0, current_index - 5)
+            end = min(len(queue), current_index + 21)
+            for index in range(start, end):
+                if index == current_index or not isinstance(queue[index], dict):
+                    continue
+                queue_candidates.append({
+                    "_visual_token": len(queue_candidates),
+                    "_visual_relation": "Up next" if index > current_index else "Played earlier",
+                    "track": dict(queue[index]),
+                })
+        limit = 2000 if mode == "memory" else 120
+
+        def load_context() -> None:
+            try:
+                recent = self.state.recent_tracks(limit)
+                if mode == "memory":
+                    payload: object = {
+                        "scale": scale,
+                        "marks": build_visual_memory(recent, scale),
+                    }
+                else:
+                    payload = {"queue": queue_candidates, "recent": recent}
+            except Exception:
+                payload = {"scale": scale, "marks": ()} if mode == "memory" else {"queue": queue_candidates, "recent": []}
+            self._visual_context_signals.ready.emit(sequence, mode, payload)
+
+        threading.Thread(target=load_context, daemon=True).start()
+
+    def _visual_context_loaded(self, sequence: int, mode: str, payload: object) -> None:
+        if self._closing or sequence != self._visual_context_sequence:
+            return
+        if not hasattr(self, "living_canvas") or self.living_canvas.active_mode != mode:
+            return
+        if not isinstance(payload, dict):
+            return
+        if mode == "memory":
+            scale = str(payload.get("scale") or "sessions")
+            if scale != str(self.living_canvas.memory_scale.currentData() or "sessions"):
+                return
+            self.living_canvas.set_memory_marks(tuple(payload.get("marks") or ()), scale)
+            return
+
+        current = dict(self.current_track or {})
+        candidates = [row for row in payload.get("queue", ()) if isinstance(row, dict)]
+        refs: dict[int, dict[str, Any]] = {}
+        for row in candidates:
+            try:
+                refs[int(row.get("_visual_token"))] = dict(row.get("track") or {})
+            except (TypeError, ValueError, OverflowError):
+                continue
+        token = max(refs, default=-1) + 1
+        for track in payload.get("recent", ()):
+            if not isinstance(track, dict):
+                continue
+            candidates.append({
+                "_visual_token": token,
+                "_visual_relation": "Played earlier",
+                "track": dict(track),
+            })
+            refs[token] = dict(track)
+            token += 1
+        neighbours = build_constellation(current, candidates, limit=24)
+        self._visual_neighbour_tracks = {
+            node.token: refs[node.token]
+            for node in neighbours if node.token in refs
+        }
+        self.living_canvas.set_neighbours(neighbours)
+
+    def _queue_visual_neighbour(self, token: int) -> None:
+        track = self._visual_neighbour_tracks.get(int(token))
+        if not track:
+            return
+        self.player.append_queue([dict(track)], autoplay=False)
+        self.statusBar().showMessage(
+            f"Queued {track.get('artist') or 'Unknown artist'} — {track.get('title') or 'Unknown track'}",
+            4000,
+        )
 
     def _on_position(self,pos,dur):
         if self._closing:
@@ -2687,6 +2794,8 @@ class MainWindow(QMainWindow):
         self.queue_list.clear()
         for i,t in enumerate(tracks):
             prefix="▶ " if i==self.player.index else ""; item=QListWidgetItem(prefix+_track_text(t)); item.setData(Qt.UserRole,i); self.queue_list.addItem(item)
+        if hasattr(self, "living_canvas") and self.living_canvas.active_mode == "constellation":
+            self.living_canvas.refresh_context()
 
     def _queue_jump(self,item):
         idx=int(item.data(Qt.UserRole)); self.player.players[self.player.active].stop(); self.player._load_index(idx,True)

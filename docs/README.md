@@ -29,6 +29,7 @@ Then use:
 - [macOS](INSTALL_MACOS.md)
 - [Windows](INSTALL_WINDOWS.md)
 - [Android](INSTALL_ANDROID.md)
+- [Latest release notes](releases/v0.4.0.md)
 
 ## I want optional AI control
 

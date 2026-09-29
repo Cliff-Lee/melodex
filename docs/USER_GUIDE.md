@@ -6,9 +6,13 @@
 
 ## Now Playing and Living Canvas
 
-The first Now Playing tab gives each track a repeatable visual fingerprint. Its shape uses track identity and cached Flow features; the colour follows the cover artwork when available. The contour below the scene shows the cached energy shape across the track.
+Open **Now Playing → Living Canvas** and choose a view from the selector. Each track has a repeatable visual identity. Cached Flow features shape its scene when available; album artwork supplies a sampled colour palette.
 
-Click or drag the contour to seek, or focus it and use the arrow keys. Flow analysis is read from its cache in the background. If no cached analysis exists, Melodex shows an identity-based scene and suggests analysing the track from **Play for me**. It never analyses audio during playback. Animation pauses when playback pauses or the tab is hidden.
+The modes include the animated Living Canvas, Song Fingerprint, the seekable Musical Journey, a queue/history Constellation, local Lyrics Typography, Album World, Sonic Weather, a local Visual Memory atlas and Minimal. Constellation stars can be inspected with a click and queued with a double-click. Visual Memory can zoom by session, album, week or year; it reads only the listening history already stored on this device.
+
+Click or drag the journey contour to seek, or focus it and use the arrow keys. Flow analysis is read from its cache in the background. If no cached analysis exists, Melodex shows an identity-based scene and a clear fallback message. It never analyses audio during playback. Auto quality is capped at 15 fps and reduces detail if drawing slows down; Eco, High (30 fps) and Battery (static) are available. Animation pauses when playback pauses, the visualizer tab is hidden, or the window is minimized.
+
+Use **Install visualizer…** to add a `.mdxviz` recipe. These are bounded JSON scene descriptions, not executable plugins. See the [visualizer author guide](visualizers/README.md) for the format and example.
 
 ## Discover
 

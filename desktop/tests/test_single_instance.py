@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import socket
 import subprocess
 import sys
 import time
@@ -10,6 +11,18 @@ import pytest
 
 
 def test_second_process_activates_existing_instance_and_exits(tmp_path: Path):
+    probe_path = tmp_path / "local-socket-probe"
+    probe = None
+    try:
+        probe = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        probe.bind(str(probe_path))
+    except PermissionError as exc:
+        pytest.skip(f"Runtime denies local Unix sockets: {exc}")
+    finally:
+        if probe is not None and probe.fileno() >= 0:
+            probe.close()
+        probe_path.unlink(missing_ok=True)
+
     desktop = Path(__file__).resolve().parents[1]
     data_dir = tmp_path / "app-data"
     data_dir.mkdir()

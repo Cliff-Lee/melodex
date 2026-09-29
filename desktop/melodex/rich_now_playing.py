@@ -25,6 +25,8 @@ def _escape(value: Any) -> str:
 class RichNowPlayingWidget(QWidget):
     knowledgeChanged = Signal(object, object)
     accentChanged = Signal(object)
+    paletteChanged = Signal(object)
+    lyricsChanged = Signal(object)
 
     """Progressively enriched Now Playing view.
 
@@ -37,6 +39,7 @@ class RichNowPlayingWidget(QWidget):
         super().__init__(parent)
         self.metadata = metadata
         self._accent_color = QColor("#7eb4ff")
+        self._palette_colors = self._fallback_palette(self._accent_color)
         self.track: dict[str, Any] = {}
         self.bundle: dict[str, Any] = {}
         self.synced: list[dict[str, Any]] = []
@@ -99,6 +102,7 @@ class RichNowPlayingWidget(QWidget):
         self._identity = {}
         self._pending = {"identity"}
         self._context_started = False
+        self.lyricsChanged.emit({})
         self.title.setText(str(self.track.get("title") or "Unknown track"))
         self.artist.setText(str(self.track.get("artist") or "Unknown artist"))
         self.album.setText(str(self.track.get("album") or ""))
@@ -287,6 +291,11 @@ class RichNowPlayingWidget(QWidget):
             self.lyrics.setHtml(f"<div style='font-size:18px;line-height:1.6'>{'<br>'.join(_escape(lyric_text).splitlines())}</div><p style='color:#777'>Source: {_escape(lyric_source)}</p>")
         else:
             self.lyrics.setHtml("<p style='color:#9097a2'>No local lyrics found. Add a .lrc or .txt file beside the audio file, or embed lyrics in the audio tags.</p>")
+        self.lyricsChanged.emit({
+            "text": lyric_text,
+            "synced": [dict(row) for row in self.synced],
+            "source": lyric_source,
+        })
 
     def _apply_musicbrainz_links(self, identity: dict[str, Any]) -> None:
         links = []
@@ -365,6 +374,17 @@ class RichNowPlayingWidget(QWidget):
     def accent_color(self) -> QColor:
         return QColor(self._accent_color)
 
+    @staticmethod
+    def _fallback_palette(accent: QColor) -> tuple[str, ...]:
+        hue = accent.hue() if accent.hue() >= 0 else 210
+        return tuple(
+            QColor.fromHsv((hue + offset) % 360, saturation, value).name()
+            for offset, saturation, value in (
+                (0, 175, 238), (38, 165, 232), (205, 150, 222),
+                (300, 135, 208), (116, 145, 214), (260, 110, 238),
+            )
+        )
+
     def _set_art(self, path: str) -> None:
         if path and Path(path).exists():
             pix = QPixmap(path)
@@ -375,7 +395,9 @@ class RichNowPlayingWidget(QWidget):
                 return
         self.art.setPixmap(QPixmap()); self.art.setText("♫")
         self._accent_color = QColor("#7eb4ff")
+        self._palette_colors = self._fallback_palette(self._accent_color)
         self.accentChanged.emit(QColor(self._accent_color))
+        self.paletteChanged.emit(self._palette_colors)
         self.setStyleSheet("")
 
     def _apply_accent(self, image: QImage) -> None:
@@ -383,12 +405,16 @@ class RichNowPlayingWidget(QWidget):
             return
         small = image.scaled(24, 24, Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
         r = g = b = count = 0
+        buckets: dict[tuple[int, int, int], list[int]] = {}
         for y in range(small.height()):
             for x in range(small.width()):
                 c = QColor(small.pixel(x, y)); mx, mn = max(c.red(), c.green(), c.blue()), min(c.red(), c.green(), c.blue())
                 if mx < 28 or (mx - mn < 8 and mx > 220):
                     continue
                 r += c.red(); g += c.green(); b += c.blue(); count += 1
+                key = (c.red() // 32, c.green() // 32, c.blue() // 32)
+                bucket = buckets.setdefault(key, [0, 0, 0, 0])
+                bucket[0] += c.red(); bucket[1] += c.green(); bucket[2] += c.blue(); bucket[3] += 1
         if not count:
             return
         accent = QColor(r // count, g // count, b // count)
@@ -397,7 +423,27 @@ class RichNowPlayingWidget(QWidget):
         if accent.lightness() > 200:
             accent = accent.darker(125)
         self._accent_color = QColor(accent)
+        sampled: list[QColor] = []
+        for bucket in sorted(buckets.values(), key=lambda value: value[3], reverse=True):
+            color = QColor(bucket[0] // bucket[3], bucket[1] // bucket[3], bucket[2] // bucket[3])
+            if color.lightness() < 70:
+                color = color.lighter(150)
+            if color.lightness() > 224:
+                color = color.darker(132)
+            if all(abs(color.hue() - seen.hue()) > 12 or color.saturation() < 35 for seen in sampled):
+                sampled.append(color)
+            if len(sampled) >= 5:
+                break
+        fallback = [QColor(value) for value in self._fallback_palette(accent)]
+        sampled.append(QColor(accent))
+        for color in fallback:
+            if len(sampled) >= 6:
+                break
+            if all(color != existing for existing in sampled):
+                sampled.append(color)
+        self._palette_colors = tuple(color.name() for color in sampled[:6])
         self.accentChanged.emit(QColor(accent))
+        self.paletteChanged.emit(self._palette_colors)
         dark = QColor(accent); dark = dark.darker(420)
         self.title.setStyleSheet(f"font-size:34px;font-weight:750;color:{accent.name()}")
         self.art.setStyleSheet(f"background:#181b20;border:2px solid {accent.name()};border-radius:18px")
