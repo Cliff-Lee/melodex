@@ -31,7 +31,26 @@ A playback provider normally implements:
 - `playback.resolve`
 
 `playback.refresh` is optional and is intended for short-lived playback URLs.
+`recommendations.get` is optional and is called only for providers that declare the `recommendations` capability. Recommendation-only providers do not need to pretend they implement search or playback.
 Older v0.1 providers remain valid.
+
+### Recommendation-only provider
+
+A provider may contribute discovery without hosting playback:
+
+```text
+capabilities = ["recommendations"]
+```
+
+Melodex calls:
+
+```text
+recommendations.get
+```
+
+with a normalized seed containing artist/title (and optional album/canonical IDs). Return normal track-shaped items. Mark provider-specific metadata honestly if the result is not directly playable; Melodex can resolve a chosen suggestion through another playback provider.
+
+If the upstream service needs a key, declare it in `manifest.json` as configuration type `secret`. The desktop host brokers the configured value in `params["_melodex_config"]`; do not copy credentials into result metadata or logs.
 
 ## 4.3 Normalize early
 
