@@ -17,7 +17,7 @@ Melodex now has two package types:
 
 ```text
 .mdxprovider   catalog/playback providers
-.mdxplugin     identity/metadata/artwork/lyrics extensions
+.mdxplugin     identity/metadata/artwork/lyrics/context extensions
 ```
 
 ## Fastest start
@@ -44,6 +44,8 @@ melodex-extension validate my-artwork
 melodex-extension doctor my-artwork
 melodex-extension pack my-artwork
 ```
+
+Context extensions use `context.lookup` to return sourced text/list/fact cards that Melodex can render in Rich Now Playing without plugin-specific GUI code.
 
 Network-backed extensions may optionally declare the v0.1 `extension.health` method. This is lifecycle metadata rather than an enrichment capability; extensions that omit it remain compatible and use Melodex's process-check fallback. See the experimental extension contract reference for the request/response schema.
 
