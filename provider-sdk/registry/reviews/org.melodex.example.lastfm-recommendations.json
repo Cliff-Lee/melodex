@@ -1,0 +1,28 @@
+{
+  "schema_version": "0.1",
+  "plugin_id": "org.melodex.example.lastfm-recommendations",
+  "events": [
+    {
+      "reviewed_at": "2026-09-29T01:30:00Z",
+      "reviewer": "Melodex project",
+      "decision": "example-baseline",
+      "version": "0.1.0",
+      "package_sha256": "5836a94157289692d7bcf73bd8465366cd27dc4cf78a71b69a30013990236ef6",
+      "summary": "Baseline review of the project-maintained Last.fm recommendation example: package integrity, recommendation-only capability, brokered secret configuration, declared API/artwork hosts, source policy and deterministic fixture tests were checked for 0.1.0.",
+      "checks": {
+        "registry_schema": true,
+        "package_integrity": true,
+        "manifest_descriptor": true,
+        "permissions": true,
+        "source_policy": true,
+        "tests": true,
+        "rights_notes": true
+      },
+      "limitations": [
+        "A user-supplied Last.fm API key and compliance with the current Last.fm API terms are required for live use.",
+        "Recommendation results are discovery metadata and are not represented as playable Last.fm media.",
+        "Runtime process isolation is not a complete operating-system sandbox."
+      ]
+    }
+  ]
+}
