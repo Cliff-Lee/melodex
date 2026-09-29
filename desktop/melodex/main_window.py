@@ -331,6 +331,39 @@ class MainWindow(QMainWindow):
         )
         l.addWidget(self.music_journey_stages)
 
+        live_row=QHBoxLayout()
+        self.music_live_steering=QComboBox()
+        self.music_live_steering.addItem("No extra steer", "")
+        for key,label in (
+            ("calmer","Calmer next"),
+            ("more_energy","More energy next"),
+            ("darker","Darker next"),
+            ("brighter","Brighter next"),
+            ("more_rhythmic","More rhythmic next"),
+            ("more_familiar","More familiar next"),
+            ("more_surprising","More surprising next"),
+            ("rediscover","Rediscover next"),
+        ):
+            self.music_live_steering.addItem(label,key)
+        play_live=QPushButton("Play live journey"); play_live.clicked.connect(self._journey_live_start)
+        apply_steer=QPushButton("Apply steer"); apply_steer.clicked.connect(self._journey_live_apply_steer)
+        avoid_artist=QPushButton("Avoid current artist"); avoid_artist.clicked.connect(self._journey_live_avoid_current_artist)
+        replan=QPushButton("Replan remaining"); replan.clicked.connect(lambda:self._journey_live_replan(""))
+        restore=QPushButton("Restore designed route"); restore.clicked.connect(self._journey_live_restore)
+        stop_live=QPushButton("Stop live"); stop_live.clicked.connect(self._journey_live_stop)
+        self.music_live_label=QLabel("Journey Live · inactive")
+        self.music_live_label.setStyleSheet("color:#aab0ba")
+        live_row.addWidget(QLabel("Journey Live"))
+        live_row.addWidget(play_live)
+        live_row.addWidget(self.music_live_steering)
+        live_row.addWidget(apply_steer)
+        live_row.addWidget(avoid_artist)
+        live_row.addWidget(replan)
+        live_row.addWidget(restore)
+        live_row.addWidget(stop_live)
+        live_row.addWidget(self.music_live_label,1)
+        l.addLayout(live_row)
+
         self.music_map=MusicMapWidget(self)
         self.music_map.trackActivated.connect(self._play_music_map_track)
         l.addWidget(self.music_map,1)
