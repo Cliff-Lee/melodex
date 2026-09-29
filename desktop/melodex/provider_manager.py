@@ -466,12 +466,11 @@ class ProviderManager:
                 check_scope="configuration",
             )
 
-        cached = self._plugin_health_cache.get(plugin_id)
-        if cached:
-            return dict(cached)
-
         provider = self.providers.get(plugin_id)
         if provider is not None and plugin_id not in {"local", "jamendo", "streams"}:
+            cached = self._plugin_health_cache.get(plugin_id)
+            if cached:
+                return dict(cached)
             return self._health_result(
                 plugin_id=plugin_id,
                 name=provider.info.name,
@@ -513,6 +512,9 @@ class ProviderManager:
                     check_scope="runtime",
                     reason=str(runtime.get("last_error") or "call_error"),
                 )
+            cached = self._plugin_health_cache.get(plugin_id)
+            if cached:
+                return dict(cached)
             return self._health_result(
                 plugin_id=plugin_id,
                 name=extension.info.name,
