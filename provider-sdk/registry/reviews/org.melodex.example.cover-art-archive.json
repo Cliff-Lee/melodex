@@ -43,6 +43,27 @@
       "version": "0.1.1",
       "package_sha256": "eb575c190993711da7303c074def07183046203094b71e18e822f3a8309d1781",
       "summary": "Stabilization review after packaged-host/plugin audit: source parsing/boundary fixes, package descriptor, permissions, source policy, adversarial fixtures and rebuilt package bytes were checked for this patch release."
+    },
+    {
+      "reviewer": "Melodex project",
+      "decision": "example-baseline",
+      "checks": {
+        "registry_schema": true,
+        "package_integrity": true,
+        "manifest_descriptor": true,
+        "permissions": true,
+        "source_policy": true,
+        "tests": true,
+        "rights_notes": true
+      },
+      "limitations": [
+        "Cover artwork copyright and reuse rights vary by image; the example provides lookup/provenance and does not assert that returned artwork is freely licensed.",
+        "Runtime process isolation is not a complete operating-system sandbox."
+      ],
+      "reviewed_at": "2026-09-29T10:30:00Z",
+      "version": "0.1.1",
+      "package_sha256": "e4ce1d6a3554f1a27849f9ef9b275c1d99814d55d44ba6799592c34762ece940",
+      "summary": "Stabilization review after packaged-host/plugin audit: source parsing/boundary fixes, package descriptor, permissions, source policy, adversarial fixtures and rebuilt package bytes were checked for this patch release."
     }
   ]
 }

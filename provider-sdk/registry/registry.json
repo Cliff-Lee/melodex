@@ -223,8 +223,8 @@
       "distribution": {
         "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/main/provider-sdk/registry/packages/cover-art-archive-0.1.1.mdxplugin",
         "format": "mdxplugin",
-        "sha256": "eb575c190993711da7303c074def07183046203094b71e18e822f3a8309d1781",
-        "size_bytes": 4440
+        "sha256": "e4ce1d6a3554f1a27849f9ef9b275c1d99814d55d44ba6799592c34762ece940",
+        "size_bytes": 4450
       },
       "compatibility": {
         "melodex_min": "0.1.0",
