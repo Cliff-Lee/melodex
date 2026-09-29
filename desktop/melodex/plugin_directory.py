@@ -5,8 +5,8 @@ from typing import Any, Callable
 
 from PySide6.QtCore import QObject, Qt, QUrl, Signal
 from PySide6.QtGui import QDesktopServices
-from .plugin_configuration_dialog import (
-    configure_plugin,
+from .plugin_configuration_dialog import configure_plugin
+from .plugin_onboarding import (
     configuration_state,
     configuration_summary,
     plugin_configuration_info,
