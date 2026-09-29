@@ -40,13 +40,13 @@ jobs:
       - name: Commit refreshed packages and metadata
         shell: bash
         run: |
-          if git diff --quiet -- provider-sdk/examples/ecosystem provider-sdk/registry; then
+          git add provider-sdk/examples/ecosystem provider-sdk/registry
+          git add -f provider-sdk/registry/packages/*.mdxprovider
+          if git diff --cached --quiet; then
             echo "No package refresh changes."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add provider-sdk/examples/ecosystem provider-sdk/registry
-          git add -f provider-sdk/registry/packages/*.mdxprovider
           git commit -m "Refresh audited first-party plugin packages"
           git push origin HEAD:fix/stabilize-v0.3.1-dev
