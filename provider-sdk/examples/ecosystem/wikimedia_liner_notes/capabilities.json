@@ -1,0 +1,26 @@
+{
+  "schema_version": "0.1",
+  "extension_id": "org.melodex.example.wikimedia-liner-notes",
+  "name": "Wikimedia Liner Notes",
+  "version": "0.1.0",
+  "publisher": "Melodex examples",
+  "description": "Adds a sourced short-form artist liner note from Wikidata-linked Wikipedia context.",
+  "permissions": {
+    "network_hosts": [
+      "www.wikidata.org",
+      "en.wikipedia.org"
+    ],
+    "local_files": false,
+    "browser_auth": false
+  },
+  "entrypoints": {
+    "python": "plugin.py"
+  },
+  "contracts": [
+    {
+      "capability": "context",
+      "contract_version": "0.1",
+      "method": "context.lookup"
+    }
+  ]
+}
