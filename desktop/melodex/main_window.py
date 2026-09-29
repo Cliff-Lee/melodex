@@ -24,6 +24,7 @@ from .music_map import MusicMapWidget
 from .music_map_model import build_music_map
 from .music_knowledge import MusicKnowledgeStore, build_knowledge_graph
 from .music_pathfinder import find_music_path
+from .music_journey import STAGE_LABELS, build_music_journey
 from .user_state import UserState
 from .player import FlowPlayer
 from .llm_bridge import LLMClient, LLMSettings, llm_track_summary
@@ -78,6 +79,7 @@ class MainWindow(QMainWindow):
         self.music_path_start_ref = ""
         self.music_path_end_ref = ""
         self.music_path_result: dict[str, Any] = {}
+        self.music_journey_stages_data: list[dict[str, Any]] = []
         self.current_page = "home"
         self._closing = False
         self.externalCommand.connect(self._on_external_command)
@@ -264,6 +266,55 @@ class MainWindow(QMainWindow):
         path_row.addWidget(play_path); path_row.addWidget(queue_path); path_row.addWidget(clear_path)
         path_row.addWidget(self.music_path_label,1)
         l.addLayout(path_row)
+
+        journey_row=QHBoxLayout()
+        self.music_journey_preset=QComboBox()
+        self.music_journey_preset.addItem(
+            "Calm → Darker → Forgotten → Energetic",
+            ["calm","dark","forgotten","energetic"],
+        )
+        self.music_journey_preset.addItem(
+            "Calm → Rhythmic → Energetic",
+            ["calm","rhythmic","energetic"],
+        )
+        self.music_journey_preset.addItem(
+            "Familiar → Forgotten → Bright",
+            ["familiar","forgotten","bright"],
+        )
+        self.music_journey_preset.addItem(
+            "Surprising → Darker → Bright",
+            ["surprising","dark","bright"],
+        )
+        load_preset=QPushButton("Load preset"); load_preset.clicked.connect(self._music_journey_load_preset)
+        self.music_journey_constraint=QComboBox()
+        for key in ("calm","dark","forgotten","energetic","bright","rhythmic","familiar","surprising"):
+            self.music_journey_constraint.addItem(STAGE_LABELS[key],key)
+        add_constraint=QPushButton("Add constraint"); add_constraint.clicked.connect(self._music_journey_add_constraint)
+        add_track=QPushButton("Add selected track"); add_track.clicked.connect(self._music_journey_add_track)
+        remove_stage=QPushButton("Remove stage"); remove_stage.clicked.connect(self._music_journey_remove_stage)
+        clear_stages=QPushButton("Clear stages"); clear_stages.clicked.connect(self._music_journey_clear_stages)
+        build_journey=QPushButton("Build journey"); build_journey.clicked.connect(self._music_journey_build)
+        play_journey=QPushButton("Play journey"); play_journey.clicked.connect(self._music_path_play)
+        queue_journey=QPushButton("Queue journey"); queue_journey.clicked.connect(self._music_path_queue)
+        journey_row.addWidget(QLabel("Journey Designer"))
+        journey_row.addWidget(self.music_journey_preset)
+        journey_row.addWidget(load_preset)
+        journey_row.addWidget(self.music_journey_constraint)
+        journey_row.addWidget(add_constraint)
+        journey_row.addWidget(add_track)
+        journey_row.addWidget(remove_stage)
+        journey_row.addWidget(clear_stages)
+        journey_row.addWidget(build_journey)
+        journey_row.addWidget(play_journey)
+        journey_row.addWidget(queue_journey)
+        l.addLayout(journey_row)
+
+        self.music_journey_stages=QListWidget()
+        self.music_journey_stages.setMaximumHeight(96)
+        self.music_journey_stages.addItem(
+            "Journey stages use the Pathfinder start/destination. Load a preset or add constraints/track waypoints."
+        )
+        l.addWidget(self.music_journey_stages)
 
         self.music_map=MusicMapWidget(self)
         self.music_map.trackActivated.connect(self._play_music_map_track)
@@ -1077,7 +1128,10 @@ class MainWindow(QMainWindow):
         self.music_path_start_ref=""
         self.music_path_end_ref=""
         self.music_path_result={}
+        self.music_journey_stages_data=[]
         self._music_path_update_label()
+        if hasattr(self,"music_journey_stages"):
+            self._music_journey_render_stages()
         if hasattr(self,"music_path_steps"):
             self.music_path_steps.clear()
             self.music_path_steps.addItem("Select a mapped track, set start/destination, then Find path.")
@@ -1350,6 +1404,124 @@ class MainWindow(QMainWindow):
             self.music_path_steps.clear()
             self.music_path_steps.addItem("Pathfinder explanations will appear here.")
         self.statusBar().showMessage("Pathfinder cleared",2500)
+
+    # ------------------------------- Music Map Journey Designer
+    def _music_journey_render_stages(self):
+        if not hasattr(self,"music_journey_stages"):return
+        self.music_journey_stages.clear()
+        if not self.music_journey_stages_data:
+            self.music_journey_stages.addItem(
+                "Journey stages use the Pathfinder start/destination. Load a preset or add constraints/track waypoints."
+            )
+            return
+        for index,stage in enumerate(self.music_journey_stages_data, start=1):
+            if str(stage.get("type") or "")=="track":
+                label=str(stage.get("label") or self._music_path_name(stage.get("ref") or ""))
+                text=f"{index}. Track waypoint · {label}"
+            else:
+                key=str(stage.get("constraint") or "")
+                text=f"{index}. Constraint · {str(stage.get('label') or STAGE_LABELS.get(key,key.title()))}"
+            item=QListWidgetItem(text)
+            item.setData(Qt.UserRole,index-1)
+            self.music_journey_stages.addItem(item)
+
+    def _music_journey_load_preset(self):
+        raw=self.music_journey_preset.currentData() if hasattr(self,"music_journey_preset") else []
+        self.music_journey_stages_data=[
+            {"type":"constraint","constraint":str(key),"label":STAGE_LABELS.get(str(key),str(key).title())}
+            for key in list(raw or [])
+        ]
+        self._music_journey_render_stages()
+        self.statusBar().showMessage("Journey preset loaded",2500)
+
+    def _music_journey_add_constraint(self):
+        key=str(self.music_journey_constraint.currentData() or "") if hasattr(self,"music_journey_constraint") else ""
+        if not key:return
+        self.music_journey_stages_data.append(
+            {"type":"constraint","constraint":key,"label":STAGE_LABELS.get(key,key.title())}
+        )
+        self._music_journey_render_stages()
+
+    def _music_journey_add_track(self):
+        ref=self.music_map.selected_ref_value() if hasattr(self,"music_map") else ""
+        if not ref:
+            self.statusBar().showMessage("Select a mapped track first",3000); return
+        self.music_journey_stages_data.append(
+            {"type":"track","ref":ref,"label":self._music_path_name(ref)}
+        )
+        self._music_journey_render_stages()
+
+    def _music_journey_remove_stage(self):
+        if not self.music_journey_stages_data:return
+        row=self.music_journey_stages.currentRow() if hasattr(self,"music_journey_stages") else -1
+        if row<0 or row>=len(self.music_journey_stages_data):
+            row=len(self.music_journey_stages_data)-1
+        self.music_journey_stages_data.pop(row)
+        self._music_journey_render_stages()
+
+    def _music_journey_clear_stages(self):
+        self.music_journey_stages_data=[]
+        self._music_journey_render_stages()
+        self.statusBar().showMessage("Journey stages cleared",2500)
+
+    def _music_journey_build(self):
+        if not self.music_path_start_ref or not self.music_path_end_ref:
+            self.statusBar().showMessage(
+                "Set Pathfinder start and destination before building a journey",4000
+            ); return
+        if not self.music_journey_stages_data:
+            self.statusBar().showMessage(
+                "Load a Journey preset or add at least one stage",3500
+            ); return
+        mode=str(self.music_path_mode.currentData() or "balanced")
+        self.statusBar().showMessage("Designing staged local journey…")
+        result=build_music_journey(
+            dict(self.music_map.model or {}),
+            dict(self.music_map.knowledge_graph or {}),
+            self.music_path_start_ref,
+            self.music_path_end_ref,
+            list(self.music_journey_stages_data),
+            mode=mode,
+            max_hops_per_segment=8,
+            candidates_per_stage=10,
+        )
+        self.music_path_result=dict(result or {})
+        self.music_map.show_route(self.music_path_result)
+        self.music_path_steps.clear()
+        if not self.music_path_result.get("found"):
+            reason=str(self.music_path_result.get("reason") or "Journey could not be built")
+            self.music_path_steps.addItem(reason)
+            for stage in list(self.music_path_result.get("stages") or []):
+                if isinstance(stage,dict):
+                    self.music_path_steps.addItem(
+                        f"✓ {stage.get('label') or 'Stage'} · fit {float(stage.get('score') or 0):.0%}\n"
+                        f"{stage.get('reason') or ''}"
+                    )
+            self.statusBar().showMessage(reason,7000)
+            return
+
+        stages_by_ref={
+            str(stage.get("ref") or ""):dict(stage)
+            for stage in list(self.music_path_result.get("stages") or [])
+            if isinstance(stage,dict) and str(stage.get("ref") or "")
+        }
+        hops=[dict(x) for x in list(self.music_path_result.get("hops") or []) if isinstance(x,dict)]
+        for index,hop in enumerate(hops,start=1):
+            a=self._music_path_name(hop.get("from") or "")
+            b=self._music_path_name(hop.get("to") or "")
+            reason=str(hop.get("reason") or "graph connection")
+            stage=stages_by_ref.get(str(hop.get("to") or ""))
+            if stage:
+                reason += (
+                    f"\n→ Journey stage: {stage.get('label') or 'Stage'} · "
+                    f"fit {float(stage.get('score') or 0):.0%} · {stage.get('reason') or ''}"
+                )
+            self.music_path_steps.addItem(f"{index}. {a}  →  {b}\n{reason}")
+        self.statusBar().showMessage(
+            f"Journey ready · {len(self.music_path_result.get('stages') or [])} stages · "
+            f"{len(hops)} hops · score {float(self.music_path_result.get('score') or 0):.0%}",
+            8000,
+        )
 
     def _analyse_library_for_map(self):
         catalog=self.providers.local_catalog()
