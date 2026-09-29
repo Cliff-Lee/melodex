@@ -12,6 +12,7 @@ metadata.enrich
 artwork.lookup
 lyrics.lookup
 context.lookup
+library.suggest
 ```
 
 Capability extensions may also declare the optional extension-level health method:
@@ -36,9 +37,10 @@ Capability Broker
       ├── metadata extension(s)
       ├── artwork extension(s)
       ├── lyrics extension(s)
-      └── context extension(s)
+      ├── context extension(s)
+      └── local-intelligence extension(s)
       ↓
-progressively enriched Melodex entity / Now Playing cards
+progressively enriched entities / Now Playing cards / local suggestions
 ```
 
 Playback does not wait for every enrichment service.
@@ -136,6 +138,30 @@ facts  — labelled scalar facts such as listeners or release statistics
 ```
 
 Melodex escapes plugin text and renders the cards itself. This gives context plugins expressive output without granting them a private GUI surface or requiring core code for each plugin.
+
+## Local intelligence
+
+`library.suggest` is intentionally host-mediated. Melodex Core keeps the real local track objects and sends extensions only a bounded snapshot:
+
+```text
+request-local ref (t0, t1, ...)
+title / artist / album / duration
+Flow analysis values when available
+coarse taste counters
+relative days since last play
+```
+
+The wire payload deliberately excludes:
+
+```text
+absolute local paths
+provider-local IDs
+SQLite/database keys
+absolute listening timestamps
+raw audio
+```
+
+Extensions return refs, scores and short reasons; Core maps the refs back to real tracks after the extension process returns.
 
 ## Provenance
 
