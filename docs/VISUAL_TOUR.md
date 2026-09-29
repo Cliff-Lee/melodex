@@ -101,7 +101,15 @@ Choose **Play live journey** to make the unfinished route adaptive while listeni
 
 The map uses cached analysis/knowledge by default; **Analyse my library** and the knowledge-enrichment buttons remain explicit user actions. Pathfinder, Journey Designer and Journey Live themselves are local and do not trigger network enrichment.
 
-## 8. Moments
+## 8. Journey Library
+
+Open **Journeys** to keep the *shape* of a journey separate from one particular playlist.
+
+**Recipes** save the routing mode and ordered Journey Designer stages so you can choose new start/destination tracks later. Recipes can be imported/exported as share-safe `.mdxjourney` files; exact waypoints use portable track identity rather than local paths.
+
+**Recent runs** are private local history. Inspect a run to compare the designed and final adapted routes, or replay either route after Melodex rematches its recorded track identities onto the current Music Map.
+
+## 9. Moments
 
 ![Moments](images/moments.png)
 
@@ -109,7 +117,7 @@ Sometimes the thing you want to remember is not a whole song.
 
 Press **•••** in the player bar and use **Save a moment** to remember an exact playback position: a bass entrance, lyric, solo, breakdown or transition.
 
-## 9. Music sources
+## 10. Music sources
 
 ![Music Sources](images/sources.png)
 
@@ -127,7 +135,7 @@ Turn on **Show power tools** only when you need manual `.mdxprovider` / `.mdxplu
 Melodex's queue, taste and Flow systems sit above those sources.
 
 <a id="ask-melodex"></a>
-## 10. Ask Melodex
+## 11. Ask Melodex
 
 ![Ask Melodex](images/ask-melodex.png)
 
