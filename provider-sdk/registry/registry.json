@@ -1,6 +1,6 @@
 {
   "schema_version": "0.1",
-  "updated_at": "2026-09-29T01:30:00Z",
+  "updated_at": "2026-09-29T02:20:00Z",
   "plugins": [
     {
       "id": "org.melodex.example.radio-browser",
@@ -246,10 +246,10 @@
       "id": "org.melodex.example.listenbrainz-tags",
       "name": "ListenBrainz Tags Example",
       "publisher": "Melodex examples",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "kind": "enrichment",
       "status": "example",
-      "description": "Community tag enrichment for tracks that already have a MusicBrainz recording ID, demonstrating chained metadata composition.",
+      "description": "Community tag enrichment for tracks with a MusicBrainz recording ID, now also demonstrating the optional active extension health contract.",
       "capabilities": [
         "metadata"
       ],
@@ -260,10 +260,10 @@
         "documentation": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/listenbrainz_tags/README.md"
       },
       "distribution": {
-        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/main/provider-sdk/registry/packages/listenbrainz-tags-0.1.0.mdxplugin",
+        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/main/provider-sdk/registry/packages/listenbrainz-tags-0.1.1.mdxplugin",
         "format": "mdxplugin",
-        "sha256": "035615d90aec65e60d8a9b0bcfb592ec65d74b7df9c3ad3fd76695f0cf391027",
-        "size_bytes": 4451
+        "sha256": "b97654b0e2f0a81eefe7446ca0aa420f03a06e8eb2130dd74b8292da8539def1",
+        "size_bytes": 11915
       },
       "compatibility": {
         "melodex_min": "0.1.0",
@@ -278,7 +278,7 @@
       "source_policy": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/listenbrainz_tags/SOURCE_POLICY.md",
       "review": {
         "record": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/registry/reviews/org.melodex.example.listenbrainz-tags.json",
-        "last_reviewed_at": "2026-09-29T01:00:00Z"
+        "last_reviewed_at": "2026-09-29T02:20:00Z"
       }
     },
     {
