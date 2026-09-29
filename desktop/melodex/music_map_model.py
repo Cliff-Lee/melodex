@@ -268,7 +268,7 @@ def build_music_map(
                 "plays": int((profile.get("taste") or {}).get("plays") or 0)
                 if isinstance(profile.get("taste"), dict)
                 else 0,
-                "_z": z,
+                "route_vector": [float(value) for value in z],
             }
         )
 
@@ -280,7 +280,7 @@ def build_music_map(
         for j, other in enumerate(nodes):
             if i == j:
                 continue
-            candidates.append((_distance(node["_z"], other["_z"]), j))
+            candidates.append((_distance(node["route_vector"], other["route_vector"]), j))
         candidates.sort(key=lambda row: (row[0], nodes[row[1]]["ref"]))
         for distance, j in candidates[:k]:
             pair = (min(i, j), max(i, j))
@@ -299,9 +299,6 @@ def build_music_map(
                     "similarity": _clamp(similarity),
                 }
             )
-
-    for node in nodes:
-        node.pop("_z", None)
 
     return {
         "nodes": nodes,
