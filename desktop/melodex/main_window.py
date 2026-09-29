@@ -1600,6 +1600,9 @@ class MainWindow(QMainWindow):
         self.music_path_end_ref=""
         self.music_path_result={}
         self.music_journey_stages_data=[]
+        if self.pending_journey_recipe is None:
+            self.music_active_recipe_id=""
+            self.music_active_recipe={}
         self._music_path_update_label()
         if hasattr(self,"music_journey_stages"):
             self._music_journey_render_stages()
