@@ -154,7 +154,11 @@ def identity_resolve(params):
 
     data = _get_json("/recording/", {
         "query": query, "fmt": "json",
-        "limit": max(1, min(int(params.get("max_candidates") or 5), 20)),
+        "limit": (
+            5
+            if params.get("max_candidates") is None
+            else max(1, min(int(params.get("max_candidates")), 20))
+        ),
     })
     candidates = [
         candidate
