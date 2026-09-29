@@ -38,6 +38,12 @@ If the installed plugin declares required configuration, Melodex opens its setup
 
 The setup form supports declared `string`, `boolean` and `secret` fields. Secret fields use the system credential store when available and are not echoed back into the UI.
 
+## Testing an installed plugin
+
+After installation, select the plugin in **Sources** and choose **Test selected**, or use **Test plugin** in the Plugin Directory.
+
+A provider test calls `provider.health`. An extension test verifies process startup because the current v0.1 extension contract does not yet define a universal network-health method. Melodex keeps those scopes distinct in the result rather than treating every READY state as equivalent.
+
 ## Local development / manual install
 
 Enable **Show power tools** in Sources, then choose:
