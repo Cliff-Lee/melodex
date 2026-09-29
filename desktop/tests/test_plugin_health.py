@@ -118,6 +118,78 @@ for line in sys.stdin:
     return path
 
 
+def _active_extension_package(path: Path, *, malformed: bool = False) -> Path:
+    descriptor = {
+        "schema_version": "0.1",
+        "extension_id": "org.example.active-health-extension",
+        "name": "Active Health Extension",
+        "version": "0.1.0",
+        "publisher": "Tests",
+        "description": "Active extension health test",
+        "permissions": {
+            "network_hosts": ["status.example.invalid"],
+            "local_files": False,
+            "browser_auth": False,
+        },
+        "configuration": [
+            {
+                "key": "credential",
+                "label": "Credential",
+                "type": "secret",
+                "required": False,
+            }
+        ],
+        "health": {
+            "contract_version": "0.1",
+            "method": "extension.health",
+        },
+        "entrypoints": {"python": "plugin.py"},
+        "contracts": [
+            {
+                "capability": "metadata",
+                "contract_version": "0.1",
+                "method": "metadata.enrich",
+            }
+        ],
+    }
+    plugin = """import json, sys
+for line in sys.stdin:
+    req = json.loads(line)
+    params = req.get("params") or {}
+    config = params.get("_melodex_config") or {}
+    method = req.get("method")
+    if method == "extension.health":
+        if """ + ("True" if malformed else "False") + """:
+            result = {"status":"ready","upstream_checked":True}
+        else:
+            result = {
+                "schema_version":"0.1",
+                "status":"ready",
+                "upstream_checked":True,
+                "message":"Connected with " + str(config.get("credential") or "none"),
+                "latency_ms":12,
+            }
+    elif method == "metadata.enrich":
+        subject = params.get("subject") or {}
+        result = {
+            "schema_version":"0.1",
+            "capability":"metadata",
+            "subject":subject,
+            "fields":{},
+        }
+    else:
+        raise RuntimeError("unsupported")
+    print(json.dumps({"jsonrpc":"2.0","id":req["id"],"result":result}), flush=True)
+"""
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr("capabilities.json", json.dumps(descriptor))
+        archive.writestr("plugin.py", plugin)
+        archive.writestr("README.md", "# Active Health Extension\n")
+        archive.writestr("SOURCE_POLICY.md", "# Source Policy\n")
+        archive.writestr("LICENSE", "test\n")
+    return path
+
+
 def test_health_text_redacts_common_secret_shapes():
     text = safe_health_text(
         "Invalid api_key=abc123 Authorization:BearerXYZ Bearer secret.token.value"
@@ -131,7 +203,9 @@ def test_health_status_and_summary_vocabulary():
     assert normalise_health_status("ok") == "ready"
     assert normalise_health_status("auth_required") == "authentication_required"
     assert normalise_health_status("offline") == "unavailable"
+    assert normalise_health_status("degraded") == "degraded"
     assert health_badge({"status": "authentication_required"}) == "AUTH REQUIRED"
+    assert health_badge({"status": "degraded"}) == "DEGRADED"
     assert health_summary(
         {"status": "ready", "message": "Connected", "check_scope": "provider"}
     ) == "READY — Connected"
@@ -215,5 +289,54 @@ def test_extension_disabled_health_state(tmp_path: Path):
         assert result["status"] == "disabled"
         tested = manager.test_plugin_health(info.id)
         assert tested["status"] == "disabled"
+    finally:
+        manager.close()
+
+
+def test_extension_active_health_checks_upstream_and_redacts_secret(tmp_path: Path):
+    manager = ProviderManager(tmp_path / "data")
+    try:
+        package = _active_extension_package(tmp_path / "active.mdxplugin")
+        info = manager.install_extension(package)
+        manager.set_plugin_configuration(
+            info.id, {"credential": "fixture-extension-key"}
+        )
+
+        result = manager.test_plugin_health(info.id, timeout=1)
+        assert result["status"] == "ready"
+        assert result["check_scope"] == "upstream"
+        assert result["upstream_checked"] is True
+        assert result["latency_ms"] == 12
+        assert "fixture-extension-key" not in json.dumps(result)
+        assert "[redacted]" in result["message"]
+        assert manager.plugin_health(info.id)["status"] == "ready"
+    finally:
+        manager.close()
+
+
+def test_extension_without_health_contract_keeps_process_fallback(tmp_path: Path):
+    manager = ProviderManager(tmp_path / "data")
+    try:
+        package = _extension_package(tmp_path / "legacy-health.mdxplugin")
+        info = manager.install_extension(package)
+        result = manager.test_plugin_health(info.id, timeout=1)
+        assert result["status"] == "ready"
+        assert result["check_scope"] == "process"
+        assert "Upstream service access" in result["message"]
+    finally:
+        manager.close()
+
+
+def test_extension_invalid_active_health_response_is_protocol_error(tmp_path: Path):
+    manager = ProviderManager(tmp_path / "data")
+    try:
+        package = _active_extension_package(
+            tmp_path / "malformed-health.mdxplugin", malformed=True
+        )
+        info = manager.install_extension(package)
+        result = manager.test_plugin_health(info.id, timeout=1)
+        assert result["status"] == "error"
+        assert result["reason"] == "protocol_error"
+        assert result["upstream_checked"] is False
     finally:
         manager.close()
