@@ -278,6 +278,9 @@ class MainWindow(QMainWindow):
         self.music_path_mode.addItem("Balanced", "balanced")
         self.music_path_mode.addItem("Sonic", "sonic")
         self.music_path_mode.addItem("Knowledge-first", "knowledge")
+        self.music_path_mode.currentIndexChanged.connect(
+            lambda *_:self._journey_recipe_mark_modified()
+        )
         set_start=QPushButton("Set start"); set_start.clicked.connect(self._music_path_set_start)
         set_end=QPushButton("Set destination"); set_end.clicked.connect(self._music_path_set_end)
         find_path=QPushButton("Find path"); find_path.clicked.connect(self._music_path_find)
@@ -1886,6 +1889,11 @@ class MainWindow(QMainWindow):
             self.music_path_steps.clear()
             self.music_path_steps.addItem("Pathfinder explanations will appear here.")
         self.statusBar().showMessage("Pathfinder cleared",2500)
+
+    def _journey_recipe_mark_modified(self):
+        if self.music_active_recipe_id:
+            self.music_active_recipe_id=""
+            self.music_active_recipe={}
 
     # ------------------------------- Music Map Journey Designer
     def _music_journey_render_stages(self):
