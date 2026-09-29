@@ -28,6 +28,7 @@ class FlowPlayer(QObject):
     positionChanged = Signal(int, int)
     playingChanged = Signal(bool)
     queueChanged = Signal(list)
+    manualAdvanced = Signal(dict, dict)
     error = Signal(str)
 
     def __init__(
@@ -163,9 +164,21 @@ class FlowPlayer(QObject):
 
     def next(self) -> None:
         if self.index + 1 < len(self.queue):
+            previous = dict(self.queue[self.index]) if 0 <= self.index < len(self.queue) else {}
             self.players[self.active].stop()
             self._crossfading = False
             self._load_index(self.index + 1, True)
+            current = dict(self.queue[self.index]) if 0 <= self.index < len(self.queue) else {}
+            self.manualAdvanced.emit(previous, current)
+
+    def replace_upcoming(self, tracks: list[dict[str, Any]]) -> None:
+        """Replace only the queue tail, preserving the track currently playing."""
+        incoming = [dict(item) for item in tracks]
+        if not self.queue or self.index < 0:
+            self.set_queue(incoming, 0, False)
+            return
+        self.queue = self.queue[: self.index + 1] + incoming
+        self.queueChanged.emit(self.queue)
 
     def previous(self) -> None:
         player = self.players[self.active]
