@@ -24,6 +24,7 @@ def _escape(value: Any) -> str:
 
 class RichNowPlayingWidget(QWidget):
     knowledgeChanged = Signal(object, object)
+    accentChanged = Signal(object)
 
     """Progressively enriched Now Playing view.
 
@@ -35,6 +36,7 @@ class RichNowPlayingWidget(QWidget):
     def __init__(self, metadata: RichMetadataService, parent=None):
         super().__init__(parent)
         self.metadata = metadata
+        self._accent_color = QColor("#7eb4ff")
         self.track: dict[str, Any] = {}
         self.bundle: dict[str, Any] = {}
         self.synced: list[dict[str, Any]] = []
@@ -359,6 +361,10 @@ class RichNowPlayingWidget(QWidget):
         self.artist_photo_thumb.setPixmap(QPixmap())
         self.artist_photo_thumb.setText("artist photo")
 
+    @property
+    def accent_color(self) -> QColor:
+        return QColor(self._accent_color)
+
     def _set_art(self, path: str) -> None:
         if path and Path(path).exists():
             pix = QPixmap(path)
@@ -368,6 +374,8 @@ class RichNowPlayingWidget(QWidget):
                 self._apply_accent(QImage(path))
                 return
         self.art.setPixmap(QPixmap()); self.art.setText("♫")
+        self._accent_color = QColor("#7eb4ff")
+        self.accentChanged.emit(QColor(self._accent_color))
         self.setStyleSheet("")
 
     def _apply_accent(self, image: QImage) -> None:
@@ -388,6 +396,8 @@ class RichNowPlayingWidget(QWidget):
             accent = accent.lighter(155)
         if accent.lightness() > 200:
             accent = accent.darker(125)
+        self._accent_color = QColor(accent)
+        self.accentChanged.emit(QColor(accent))
         dark = QColor(accent); dark = dark.darker(420)
         self.title.setStyleSheet(f"font-size:34px;font-weight:750;color:{accent.name()}")
         self.art.setStyleSheet(f"background:#181b20;border:2px solid {accent.name()};border-radius:18px")
