@@ -45,3 +45,38 @@ def test_example_capability_descriptors_validate():
     for path in examples:
         errors = list(validator.iter_errors(_load(path)))
         assert errors == [], f"{path}: {[error.message for error in errors]}"
+
+
+def test_extension_health_request_and_response_examples_validate():
+    request_schema = _load(SPEC / "health-request.schema.json")
+    response_schema = _load(SPEC / "health-response.schema.json")
+
+    request_errors = list(
+        Draft202012Validator(request_schema).iter_errors(
+            {"schema_version": "0.1", "check": "live"}
+        )
+    )
+    assert request_errors == []
+
+    response_errors = list(
+        Draft202012Validator(response_schema).iter_errors(
+            {
+                "schema_version": "0.1",
+                "status": "ready",
+                "upstream_checked": True,
+                "message": "Service reachable",
+                "latency_ms": 42,
+            }
+        )
+    )
+    assert response_errors == []
+
+    invalid = list(
+        Draft202012Validator(response_schema).iter_errors(
+            {
+                "schema_version": "0.1",
+                "status": "ready",
+            }
+        )
+    )
+    assert invalid
