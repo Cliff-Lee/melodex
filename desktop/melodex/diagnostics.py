@@ -77,6 +77,10 @@ def build_diagnostics(manager: Any) -> dict[str, Any]:
     for raw in manager.extensions():
         extension = dict(raw)
         extension_id = str(extension.get("id") or "")
+        try:
+            plugin_health = manager.plugin_health(extension_id) if extension_id else {}
+        except Exception:
+            plugin_health = {}
         extensions.append(
             {
                 "id": extension_id,
@@ -91,11 +95,7 @@ def build_diagnostics(manager: Any) -> dict[str, Any]:
                     str(value) for value in extension.get("preferred_for") or []
                 ],
                 "health": dict(extension.get("health") or {}),
-                "plugin_health": (
-                    manager.plugin_health(extension_id)
-                    if extension_id
-                    else {}
-                ),
+                "plugin_health": plugin_health,
                 "configuration_status": dict(
                     extension.get("configuration_status") or {}
                 ),
