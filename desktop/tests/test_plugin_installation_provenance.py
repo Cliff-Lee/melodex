@@ -39,6 +39,44 @@ for line in sys.stdin:
     return path
 
 
+def _extension_package(path: Path, version: str = "1.0.0") -> Path:
+    descriptor = {
+        "schema_version": "0.1",
+        "extension_id": "org.example.local-tool",
+        "name": "Local Tool",
+        "version": version,
+        "permissions": {
+            "network_hosts": [],
+            "local_files": False,
+            "browser_auth": False,
+        },
+        "entrypoints": {"python": "plugin.py"},
+        "contracts": [
+            {
+                "capability": "library_suggestions",
+                "contract_version": "0.1",
+                "method": "library.suggest",
+            }
+        ],
+    }
+    plugin = """import json, sys
+for line in sys.stdin:
+    request = json.loads(line)
+    params = request.get("params") or {}
+    result = {
+        "schema_version": "0.1",
+        "capability": "library_suggestions",
+        "intent": params.get("intent", "rediscover"),
+        "suggestions": [],
+    }
+    print(json.dumps({"jsonrpc":"2.0","id":request.get("id"),"result":result}), flush=True)
+"""
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr("capabilities.json", json.dumps(descriptor))
+        archive.writestr("plugin.py", plugin)
+    return path
+
+
 def test_manual_install_records_local_hash(tmp_path: Path):
     package = _provider_package(tmp_path / "manual.mdxprovider")
     manager = ProviderManager(tmp_path / "data")
@@ -156,5 +194,35 @@ def test_registry_install_rejects_package_version_mismatch(tmp_path: Path):
         with pytest.raises(RuntimeError, match="version mismatch"):
             manager.install_downloaded_registry_entry(entry, package)
         assert manager.installation_record("org.example.provenance") == {}
+    finally:
+        manager.close()
+
+
+def test_registry_tool_install_preserves_tool_kind(tmp_path: Path):
+    package = _extension_package(tmp_path / "tool.mdxplugin", "1.0.0")
+    digest = hashlib.sha256(package.read_bytes()).hexdigest()
+    entry = {
+        "id": "org.example.local-tool",
+        "name": "Local Tool",
+        "publisher": "Example Publisher",
+        "version": "1.0.0",
+        "kind": "tool",
+        "status": "example",
+        "capabilities": ["library_suggestions"],
+        "source": {"repository": "https://example.org/source"},
+        "distribution": {
+            "format": "mdxplugin",
+            "package_url": "https://example.org/tool.mdxplugin",
+            "sha256": digest,
+            "size_bytes": package.stat().st_size,
+        },
+    }
+    manager = ProviderManager(tmp_path / "data")
+    try:
+        result = manager.install_downloaded_registry_entry(entry, package)
+        assert result["kind"] == "tool"
+        record = manager.installation_record(result["id"])
+        assert record["kind"] == "tool"
+        assert record["registry_verified"] is True
     finally:
         manager.close()
