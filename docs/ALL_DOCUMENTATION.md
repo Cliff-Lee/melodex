@@ -75,6 +75,7 @@ This page is intentionally exhaustive. For a shorter route by goal, use the [doc
 - [Playlist interchange](PLAYLIST_INTERCHANGE.md)
 - [Rich Now Playing](RICH_NOW_PLAYING.md)
 - [Music Map](MUSIC_MAP.md)
+- [Journey Library](JOURNEY_LIBRARY.md)
 
 ## LLM / AI configuration
 
