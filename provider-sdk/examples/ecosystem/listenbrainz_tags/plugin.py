@@ -14,7 +14,7 @@ API = "https://api.listenbrainz.org/1/metadata/recording/"
 HEALTH_API = "https://api.listenbrainz.org/1/status/service-status"
 USER_AGENT = os.getenv(
     "MELODEX_USER_AGENT",
-    "Melodex-ListenBrainz-Tags-Example/0.1 (https://github.com/Cliff-Lee/melodex)",
+    "Melodex-ListenBrainz-Tags-Example/0.1.1 (https://github.com/Cliff-Lee/melodex)",
 )
 
 
