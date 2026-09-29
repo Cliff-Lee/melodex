@@ -38,7 +38,7 @@ The point is not merely convenience. The directory makes the trust boundary visi
 ## Package types
 
 ```text
-.mdxprovider   music-source/catalog/playback providers
+.mdxprovider   music providers (search, playback, recommendations, etc.)
 .mdxplugin     identity/metadata/artwork/lyrics extensions
 ```
 
