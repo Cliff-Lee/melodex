@@ -27,7 +27,8 @@ from .playlist_io import load_playlist, save_playlist
 from .metadata import RichMetadataService
 from .rich_now_playing import RichNowPlayingWidget
 from .plugin_directory import PluginDirectoryDialog
-from .plugin_configuration_dialog import configure_plugin, plugin_needs_setup
+from .plugin_configuration_dialog import configure_plugin
+from .plugin_onboarding import plugin_needs_setup
 from .diagnostics import write_diagnostics
 
 
