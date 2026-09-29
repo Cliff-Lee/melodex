@@ -44,6 +44,8 @@ Normal Now Playing enrichment gradually grows the factual graph. **Enrich select
 
 **Journey Designer** adds ordered constraints/waypoints to those same endpoints. Load the **Calm → Darker → Forgotten → Energetic** preset, add individual semantic stages, or add the selected mapped track as an exact waypoint. **Build journey** chooses transparent stage fits, highlights the chosen waypoints in purple and preserves an explanation for every hop. If the library cannot honestly satisfy a requested stage, Melodex says so rather than silently weakening the meaning.
 
+**Journey Live** makes that designed journey adaptive during playback. Choose **Play live journey**, then use Calmer/More energy/Darker/Brighter/Rhythmic/Familiar/Surprising/Rediscover steering, **Avoid current artist**, or **Replan remaining**. A manual Next/Skip replans only the queue tail; normal completion/crossfade does not. **Restore designed route** clears Live avoid rules and returns the unfinished journey toward the original design.
+
 For large analysed libraries, the first implementation displays a bounded representative map rather than trying to draw every track at once.
 
 See [Music Map](MUSIC_MAP.md) for the detailed model and privacy/network behaviour.

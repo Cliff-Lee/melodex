@@ -165,6 +165,8 @@ A selected node can be played, queued, or used as the anchor for a new Mind + Fl
 
 **Journey Designer** layers transparent semantic waypoints on top: Calm, Darker, Forgotten, Energetic, Bright, Rhythmic, Familiar, Surprising, or an exact chosen track. Its first preset builds a **Calm → Darker → Forgotten → Energetic** arc and records the fit/reason for every selected stage.
 
+**Journey Live** can then adapt only the unfinished tail while playback continues: steer calmer/more energetic/darker/brighter, ask for more rhythm/familiarity/surprise/rediscovery, avoid the current artist, or manually skip and replan. The current track and fixed destination stay anchored, and failed replans keep the existing queue.
+
 The first implementation is deterministic, local and dependency-light rather than using a remote embedding service or opaque ML model.
 
 ## Reference extensions

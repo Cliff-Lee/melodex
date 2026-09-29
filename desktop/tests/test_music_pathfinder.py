@@ -194,3 +194,45 @@ def test_reusable_path_network_matches_wrapper():
     direct = network.find("a", "c", mode="balanced")
     wrapped = find_music_path(model, knowledge, "a", "c", mode="balanced")
     assert direct == wrapped
+
+
+def test_pathfinder_forbidden_refs_are_not_used_as_intermediate_tracks():
+    model = _model(
+        [
+            _node("a", [0.0, 0.0]),
+            _node("blocked", [0.4, 0.0]),
+            _node("other", [0.45, 0.15]),
+            _node("c", [0.8, 0.0]),
+        ]
+    )
+    result = find_music_path(
+        model,
+        {"edges": []},
+        "a",
+        "c",
+        mode="sonic",
+        forbidden_refs={"blocked"},
+    )
+    assert result["found"] is True
+    assert "blocked" not in result["path_refs"]
+    assert result["path_refs"][0] == "a"
+    assert result["path_refs"][-1] == "c"
+
+
+def test_pathfinder_forbidden_destination_remains_allowed_anchor():
+    model = _model(
+        [
+            _node("a", [0.0, 0.0]),
+            _node("b", [0.4, 0.0]),
+        ]
+    )
+    result = find_music_path(
+        model,
+        {"edges": []},
+        "a",
+        "b",
+        mode="sonic",
+        forbidden_refs={"b"},
+    )
+    assert result["found"] is True
+    assert result["path_refs"] == ["a", "b"]

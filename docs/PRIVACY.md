@@ -84,6 +84,8 @@ Normal Now Playing enrichment can be remembered in the local Music Map knowledge
 
 **Journey Designer** is also local. Semantic stages are scored from Flow/taste values already present in the current map, and staged routes reuse the prepared Pathfinder graph. Building a journey does not send the stage sequence or your library to an LLM or remote planner.
 
+**Journey Live** remains local as it adapts playback. Manual skip events, steering choices and temporary avoid rules are applied to the in-memory route planner; they are not sent to an LLM, metadata provider, plugin or remote planning service.
+
 ## Local intelligence plugins
 
 The `library.suggest` contract is designed so useful local recommendation tools do not need the user's filesystem paths or taste database.

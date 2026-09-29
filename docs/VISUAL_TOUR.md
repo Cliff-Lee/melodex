@@ -97,7 +97,9 @@ For a more deliberate route, use **Pathfinder**: set a start and destination, ch
 
 **Journey Designer** goes one step further: add semantic stages such as Calm, Darker, Forgotten or Energetic—or an exact selected-track waypoint—and Melodex will build a staged route through them. The included first preset is **Calm → Darker → Forgotten → Energetic**.
 
-The map uses cached analysis/knowledge by default; **Analyse my library** and the knowledge-enrichment buttons remain explicit user actions. Pathfinder and Journey Designer themselves are local and do not trigger network enrichment.
+Choose **Play live journey** to make the unfinished route adaptive while listening. Manual Next/Skip, steering or avoid rules can rebuild only the remaining queue while keeping the current song and destination fixed. Automatic transitions do not trigger replanning.
+
+The map uses cached analysis/knowledge by default; **Analyse my library** and the knowledge-enrichment buttons remain explicit user actions. Pathfinder, Journey Designer and Journey Live themselves are local and do not trigger network enrichment.
 
 ## 8. Moments
 

@@ -288,11 +288,15 @@ class MusicPathNetwork:
         *,
         mode: str = "balanced",
         max_hops: int = 12,
+        forbidden_refs: set[str] | None = None,
     ) -> dict[str, Any]:
         start_ref, end_ref = str(start_ref), str(end_ref)
         mode = str(mode or "balanced")
         if mode not in {"balanced", "sonic", "knowledge"}:
             mode = "balanced"
+        forbidden = {str(ref) for ref in set(forbidden_refs or set()) if str(ref)}
+        forbidden.discard(start_ref)
+        forbidden.discard(end_ref)
 
         if start_ref not in self.nodes or end_ref not in self.nodes:
             return {
@@ -334,6 +338,8 @@ class MusicPathNetwork:
             if hops >= max_hops:
                 continue
             for other, edge_cost, explanation in adjacency.get(ref, []):
+                if other in forbidden:
+                    continue
                 nxt = (other, hops + 1)
                 candidate = cost_so_far + edge_cost
                 if candidate + 1e-12 >= best.get(nxt, float("inf")):
@@ -410,6 +416,7 @@ def find_music_path(
     *,
     mode: str = "balanced",
     max_hops: int = 12,
+    forbidden_refs: set[str] | None = None,
 ) -> dict[str, Any]:
     """Find an explainable route through mapped local tracks."""
 
@@ -419,6 +426,7 @@ def find_music_path(
         end_ref,
         mode=mode,
         max_hops=max_hops,
+        forbidden_refs=forbidden_refs,
     )
 
 
