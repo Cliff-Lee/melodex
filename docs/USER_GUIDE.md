@@ -40,6 +40,8 @@ The **Connections** selector separates two questions:
 
 Normal Now Playing enrichment gradually grows the factual graph. **Enrich selected** enriches one mapped track; **Enrich map (+8)** explicitly enriches a bounded batch using MusicBrainz and enabled context plugins.
 
+**Pathfinder** can then route between two mapped tracks. Set a start and destination, choose **Balanced**, **Sonic** or **Knowledge-first**, and press **Find path**. The route is highlighted and every hop explains whether it used Flow similarity, a factual relationship, or both. **Play route** and **Queue route** turn the result directly into listening.
+
 For large analysed libraries, the first implementation displays a bounded representative map rather than trying to draw every track at once.
 
 See [Music Map](MUSIC_MAP.md) for the detailed model and privacy/network behaviour.
