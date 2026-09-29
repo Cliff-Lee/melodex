@@ -7,12 +7,14 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import Qt, QTimer, Signal, QObject
+from PySide6.QtCore import QEvent, Qt, QTimer, Signal, QObject
 from PySide6.QtGui import QAction, QDesktopServices, QPixmap
+from PySide6.QtMultimedia import QMediaPlayer
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QListWidget,
     QListWidgetItem, QStackedWidget, QLineEdit, QComboBox, QFileDialog, QMessageBox,
-    QSlider, QTextEdit, QInputDialog, QDialog, QFormLayout, QDialogButtonBox, QCheckBox
+    QSlider, QTextEdit, QInputDialog, QDialog, QFormLayout, QDialogButtonBox, QCheckBox,
+    QTabWidget,
 )
 
 from .paths import app_data_dir
@@ -44,6 +46,7 @@ from .bridge_server import ProviderBridge
 from .playlist_io import load_playlist, save_playlist
 from .metadata import RichMetadataService
 from .rich_now_playing import RichNowPlayingWidget
+from .living_canvas import LivingCanvasView
 from .plugin_directory import PluginDirectoryDialog
 from .plugin_configuration_dialog import configure_plugin
 from .plugin_onboarding import plugin_needs_setup
@@ -54,6 +57,10 @@ from .diagnostics import write_diagnostics
 class WorkerSignals(QObject):
     done = Signal(object)
     error = Signal(str)
+
+
+class _VisualAnalysisSignals(QObject):
+    ready = Signal(str, object)
 
 
 def _track_text(t: dict[str, Any]) -> str:
@@ -88,6 +95,10 @@ class MainWindow(QMainWindow):
         self.current_history_id = 0
         self.current_track_started = 0.0
         self.current_track: dict[str, Any] | None = None
+        self._visual_position_ms = 0
+        self._visual_duration_ms = 0
+        self._visual_analysis_signals = _VisualAnalysisSignals(self)
+        self._visual_analysis_signals.ready.connect(self._visual_analysis_loaded)
         self.music_path_start_ref = ""
         self.music_path_end_ref = ""
         self.music_path_result: dict[str, Any] = {}
@@ -218,10 +229,21 @@ class MainWindow(QMainWindow):
         self.home_status=QLabel(); self.home_status.setWordWrap(True); l.addWidget(self.home_status); l.addStretch(1)
 
     def _build_now_playing(self):
-        l=self._page_layout("now_playing","Now playing","Artwork, local lyrics, artist relationships and recording credits are enriched independently from the playback source.")
-        self.rich_now=RichNowPlayingWidget(self.metadata,self)
+        l=self._page_layout(
+            "now_playing",
+            "Now playing",
+            "A living, seekable musical fingerprint alongside artwork, lyrics and track context.",
+        )
+        self.now_views = QTabWidget()
+        self.living_canvas = LivingCanvasView(self)
+        self.rich_now = RichNowPlayingWidget(self.metadata, self)
         self.rich_now.knowledgeChanged.connect(self._remember_now_playing_knowledge)
-        l.addWidget(self.rich_now,1)
+        self.rich_now.accentChanged.connect(self.living_canvas.set_accent_color)
+        self.living_canvas.seekRequested.connect(self.player.seek)
+        self.player.playingChanged.connect(self.living_canvas.set_playing)
+        self.now_views.addTab(self.living_canvas, "Living Canvas")
+        self.now_views.addTab(self.rich_now, "Details")
+        l.addWidget(self.now_views, 1)
 
     def _build_for_you(self):
         l=self._page_layout("for_you","Play for me","Melodex uses only local listening history and audio analysis unless you explicitly connect an LLM.")
@@ -511,6 +533,11 @@ class MainWindow(QMainWindow):
         l.addWidget(self.source_power_panel)
 
     # ------------------------------- navigation/data
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() == QEvent.WindowStateChange and hasattr(self, "living_canvas"):
+            self.living_canvas.set_window_minimized(self.isMinimized())
+
     def open_page(self, name: str):
         self.current_page=name; self.stack.setCurrentWidget(self.pages[name])
         if name=="home": self._show_home()
@@ -2504,6 +2531,11 @@ class MainWindow(QMainWindow):
         if self.current_track and self.current_track_started and time.time()-self.current_track_started<30:
             self.state.record_skip(self.current_track)
         self.current_track=dict(t); self.current_track_started=time.time(); self.current_history_id=self.state.record_play(t)
+        self._visual_position_ms = 0
+        self._visual_duration_ms = 0
+        if hasattr(self, "living_canvas"):
+            self.living_canvas.set_track(self.current_track, None)
+            self._request_cached_visual_analysis(self.current_track)
         if hasattr(self,"music_map"):
             self.music_map.highlight_track(t)
         if self.music_live_active:
@@ -2520,9 +2552,38 @@ class MainWindow(QMainWindow):
         self.now_title.setText(str(t.get("title") or "Unknown track")); base=f"{t.get('artist','Unknown artist')}   ·   {t.get('album','')}   ·   {t.get('provider_id','')}"; src=str(t.get("source_page") or ""); attr=str(t.get("attribution") or ""); self.now_meta.setText(base + ((f"   ·   <a href=\"{src}\">{attr or 'Source'}</a>") if src else ""))
         if hasattr(self,"rich_now"):self.rich_now.set_track(dict(t))
 
+    def _request_cached_visual_analysis(self, track: dict[str, Any]) -> None:
+        local_path = str(track.get("local_path") or "").strip()
+        if not local_path:
+            return
+
+        def lookup() -> None:
+            try:
+                analysis = self.flow.cached_analysis_for(Path(local_path))
+            except Exception:
+                analysis = None
+            self._visual_analysis_signals.ready.emit(local_path, analysis)
+
+        threading.Thread(target=lookup, daemon=True).start()
+
+    def _visual_analysis_loaded(self, local_path: str, analysis: object) -> None:
+        current_path = str((self.current_track or {}).get("local_path") or "")
+        if self._closing or not local_path or local_path != current_path:
+            return
+        self.living_canvas.set_track(dict(self.current_track or {}), analysis)
+        self.living_canvas.set_position(self._visual_position_ms, self._visual_duration_ms)
+
     def _on_position(self,pos,dur):
         if self._closing:
             return
+        self._visual_position_ms = int(pos)
+        self._visual_duration_ms = int(dur)
+        if hasattr(self,"living_canvas"):
+            self.living_canvas.set_position(pos, dur)
+            active_player = self.player.players[self.player.active]
+            self.living_canvas.set_playing(
+                active_player.playbackState() == QMediaPlayer.PlayingState
+            )
         if hasattr(self,"rich_now"):self.rich_now.set_position(pos)
         if dur>0:self.seek.setValue(int(1000*pos/dur))
         if dur>0 and pos>=dur-1500 and self.current_history_id:
