@@ -29,7 +29,7 @@ Use the colour selector to view the same landscape through different lenses:
 - **Taste** — stronger positive local taste signals;
 - **Rediscovery** — tracks that have positive history and may be ready to return.
 
-Click a node to inspect it. Double-click to play it. The page can also **Add selected to queue** or **Start journey here**, which hands that track back to Mind + Flow as the session anchor.
+Click a node to inspect it. Double-click to play it. The page can also **Add selected to queue** or **Start Mind journey here**, which hands that track back to Mind + Flow as the session anchor.
 
 The map uses cached local analysis only. **Analyse my library** is an explicit action; simply opening the map does not silently analyse every file.
 
