@@ -105,6 +105,7 @@ def replan_live_journey(
     steering: str = "",
     avoid_refs: set[str] | None = None,
     avoid_artists: set[str] | None = None,
+    reopen_stage_refs: set[str] | None = None,
     max_hops_per_segment: int = 8,
 ) -> dict[str, Any]:
     """Replan only the unfinished tail of an active designed journey."""
@@ -112,6 +113,32 @@ def replan_live_journey(
     current_ref = str(current_ref or "")
     destination_ref = str(destination_ref or "")
     remaining = remaining_journey_stages(active_route, current_ref)
+    reopen = {str(ref) for ref in set(reopen_stage_refs or set()) if str(ref)}
+    if reopen:
+        reopened: list[dict[str, Any]] = []
+        existing = {
+            (
+                str(stage.get("type") or "constraint"),
+                str(stage.get("constraint") or ""),
+                str(stage.get("ref") or ""),
+            )
+            for stage in remaining
+        }
+        for raw in list(active_route.get("stages") or []):
+            if not isinstance(raw, dict):
+                continue
+            if str(raw.get("ref") or "") not in reopen:
+                continue
+            spec = _stage_spec(dict(raw))
+            key = (
+                str(spec.get("type") or "constraint"),
+                str(spec.get("constraint") or ""),
+                str(spec.get("ref") or ""),
+            )
+            if key not in existing:
+                reopened.append(spec)
+                existing.add(key)
+        remaining = reopened + remaining
 
     steering_stage = live_steering_stage(steering)
     requested_stages = list(remaining)
