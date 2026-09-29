@@ -6,7 +6,7 @@
 - Method: `track.getSimilar`
 - Authentication: user/developer-supplied API key.
 - Melodex ships no shared Last.fm credential.
-- Declared network host: `ws.audioscrobbler.com`.
+- Declared hosts: `ws.audioscrobbler.com` for API calls and `lastfm.freetls.fastly.net` because recommendation metadata may reference Last.fm artwork assets.
 
 Developers/users should review the current Last.fm API terms applicable to their use of an API key. This example is intentionally metadata/discovery-only and does not scrape pages or attempt to derive playback URLs.
 
