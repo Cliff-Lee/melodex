@@ -1,0 +1,227 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://melodex.example/schema/extensions/v0.1/library-suggest-request.schema.json",
+  "title": "Melodex local library suggestion request v0.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "capability",
+    "intent",
+    "tracks",
+    "limit"
+  ],
+  "$defs": {
+    "Analysis": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "bpm": {
+          "type": "number",
+          "minimum": 0
+        },
+        "rhythm_confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "key_pc": {
+          "type": "integer",
+          "minimum": -1,
+          "maximum": 11
+        },
+        "key_mode": {
+          "type": "string",
+          "enum": [
+            "",
+            "major",
+            "minor"
+          ]
+        },
+        "key_confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "loudness_db": {
+          "type": "number"
+        },
+        "energy": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "energy_start": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "energy_end": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "spectral_centroid": {
+          "type": "number",
+          "minimum": 0
+        },
+        "onset_density": {
+          "type": "number",
+          "minimum": 0
+        },
+        "intro_mixability": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "outro_mixability": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "ending_type": {
+          "type": "string",
+          "enum": [
+            "fade",
+            "abrupt",
+            "natural"
+          ]
+        }
+      }
+    },
+    "Taste": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "plays": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "completes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "skips": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "loves": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "dislikes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "keeps": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "completion_rate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "skip_rate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "days_since_last_played": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        }
+      }
+    },
+    "TrackProfile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ref",
+        "title",
+        "artist",
+        "album",
+        "duration_ms",
+        "analysis",
+        "taste"
+      ],
+      "properties": {
+        "ref": {
+          "type": "string",
+          "pattern": "^t[0-9]+$"
+        },
+        "title": {
+          "type": "string"
+        },
+        "artist": {
+          "type": "string"
+        },
+        "album": {
+          "type": "string"
+        },
+        "duration_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "analysis": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Analysis"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "taste": {
+          "$ref": "#/$defs/Taste"
+        }
+      }
+    }
+  },
+  "properties": {
+    "schema_version": {
+      "const": "0.1"
+    },
+    "capability": {
+      "const": "library_suggestions"
+    },
+    "intent": {
+      "type": "string",
+      "enum": [
+        "similar",
+        "rediscover",
+        "bridge"
+      ]
+    },
+    "tracks": {
+      "type": "array",
+      "maxItems": 5000,
+      "items": {
+        "$ref": "#/$defs/TrackProfile"
+      }
+    },
+    "seed_refs": {
+      "type": "array",
+      "uniqueItems": true,
+      "maxItems": 2,
+      "items": {
+        "type": "string",
+        "pattern": "^t[0-9]+$"
+      }
+    },
+    "limit": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 50
+    },
+    "adventure": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    }
+  }
+}
