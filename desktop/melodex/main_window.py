@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QListWidget,
     QListWidgetItem, QStackedWidget, QLineEdit, QComboBox, QFileDialog, QMessageBox,
     QSlider, QTextEdit, QInputDialog, QDialog, QFormLayout, QDialogButtonBox, QCheckBox,
-    QTabWidget,
+    QTabWidget, QApplication, QPlainTextEdit,
 )
 
 from .paths import app_data_dir
@@ -43,7 +43,7 @@ from .user_state import UserState
 from .player import FlowPlayer
 from .llm_bridge import LLMClient, LLMSettings, llm_track_summary
 from .bridge_server import ProviderBridge
-from .playlist_io import load_playlist, save_playlist
+from .playlist_io import load_playlist, parse_playlist_text, save_playlist
 from .metadata import RichMetadataService
 from .rich_now_playing import RichNowPlayingWidget
 from .living_canvas import LivingCanvasView
@@ -497,7 +497,7 @@ class MainWindow(QMainWindow):
     def _build_playlists(self):
         l=self._page_layout("playlists","Playlists","Saved journeys and imported playlists live locally. Import or export XSPF, M3U and M3U8.")
         self.playlists_list=QListWidget(); self.playlists_list.itemDoubleClicked.connect(self._play_saved_playlist); l.addWidget(self.playlists_list,1)
-        row=QHBoxLayout(); imp=QPushButton("Import playlist…"); imp.clicked.connect(self._import_playlist_file); exp=QPushButton("Export selected…"); exp.clicked.connect(self._export_selected_playlist); expq=QPushButton("Export queue…"); expq.clicked.connect(self._export_queue); row.addWidget(imp); row.addWidget(exp); row.addWidget(expq); row.addStretch(1); l.addLayout(row)
+        row=QHBoxLayout(); imp=QPushButton("Import playlist…"); imp.clicked.connect(self._import_playlist_file); ai=QPushButton("Paste from AI…"); ai.clicked.connect(self._open_ai_playlist_import); exp=QPushButton("Export selected…"); exp.clicked.connect(self._export_selected_playlist); expq=QPushButton("Export queue…"); expq.clicked.connect(self._export_queue); row.addWidget(imp); row.addWidget(ai); row.addWidget(exp); row.addWidget(expq); row.addStretch(1); l.addLayout(row)
 
     def _build_moments(self):
         l=self._page_layout("moments","Moments","Bookmarks inside songs — the exact musical moments you wanted to remember.")
@@ -1051,6 +1051,74 @@ class MainWindow(QMainWindow):
         msg=f"Imported {name}: {len(tracks)} playable"
         if unresolved:msg+=f" · {len(unresolved)} unresolved (kept for future matching)"
         self.statusBar().showMessage(msg,7000)
+
+    def _open_ai_playlist_import(self):
+        dialog=QDialog(self); dialog.setWindowTitle("Import an AI playlist"); dialog.resize(900,650)
+        layout=QVBoxLayout(dialog); layout.setContentsMargins(24,22,24,20); layout.setSpacing(14)
+        title=QLabel("Import an AI playlist"); title.setStyleSheet("font-size: 25px; font-weight: 700;")
+        subtitle=QLabel("Paste a playlist from ChatGPT, Claude, Gemini or another AI. JSON, Markdown lists or tables, TXT, CSV and M3U/M3U8 are supported.")
+        subtitle.setWordWrap(True); subtitle.setStyleSheet("color: #9aa4b8; font-size: 14px;")
+        layout.addWidget(title); layout.addWidget(subtitle)
+        editor=QPlainTextEdit(); editor.setPlaceholderText("Paste the playlist here…"); editor.setMinimumHeight(300); layout.addWidget(editor,1)
+        actions=QHBoxLayout()
+        copy_prompt=QPushButton("Copy ChatGPT Prompt")
+        import_file=QPushButton("Import File…")
+        paste_clipboard=QPushButton("Paste Clipboard")
+        actions.addWidget(copy_prompt); actions.addWidget(import_file); actions.addWidget(paste_clipboard); actions.addStretch(1)
+        layout.insertLayout(2,actions)
+        privacy=QLabel("No AI connection is needed, and Melodex does not send this text to an AI service. Track matching uses your connected music sources.")
+        privacy.setWordWrap(True); privacy.setStyleSheet("color: #9aa4b8;")
+        layout.addWidget(privacy)
+        buttons=QDialogButtonBox(QDialogButtonBox.Cancel)
+        analyze=buttons.addButton("Analyse Playlist",QDialogButtonBox.AcceptRole)
+        layout.addWidget(buttons)
+
+        prompt=("Create a playlist of real, released tracks. Return valid JSON only, using this structure:\n"
+                '{\n  "melodex_playlist": 1,\n  "name": "Playlist name",\n'
+                '  "description": "Short description",\n  "tracks": [\n'
+                '    {"artist": "Artist name", "title": "Exact track title", "album": "Album when known", "year": 2006, "reason": "Optional short reason"}\n'
+                '  ]\n}\nUse canonical artist and track names, and keep the tracks in the intended listening order. Do not add commentary outside the JSON.')
+
+        def do_copy_prompt():
+            QApplication.clipboard().setText(prompt)
+            self.statusBar().showMessage("Playlist prompt copied. Paste it into your AI chat.",5000)
+
+        def do_paste_clipboard():
+            value=QApplication.clipboard().text()
+            if not value.strip():
+                QMessageBox.information(dialog,"Clipboard is empty","Copy a playlist from your AI chat first, then choose Paste Clipboard.")
+                return
+            editor.setPlainText(value)
+
+        def do_import_file():
+            filename,_=QFileDialog.getOpenFileName(dialog,"Import playlist",filter="Playlist/text files (*.json *.txt *.csv *.tsv *.xspf *.m3u *.m3u8);;All files (*)")
+            if not filename:return
+            path=Path(filename)
+            try:
+                if path.suffix.lower() in {".xspf",".m3u",".m3u8"}:
+                    data=load_playlist(path)
+                else:
+                    data=parse_playlist_text(path.read_text("utf-8-sig",errors="replace"))
+                    if data.get("name") in {"Pasted playlist","AI playlist"}:
+                        data["name"]=path.stem
+                editor.setPlainText(json.dumps(data,ensure_ascii=False,indent=2))
+            except Exception as exc:
+                QMessageBox.warning(dialog,"Could not import playlist",str(exc))
+
+        def do_analyze():
+            try:
+                data=parse_playlist_text(editor.toPlainText())
+            except Exception as exc:
+                QMessageBox.warning(dialog,"Could not read playlist",str(exc)); return
+            dialog.accept()
+            self._import_ai_playlist(data,source="ai-paste")
+
+        copy_prompt.clicked.connect(do_copy_prompt)
+        import_file.clicked.connect(do_import_file)
+        paste_clipboard.clicked.connect(do_paste_clipboard)
+        buttons.rejected.connect(dialog.reject)
+        analyze.clicked.connect(do_analyze)
+        dialog.exec()
 
     def _playlist_export_path(self,title):
         path,chosen=QFileDialog.getSaveFileName(self,title,filter="XSPF Playlist (*.xspf);;M3U8 Playlist (*.m3u8);;M3U Playlist (*.m3u)")
@@ -2859,7 +2927,7 @@ class MainWindow(QMainWindow):
         elif typ=="open_view":self.open_page(str(args.get("view","home")) if str(args.get("view","home")) in self.pages else "home")
         elif typ=="import_playlist":self._import_ai_playlist(args)
 
-    def _import_ai_playlist(self,args):
+    def _import_ai_playlist(self,args,source="llm"):
         requested=[dict(x) for x in list(args.get("tracks") or []) if isinstance(x,dict)]
         if not requested:
             self.statusBar().showMessage("The AI playlist did not contain any tracks",4000); return
@@ -2867,13 +2935,14 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(f"Matching {len(requested)} playlist tracks across your sources…")
         self._run_async(
             lambda:self.providers.resolve_playlist(requested),
-            lambda result:self._finish_ai_playlist(playlist_id,name,description,result),
+            lambda result:self._finish_ai_playlist(playlist_id,name,description,result,requested,source),
         )
 
-    def _finish_ai_playlist(self,playlist_id,name,description,result):
+    def _finish_ai_playlist(self,playlist_id,name,description,result,requested=None,source="llm"):
         tracks=list(result.get("tracks") or []); unresolved=list(result.get("unresolved") or [])
         payload={"tracks":tracks,"unresolved":unresolved,"requested":int(result.get("requested") or len(tracks)+len(unresolved))}
-        self.state.save_playlist(playlist_id,name,description,"llm",payload); self._refresh_playlists()
+        if requested is not None:payload["requested_tracks"]=[dict(x) for x in requested]
+        self.state.save_playlist(playlist_id,name,description,source,payload); self._refresh_playlists()
         if tracks:self.player.set_queue(tracks,0,True)
         msg=f"{name}: matched {len(tracks)} track{'s' if len(tracks)!=1 else ''}"
         if unresolved:msg+=f" · {len(unresolved)} unresolved"
