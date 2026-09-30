@@ -38,7 +38,7 @@ printf '%s  %s\n' "$APPIMAGETOOL_SHA256" "$APPIMAGETOOL" | sha256sum --check --s
 printf '%s  %s\n' "$RUNTIME_SHA256" "$RUNTIME_FILE" | sha256sum --check --status
 chmod +x "$APPIMAGETOOL"
 
-python linux/build_packages.py \
+python linux/build_packages.py "$@" \
   --appimagetool "$APPIMAGETOOL" \
   --runtime-file "$RUNTIME_FILE" \
   --output-dir dist

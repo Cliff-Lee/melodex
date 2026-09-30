@@ -9,7 +9,7 @@ For the distinction between app, SDK, protocol and plugin versions, see [Release
 While development is in progress, `main` should normally use a development version such as:
 
 ```text
-0.5.1.dev0
+0.6.0.dev0
 ```
 
 The working release summary is [`docs/releases/next.md`](releases/next.md). Before release, review it against the tested build, move/copy it to `docs/releases/v<version>.md`, remove the draft status, and verify the listed downloads against the artifacts CI produced. The release workflow uses that versioned file as the GitHub Release description.
@@ -97,9 +97,11 @@ When a strict release version such as `0.3.0` reaches `main`, the **Release** wo
 5. dispatches desktop, Android and Linux workflows against that exact commit;
 6. attaches their assets to the same GitHub Release after package smoke checks pass.
 
-Ordinary development versions such as `0.5.1.dev0` do **not** create a release.
+Ordinary development versions such as `0.6.0.dev0` do **not** create a release.
 
 A manually pushed `v*` tag remains a fallback path, and tag-triggered workflows still validate tag/version agreement before packaging.
+
+Pull request and development-branch Linux builds may package a `.devN` version for installation smoke tests. The `.deb` records that test build as `X.Y.Z~devN`, which sorts below the matching stable release. These packages are CI artifacts only; release-tag builds require the exact strict `X.Y.Z` version and only those tagged builds are attached to a GitHub Release.
 
 ## 5. Expected release assets
 
