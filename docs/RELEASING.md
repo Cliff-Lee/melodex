@@ -9,13 +9,15 @@ For the distinction between app, SDK, protocol and plugin versions, see [Release
 While development is in progress, `main` should normally use a development version such as:
 
 ```text
-0.4.1.dev0
+0.6.1.dev0
 ```
 
-When ready to release `0.5.0`, update every application-version surface with one command:
+Keep the working release summary in `docs/releases/next.md`. Before release, review it against the tested build, move it to `docs/releases/v<version>.md`, and verify the listed downloads against the artifacts CI produced. The release workflow uses that versioned file as the GitHub Release description. The v0.6.0 release notes are at [`docs/releases/v0.6.0.md`](releases/v0.6.0.md).
+
+When the next release is ready, choose its stable version and update every application-version surface with one command. For example:
 
 ```bash
-python scripts/set_version.py 0.5.0
+python scripts/set_version.py 0.7.0
 ```
 
 That updates:
@@ -38,7 +40,7 @@ python scripts/version_check.py
 For a release tag, the same check is:
 
 ```bash
-python scripts/version_check.py --release-tag v0.5.0
+python scripts/version_check.py --release-tag v0.7.0
 ```
 
 A release check fails if:
@@ -82,7 +84,7 @@ Example:
 
 ```bash
 git add .
-git commit -m "release: v0.5.0"
+git commit -m "release: v0.6.0"
 git push origin main
 ```
 
@@ -90,14 +92,16 @@ When a strict release version such as `0.3.0` reaches `main`, the **Release** wo
 
 1. runs the release checks and test suites again;
 2. verifies the release tag name against all application-version surfaces;
-3. creates or verifies the exact `v0.5.0` tag at that commit;
+3. creates or verifies the exact `v0.6.0` tag at that commit;
 4. creates the GitHub Release and uploads the source archive;
 5. dispatches desktop, Android and Linux workflows against that exact commit;
 6. attaches their assets to the same GitHub Release after package smoke checks pass.
 
-Ordinary development versions such as `0.3.1.dev0` do **not** create a release.
+Ordinary development versions such as `0.6.1.dev0` do **not** create a release.
 
 A manually pushed `v*` tag remains a fallback path, and tag-triggered workflows still validate tag/version agreement before packaging.
+
+Pull request and development-branch Linux builds may package a `.devN` version for installation smoke tests. The `.deb` records that test build as `X.Y.Z~devN`, which sorts below the matching stable release. These packages are CI artifacts only; release-tag builds require the exact strict `X.Y.Z` version and only those tagged builds are attached to a GitHub Release.
 
 ## 5. Expected release assets
 
@@ -122,9 +126,7 @@ After the release, choose the next development target.
 For example:
 
 ```bash
-python scripts/set_version.py 0.3.1.dev0
-# or
-python scripts/set_version.py 0.5.0.dev0
+python scripts/set_version.py 0.7.1.dev0
 
 python scripts/version_check.py
 git add .

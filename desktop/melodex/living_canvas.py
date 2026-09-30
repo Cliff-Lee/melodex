@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from html import escape
 from pathlib import Path
 from typing import Any
 
@@ -29,7 +30,7 @@ class EnergyJourneySlider(QSlider):
     def __init__(self, parent=None):
         super().__init__(Qt.Horizontal, parent)
         self.setRange(0, 1000)
-        self.setFixedHeight(58)
+        self.setFixedHeight(64)
         self.setTracking(True)
         self.setFocusPolicy(Qt.StrongFocus)
         self.setCursor(Qt.PointingHandCursor)
@@ -56,7 +57,7 @@ class EnergyJourneySlider(QSlider):
         self.setValue(value)
 
     def _chart_rect(self) -> QRectF:
-        return QRectF(8.0, 4.0, max(1.0, self.width() - 16.0), max(12.0, self.height() - 41.0))
+        return QRectF(12.0, 5.0, max(1.0, self.width() - 24.0), max(24.0, self.height() - 29.0))
 
     def _fraction_for_x(self, x: float) -> float:
         chart = self._chart_rect()
@@ -66,7 +67,7 @@ class EnergyJourneySlider(QSlider):
         self.setValue(int(round(self._fraction_for_x(x) * self.maximum())))
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
-        if event.button() == Qt.LeftButton and self._chart_rect().contains(event.position()):
+        if event.button() == Qt.LeftButton and self.rect().contains(event.position().toPoint()):
             self._chart_drag = True
             self.setFocus(Qt.MouseFocusReason)
             self.setSliderDown(True)
@@ -92,47 +93,92 @@ class EnergyJourneySlider(QSlider):
         super().mouseReleaseEvent(event)
 
     def paintEvent(self, event) -> None:
-        super().paintEvent(event)
         chart = self._chart_rect()
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing, True)
-
-        muted = QColor(self._accent)
-        muted.setAlpha(48)
-        painter.setPen(QPen(muted, 1.0, Qt.DashLine))
-        painter.drawLine(QPointF(chart.left(), chart.bottom()), QPointF(chart.right(), chart.bottom()))
-
+        fraction = self.value() / max(1, self.maximum())
+        points: list[QPointF] = []
         if len(self._curve) >= 2:
-            line = QPainterPath()
-            fill = QPainterPath()
-            for i, value in enumerate(self._curve):
-                x = chart.left() + chart.width() * i / (len(self._curve) - 1)
-                y = chart.bottom() - chart.height() * value
-                if i == 0:
-                    line.moveTo(x, y)
-                    fill.moveTo(x, chart.bottom())
-                    fill.lineTo(x, y)
-                else:
-                    line.lineTo(x, y)
-                    fill.lineTo(x, y)
-            fill.lineTo(chart.right(), chart.bottom())
+            for index, value in enumerate(self._curve):
+                x = chart.left() + chart.width() * index / (len(self._curve) - 1)
+                y = chart.bottom() - chart.height() * (0.08 + 0.84 * value)
+                points.append(QPointF(x, y))
+
+        if points:
+            line = QPainterPath(points[0])
+            fill = QPainterPath(QPointF(points[0].x(), chart.bottom()))
+            fill.lineTo(points[0])
+            for point in points[1:]:
+                line.lineTo(point)
+                fill.lineTo(point)
+            fill.lineTo(points[-1].x(), chart.bottom())
             fill.closeSubpath()
             area = QColor(self._accent)
-            area.setAlpha(22)
+            area.setAlpha(17)
             painter.setPen(Qt.NoPen)
             painter.setBrush(area)
             painter.drawPath(fill)
-            stroke = QColor(self._accent)
-            stroke.setAlpha(190)
+            muted = QColor(self._accent)
+            muted.setAlpha(95)
             painter.setBrush(Qt.NoBrush)
-            painter.setPen(QPen(stroke, 1.5, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+            painter.setPen(QPen(muted, 1.15, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
             painter.drawPath(line)
 
-        cursor_x = chart.left() + chart.width() * self.value() / max(1, self.maximum())
-        cursor = QColor(self._accent)
-        cursor.setAlpha(235)
-        painter.setPen(QPen(cursor, 1.3))
-        painter.drawLine(QPointF(cursor_x, chart.top()), QPointF(cursor_x, chart.bottom()))
+            curve_position = fraction * (len(points) - 1)
+            left_index = min(len(points) - 1, int(curve_position))
+            right_index = min(len(points) - 1, left_index + 1)
+            blend = curve_position - left_index
+            cursor_y = points[left_index].y() * (1.0 - blend) + points[right_index].y() * blend
+            active_points = points[: left_index + 1]
+            active_cursor = QPointF(chart.left() + chart.width() * fraction, cursor_y)
+            if not active_points or abs(active_points[-1].x() - active_cursor.x()) > 0.1:
+                active_points.append(active_cursor)
+            active_path = QPainterPath(active_points[0])
+            for point in active_points[1:]:
+                active_path.lineTo(point)
+            active = QColor(self._accent)
+            active.setAlpha(226)
+            painter.setPen(QPen(active, 1.8, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+            painter.drawPath(active_path)
+        else:
+            cursor_y = chart.center().y()
+
+        baseline = chart.bottom() + 15.0
+        muted = QColor(self._accent)
+        muted.setAlpha(48)
+        painter.setPen(QPen(muted, 2.0, Qt.SolidLine, Qt.RoundCap))
+        painter.drawLine(QPointF(chart.left(), baseline), QPointF(chart.right(), baseline))
+        active = QColor(self._accent)
+        active.setAlpha(190)
+        cursor_x = chart.left() + chart.width() * fraction
+        painter.setPen(QPen(active, 2.0, Qt.SolidLine, Qt.RoundCap))
+        painter.drawLine(QPointF(chart.left(), baseline), QPointF(cursor_x, baseline))
+        for tick in range(5):
+            x = chart.left() + chart.width() * tick / 4
+            tick_color = QColor(self._accent)
+            tick_color.setAlpha(68)
+            painter.setPen(QPen(tick_color, 1.0))
+            painter.drawLine(QPointF(x, baseline - 3.0), QPointF(x, baseline + 3.0))
+
+        painter.setPen(Qt.NoPen)
+        halo = QColor(self._accent)
+        halo.setAlpha(52)
+        painter.setBrush(halo)
+        painter.drawEllipse(QPointF(cursor_x, cursor_y), 9.0, 9.0)
+        ring = QColor(self._accent)
+        ring.setAlpha(228)
+        painter.setPen(QPen(ring, 1.5))
+        painter.setBrush(QColor("#0e141d"))
+        painter.drawEllipse(QPointF(cursor_x, baseline), 5.0, 5.0)
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor("#eff6ff"))
+        painter.drawEllipse(QPointF(cursor_x, baseline), 2.0, 2.0)
+        if self.hasFocus():
+            focus = QColor(self._accent)
+            focus.setAlpha(90)
+            painter.setPen(QPen(focus, 1.0, Qt.DotLine))
+            painter.setBrush(Qt.NoBrush)
+            painter.drawRoundedRect(self.rect().adjusted(2, 2, -2, -2), 8, 8)
         painter.end()
 
 
@@ -170,12 +216,13 @@ class LivingCanvasView(QWidget):
         self._active_plugin_id = ""
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(8)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(9)
 
         heading = QHBoxLayout()
+        heading.setSpacing(8)
         title = QLabel("Every song has a place")
-        title.setStyleSheet("font-size:20px;font-weight:700")
+        title.setStyleSheet("font-size:21px;font-weight:700;color:#f3f6fb;letter-spacing:.2px")
         heading.addWidget(title)
         heading.addStretch(1)
         self.mode_combo = QComboBox(self)
@@ -183,12 +230,15 @@ class LivingCanvasView(QWidget):
         self.mode_combo.setToolTip("Choose a visual scene for this track.")
         for label, mode in self._BUILTIN_MODES:
             self.mode_combo.addItem(label, mode)
+        self.mode_combo.setMinimumHeight(36)
+        self.mode_combo.setMinimumWidth(148)
         heading.addWidget(self.mode_combo)
 
         self.memory_scale = QComboBox(self)
         self.memory_scale.setAccessibleName("Visual Memory time scale")
         for label, value in (("Sessions", "sessions"), ("Albums", "albums"), ("Weeks", "weeks"), ("Years", "years")):
             self.memory_scale.addItem(label, value)
+        self.memory_scale.setMinimumHeight(36)
         self.memory_scale.setToolTip("Zoom the local listening atlas by session, album, week or year.")
         self.memory_scale.hide()
         heading.addWidget(self.memory_scale)
@@ -198,21 +248,26 @@ class LivingCanvasView(QWidget):
         for label, value in (("Auto · 15 fps", "auto"), ("Eco · 10 fps", "eco"), ("High · 30 fps", "high"), ("Battery · static", "battery")):
             self.quality_combo.addItem(label, value)
         self.quality_combo.setToolTip("Limit animation and drawing detail to suit this device.")
+        self.quality_combo.setMinimumHeight(36)
         heading.addWidget(self.quality_combo)
 
-        self.install_button = QPushButton("Install visualizer…", self)
+        self.install_button = QPushButton("Add visualizer…", self)
         self.install_button.setToolTip("Install a validated, non-executable .mdxviz JSON recipe.")
+        self.install_button.setMinimumHeight(36)
         self.install_button.clicked.connect(self._install_visualizer)
         heading.addWidget(self.install_button)
         self.remove_button = QPushButton("Remove", self)
         self.remove_button.setToolTip("Remove the selected personal visualizer.")
         self.remove_button.setEnabled(False)
+        self.remove_button.setVisible(False)
+        self.remove_button.setMinimumHeight(36)
         self.remove_button.clicked.connect(self._remove_visualizer)
         heading.addWidget(self.remove_button)
         layout.addLayout(heading)
 
         self.track_label = QLabel("Waiting for music")
-        self.track_label.setStyleSheet("font-size:13px;color:#c8ccd2")
+        self.track_label.setTextFormat(Qt.RichText)
+        self.track_label.setStyleSheet("font-size:13px;color:#c8ccd2;padding-left:2px")
         self.track_label.setWordWrap(True)
         layout.addWidget(self.track_label)
 
@@ -224,7 +279,7 @@ class LivingCanvasView(QWidget):
 
         self.status = QLabel("The same track returns to the same visual fingerprint.")
         self.status.setWordWrap(True)
-        self.status.setStyleSheet("color:#8f9aaa;font-size:11px")
+        self.status.setStyleSheet("color:#a6b2c1;font-size:12px;padding-left:2px")
         layout.addWidget(self.status)
 
         self.journey = EnergyJourneySlider(self)
@@ -236,8 +291,8 @@ class LivingCanvasView(QWidget):
         self.position_label = QLabel("0:00")
         self.duration_label = QLabel("0:00")
         self.duration_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        self.position_label.setStyleSheet("color:#aab0ba;font-size:11px")
-        self.duration_label.setStyleSheet("color:#aab0ba;font-size:11px")
+        self.position_label.setStyleSheet("color:#b5c1d0;font-size:11px;font-weight:600")
+        self.duration_label.setStyleSheet("color:#b5c1d0;font-size:11px;font-weight:600")
         times.addWidget(self.position_label)
         times.addStretch(1)
         times.addWidget(self.duration_label)
@@ -258,8 +313,14 @@ class LivingCanvasView(QWidget):
         title = self._profile.title or "Unknown track"
         artist = self._profile.artist or "Unknown artist"
         album = str(self._track.get("album") or "").strip()
-        detail = f"{artist}  ·  {title}" + (f"  ·  {album}" if album else "")
-        self.track_label.setText(detail)
+        title_html = escape(title)
+        artist_html = escape(artist)
+        album_html = escape(album)
+        detail = f'<span style="font-size:16px;font-weight:bold;font-style:normal;color:#f0f4fa">{title_html}</span>'
+        detail += f'<span style="font-size:13px;color:#9caabc"> &nbsp;·&nbsp; {artist_html}'
+        if album_html:
+            detail += f' &nbsp;·&nbsp; {album_html}'
+        self.track_label.setText(detail + "</span>")
         duration = self._track.get("duration")
         try:
             if duration is None and self._track.get("duration_ms") is not None:
@@ -349,7 +410,9 @@ class LivingCanvasView(QWidget):
 
     def _mode_changed(self, _index: int) -> None:
         data = self.mode_combo.currentData()
-        self.remove_button.setEnabled(isinstance(data, tuple) and data[0] == "plugin")
+        is_plugin = isinstance(data, tuple) and data[0] == "plugin"
+        self.remove_button.setVisible(is_plugin)
+        self.remove_button.setEnabled(is_plugin)
         if isinstance(data, tuple) and data[0] == "plugin":
             self._active_mode = "plugin"
             self._active_plugin_id = str(data[1])

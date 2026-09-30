@@ -30,7 +30,7 @@ The blocklist is stored in `sources.json` as `resolver_blocklist`.
 
 ## AI playlists
 
-Metadata-only playlists produced by ChatGPT, OpenWebUI, Ollama or another LLM can now be resolved track by track. Successfully matched tracks form the playable queue; unresolved tracks are retained separately with an error message.
+Metadata-only playlists produced by ChatGPT, OpenWebUI, Ollama or another LLM can be resolved track by track. In the desktop app, **Playlists → Paste from AI…** accepts copied playlist text without connecting Melodex to that AI. Successfully matched tracks are saved and placed in the queue; unresolved requests remain with the saved playlist for later matching. Melodex does not send pasted text to an AI service, though connected music providers may receive artist/title searches during resolution. See [Playlist interchange](PLAYLIST_INTERCHANGE.md) for supported formats.
 
 ## API use
 

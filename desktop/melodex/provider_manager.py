@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -13,6 +14,13 @@ from .resolver import UniversalResolver
 from .capabilities import CapabilityBroker, ExtensionInfo
 from .plugin_registry import PluginRegistryClient, RegistryResult
 from .plugin_config import PluginConfigBroker
+from .bundled_sources import (
+    bundled_packages,
+    ensure_bundled_providers,
+    restore_all_bundled_provider_flags,
+    set_bundled_provider_disabled,
+    version_key,
+)
 from .plugin_health import (
     health_summary,
     normalise_health_status,
@@ -29,6 +37,8 @@ class ProviderManager:
         self.plugin_config = PluginConfigBroker(self.data_dir)
         self.settings = self._load_settings()
         self._installations = self._load_installations()
+        bundled_ids = set(ensure_bundled_providers(self.installer, self.settings))
+        self._record_bundled_installations(bundled_ids)
         local_roots = [Path(x) for x in self.settings.get("local_roots", [])]
         self.providers: dict[str, MusicProvider] = {
             "local": LocalFilesProvider(local_roots),
@@ -83,6 +93,43 @@ class ProviderManager:
         )
         temp.replace(self.installations_path)
 
+    def _record_bundled_installations(self, bundled_ids: set[str]) -> None:
+        for plugin_id, package, manifest in bundled_packages():
+            if plugin_id not in bundled_ids:
+                continue
+            installed_path = self.installer.providers_dir / plugin_id / "manifest.json"
+            try:
+                installed = json.loads(installed_path.read_text("utf-8"))
+            except Exception:
+                continue
+            installed_version = str(installed.get("version") or "0")
+            bundled_version = str(manifest.get("version") or "0")
+            record = self._installations.get(plugin_id)
+            if record:
+                recorded_version = str(record.get("version") or "0")
+                if record.get("method") in {"manual", "registry"}:
+                    # A newer user-installed package is left intact. If the
+                    # bundled package upgraded an older install, record the
+                    # bundle as the new source of the installed version.
+                    if not (
+                        version_key(installed_version) == version_key(bundled_version)
+                        and version_key(recorded_version) < version_key(bundled_version)
+                    ):
+                        continue
+                elif (
+                    record.get("method") == "bundled"
+                    and recorded_version == installed_version
+                ):
+                    continue
+            self._record_installation(
+                plugin_id=plugin_id,
+                name=str(installed.get("name") or manifest.get("name") or plugin_id),
+                version=installed_version,
+                kind="provider",
+                package=package,
+                method="bundled",
+            )
+
     @staticmethod
     def _package_sha256(path: Path) -> str:
         digest = hashlib.sha256()
@@ -114,7 +161,7 @@ class ProviderManager:
             "version": str(version),
             "kind": str(kind),
             "installed_at": datetime.now(timezone.utc).isoformat(),
-            "method": "registry" if method == "registry" else "manual",
+            "method": method if method in {"registry", "manual", "bundled"} else "manual",
             "package_name": package.name,
             "package_size": package.stat().st_size,
             "package_sha256": local_sha256,
@@ -211,6 +258,67 @@ class ProviderManager:
 
     def set_provider_order(self, provider_ids: list[str]) -> list[str]:
         return self.resolver.set_provider_order(provider_ids)
+
+    def is_bundled_provider(self, provider_id: str) -> bool:
+        return any(pid == str(provider_id or "") for pid, _, _ in bundled_packages())
+
+    def remove_provider(self, provider_id: str) -> bool:
+        plugin_id = str(provider_id or "").strip()
+        if not plugin_id or plugin_id in {"local", "jamendo", "streams"}:
+            return False
+        provider = self.providers.get(plugin_id)
+        if provider is None:
+            return False
+
+        close = getattr(provider, "close", None)
+        if callable(close):
+            try:
+                close()
+            except Exception:
+                pass
+        shutil.rmtree(self.installer.providers_dir / plugin_id, ignore_errors=True)
+        self.providers.pop(plugin_id, None)
+        self._plugin_health_cache.pop(plugin_id, None)
+        self._installations.pop(plugin_id, None)
+        if self.is_bundled_provider(plugin_id):
+            set_bundled_provider_disabled(self.settings, plugin_id, True)
+        self.settings["provider_priority"] = [
+            item
+            for item in list(self.settings.get("provider_priority") or [])
+            if str(item) != plugin_id
+        ]
+        self._save_installations()
+        self.save()
+        return True
+
+    def restore_bundled_providers(self) -> list[str]:
+        restore_all_bundled_provider_flags(self.settings)
+        self.save()
+        bundled_ids = set(ensure_bundled_providers(self.installer, self.settings))
+        self._record_bundled_installations(bundled_ids)
+        from .provider import ExternalProvider
+
+        restored: list[str] = []
+        for plugin_id in sorted(bundled_ids):
+            if plugin_id in self.providers:
+                continue
+            manifest_path = self.installer.providers_dir / plugin_id / "manifest.json"
+            try:
+                manifest = json.loads(manifest_path.read_text("utf-8"))
+                provider = ExternalProvider(manifest_path.parent, manifest)
+                provider.configure(
+                    self.plugin_config.values(
+                        provider.info.id, provider.info.configuration
+                    )
+                )
+            except Exception:
+                continue
+            self.providers[plugin_id] = provider
+            self._plugin_health_cache.pop(plugin_id, None)
+            restored.append(plugin_id)
+        if restored:
+            self.set_provider_order(self.provider_order())
+        return restored
 
     def install_package(
         self,

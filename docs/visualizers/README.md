@@ -5,11 +5,11 @@ Melodex visualizers are small JSON scene recipes. They let authors create distin
 ## Try the example
 
 1. Open **Now Playing → Living Canvas**.
-2. Select **Install visualizer…** and choose [`orbit-garden.mdxviz`](examples/orbit-garden.mdxviz).
+2. Select **Add visualizer…** and choose [`orbit-garden.mdxviz`](examples/orbit-garden.mdxviz).
 3. Choose **Orbit Garden** in the visualizer selector.
 4. Play a local track with cached Flow analysis to see the scene respond to its profile. Without cached analysis, the same scene uses the track's stable identity and fallback palette.
 
-The install button copies the validated JSON file into Melodex's local visualizer directory. It does not execute code or load external assets. Select an installed visualizer and choose **Remove** to uninstall it.
+The button copies the validated JSON file into Melodex's local visualizer directory. It does not execute code or load external assets. Select an installed visualizer to show **Remove**, then choose it to uninstall the recipe.
 
 ## File format
 

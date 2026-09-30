@@ -12,11 +12,21 @@ The modes include the animated Living Canvas, Song Fingerprint, the seekable Mus
 
 Click or drag the journey contour to seek, or focus it and use the arrow keys. Flow analysis is read from its cache in the background. If no cached analysis exists, Melodex shows an identity-based scene and a clear fallback message. It never analyses audio during playback. Auto quality is capped at 15 fps and reduces detail if drawing slows down; Eco, High (30 fps) and Battery (static) are available. Animation pauses when playback pauses, the visualizer tab is hidden, or the window is minimized.
 
-Use **Install visualizer…** to add a `.mdxviz` recipe. These are bounded JSON scene descriptions, not executable plugins. See the [visualizer author guide](visualizers/README.md) for the format and example.
+Use **Add visualizer…** to add a `.mdxviz` recipe. These are bounded JSON scene descriptions, not executable plugins. See the [visualizer author guide](visualizers/README.md) for the format and example.
+
+The canvas uses a restrained track-colour backdrop and clear track labels. The seekable Musical Journey combines its waveform and progress position in one control; click or drag it to seek, or focus it and use the arrow keys.
+
+## Playlists
+
+Open **Playlists** to import or export a playlist file, or choose **Paste from AI…** to bring in a playlist created in ChatGPT, Claude, Gemini or another AI chat. Choose **Copy ChatGPT Prompt** for a ready-to-use prompt, paste the reply into the box (or use **Paste Clipboard**), then choose **Analyse Playlist**. No AI connection or API key is needed.
+
+Melodex reads the track list and matches it through your connected music sources. Matched tracks are saved as a playlist and added to the queue; unmatched requests are kept in the saved playlist for later matching. Melodex does not send the pasted text to an AI service. Your connected music providers may receive artist/title searches during matching. JSON, Markdown lists or tables, plain text, CSV/TSV and M3U text are supported; **Import File…** also accepts JSON, text, CSV/TSV, XSPF and M3U/M3U8 files.
 
 ## Discover
 
 Search all connected sources at once, or choose one source from the selector.
+
+Desktop Melodex includes six streaming providers, installed on first launch: ccMixter, SomaFM, Radio Browser, Wikimedia Commons Audio, LibriVox and Internet Archive Audio. Their catalogues stay online at their original services; Melodex does not bundle or redistribute the audio. Use **Sources → Show power tools** to remove a provider or restore bundled sources. See [Music sources](SOURCES.md) for details and rights notes.
 
 Double-click a result to play it. Use **Add selected to queue** to keep your current track playing.
 

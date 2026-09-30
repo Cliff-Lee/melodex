@@ -30,6 +30,8 @@ But Melodex is also becoming something broader:
 
 A playback source does not need to become a metadata database. An artwork plugin does not need to know how the queue works. An AI client does not need to know which provider ultimately plays a track.
 
+Desktop releases install six streaming providers on first launch: ccMixter, SomaFM, Radio Browser, Wikimedia Commons Audio, LibriVox and Internet Archive Audio. Their music remains hosted by the original services. See [Music sources](docs/SOURCES.md) for details and rights notes.
+
 ## Build something in 5 minutes
 
 If you want to develop rather than study the architecture first:
@@ -154,6 +156,8 @@ melodex_feedback
 ```
 
 Use [MCP with OpenWebUI](docs/tutorials/CONNECT_OPENWEBUI_MCP.md) or [OpenAI function calling](docs/tutorials/USE_OPENAI_FUNCTIONS.md).
+
+You can also make a playlist in ChatGPT, Claude, Gemini or another chat AI and paste it into **Playlists → Paste from AI…**. This is a copy-and-paste handoff: it does not require an AI connection or API key. Melodex matches the track details through your connected music sources and keeps unmatched requests in the saved playlist. See [Playlist interchange](docs/PLAYLIST_INTERCHANGE.md).
 
 ## Explore your library spatially
 

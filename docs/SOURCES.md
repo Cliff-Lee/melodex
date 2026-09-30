@@ -14,6 +14,21 @@ A real online example using the public Jamendo API. You supply your own develope
 
 Jamendo's API has its own terms and licence requirements; review them before publishing an application that uses it.
 
+### Bundled desktop providers
+
+On first launch, the desktop app installs these six providers into the user's local Melodex data folder:
+
+| Provider | What it offers | Source notes |
+| --- | --- | --- |
+| ccMixter 0.1.3 | Creative Commons music search and playback | Check each track's licence and attribution. |
+| SomaFM 0.1.1 | Curated live internet radio | Streams come from SomaFM; station terms apply. |
+| Radio Browser 0.1.2 | Community radio station search and playback | Availability and rights depend on each station. |
+| Wikimedia Commons Audio 0.1.1 | Openly licensed and public-domain audio | Licence and attribution are specific to each file. |
+| LibriVox 0.1.2 | Public-domain audiobooks and spoken-word audio | Public-domain status can depend on jurisdiction. |
+| Internet Archive Audio 0.1.0 | Publicly accessible audio search and playback | Rights and access vary by item. |
+
+These provider packages connect to their respective sources; the installer does not contain music or audiobook files. In **Sources → Show power tools**, choose **Remove selected provider** to remove one. Removed bundled sources stay removed across restarts. Choose **Restore bundled sources** to install them again. A newer manually installed provider is kept when it is newer than the bundled copy.
+
 ## Plugin Directory on desktop
 
 Use **Sources → Explore plugins…** to browse the registry.
@@ -47,6 +62,7 @@ For newly tracked third-party installs Melodex can distinguish:
 
 ```text
 REGISTRY VERIFIED
+BUNDLED
 MANUAL
 origin unknown (older install)
 ```

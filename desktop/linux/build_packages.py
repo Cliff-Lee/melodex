@@ -230,18 +230,42 @@ def build_appimage(
     return output
 
 
+def package_version(app_version: str, *, allow_development: bool) -> str:
+    """Return a Debian-compatible package version for an app version.
+
+    Stable release builds keep their exact version. Development builds are
+    allowed only for CI checks and use Debian's ``~`` ordering so they sort
+    before the corresponding stable release.
+    """
+    if re.fullmatch(r"\d+\.\d+\.\d+", app_version):
+        return app_version
+
+    development = re.fullmatch(r"(?P<base>\d+\.\d+\.\d+)\.dev(?P<serial>\d+)", app_version)
+    if allow_development and development:
+        return f"{development.group('base')}~dev{development.group('serial')}"
+
+    raise SystemExit(
+        f"release packages require a strict application version; got {app_version!r}. "
+        "Use --allow-development only for a .devN CI build."
+    )
+
+
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Build Melodex Linux release packages.")
+    parser = argparse.ArgumentParser(description="Build Melodex Linux packages.")
     parser.add_argument("--appimagetool", type=Path, required=True)
     parser.add_argument("--runtime-file", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, default=DESKTOP / "dist")
+    parser.add_argument(
+        "--allow-development",
+        action="store_true",
+        help="allow a .devN build for CI smoke tests (Debian metadata uses ~devN)",
+    )
     args = parser.parse_args()
 
     if not sys.platform.startswith("linux") or os.uname().machine not in {"x86_64", "amd64"}:
         raise SystemExit("Linux release packages must be built on x86_64 Linux.")
     version = (REPO / "VERSION").read_text("utf-8").strip()
-    if not re.fullmatch(r"\d+\.\d+\.\d+", version):
-        raise SystemExit(f"release packages require a strict application version, got {version!r}")
+    debian_version = package_version(version, allow_development=args.allow_development)
 
     frozen_app = DESKTOP / "dist/Melodex"
     icon_source = REPO / "assets/icon.png"
@@ -251,7 +275,7 @@ def main() -> int:
     require_file(args.runtime_file, "AppImage type 2 runtime")
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
-    deb = build_deb(version, args.output_dir, frozen_app, icon_source)
+    deb = build_deb(debian_version, args.output_dir, frozen_app, icon_source)
     appimage = build_appimage(
         version,
         args.output_dir,

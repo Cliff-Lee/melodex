@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QListWidget,
     QListWidgetItem, QStackedWidget, QLineEdit, QComboBox, QFileDialog, QMessageBox,
     QSlider, QTextEdit, QInputDialog, QDialog, QFormLayout, QDialogButtonBox, QCheckBox,
-    QTabWidget,
+    QTabWidget, QApplication, QPlainTextEdit,
 )
 
 from .paths import app_data_dir
@@ -43,7 +43,7 @@ from .user_state import UserState
 from .player import FlowPlayer
 from .llm_bridge import LLMClient, LLMSettings, llm_track_summary
 from .bridge_server import ProviderBridge
-from .playlist_io import load_playlist, save_playlist
+from .playlist_io import load_playlist, parse_playlist_text, save_playlist
 from .metadata import RichMetadataService
 from .rich_now_playing import RichNowPlayingWidget
 from .living_canvas import LivingCanvasView
@@ -497,7 +497,7 @@ class MainWindow(QMainWindow):
     def _build_playlists(self):
         l=self._page_layout("playlists","Playlists","Saved journeys and imported playlists live locally. Import or export XSPF, M3U and M3U8.")
         self.playlists_list=QListWidget(); self.playlists_list.itemDoubleClicked.connect(self._play_saved_playlist); l.addWidget(self.playlists_list,1)
-        row=QHBoxLayout(); imp=QPushButton("Import playlist…"); imp.clicked.connect(self._import_playlist_file); exp=QPushButton("Export selected…"); exp.clicked.connect(self._export_selected_playlist); expq=QPushButton("Export queue…"); expq.clicked.connect(self._export_queue); row.addWidget(imp); row.addWidget(exp); row.addWidget(expq); row.addStretch(1); l.addLayout(row)
+        row=QHBoxLayout(); imp=QPushButton("Import playlist…"); imp.clicked.connect(self._import_playlist_file); ai=QPushButton("Paste from AI…"); ai.clicked.connect(self._open_ai_playlist_import); exp=QPushButton("Export selected…"); exp.clicked.connect(self._export_selected_playlist); expq=QPushButton("Export queue…"); expq.clicked.connect(self._export_queue); row.addWidget(imp); row.addWidget(ai); row.addWidget(exp); row.addWidget(expq); row.addStretch(1); l.addLayout(row)
 
     def _build_moments(self):
         l=self._page_layout("moments","Moments","Bookmarks inside songs — the exact musical moments you wanted to remember.")
@@ -541,7 +541,12 @@ class MainWindow(QMainWindow):
         toggle_ext=QPushButton("Enable / disable extension"); toggle_ext.clicked.connect(self._toggle_extension)
         remove_ext=QPushButton("Remove extension"); remove_ext.clicked.connect(self._remove_extension)
         up.clicked.connect(lambda:self._move_source(-1)); down.clicked.connect(lambda:self._move_source(1))
-        priority.addWidget(up); priority.addWidget(down); priority.addWidget(configure); priority.addWidget(toggle_ext); priority.addWidget(remove_ext); priority.addStretch(1); power.addLayout(priority)
+        priority.addWidget(up); priority.addWidget(down); priority.addWidget(configure); priority.addWidget(toggle_ext); priority.addStretch(1); power.addLayout(priority)
+        provider_actions=QHBoxLayout()
+        remove_provider=QPushButton("Remove selected provider"); remove_provider.clicked.connect(self._remove_provider)
+        restore_bundled=QPushButton("Restore bundled sources"); restore_bundled.clicked.connect(self._restore_bundled_sources)
+        provider_actions.addWidget(remove_provider); provider_actions.addWidget(remove_ext); provider_actions.addWidget(restore_bundled); provider_actions.addStretch(1)
+        power.addLayout(provider_actions)
         self.source_power_panel.setVisible(self.power_toggle.isChecked())
         l.addWidget(self.source_power_panel)
 
@@ -607,6 +612,8 @@ class MainWindow(QMainWindow):
                     if installation.get("registry_verified")
                     else "MANUAL"
                     if installation.get("method") == "manual"
+                    else "BUNDLED"
+                    if installation.get("method") == "bundled"
                     else "INSTALLED"
                 )
                 if p.info.configuration:
@@ -1052,6 +1059,74 @@ class MainWindow(QMainWindow):
         if unresolved:msg+=f" · {len(unresolved)} unresolved (kept for future matching)"
         self.statusBar().showMessage(msg,7000)
 
+    def _open_ai_playlist_import(self):
+        dialog=QDialog(self); dialog.setWindowTitle("Import an AI playlist"); dialog.resize(900,650)
+        layout=QVBoxLayout(dialog); layout.setContentsMargins(24,22,24,20); layout.setSpacing(14)
+        title=QLabel("Import an AI playlist"); title.setStyleSheet("font-size: 25px; font-weight: 700;")
+        subtitle=QLabel("Paste a playlist from ChatGPT, Claude, Gemini or another AI. JSON, Markdown lists or tables, TXT, CSV and M3U/M3U8 are supported.")
+        subtitle.setWordWrap(True); subtitle.setStyleSheet("color: #9aa4b8; font-size: 14px;")
+        layout.addWidget(title); layout.addWidget(subtitle)
+        editor=QPlainTextEdit(); editor.setPlaceholderText("Paste the playlist here…"); editor.setMinimumHeight(300); layout.addWidget(editor,1)
+        actions=QHBoxLayout()
+        copy_prompt=QPushButton("Copy ChatGPT Prompt")
+        import_file=QPushButton("Import File…")
+        paste_clipboard=QPushButton("Paste Clipboard")
+        actions.addWidget(copy_prompt); actions.addWidget(import_file); actions.addWidget(paste_clipboard); actions.addStretch(1)
+        layout.insertLayout(2,actions)
+        privacy=QLabel("No AI connection is needed, and Melodex does not send this text to an AI service. Track matching uses your connected music sources.")
+        privacy.setWordWrap(True); privacy.setStyleSheet("color: #9aa4b8;")
+        layout.addWidget(privacy)
+        buttons=QDialogButtonBox(QDialogButtonBox.Cancel)
+        analyze=buttons.addButton("Analyse Playlist",QDialogButtonBox.AcceptRole)
+        layout.addWidget(buttons)
+
+        prompt=("Create a playlist of real, released tracks. Return valid JSON only, using this structure:\n"
+                '{\n  "melodex_playlist": 1,\n  "name": "Playlist name",\n'
+                '  "description": "Short description",\n  "tracks": [\n'
+                '    {"artist": "Artist name", "title": "Exact track title", "album": "Album when known", "year": 2006, "reason": "Optional short reason"}\n'
+                '  ]\n}\nUse canonical artist and track names, and keep the tracks in the intended listening order. Do not add commentary outside the JSON.')
+
+        def do_copy_prompt():
+            QApplication.clipboard().setText(prompt)
+            self.statusBar().showMessage("Playlist prompt copied. Paste it into your AI chat.",5000)
+
+        def do_paste_clipboard():
+            value=QApplication.clipboard().text()
+            if not value.strip():
+                QMessageBox.information(dialog,"Clipboard is empty","Copy a playlist from your AI chat first, then choose Paste Clipboard.")
+                return
+            editor.setPlainText(value)
+
+        def do_import_file():
+            filename,_=QFileDialog.getOpenFileName(dialog,"Import playlist",filter="Playlist/text files (*.json *.txt *.csv *.tsv *.xspf *.m3u *.m3u8);;All files (*)")
+            if not filename:return
+            path=Path(filename)
+            try:
+                if path.suffix.lower() in {".xspf",".m3u",".m3u8"}:
+                    data=load_playlist(path)
+                else:
+                    data=parse_playlist_text(path.read_text("utf-8-sig",errors="replace"))
+                    if data.get("name") in {"Pasted playlist","AI playlist"}:
+                        data["name"]=path.stem
+                editor.setPlainText(json.dumps(data,ensure_ascii=False,indent=2))
+            except Exception as exc:
+                QMessageBox.warning(dialog,"Could not import playlist",str(exc))
+
+        def do_analyze():
+            try:
+                data=parse_playlist_text(editor.toPlainText())
+            except Exception as exc:
+                QMessageBox.warning(dialog,"Could not read playlist",str(exc)); return
+            dialog.accept()
+            self._import_ai_playlist(data,source="ai-paste")
+
+        copy_prompt.clicked.connect(do_copy_prompt)
+        import_file.clicked.connect(do_import_file)
+        paste_clipboard.clicked.connect(do_paste_clipboard)
+        buttons.rejected.connect(dialog.reject)
+        analyze.clicked.connect(do_analyze)
+        dialog.exec()
+
     def _playlist_export_path(self,title):
         path,chosen=QFileDialog.getSaveFileName(self,title,filter="XSPF Playlist (*.xspf);;M3U8 Playlist (*.m3u8);;M3U Playlist (*.m3u)")
         if not path:return None
@@ -1296,6 +1371,51 @@ class MainWindow(QMainWindow):
         if self.providers.remove_extension(extension_id):
             self._refresh_sources()
             self.statusBar().showMessage(f"Removed {name}",3000)
+
+    def _selected_provider_id(self) -> str:
+        item=self.sources_list.currentItem()
+        if not item:
+            return ""
+        plugin_id=str(item.data(Qt.UserRole) or "")
+        if plugin_id.startswith("extension:") or plugin_id in {"", "local", "jamendo", "streams"}:
+            return ""
+        return plugin_id
+
+    def _remove_provider(self):
+        plugin_id=self._selected_provider_id()
+        if not plugin_id:
+            self.statusBar().showMessage("Select an installed provider first",2500)
+            return
+        provider=self.providers.providers.get(plugin_id)
+        if provider is None:
+            return
+        bundled=self.providers.is_bundled_provider(plugin_id)
+        details=(
+            " The bundled copy will stay removed until you choose Restore bundled sources."
+            if bundled else ""
+        )
+        answer=QMessageBox.question(
+            self,
+            "Remove provider",
+            f"Remove {provider.info.name} from Melodex?{details}\n\n"
+            "This does not delete the original .mdxprovider file.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if answer != QMessageBox.Yes:
+            return
+        if self.providers.remove_provider(plugin_id):
+            self._refresh_sources()
+            self.statusBar().showMessage(f"Removed {provider.info.name}",3000)
+
+    def _restore_bundled_sources(self):
+        restored=self.providers.restore_bundled_providers()
+        self._refresh_sources()
+        if restored:
+            message=f"Restored {len(restored)} bundled source(s)."
+        else:
+            message="Bundled sources are already installed."
+        QMessageBox.information(self,"Bundled sources",message)
 
     def _stream_prompt(self, existing: dict[str, Any] | None = None):
         existing = existing or {}
@@ -2859,7 +2979,7 @@ class MainWindow(QMainWindow):
         elif typ=="open_view":self.open_page(str(args.get("view","home")) if str(args.get("view","home")) in self.pages else "home")
         elif typ=="import_playlist":self._import_ai_playlist(args)
 
-    def _import_ai_playlist(self,args):
+    def _import_ai_playlist(self,args,source="llm"):
         requested=[dict(x) for x in list(args.get("tracks") or []) if isinstance(x,dict)]
         if not requested:
             self.statusBar().showMessage("The AI playlist did not contain any tracks",4000); return
@@ -2867,13 +2987,14 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(f"Matching {len(requested)} playlist tracks across your sources…")
         self._run_async(
             lambda:self.providers.resolve_playlist(requested),
-            lambda result:self._finish_ai_playlist(playlist_id,name,description,result),
+            lambda result:self._finish_ai_playlist(playlist_id,name,description,result,requested,source),
         )
 
-    def _finish_ai_playlist(self,playlist_id,name,description,result):
+    def _finish_ai_playlist(self,playlist_id,name,description,result,requested=None,source="llm"):
         tracks=list(result.get("tracks") or []); unresolved=list(result.get("unresolved") or [])
         payload={"tracks":tracks,"unresolved":unresolved,"requested":int(result.get("requested") or len(tracks)+len(unresolved))}
-        self.state.save_playlist(playlist_id,name,description,"llm",payload); self._refresh_playlists()
+        if requested is not None:payload["requested_tracks"]=[dict(x) for x in requested]
+        self.state.save_playlist(playlist_id,name,description,source,payload); self._refresh_playlists()
         if tracks:self.player.set_queue(tracks,0,True)
         msg=f"{name}: matched {len(tracks)} track{'s' if len(tracks)!=1 else ''}"
         if unresolved:msg+=f" · {len(unresolved)} unresolved"

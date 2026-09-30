@@ -2,6 +2,12 @@
 
 Melodex can import and export **XSPF**, **M3U**, and **M3U8** playlists.
 
+## Paste a playlist from an AI chat
+
+From **Playlists → Paste from AI…**, paste a playlist copied from ChatGPT or another AI and choose **Analyse Playlist**. No AI account or connection is needed. Melodex accepts its JSON playlist format, common JSON track lists, Markdown lists or tables, TXT, CSV/TSV, and pasted M3U text. **Copy ChatGPT Prompt** copies a prompt with the recommended JSON shape; **Import File…** can load a playlist or text file instead.
+
+Melodex sends no playlist text to an AI service. It resolves artist/title metadata using the user's connected music sources, which may receive search queries as part of matching. Matched tracks are saved as a local playlist and placed in the queue; unmatched entries are kept with the playlist for later matching.
+
 ## Import
 
 Imported entries may contain:

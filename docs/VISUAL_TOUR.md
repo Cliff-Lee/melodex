@@ -153,6 +153,10 @@ Try:
 
 You can still use the normal Melodex controls for all core listening features.
 
+## 12. Paste a playlist from an AI chat
+
+You do not need to connect the AI to Melodex. In **Playlists**, choose **Paste from AI…**, copy the optional prompt, then paste the playlist reply and choose **Analyse Playlist**. Melodex matches the track details using your connected music sources, saves the playlist and queues the tracks it can play. Unmatched requests stay in the saved playlist. See [Playlist interchange](PLAYLIST_INTERCHANGE.md) for supported formats and privacy details.
+
 ## Where next?
 
 - [Why Melodex?](WHY_MELODEX.md)

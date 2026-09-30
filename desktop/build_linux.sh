@@ -22,7 +22,9 @@ python -m pip install -r requirements-build.txt
 rm -rf build dist
 pyinstaller --noconfirm --name Melodex \
   --add-data "melodex/assets/melodex-mark.png:melodex/assets" \
+  --add-data "melodex/bundled_providers:melodex/bundled_providers" \
   --collect-all keyring run.py
+python check_bundled_provider_payload.py dist/Melodex
 python linux/check_glibc_abi.py "dist/Melodex"
 python frozen_child_smoke.py "dist/Melodex/Melodex"
 
@@ -38,7 +40,7 @@ printf '%s  %s\n' "$APPIMAGETOOL_SHA256" "$APPIMAGETOOL" | sha256sum --check --s
 printf '%s  %s\n' "$RUNTIME_SHA256" "$RUNTIME_FILE" | sha256sum --check --status
 chmod +x "$APPIMAGETOOL"
 
-python linux/build_packages.py \
+python linux/build_packages.py "$@" \
   --appimagetool "$APPIMAGETOOL" \
   --runtime-file "$RUNTIME_FILE" \
   --output-dir dist

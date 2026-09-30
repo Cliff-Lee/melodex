@@ -53,9 +53,19 @@ jobs:
             libxcb-xfixes0 libxcb-xinerama0 libxcb-xinput0 libxcb-xkb1 \
             libxkbcommon0 libxkbcommon-x11-0 libx11-6 libxext6 libxrender1
       - name: Build .deb and AppImage
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
           chmod +x desktop/build_linux.sh
-          desktop/build_linux.sh
+          BUILD_ARGS=()
+          if [[ -z "$RELEASE_TAG" && "$GITHUB_REF" != refs/tags/* ]]; then
+            APP_VERSION="$(tr -d '\r\n' < VERSION)"
+            if [[ "$APP_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.dev[0-9]+$ ]]; then
+              BUILD_ARGS+=(--allow-development)
+            fi
+          fi
+          desktop/build_linux.sh "${BUILD_ARGS[@]}"
       - name: Validate package metadata
         run: |
           desktop-file-validate desktop/linux/io.github.cliff_lee.Melodex.desktop
