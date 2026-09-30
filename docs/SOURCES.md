@@ -27,7 +27,7 @@ On first launch, the desktop app installs these six providers into the user's lo
 | LibriVox 0.1.2 | Public-domain audiobooks and spoken-word audio | Public-domain status can depend on jurisdiction. |
 | Internet Archive Audio 0.1.0 | Publicly accessible audio search and playback | Rights and access vary by item. |
 
-These providers stream from their sources; they are not music files bundled in the installer. In **Sources → Show power tools**, choose **Remove selected provider** to remove one. Removed bundled sources stay removed across restarts. Choose **Restore bundled sources** to install them again. A newer manually installed provider is kept when it is newer than the bundled copy.
+These provider packages connect to their respective sources; the installer does not contain music or audiobook files. In **Sources → Show power tools**, choose **Remove selected provider** to remove one. Removed bundled sources stay removed across restarts. Choose **Restore bundled sources** to install them again. A newer manually installed provider is kept when it is newer than the bundled copy.
 
 ## Plugin Directory on desktop
 

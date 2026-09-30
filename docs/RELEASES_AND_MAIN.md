@@ -80,7 +80,7 @@ across all app-version surfaces.
 The repository provides:
 
 ```bash
-python scripts/set_version.py 0.6.0
+python scripts/set_version.py 0.7.0
 python scripts/version_check.py
 ```
 
