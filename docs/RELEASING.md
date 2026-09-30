@@ -17,7 +17,7 @@ Keep the working release summary in `docs/releases/next.md`. Before release, rev
 When the next release is ready, choose its stable version and update every application-version surface with one command. For example:
 
 ```bash
-python scripts/set_version.py 0.7.0
+python scripts/set_version.py 0.6.1
 ```
 
 That updates:
@@ -40,7 +40,7 @@ python scripts/version_check.py
 For a release tag, the same check is:
 
 ```bash
-python scripts/version_check.py --release-tag v0.7.0
+python scripts/version_check.py --release-tag v0.6.1
 ```
 
 A release check fails if:
@@ -84,7 +84,7 @@ Example:
 
 ```bash
 git add .
-git commit -m "release: v0.6.0"
+git commit -m "release: v0.6.1"
 git push origin main
 ```
 
@@ -92,7 +92,7 @@ When a strict release version such as `0.3.0` reaches `main`, the **Release** wo
 
 1. runs the release checks and test suites again;
 2. verifies the release tag name against all application-version surfaces;
-3. creates or verifies the exact `v0.6.0` tag at that commit;
+3. creates or verifies the exact `v0.6.1` tag at that commit;
 4. creates the GitHub Release and uploads the source archive;
 5. dispatches desktop, Android and Linux workflows against that exact commit;
 6. attaches their assets to the same GitHub Release after package smoke checks pass.
@@ -126,7 +126,7 @@ After the release, choose the next development target.
 For example:
 
 ```bash
-python scripts/set_version.py 0.7.1.dev0
+python scripts/set_version.py 0.6.2.dev0
 
 python scripts/version_check.py
 git add .

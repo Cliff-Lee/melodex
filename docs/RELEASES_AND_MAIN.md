@@ -69,10 +69,10 @@ Between tagged releases, `main` uses a development version such as:
 
 A release tag may not be built from a `.devN` application version.
 
-Before any release tag, set every app-version surface to the exact stable version being released. For example, prepare a future `v0.7.0` release with:
+Before any release tag, set every app-version surface to the exact stable version being released. For example, prepare a future `v0.6.1` release with:
 
 ```text
-0.7.0
+0.6.1
 ```
 
 across all app-version surfaces.
@@ -80,7 +80,7 @@ across all app-version surfaces.
 The repository provides:
 
 ```bash
-python scripts/set_version.py 0.7.0
+python scripts/set_version.py 0.6.1
 python scripts/version_check.py
 ```
 
