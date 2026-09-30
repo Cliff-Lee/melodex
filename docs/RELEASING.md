@@ -9,15 +9,15 @@ For the distinction between app, SDK, protocol and plugin versions, see [Release
 While development is in progress, `main` should normally use a development version such as:
 
 ```text
-0.6.0.dev0
+0.6.1.dev0
 ```
 
-The working release summary is [`docs/releases/next.md`](releases/next.md). Before release, review it against the tested build, move/copy it to `docs/releases/v<version>.md`, remove the draft status, and verify the listed downloads against the artifacts CI produced. The release workflow uses that versioned file as the GitHub Release description.
+Keep the working release summary in `docs/releases/next.md`. Before release, review it against the tested build, move it to `docs/releases/v<version>.md`, and verify the listed downloads against the artifacts CI produced. The release workflow uses that versioned file as the GitHub Release description. The v0.6.0 release notes are at [`docs/releases/v0.6.0.md`](releases/v0.6.0.md).
 
-When the next release is ready, choose its stable version (currently planned as `0.6.0`) and update every application-version surface with one command:
+When the next release is ready, choose its stable version and update every application-version surface with one command. For example:
 
 ```bash
-python scripts/set_version.py 0.6.0
+python scripts/set_version.py 0.7.0
 ```
 
 That updates:
@@ -40,7 +40,7 @@ python scripts/version_check.py
 For a release tag, the same check is:
 
 ```bash
-python scripts/version_check.py --release-tag v0.6.0
+python scripts/version_check.py --release-tag v0.7.0
 ```
 
 A release check fails if:
@@ -97,7 +97,7 @@ When a strict release version such as `0.3.0` reaches `main`, the **Release** wo
 5. dispatches desktop, Android and Linux workflows against that exact commit;
 6. attaches their assets to the same GitHub Release after package smoke checks pass.
 
-Ordinary development versions such as `0.6.0.dev0` do **not** create a release.
+Ordinary development versions such as `0.6.1.dev0` do **not** create a release.
 
 A manually pushed `v*` tag remains a fallback path, and tag-triggered workflows still validate tag/version agreement before packaging.
 
@@ -126,7 +126,7 @@ After the release, choose the next development target.
 For example:
 
 ```bash
-python scripts/set_version.py 0.6.1.dev0
+python scripts/set_version.py 0.7.1.dev0
 
 python scripts/version_check.py
 git add .

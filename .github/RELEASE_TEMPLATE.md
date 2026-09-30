@@ -31,6 +31,7 @@
 - Moments
 - Optional LLM integration
 - Paste playlists from ChatGPT and other AI chats without connecting an AI
+- Six optional desktop music sources bundled for first launch; users can remove them and restore them later
 - Living Canvas visualizer modes and local visual memory
 - Source-neutral provider architecture
 

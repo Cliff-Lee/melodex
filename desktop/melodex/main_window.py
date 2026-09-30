@@ -541,7 +541,12 @@ class MainWindow(QMainWindow):
         toggle_ext=QPushButton("Enable / disable extension"); toggle_ext.clicked.connect(self._toggle_extension)
         remove_ext=QPushButton("Remove extension"); remove_ext.clicked.connect(self._remove_extension)
         up.clicked.connect(lambda:self._move_source(-1)); down.clicked.connect(lambda:self._move_source(1))
-        priority.addWidget(up); priority.addWidget(down); priority.addWidget(configure); priority.addWidget(toggle_ext); priority.addWidget(remove_ext); priority.addStretch(1); power.addLayout(priority)
+        priority.addWidget(up); priority.addWidget(down); priority.addWidget(configure); priority.addWidget(toggle_ext); priority.addStretch(1); power.addLayout(priority)
+        provider_actions=QHBoxLayout()
+        remove_provider=QPushButton("Remove selected provider"); remove_provider.clicked.connect(self._remove_provider)
+        restore_bundled=QPushButton("Restore bundled sources"); restore_bundled.clicked.connect(self._restore_bundled_sources)
+        provider_actions.addWidget(remove_provider); provider_actions.addWidget(remove_ext); provider_actions.addWidget(restore_bundled); provider_actions.addStretch(1)
+        power.addLayout(provider_actions)
         self.source_power_panel.setVisible(self.power_toggle.isChecked())
         l.addWidget(self.source_power_panel)
 
@@ -607,6 +612,8 @@ class MainWindow(QMainWindow):
                     if installation.get("registry_verified")
                     else "MANUAL"
                     if installation.get("method") == "manual"
+                    else "BUNDLED"
+                    if installation.get("method") == "bundled"
                     else "INSTALLED"
                 )
                 if p.info.configuration:
@@ -1364,6 +1371,51 @@ class MainWindow(QMainWindow):
         if self.providers.remove_extension(extension_id):
             self._refresh_sources()
             self.statusBar().showMessage(f"Removed {name}",3000)
+
+    def _selected_provider_id(self) -> str:
+        item=self.sources_list.currentItem()
+        if not item:
+            return ""
+        plugin_id=str(item.data(Qt.UserRole) or "")
+        if plugin_id.startswith("extension:") or plugin_id in {"", "local", "jamendo", "streams"}:
+            return ""
+        return plugin_id
+
+    def _remove_provider(self):
+        plugin_id=self._selected_provider_id()
+        if not plugin_id:
+            self.statusBar().showMessage("Select an installed provider first",2500)
+            return
+        provider=self.providers.providers.get(plugin_id)
+        if provider is None:
+            return
+        bundled=self.providers.is_bundled_provider(plugin_id)
+        details=(
+            " The bundled copy will stay removed until you choose Restore bundled sources."
+            if bundled else ""
+        )
+        answer=QMessageBox.question(
+            self,
+            "Remove provider",
+            f"Remove {provider.info.name} from Melodex?{details}\n\n"
+            "This does not delete the original .mdxprovider file.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if answer != QMessageBox.Yes:
+            return
+        if self.providers.remove_provider(plugin_id):
+            self._refresh_sources()
+            self.statusBar().showMessage(f"Removed {provider.info.name}",3000)
+
+    def _restore_bundled_sources(self):
+        restored=self.providers.restore_bundled_providers()
+        self._refresh_sources()
+        if restored:
+            message=f"Restored {len(restored)} bundled source(s)."
+        else:
+            message="Bundled sources are already installed."
+        QMessageBox.information(self,"Bundled sources",message)
 
     def _stream_prompt(self, existing: dict[str, Any] | None = None):
         existing = existing or {}

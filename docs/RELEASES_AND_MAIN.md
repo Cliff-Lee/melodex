@@ -22,7 +22,7 @@ If an installed release does not contain something described in current document
 
 This distinction is normal for an actively developed project, but it should be stated rather than left for users to infer.
 
-The latest published release is **v0.5.0**. Development after that release uses a `.devN` version until the next stable release is prepared. This branch uses **0.6.0.dev0**; its changes are not part of the v0.5.0 downloads.
+The latest published release is **v0.6.0**. Development after that release uses a `.devN` version until the next stable release is prepared. The `main` branch returns to **0.6.1.dev0** after v0.6.0 is published; those development changes are not part of the v0.6.0 downloads.
 
 ## App version policy
 
@@ -64,15 +64,15 @@ CI checks these values on every pull request/main build.
 Between tagged releases, `main` uses a development version such as:
 
 ```text
-0.6.0.dev0
+0.6.1.dev0
 ```
 
 A release tag may not be built from a `.devN` application version.
 
-Before any release tag, set every app-version surface to the exact stable version being released. For example, prepare a future `v0.6.0` release with:
+Before any release tag, set every app-version surface to the exact stable version being released. For example, prepare a future `v0.7.0` release with:
 
 ```text
-0.6.0
+0.7.0
 ```
 
 across all app-version surfaces.

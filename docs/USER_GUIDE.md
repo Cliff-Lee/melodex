@@ -26,6 +26,8 @@ Melodex reads the track list and matches it through your connected music sources
 
 Search all connected sources at once, or choose one source from the selector.
 
+Desktop Melodex includes six streaming providers, installed on first launch: ccMixter, SomaFM, Radio Browser, Wikimedia Commons Audio, LibriVox and Internet Archive Audio. Their catalogues stay online at their original services; Melodex does not bundle or redistribute the audio. Use **Sources → Show power tools** to remove a provider or restore bundled sources. See [Music sources](SOURCES.md) for details and rights notes.
+
 Double-click a result to play it. Use **Add selected to queue** to keep your current track playing.
 
 ## My music

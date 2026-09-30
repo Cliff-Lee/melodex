@@ -7,6 +7,12 @@ Desktop Melodex supports two extension package types:
 .mdxplugin     identity / metadata / artwork / lyrics
 ```
 
+## Providers included with desktop Melodex
+
+On first launch, Melodex installs six provider packages: ccMixter 0.1.3, SomaFM 0.1.1, Radio Browser 0.1.2, Wikimedia Commons Audio 0.1.1, LibriVox 0.1.2 and Internet Archive Audio 0.1.0. They are installed locally from the application bundle and stream content from their respective sources; the installer does not contain the providers' music or audiobook catalogue. See [Music sources](SOURCES.md) for source and licence notes.
+
+Enable **Show power tools** on the Sources page to remove a provider or restore the bundled set. Removing a bundled provider is remembered across restarts. Melodex keeps an already-installed provider when its version is newer than the bundled copy.
+
 ## Preferred public/community path — Plugin Directory
 
 Open:

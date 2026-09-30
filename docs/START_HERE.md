@@ -41,7 +41,7 @@ It shows the actual application and covers:
 
 That is enough to start.
 
-Everything involving Jamendo, third-party providers, Provider Bridge or an LLM is optional.
+Desktop builds include six streaming providers, installed on first launch; they are ready to use without configuration. Adding local music, Jamendo, Provider Bridge and LLM control are optional. See [Music sources](SOURCES.md) for the bundled providers and rights notes.
 
 ## Five controls worth knowing
 

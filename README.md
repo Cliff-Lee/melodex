@@ -30,6 +30,8 @@ But Melodex is also becoming something broader:
 
 A playback source does not need to become a metadata database. An artwork plugin does not need to know how the queue works. An AI client does not need to know which provider ultimately plays a track.
 
+Desktop releases install six streaming providers on first launch: ccMixter, SomaFM, Radio Browser, Wikimedia Commons Audio, LibriVox and Internet Archive Audio. Their music remains hosted by the original services. See [Music sources](docs/SOURCES.md) for details and rights notes.
+
 ## Build something in 5 minutes
 
 If you want to develop rather than study the architecture first:
