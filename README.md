@@ -155,6 +155,8 @@ melodex_feedback
 
 Use [MCP with OpenWebUI](docs/tutorials/CONNECT_OPENWEBUI_MCP.md) or [OpenAI function calling](docs/tutorials/USE_OPENAI_FUNCTIONS.md).
 
+You can also make a playlist in ChatGPT, Claude, Gemini or another chat AI and paste it into **Playlists → Paste from AI…**. This is a copy-and-paste handoff: it does not require an AI connection or API key. Melodex matches the track details through your connected music sources and keeps unmatched requests in the saved playlist. See [Playlist interchange](docs/PLAYLIST_INTERCHANGE.md).
+
 ## Explore your library spatially
 
 The desktop **Music Map** turns cached Flow analysis into a zoomable local sonic landscape. Nearby tracks share similar combinations of tempo, energy, key, timbre, rhythmic density and mixability; colour modes can expose energy, taste strength or rediscovery potential.

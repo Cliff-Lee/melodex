@@ -20,6 +20,8 @@ The Now Playing **Living Canvas** is one surface with selectable modes:
 
 The same track returns to the same underlying fingerprint. Playback position and phase may animate its world, but do not change the identity seed. Journey remains a navigation control, not a decorative waveform. The constellation uses tracks Melodex already knows from the queue and local history; it does not perform online recommendations. Visual Memory is local-only and reads the existing listening history.
 
+The shared presentation uses a restrained track-colour backdrop, stronger track-title hierarchy and quieter scene captions. The Journey seek surface draws one waveform with a matching progress/position marker, keeping seeking part of the player rather than adding a separate decorative graph.
+
 ## Shared data boundary
 
 The built-in canvas composes small values: a privacy-safe profile, current position and duration, a bounded colour palette, a current lyric frame where available, a capped neighbour list, and aggregated listening-memory marks. No display model contains filesystem paths, network handles, provider credentials or audio samples. Lyric text is passed only to the built-in Lyrics mode and is never exposed to `.mdxviz` recipes.
@@ -35,6 +37,7 @@ Album colours are sampled once from a 24 × 24 image when the artwork stage load
 - Static modes repaint only on track, position, palette or selection changes. The timer runs only for a visible, playing animated mode; it stops on pause, hidden tab, minimized window, natural end, or Battery mode.
 - Frame state is prepared outside `paintEvent`; painting performs no disk, database, network or audio work.
 - The player, decoder and audio thread never wait for visual work. Seeking continues through the existing player API.
+- The Journey control draws the cached contour and player position in one seekable widget; it does no audio analysis of its own.
 - Every scene has an identity-only fallback. Metadata lookup and artwork download are never required for playback or rendering.
 
 ## Visualizer extension format: `.mdxviz` v1

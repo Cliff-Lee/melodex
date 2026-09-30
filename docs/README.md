@@ -31,6 +31,7 @@ Then use:
 - [Windows](INSTALL_WINDOWS.md)
 - [Android](INSTALL_ANDROID.md)
 - [Latest release notes](releases/v0.5.0.md)
+- [Next release notes — draft, planned for v0.6.0](releases/next.md)
 
 ## I want optional AI control
 
@@ -40,6 +41,8 @@ Then use:
 - [MCP control](MCP_CONTROL.md)
 
 Core playback, Flow and taste memory do not require an LLM.
+
+To create a playlist in an AI chat and bring it into Melodex, use [Paste a playlist from an AI chat](PLAYLIST_INTERCHANGE.md). This does not connect Melodex to the AI.
 
 ## I want to add music sources
 

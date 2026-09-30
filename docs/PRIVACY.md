@@ -51,6 +51,10 @@ your current prompt
 
 The current GUI does **not** send prior Ask Melodex chat history between requests.
 
+### Pasted playlists from AI chats
+
+**Playlists → Paste from AI…** works without connecting an AI or sending the pasted text to an AI service. Melodex parses the playlist on the device. When it looks for playable matches, artist/title metadata may be sent as search queries to the music providers you have connected; those providers' own network and privacy terms apply.
+
 Track data is reduced through a positive allowlist before it enters model context. Melodex keeps only allowlisted descriptive fields such as title, artist, album, duration, provider label and limited recent-history timing/completion metadata.
 
 Provider-local track IDs, absolute filesystem paths, playback URLs, request headers, cookies, refresh tokens, Bridge tokens, MCP tokens and API keys are excluded from track context.

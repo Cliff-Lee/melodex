@@ -8,13 +8,13 @@ This document tracks useful Parachord ideas against the Melodex architecture. Th
 - **Source priority** — persistent provider ordering with simple up/down controls.
 - **Mixed-source queues** — each queued track can resolve independently to a different source.
 - **Resolver blocklist foundation** — a bad candidate can be blocked for one requested track without disabling its provider.
-- **AI playlist resolution** — LLM-created track lists are resolved, saved and played.
+- **AI playlist resolution** — tracks created by a connected LLM, or pasted from a separate AI chat with no AI connection, are resolved, saved and played when matches are available.
 - **Remote metadata resolve** — Provider Bridge `/v1/resolve` accepts provider/id or artist/title/album.
 - **Resolver confidence / version protection** — title, artist and album similarity plus penalties for unintended live/remix/cover/etc. variants.
 - **MCP control server** — standard MCP tools expose status, search, resolution, queue, playback, Flow, volume, seeking, taste feedback and saved moments.
 - **OpenWebUI-native MCP path** — optional Streamable HTTP server with bearer authentication; stdio remains available for desktop MCP clients.
 - **Private GUI control bridge** — the desktop app starts a loopback-only authenticated bridge automatically; MCP never manipulates Qt objects from a second process.
-- **Playlist interchange** — XSPF, M3U and M3U8 import/export, including metadata-only entries that re-resolve against connected providers.
+- **Playlist interchange** — XSPF, M3U and M3U8 import/export, plus copy/paste or file import for AI-generated JSON, Markdown, text and CSV playlists; metadata-only entries re-resolve against connected providers.
 - **Resolver Inspector** — candidate confidence, score breakdowns, version flags, duration checks and provider priority are visible from the player.
 - **Persistent match memory** — per-song `Prefer`, `Wrong match`, and reset controls; rejecting a preferred match automatically clears the preference.
 - **Resolver MCP controls** — external agents can inspect candidates and manage preferred/wrong-match memory through the same resolver.

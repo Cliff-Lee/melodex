@@ -102,6 +102,7 @@ This page is intentionally exhaustive. For a shorter route by goal, use the [doc
 - [Releases, `main`, and version numbers](RELEASES_AND_MAIN.md)
 - [Releasing](RELEASING.md)
 - [Melodex v0.5.0 release notes](releases/v0.5.0.md)
+- [Next release notes — draft, planned for v0.6.0](releases/next.md)
 
 ## Trust and security
 
