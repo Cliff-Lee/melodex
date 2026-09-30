@@ -7,6 +7,53 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+def test_energy_journey_slider_renders_and_remains_seekable():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    try:
+        from PySide6.QtCore import QEvent, QPointF, Qt
+        from PySide6.QtGui import QImage, QMouseEvent
+        from PySide6.QtWidgets import QApplication
+
+        from melodex.living_canvas import EnergyJourneySlider
+    except ImportError as exc:
+        import pytest
+
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    slider = EnergyJourneySlider()
+    slider.resize(520, 64)
+    slider.set_curve((0.12, 0.58, 0.34, 0.92, 0.66, 0.8))
+    slider.show()
+    app.processEvents()
+
+    released = []
+    slider.sliderReleased.connect(lambda: released.append(True))
+    chart = slider._chart_rect()
+    press = QPointF(chart.left() + chart.width() * 0.25, chart.center().y())
+    move = QPointF(chart.left() + chart.width() * 0.75, chart.center().y())
+    QApplication.sendEvent(
+        slider,
+        QMouseEvent(QEvent.MouseButtonPress, press, press, press, Qt.LeftButton, Qt.LeftButton, Qt.NoModifier),
+    )
+    QApplication.sendEvent(
+        slider,
+        QMouseEvent(QEvent.MouseMove, move, move, move, Qt.NoButton, Qt.LeftButton, Qt.NoModifier),
+    )
+    QApplication.sendEvent(
+        slider,
+        QMouseEvent(QEvent.MouseButtonRelease, move, move, move, Qt.LeftButton, Qt.NoButton, Qt.NoModifier),
+    )
+
+    assert 745 <= slider.value() <= 755
+    assert released == [True]
+    image = QImage(slider.size(), QImage.Format_ARGB32)
+    image.fill(Qt.transparent)
+    slider.render(image)
+    assert sum(image.pixelColor(x, y).alpha() > 0 for x in range(image.width()) for y in range(image.height())) > 500
+    slider.deleteLater()
+    app.processEvents()
+
 def test_canvas_animation_stops_when_paused_hidden_or_minimized():
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     try:
