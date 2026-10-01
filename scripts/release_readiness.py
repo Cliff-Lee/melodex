@@ -33,6 +33,13 @@ version = (ROOT / "VERSION").read_text("utf-8").strip()
 match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(?:\.dev(\d+))?", version)
 if not match:
     errors.append(f"VERSION is not a supported app version: {version!r}")
+elif match.group(4) is None:
+    release_notes = ROOT / "docs" / "releases" / f"v{version}.md"
+    if not release_notes.is_file():
+        errors.append(
+            f"stable VERSION {version} requires release notes: "
+            f"docs/releases/v{version}.md"
+        )
 
 readme = (ROOT / "README.md").read_text("utf-8")
 for label, target in [
