@@ -627,6 +627,26 @@ class MainWindow(QMainWindow):
                 border:1px solid #2a3a4d;
                 border-radius:14px;
             }
+            QFrame#pluginFeaturePicker{
+                background:#101720;
+                border:1px solid #253346;
+                border-radius:12px;
+            }
+            QLabel#pluginFeatureTitle{font-size:13px;font-weight:700}
+            QLabel#pluginFeatureSubtitle{color:#7f8b9c;font-size:10px}
+            QPushButton#featureChip{
+                background:#151f2c;
+                border:1px solid #2d4057;
+                border-radius:9px;
+                padding:7px 10px;
+                color:#b9cce2;
+                font-weight:650;
+            }
+            QPushButton#featureChip:hover{
+                background:#1b2b3e;
+                border-color:#42658c;
+                color:#e5f0ff;
+            }
             QFrame#sourceSummaryCard{
                 background:#0f1620;
                 border:1px solid #263547;
@@ -1732,6 +1752,40 @@ class MainWindow(QMainWindow):
         actions.addStretch(1)
         actions.addWidget(self.source_primary_button)
         l.addLayout(actions)
+
+        feature_picker=QFrame()
+        feature_picker.setObjectName("pluginFeaturePicker")
+        feature_l=QHBoxLayout(feature_picker)
+        feature_l.setContentsMargins(14,10,14,10)
+        feature_l.setSpacing(8)
+        feature_text=QVBoxLayout()
+        feature_text.setSpacing(1)
+        feature_title=QLabel("What would you like to add?")
+        feature_title.setObjectName("pluginFeatureTitle")
+        feature_subtitle=QLabel(
+            "Jump straight to plugins for a particular job."
+        )
+        feature_subtitle.setObjectName("pluginFeatureSubtitle")
+        feature_text.addWidget(feature_title)
+        feature_text.addWidget(feature_subtitle)
+        feature_l.addLayout(feature_text,1)
+
+        self.source_feature_buttons={}
+        for label,capability in (
+            ("More music","search"),
+            ("Lyrics","lyrics"),
+            ("Artwork","artwork"),
+            ("Recommendations","recommendations"),
+            ("Context","context"),
+        ):
+            button=QPushButton(label)
+            button.setObjectName("featureChip")
+            button.clicked.connect(
+                lambda _checked=False, value=capability:self._plugin_directory(value)
+            )
+            self.source_feature_buttons[capability]=button
+            feature_l.addWidget(button)
+        l.addWidget(feature_picker)
 
         self.sources_list=QListWidget()
         self.sources_list.setObjectName("sourcesList")
