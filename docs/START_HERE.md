@@ -51,6 +51,16 @@ Desktop builds include six streaming providers, installed on first launch; they 
 - **♥** — strong positive feedback.
 - **Power tools** — reveal provider, routing and diagnostic controls when you want deeper control.
 
+## If your collection metadata is messy
+
+Open **My Music**:
+
+- choose **Find missing artwork** to explicitly look online for covers that are still missing;
+- switch to **Artists** for a visual artist browser;
+- switch to **Tracks** and use **Edit** to correct an unknown artist, title, album, album artist, year or genre.
+
+Melodex stores those corrections locally and does not rewrite the original audio files. See [My Music](MY_MUSIC.md).
+
 ## Want to understand the idea?
 
 Read **[Why Melodex?](WHY_MELODEX.md)**.
