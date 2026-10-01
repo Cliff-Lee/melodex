@@ -36,13 +36,30 @@ The desktop app carries six audited provider packages and installs them automati
 | Included source | Package version | Main role |
 | --- | ---: | --- |
 | Internet Archive Audio | 0.1.0 | Search/play openly accessible archive audio |
-| LibriVox | 0.1.2 | Public-domain audiobooks |
+| LibriVox | 0.1.4 | Public-domain audiobooks |
 | Radio Browser | 0.1.2 | Internet radio directory |
 | SomaFM | 0.1.1 | Curated internet radio |
 | Wikimedia Commons Audio | 0.1.1 | Openly licensed/public-domain audio |
 | ccMixter | 0.1.3 | Creative Commons music |
 
 Bundled-package tests verify package identity/version, manifest structure, entrypoints and installation/restore behaviour. Live upstream availability is deliberately **not** inferred from fixture tests: use **Sources & plugins → Check installed** for a bounded health check on the current machine/network.
+
+## Live bundled-provider verification — October 1, 2026
+
+A manual network smoke test loaded the same six `.mdxprovider` packages carried by the desktop app. For each provider it performed a real search, resolved a returned item, then fetched the first 4096 bytes from the resolved media URL. Two consecutive clean runs passed all six providers:
+
+| Included source | Live result | Media probe |
+| --- | --- | --- |
+| Internet Archive Audio 0.1.0 | Pass | HTTP 206, audio/mpeg |
+| LibriVox 0.1.4 | Pass | HTTP 206, audio/mpeg |
+| Radio Browser 0.1.2 | Pass | HTTP 200, audio/mpeg |
+| SomaFM 0.1.1 | Pass | HTTP 206, audio/aac |
+| Wikimedia Commons Audio 0.1.1 | Pass | HTTP 206, application/ogg |
+| ccMixter 0.1.3 | Pass | HTTP 206, audio/mpeg |
+
+This is a dated verification snapshot, not a guarantee that third-party services will always be reachable.
+
+The audit also found that the previous LibriVox 0.1.2 package could exceed Melodex's provider RPC deadline while waiting on the official LibriVox API. LibriVox 0.1.4 now searches the Internet Archive `librivoxaudio` collection and resolves hosted MP3 files there. The checked-in provider source and bundled archive are regression-tested to match.
 
 ### Optional registry plugins
 
