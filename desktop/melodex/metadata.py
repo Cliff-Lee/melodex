@@ -274,6 +274,39 @@ class RichMetadataService:
         except Exception:
             return None
 
+    def local_artwork(self, track: dict[str, Any]) -> dict[str, Any]:
+        """Return local/embedded cover art without making a network request."""
+        supplied = str(track.get("artwork") or "").strip()
+        if supplied:
+            path = Path(supplied).expanduser()
+            if path.is_file():
+                return {"path": str(path), "source": "track artwork", "source_url": ""}
+
+        local_path = str(track.get("local_path") or "").strip()
+        if local_path:
+            folder = Path(local_path).expanduser().parent
+            try:
+                files = {
+                    item.name.casefold(): item
+                    for item in folder.iterdir()
+                    if item.is_file()
+                }
+                for name in (
+                    "cover.jpg", "cover.jpeg", "cover.png", "cover.webp",
+                    "folder.jpg", "folder.jpeg", "folder.png", "folder.webp",
+                    "front.jpg", "front.jpeg", "front.png", "front.webp",
+                ):
+                    path = files.get(name)
+                    if path is not None:
+                        return {"path": str(path), "source": "local cover file", "source_url": ""}
+            except Exception:
+                pass
+
+        embedded = self._embedded_artwork(track)
+        if embedded:
+            return {"path": str(embedded), "source": "embedded artwork", "source_url": ""}
+        return {"path": "", "source": "", "source_url": ""}
+
     def _download_artwork(self, url: str) -> Path | None:
         if not str(url or "").startswith(("https://", "http://")):
             return None
