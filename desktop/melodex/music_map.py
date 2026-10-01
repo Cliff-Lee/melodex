@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QEasingCurve, Qt, QVariantAnimation, Signal
 from PySide6.QtGui import QColor, QBrush, QPainter, QPen
 from PySide6.QtWidgets import (
     QComboBox,
@@ -34,9 +34,56 @@ def _track_identity(track: dict[str, Any]) -> str:
 
 
 class _MapView(QGraphicsView):
+    """Smooth map navigation with trackpad panning and bounded zoom."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._zoom_animation = QVariantAnimation(self)
+        self._zoom_animation.setDuration(135)
+        self._zoom_animation.setEasingCurve(QEasingCurve.OutCubic)
+        self._zoom_animation.valueChanged.connect(self._apply_zoom_value)
+
+    def _apply_zoom_value(self, value) -> None:
+        target = float(value)
+        current = max(0.0001, float(self.transform().m11()))
+        factor = target / current
+        if abs(factor - 1.0) > 0.0005:
+            self.scale(factor, factor)
+
+    def smooth_zoom(self, multiplier: float) -> None:
+        current = max(0.0001, float(self.transform().m11()))
+        target = max(0.62, min(3.0, current * float(multiplier)))
+        if abs(target - current) < 0.002:
+            return
+        if self._zoom_animation.state() == QVariantAnimation.Running:
+            self._zoom_animation.stop()
+        self._zoom_animation.setStartValue(current)
+        self._zoom_animation.setEndValue(target)
+        self._zoom_animation.start()
+
     def wheelEvent(self, event):
-        factor = 1.16 if event.angleDelta().y() > 0 else 1 / 1.16
-        self.scale(factor, factor)
+        pixel = event.pixelDelta()
+        zoom_modifier = bool(
+            event.modifiers() & (Qt.ControlModifier | Qt.MetaModifier)
+        )
+        if not pixel.isNull() and not zoom_modifier:
+            self.horizontalScrollBar().setValue(
+                self.horizontalScrollBar().value() - pixel.x()
+            )
+            self.verticalScrollBar().setValue(
+                self.verticalScrollBar().value() - pixel.y()
+            )
+            event.accept()
+            return
+
+        delta = event.angleDelta().y()
+        if not delta and not pixel.isNull():
+            delta = pixel.y()
+        if not delta:
+            return
+        steps = max(-3.0, min(3.0, float(delta) / 120.0))
+        self.smooth_zoom(1.10 ** steps)
+        event.accept()
 
 
 class _NodeItem(QGraphicsEllipseItem):
@@ -113,7 +160,8 @@ class MusicMapWidget(QWidget):
         self.mode.addItem("Taste", "taste")
         self.mode.addItem("Rediscovery", "rediscovery")
         self.edge_mode = QComboBox()
-        self.edge_mode.addItem("Sounds similar · Flow", "sonic")
+        self.edge_mode.addItem("Selected relationships", "focused")
+        self.edge_mode.addItem("All sonic links", "sonic")
         self.edge_mode.addItem("Actually connected · all", "knowledge")
         self.edge_mode.addItem("Same artist", "artist")
         self.edge_mode.addItem("Same album", "album")
@@ -126,11 +174,12 @@ class MusicMapWidget(QWidget):
         self.edge_mode.addItem("Recording places", "place")
         self.search = QLineEdit()
         self.search.setPlaceholderText("Find artist or track on map…")
-        reset = QPushButton("Reset view")
-        controls.addWidget(QLabel("Colour"))
+        reset = QPushButton("Fit map")
+        controls.addWidget(QLabel("View"))
         controls.addWidget(self.mode)
         controls.addWidget(QLabel("Connections"))
         controls.addWidget(self.edge_mode)
+        controls.addSpacing(8)
         controls.addWidget(self.search, 1)
         controls.addWidget(reset)
         layout.addLayout(controls)
@@ -141,7 +190,10 @@ class MusicMapWidget(QWidget):
         self.view.setDragMode(QGraphicsView.ScrollHandDrag)
         self.view.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
         self.view.setResizeAnchor(QGraphicsView.AnchorViewCenter)
+        self.view.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.view.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.view.setBackgroundBrush(QBrush(QColor("#10141c")))
+        self.view.setMinimumHeight(500)
         layout.addWidget(self.view, 1)
 
         self.status = QLabel("Analyse your local library to build a Music Map.")
@@ -212,7 +264,7 @@ class MusicMapWidget(QWidget):
             x, y = self.positions[ref]
             taste = max(0.0, min(1.0, float(node.get("taste") or 0.0)))
             rediscovery = max(0.0, min(1.0, float(node.get("rediscovery") or 0.0)))
-            radius = 4.5 + 3.5 * taste + 2.0 * rediscovery
+            radius = 6.5 + 4.0 * taste + 2.5 * rediscovery
             item = _NodeItem(ref, node, self._select_ref, self._activate_ref)
             item.setRect(-radius, -radius, radius * 2, radius * 2)
             item.setPos(x, y)
@@ -232,7 +284,7 @@ class MusicMapWidget(QWidget):
             self.status.setText(
                 f"{analysed:,} analysed tracks mapped from {total:,} local profiles · "
                 f"{known:,} tracks have cached knowledge. "
-                "Switch Connections between sonic similarity and factual relationships."
+                "Select a track to reveal its closest relationships; pan and zoom to explore."
             )
         else:
             self.status.setText("No cached Flow analysis yet. Use Analyse my library, then refresh the map.")
@@ -263,13 +315,22 @@ class MusicMapWidget(QWidget):
         if not self.positions:
             return
 
-        mode = str(self.edge_mode.currentData() or "sonic")
-        if mode == "sonic":
+        mode = str(self.edge_mode.currentData() or "focused")
+        if mode in {"focused", "sonic"}:
             edges = [
                 dict(x)
                 for x in list(self.model.get("edges") or [])
                 if isinstance(x, dict)
             ]
+            if mode == "focused":
+                if not self.selected_ref:
+                    return
+                edges = [
+                    edge
+                    for edge in edges
+                    if self.selected_ref
+                    in {str(edge.get("a") or ""), str(edge.get("b") or "")}
+                ]
             for edge in edges:
                 a, b = str(edge.get("a") or ""), str(edge.get("b") or "")
                 if a not in self.positions or b not in self.positions:
@@ -277,11 +338,18 @@ class MusicMapWidget(QWidget):
                 ax, ay = self.positions[a]
                 bx, by = self.positions[b]
                 similarity = max(0.0, min(1.0, float(edge.get("similarity") or 0.0)))
-                colour = QColor(118, 131, 153, int(35 + 85 * similarity))
+                if mode == "focused":
+                    colour = QColor(126, 166, 205, int(95 + 120 * similarity))
+                    width = 1.0 + 2.0 * similarity
+                    z_value = 4
+                else:
+                    colour = QColor(118, 131, 153, int(22 + 52 * similarity))
+                    width = 0.28 + 0.72 * similarity
+                    z_value = 1
                 pen = QPen(colour)
-                pen.setWidthF(0.35 + 1.1 * similarity)
+                pen.setWidthF(width)
                 line = self.scene.addLine(ax, ay, bx, by, pen)
-                line.setZValue(1)
+                line.setZValue(z_value)
                 line.setToolTip(f"Sonic neighbour · similarity {similarity:.0%}")
                 self.edge_items.append(line)
             return
@@ -407,6 +475,10 @@ class MusicMapWidget(QWidget):
         if not self.scene.items():
             return
         self.view.fitInView(self.scene.sceneRect(), Qt.KeepAspectRatio)
+        # A slightly closer starting view makes the map feel explorable instead
+        # of presenting the whole library as a tiny diagram.
+        self.view.scale(1.16, 1.16)
+        self.view.centerOn(self.scene.sceneRect().center())
 
     def _recolour(self) -> None:
         mode = str(self.mode.currentData() or "sonic")
@@ -446,6 +518,8 @@ class MusicMapWidget(QWidget):
         if ref not in self.ref_map:
             return
         self.selected_ref = ref
+        if str(self.edge_mode.currentData() or "") == "focused":
+            self._redraw_edges()
         self._recolour()
         track = dict(self.ref_map[ref])
         node = self.node_items[ref].node
