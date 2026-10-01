@@ -30,15 +30,13 @@ It can also mean:
 
 > **Remind me what I already loved.**
 
-Melodex records local listening signals such as completion, skips, Love and Keep. Rediscover mode can use those signals to surface things you liked but have not heard recently.
+Melodex records local listening signals such as completion, skips, ♥, and Keep. Rediscover mode can use those signals to surface things you liked but have not heard recently.
 
 ## Control the amount of surprise
 
-![Familiar to Surprising control](images/familiar-surprising.png)
-
 Sometimes you want discovery. Sometimes you absolutely do not.
 
-The Familiar ↔ Surprising control gives that decision back to you.
+On Home, choose **Tune it…** and move the **Familiar — Adventurous** control to set how far you want a session to explore.
 
 ## Taste without homework
 
@@ -70,7 +68,7 @@ Moments lets you bookmark positions inside tracks instead of only bookmarking tr
 
 Melodex is not intended to be another closed catalogue.
 
-The player works against a source-neutral provider model. Local files are built in, Jamendo provides a public reference integration, and compatible sources can be connected through MPP providers or Provider Bridge.
+Melodex can play local files and search its bundled streaming sources. Other sources can be connected through MPP providers or Provider Bridge. Each service continues to host its own audio.
 
 ## AI without making the player depend on AI
 

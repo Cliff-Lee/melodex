@@ -126,7 +126,7 @@ Local scanning, local cover files, embedded artwork and Melodex metadata correct
 Network requests happen only when a feature that needs them is explicitly used, such as:
 
 - **Find missing artwork**;
-- **Find artist photos**;
+- **Get artist photos**;
 - other metadata-enrichment actions documented by the relevant plugin/service.
 
 Artwork and metadata remain subject to the rights and attribution rules of their original sources.

@@ -52,11 +52,10 @@ Only bypass this warning for a Melodex build you downloaded from the official Gi
 
 On first launch:
 
-1. Open **Sources** in the left sidebar.
-2. Click **Add local folder…**.
+1. Open **My Music**.
+2. Click **+ Add music**.
 3. Choose a folder containing your music.
 4. Wait for Melodex to index the files.
-5. Open **My music** to check that tracks appear.
 
 Your original files are not moved. Melodex indexes the folders you choose.
 
@@ -64,11 +63,11 @@ Your original files are not moved. Melodex indexes the folders you choose.
 
 The simplest path is:
 
-1. Open **Play for me**.
-2. Choose how familiar or surprising you want the selection to be.
-3. Start playback.
+1. Open **Home**.
+2. Choose **Play something**, or choose **Comfort**, **Explore**, or **Rediscover** first.
+3. Use **Tune it…** if you want to adjust the Familiar — Adventurous control.
 4. Open **Queue** if you want to see what is coming next.
-5. Press **Flow queue** to make the upcoming sequence more musically coherent.
+5. Press **Flow queue** to arrange the upcoming tracks into a smoother sequence.
 
 Useful feedback controls:
 

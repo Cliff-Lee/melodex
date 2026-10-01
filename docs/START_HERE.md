@@ -1,72 +1,60 @@
 # Start Here
 
-You do **not** need to understand providers, DSP, APIs, Git or language models to use Melodex.
+This quick start matches the Melodex desktop v0.7.2 release.
+
+You can use Melodex as a music player without setting up AI, audio tools, or advanced controls.
 
 ## New to Melodex?
 
-Start with the **[5-minute visual tour](VISUAL_TOUR.md)**.
-
-It shows the actual application and covers:
-
-1. adding your music;
-2. browsing the library;
-3. Play for me;
-4. Familiar ↔ Surprising;
-5. teaching Melodex your taste;
-6. Flow;
-7. Music map;
-8. Journeys;
-9. Moments;
-10. music sources;
-11. optional LLM control.
+Take the [short visual tour](VISUAL_TOUR.md) to see Home, My Music, lyrics, and Explore.
 
 ## Install
 
-- [Linux (Ubuntu, Debian, AppImage)](INSTALL_LINUX.md)
+- [Linux](INSTALL_LINUX.md)
 - [macOS](INSTALL_MACOS.md)
 - [Windows](INSTALL_WINDOWS.md)
 - [Android](INSTALL_ANDROID.md)
 - [Installation chooser](INSTALL.md)
 
-## The shortest possible introduction
+## Start listening
 
-1. Install Melodex.
-2. Open **My Music**.
-3. Press **+ Add music** and select your music folder.
-4. Return to **Home**.
-5. Press **▶  Play something**.
+If you have music on your computer:
 
-That is enough to start.
+1. Open **My Music**.
+2. Choose **+ Add music** and select a folder.
+3. Return to **Home**.
+4. Choose **▶  Play something**.
 
-You do not need to configure Flow, providers or routing first. If you want more control later, choose **Tune it…** or enable **Power tools**.
+Melodex indexes the files in their current folders. It does not move or upload them.
 
-Desktop builds include six streaming providers, installed on first launch; they are ready to use without configuration. **Sources & plugins** begins by explaining this explicitly: plugins are optional extras for more music, artwork, lyrics, recommendations or context. Adding local music, community plugins, Provider Bridge and LLM control are optional. See [Music sources](SOURCES.md) for the bundled providers and rights notes.
+If you do not have local music ready, open **Explore → Search everything** to search connected sources instead.
 
-## Five controls worth knowing
+## A few useful choices
 
-- **▶  Play something** — let Melodex build a balanced listening session.
-- **My Music** — browse albums visually, then switch to artists or tracks if you need them.
-- **Explore** — choose Search, Album Wall or Music Map without learning all three at once.
-- **Keep** — tell Melodex this track is worth keeping in future listening.
-- **♥** — strong positive feedback.
-- **Power tools** — reveal provider, routing and diagnostic controls when you want deeper control.
+- **Comfort**, **Explore**, and **Rediscover** change the kind of session Home builds.
+- **Tune it…** gives you the **Familiar — Adventurous** control.
+- **Keep** and **♥** tell Melodex when a track matters to you.
+- Select the current track in the persistent player to open **Now Playing** and its **Lyrics** tab.
 
-## If your collection metadata is messy
+Desktop Melodex includes six streaming sources: ccMixter, SomaFM, Radio Browser, Wikimedia Commons Audio, LibriVox, and Internet Archive Audio. Their audio remains hosted by those services. See [Music sources](SOURCES.md) for details.
+
+## If your collection metadata needs work
 
 Open **My Music**:
 
-- choose **Find missing artwork** to explicitly recover covers that are still missing; large passes show completed/total plus found/no-match/failed counts and can be paused, canceled or retried;
-- switch to **Artists** for a visual artist browser and choose **Get artist photos** when portraits are missing;
-- switch to **Tracks** and use **Edit** to correct an unknown artist, title, album, album artist, year or genre.
+- choose **Find missing artwork** to look for album covers;
+- choose **Get artist photos** to look for artist portraits;
+- in **Tracks**, choose **Edit** to correct a title, artist, album, album artist, year, or genre.
 
-Melodex stores those corrections locally and does not rewrite the original audio files. See [My Music](MY_MUSIC.md).
+Melodex stores track corrections locally and does not rewrite your audio files. See [My Music](MY_MUSIC.md).
 
-## Want to understand the idea?
-
-Read **[Why Melodex?](WHY_MELODEX.md)**.
-
-## Need help?
+## Read on
 
 - [User guide](USER_GUIDE.md)
-- [Troubleshooting](TROUBLESHOOTING.md)
+- [Tinkerer's guide](TINKERERS_GUIDE.md) — add features or more control when you want it.
+- [Album Wall](ALBUM_WALL.md)
+- [Music Map](MUSIC_MAP.md)
+- [Playlist interchange](PLAYLIST_INTERCHANGE.md)
+- [Why Melodex?](WHY_MELODEX.md)
 - [FAQ](FAQ.md)
+- [Troubleshooting](TROUBLESHOOTING.md)

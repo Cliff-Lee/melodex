@@ -52,11 +52,10 @@ Do not run the application while it is still inside the ZIP archive.
 
 ## 4. Add your music
 
-1. Open **Sources** in Melodex.
-2. Click **Add local folder…**.
+1. Open **My Music**.
+2. Click **+ Add music**.
 3. Choose a folder containing music you are allowed to play.
 4. Wait while the folder is indexed.
-5. Open **My music** and confirm that your tracks appear.
 
 Your audio files remain in their original folders.
 
@@ -64,11 +63,11 @@ Your audio files remain in their original folders.
 
 For the easiest first session:
 
-1. Open **Play for me**.
-2. Set the **Familiar ↔ Surprising** control where you want it.
-3. Start playback.
+1. Open **Home**.
+2. Choose **Play something**, or choose **Comfort**, **Explore**, or **Rediscover** first.
+3. Use **Tune it…** if you want to adjust the Familiar — Adventurous control.
 4. Open **Queue** to see upcoming tracks.
-5. Use **Flow queue** to resequence the queue into a smoother musical journey.
+5. Use **Flow queue** to arrange the queue into a smoother sequence.
 
 Useful feedback controls:
 
