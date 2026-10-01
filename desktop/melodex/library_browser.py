@@ -520,6 +520,9 @@ class LibraryBrowser(QWidget):
         self.catalog = [dict(item) for item in catalog if isinstance(item, dict)]
         self._art_requested.clear()
         self._artist_art_requested.clear()
+        self._artist_lookup_queue.clear()
+        self._artist_lookup_inflight = 0
+        self._artist_lookup_active = False
         if not self.catalog:
             self.albums = []
             self.artist_rows = []
