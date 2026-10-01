@@ -1487,6 +1487,8 @@ class MainWindow(QMainWindow):
             self.player_power_actions.setVisible(enabled)
         if hasattr(self, "music_map_power_panel"):
             self.music_map_power_panel.setVisible(enabled)
+        if hasattr(self, "music_path_steps"):
+            self.music_path_steps.setVisible(enabled)
         if hasattr(self, "album_wall_power_panel"):
             self.album_wall_power_panel.setVisible(enabled)
         if announce:
