@@ -8,13 +8,13 @@ from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import QEvent, Qt, QTimer, Signal, QObject
-from PySide6.QtGui import QAction, QDesktopServices, QPixmap
+from PySide6.QtGui import QAction, QDesktopServices, QKeySequence, QPixmap, QShortcut
 from PySide6.QtMultimedia import QMediaPlayer
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QListWidget,
     QListWidgetItem, QStackedWidget, QLineEdit, QComboBox, QFileDialog, QMessageBox,
     QSlider, QTextEdit, QInputDialog, QDialog, QFormLayout, QDialogButtonBox, QCheckBox,
-    QTabWidget, QApplication, QPlainTextEdit,
+    QTabWidget, QApplication, QPlainTextEdit, QFrame,
 )
 
 from .paths import app_data_dir
@@ -55,6 +55,8 @@ from .plugin_configuration_dialog import configure_plugin
 from .plugin_onboarding import plugin_needs_setup
 from .plugin_health import health_badge, health_summary
 from .diagnostics import write_diagnostics
+from .library_browser import LibraryBrowser
+from .ux_components import ActionCard, CommandPaletteDialog, CoverLabel, EmptyState, set_help
 
 
 class WorkerSignals(QObject):
