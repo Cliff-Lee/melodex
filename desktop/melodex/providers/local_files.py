@@ -10,11 +10,73 @@ AUDIO_EXTS = {".mp3", ".flac", ".m4a", ".aac", ".ogg", ".opus", ".wav", ".aiff",
 
 
 class LocalFilesProvider(MusicProvider):
-    def __init__(self, roots: list[Path] | None = None):
+    EDITABLE_METADATA_FIELDS = {
+        "title", "artist", "album", "album_artist", "year", "genre",
+        "track_number", "disc_number",
+    }
+
+    def __init__(
+        self,
+        roots: list[Path] | None = None,
+        overrides: dict[str, dict[str, Any]] | None = None,
+    ):
         self.roots = [Path(p) for p in (roots or [])]
+        self.overrides = {
+            str(key): dict(value)
+            for key, value in dict(overrides or {}).items()
+            if isinstance(value, dict)
+        }
         self._tracks: list[dict[str, Any]] = []
         if self.roots:
             self.scan()
+
+    @staticmethod
+    def _override_key(path: str | Path) -> str:
+        value = Path(path).expanduser()
+        try:
+            value = value.resolve()
+        except Exception:
+            pass
+        return str(value)
+
+    def _apply_override(self, track: dict[str, Any]) -> dict[str, Any]:
+        out = dict(track)
+        local_path = str(out.get("local_path") or out.get("track_id") or "")
+        if not local_path:
+            return out
+        override = self.overrides.get(self._override_key(local_path), {})
+        for key, value in dict(override).items():
+            if key in self.EDITABLE_METADATA_FIELDS:
+                out[key] = value
+        return out
+
+    def set_metadata_override(
+        self,
+        local_path: str | Path,
+        changes: dict[str, Any],
+    ) -> dict[str, Any]:
+        key = self._override_key(local_path)
+        clean = {
+            field: value
+            for field, value in dict(changes or {}).items()
+            if field in self.EDITABLE_METADATA_FIELDS
+        }
+        existing = dict(self.overrides.get(key) or {})
+        existing.update(clean)
+        self.overrides[key] = existing
+        for index, track in enumerate(self._tracks):
+            if self._override_key(str(track.get("local_path") or "")) == key:
+                self._tracks[index] = self._apply_override(track)
+                return dict(self._tracks[index])
+        return {}
+
+    def clear_metadata_override(self, local_path: str | Path) -> bool:
+        key = self._override_key(local_path)
+        changed = key in self.overrides
+        self.overrides.pop(key, None)
+        if changed:
+            self.scan()
+        return changed
 
     @property
     def info(self) -> ProviderInfo:
@@ -103,7 +165,7 @@ class LocalFilesProvider(MusicProvider):
                 for name in files:
                     p = Path(base) / name
                     if p.suffix.lower() in AUDIO_EXTS:
-                        tracks.append(self._metadata(p))
+                        tracks.append(self._apply_override(self._metadata(p)))
         self._tracks = tracks
         return len(tracks)
 

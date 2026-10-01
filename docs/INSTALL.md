@@ -33,13 +33,16 @@ Do **not** download these unless you know you need them:
 For the quickest first experience:
 
 1. Open Melodex.
-2. Choose **Sources**.
-3. Select **Add local folder…** and choose a folder containing music you are allowed to play.
-4. Return to **Home** or **Play for me**.
-5. Start a track or press **Play for me**.
-6. Use **Flow queue** when you want Melodex to resequence the upcoming tracks into a more coherent journey.
+2. Open **My Music**.
+3. Choose **+ Add music** and select a folder containing music you are allowed to play.
+4. Browse the visual Albums view or return to **Home**.
+5. Choose **Play something**.
 
-Everything involving Jamendo, third-party providers, or an LLM is optional.
+That is enough to start.
+
+Use **Find missing artwork** only when you explicitly want Melodex to look online for missing covers. Artist photos and metadata enrichment are also optional.
+
+Provider configuration, Power tools, third-party plugins and LLM control are optional.
 
 ## Need help?
 

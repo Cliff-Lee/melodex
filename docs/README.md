@@ -18,6 +18,8 @@ Start here:
 
 Then use:
 
+- [My Music](MY_MUSIC.md) for visual Albums/Artists/Tracks, artwork lookup and local metadata correction;
+- [UX redesign](UX_REDESIGN.md) for the human-centred interaction model behind the current desktop interface;
 - [Album Wall](ALBUM_WALL.md) for the spatial album browser;
 - [FAQ](FAQ.md) for common questions;
 - [Troubleshooting](TROUBLESHOOTING.md) when something is not working;
@@ -31,7 +33,7 @@ Then use:
 - [macOS](INSTALL_MACOS.md)
 - [Windows](INSTALL_WINDOWS.md)
 - [Android](INSTALL_ANDROID.md)
-- [Latest release notes](releases/v0.6.0.md)
+- [Latest release notes](releases/v0.7.0.md)
 
 ## I want optional AI control
 

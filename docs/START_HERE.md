@@ -31,27 +31,35 @@ It shows the actual application and covers:
 ## The shortest possible introduction
 
 1. Install Melodex.
-2. Open **Sources**.
-3. Press **Add local folder…** and select your music folder.
-4. Open **My music** to confirm the tracks were indexed.
-5. Open **Play for me**.
-6. Choose a session length.
-7. Set **Familiar ↔ Surprising**.
-8. Press **▶ Build this journey**.
+2. Open **My Music**.
+3. Press **+ Add music** and select your music folder.
+4. Return to **Home**.
+5. Press **▶  Play something**.
 
 That is enough to start.
+
+You do not need to configure Flow, providers or routing first. If you want more control later, choose **Tune it…** or enable **Power tools**.
 
 Desktop builds include six streaming providers, installed on first launch; they are ready to use without configuration. Adding local music, Jamendo, Provider Bridge and LLM control are optional. See [Music sources](SOURCES.md) for the bundled providers and rights notes.
 
 ## Five controls worth knowing
 
-- **Play for me** — build a listening session.
-- **Flow queue** — resequence the upcoming queue.
-- **Music map** — explore analysed local music spatially, switch between sonic/factual connections, route with Pathfinder, design staged journeys, or adapt the unfinished route live while listening.
-- **Journeys** — save/share reusable journey shapes and inspect/replay private live-run history.
-- **Keep** — tell Melodex this belongs in your taste.
+- **▶  Play something** — let Melodex build a balanced listening session.
+- **My Music** — browse albums visually, then switch to artists or tracks if you need them.
+- **Explore** — choose Search, Album Wall or Music Map without learning all three at once.
+- **Keep** — tell Melodex this track is worth keeping in future listening.
 - **♥** — strong positive feedback.
-- **••• → Save a moment** — remember the exact point in a song.
+- **Power tools** — reveal provider, routing and diagnostic controls when you want deeper control.
+
+## If your collection metadata is messy
+
+Open **My Music**:
+
+- choose **Find missing artwork** to explicitly look online for covers that are still missing;
+- switch to **Artists** for a visual artist browser;
+- switch to **Tracks** and use **Edit** to correct an unknown artist, title, album, album artist, year or genre.
+
+Melodex stores those corrections locally and does not rewrite the original audio files. See [My Music](MY_MUSIC.md).
 
 ## Want to understand the idea?
 

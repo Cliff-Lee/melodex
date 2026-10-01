@@ -111,7 +111,7 @@ library.suggest
 
 The aim is composition: playback from one source, canonical identity from another, artwork/context from others, and privacy-preserving local intelligence over the user's own library.
 
-Install extensions through **Sources → Explore plugins…**, or start with [Build an enrichment plugin](docs/tutorials/BUILD_AN_ENRICHMENT_PLUGIN.md).
+Install extensions through **Sources & plugins → Explore plugins**, or start with [Build an enrichment plugin](docs/tutorials/BUILD_AN_ENRICHMENT_PLUGIN.md).
 
 ### 3. REST + OpenAPI
 
@@ -158,6 +158,18 @@ melodex_feedback
 Use [MCP with OpenWebUI](docs/tutorials/CONNECT_OPENWEBUI_MCP.md) or [OpenAI function calling](docs/tutorials/USE_OPENAI_FUNCTIONS.md).
 
 You can also make a playlist in ChatGPT, Claude, Gemini or another chat AI and paste it into **Playlists → Paste from AI…**. This is a copy-and-paste handoff: it does not require an AI connection or API key. Melodex matches the track details through your connected music sources and keeps unmatched requests in the saved playlist. See [Playlist interchange](docs/PLAYLIST_INTERCHANGE.md).
+
+## A simpler desktop, with power underneath
+
+The current desktop interface is organised around listener goals rather than Melodex internals: **Home**, **My Music**, **Explore**, **Journeys**, **Playlists**, and **Sources & plugins**. Artwork and recognition lead everyday browsing; advanced provider, routing and diagnostic controls remain available through **Power tools**. The design rationale is documented in [UX redesign](docs/UX_REDESIGN.md).
+
+### My Music is a collection, not a file list
+
+**My Music** now leads with a visual album grid, with separate visual **Artists** and artwork-rich **Tracks** views. Local/embedded artwork is preferred; explicit online artwork lookups are cached and remembered so covers do not disappear when the page is rebuilt.
+
+Local tracks can also be corrected inside Melodex when tags are incomplete. Artist, title, album, album artist, year and genre corrections survive rescans but **do not rewrite the original audio files**.
+
+See [My Music](docs/MY_MUSIC.md).
 
 ## Browse the Album Wall
 

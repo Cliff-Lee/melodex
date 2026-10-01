@@ -153,3 +153,40 @@ def test_sound_layout_is_compact_for_medium_library():
     ys = [y for _, y in positions.values()]
     assert max(xs) - min(xs) < 2400
     assert max(ys) - min(ys) < 1800
+
+
+def test_album_wall_merges_obvious_tribute_compilation_across_artist_folders():
+    catalog = [
+        _track("/artists/A/01.mp3", "Artist A", "Electronic Love - A Tribute to Depeche Mode", "One", 1, 2008),
+        _track("/artists/B/02.mp3", "Artist B", "Electronic Love - A Tribute to Depeche Mode", "Two", 2, 2008),
+        _track("/artists/C/03.mp3", "Artist C", "Electronic Love - A Tribute to Depeche Mode", "Three", 3, 2008),
+    ]
+    wall = build_album_wall(catalog)
+    assert wall["album_count"] == 1
+    album = wall["albums"][0]
+    assert album["artist"] == "Various Artists"
+    assert album["track_count"] == 3
+    assert [t["title"] for t in album["tracks"]] == ["One", "Two", "Three"]
+
+
+def test_album_artist_metadata_groups_same_release_but_year_keeps_editions_separate():
+    catalog = [
+        {
+            **_track("/one/01.mp3", "Guest A", "Shared Release", "One", 1, 2001),
+            "album_artist": "Main Artist",
+        },
+        {
+            **_track("/two/02.mp3", "Guest B", "Shared Release", "Two", 2, 2001),
+            "album_artist": "Main Artist",
+        },
+        {
+            **_track("/remaster/01.mp3", "Main Artist", "Shared Release", "One", 1, 2015),
+            "album_artist": "Main Artist",
+        },
+    ]
+    wall = build_album_wall(catalog)
+    assert wall["album_count"] == 2
+    original = next(a for a in wall["albums"] if a["year"] == 2001)
+    remaster = next(a for a in wall["albums"] if a["year"] == 2015)
+    assert original["track_count"] == 2
+    assert remaster["track_count"] == 1

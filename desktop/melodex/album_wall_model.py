@@ -36,12 +36,21 @@ def _album_folder(track: dict[str, Any]) -> str:
 def _album_key(track: dict[str, Any]) -> str:
     album = _norm(track.get("album"))
     if album:
+        # Trust explicit album-artist metadata first. Folder structure is a
+        # fallback because compilations and multi-artist records are often
+        # stored in artist-specific folders.
+        album_artist = _norm(track.get("album_artist"))
+        if album_artist:
+            year = _year(track)
+            if year:
+                return f"album-artist:{album_artist}|{album}|{year}"
+            folder = _album_folder(track)
+            if folder:
+                return f"album-artist-folder:{album_artist}|{folder}|{album}"
+            return f"album-artist:{album_artist}|{album}"
         folder = _album_folder(track)
         if folder:
             return f"folder:{folder}|{album}"
-        album_artist = _norm(track.get("album_artist"))
-        if album_artist:
-            return f"album-artist:{album_artist}|{album}"
         artist = _norm(track.get("artist") or "Unknown artist")
         return f"artist:{artist}|{album}"
     return "single:" + _norm(track.get("artist") or "Unknown artist") + "|" + _norm(
@@ -103,6 +112,41 @@ def build_album_wall(
         if isinstance(raw, dict):
             track = dict(raw)
             groups[_album_key(track)].append(track)
+
+    # Conservative compilation repair. Some collections omit ALBUMARTIST and
+    # store each track under its performer, which would otherwise turn one
+    # compilation into many one-track "albums". Merge only strong candidates:
+    # obvious compilation/tribute/soundtrack names, or the same album+year
+    # split across at least three distinct performers.
+    signatures: dict[tuple[str, int], list[str]] = defaultdict(list)
+    for key, tracks in groups.items():
+        if not tracks or any(str(t.get("album_artist") or "").strip() for t in tracks):
+            continue
+        title=_norm(tracks[0].get("album"))
+        if not title:
+            continue
+        years=[_year(t) for t in tracks if _year(t)]
+        year=min(years) if years else 0
+        signatures[(title,year)].append(key)
+
+    for (title,year), keys in list(signatures.items()):
+        if len(keys) < 2:
+            continue
+        candidate_tracks=[t for key in keys for t in groups.get(key,[])]
+        artists={
+            _norm(t.get("artist") or "Unknown artist")
+            for t in candidate_tracks
+            if _norm(t.get("artist") or "Unknown artist")
+        }
+        obvious=any(word in title for word in ("tribute","soundtrack","various artists","compilation"))
+        strong=bool(year) and len(keys) >= 3 and len(artists) >= 3
+        if not (obvious or strong):
+            continue
+        merged_key=f"compilation:{year}|{title}"
+        merged=[]
+        for key in keys:
+            merged.extend(groups.pop(key,[]))
+        groups[merged_key].extend(merged)
 
     albums: list[dict[str, Any]] = []
     for key, tracks in groups.items():
