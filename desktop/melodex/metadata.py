@@ -272,7 +272,7 @@ class RichMetadataService:
             return {}
         suffix=source.suffix.lower()
         if suffix not in {".jpg",".jpeg",".png",".webp"}:
-            suffix=".img"
+            return {}
         target=self.art_cache / (
             "artist-user-" + hashlib.sha256(data).hexdigest()[:24] + suffix
         )
