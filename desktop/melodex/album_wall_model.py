@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import math
 import re
+from pathlib import Path
 from collections import defaultdict
 from typing import Any
 
@@ -20,11 +21,23 @@ def _identity(track: dict[str, Any]) -> tuple[str, str]:
 
 
 def _album_key(track: dict[str, Any]) -> str:
-    artist = _norm(track.get("album_artist") or track.get("artist") or "Unknown artist")
     album = _norm(track.get("album"))
-    if not album:
-        album = "single:" + _norm(track.get("title") or track.get("track_id"))
-    return f"{artist}|{album}"
+    album_artist = _norm(track.get("album_artist"))
+    if album:
+        if album_artist:
+            return f"album-artist:{album_artist}|{album}"
+        local_path = str(track.get("local_path") or "").strip()
+        if local_path:
+            try:
+                parent = str(Path(local_path).expanduser().resolve().parent)
+            except Exception:
+                parent = str(Path(local_path).expanduser().parent)
+            return f"folder:{_norm(parent)}|{album}"
+        artist = _norm(track.get("artist") or "Unknown artist")
+        return f"artist:{artist}|{album}"
+    return "single:" + _norm(track.get("artist") or "Unknown artist") + "|" + _norm(
+        track.get("title") or track.get("track_id")
+    )
 
 
 def _year(track: dict[str, Any]) -> int:
@@ -109,9 +122,19 @@ def build_album_wall(
                 if text and text.casefold() not in {x.casefold() for x in genres}:
                     genres.append(text)
 
+        album_artist = str(first.get("album_artist") or "").strip()
+        if album_artist:
+            display_artist = album_artist
+        else:
+            track_artists = {
+                str(track.get("artist") or "Unknown artist").strip() or "Unknown artist"
+                for track in tracks
+            }
+            display_artist = next(iter(track_artists)) if len(track_artists) == 1 else "Various Artists"
+
         albums.append({
             "key": key,
-            "artist": str(first.get("album_artist") or first.get("artist") or "Unknown artist"),
+            "artist": display_artist,
             "title": str(first.get("album") or first.get("title") or "Unknown album"),
             "year": min(years) if years else 0,
             "genres": genres[:5],
