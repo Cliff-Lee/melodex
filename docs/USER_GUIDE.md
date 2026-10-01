@@ -36,6 +36,8 @@ The compact toolbar contains:
 
 Synchronized lines highlight with playback and remain click-to-seek. Installed `lyrics.lookup` extensions participate automatically; you do not open or operate a separate plugin page to use them.
 
+Online LRCLIB results can be cached privately in Melodex's local metadata cache so returning to the same track is immediate. The cache does not rewrite your music files, and provider-supplied lyrics remain read-only.
+
 In **Visuals**, choose a view from the selector. Each track has a repeatable visual identity. Cached Flow features shape its scene when available; album artwork supplies a sampled colour palette.
 
 The modes include the animated Living Canvas, Song Fingerprint, the seekable Musical Journey, a queue/history Constellation, local Lyrics Typography, Album World, Sonic Weather, a local Visual Memory atlas and Minimal. Constellation stars can be inspected with a click and queued with a double-click. Visual Memory can zoom by session, album, week or year; it reads only the listening history already stored on this device.
