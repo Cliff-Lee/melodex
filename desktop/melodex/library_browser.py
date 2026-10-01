@@ -338,6 +338,7 @@ class LibraryBrowser(QWidget):
         self.track_items: dict[str, QListWidgetItem] = {}
         self.track_album_key: dict[str, str] = {}
         self.artwork_paths: dict[str, str] = {}
+        self.artist_image_paths: dict[str, str] = {}
         self._visible_albums: list[dict[str, Any]] = []
         self._visible_artists: list[dict[str, Any]] = []
         self._art_requested: set[str] = set()
@@ -630,7 +631,11 @@ class LibraryBrowser(QWidget):
                 card.openRequested.connect(self._artist_opened)
                 card.playRequested.connect(self.playArtistRequested)
                 self.artist_cards[key] = card
-                self._apply_artist_fallback_image(card, artist)
+                artist_path=self.artist_image_paths.get(key,"")
+                if artist_path:
+                    card.set_image(artist_path,artist_photo=True)
+                else:
+                    self._apply_artist_fallback_image(card, artist)
             row, column = divmod(index, columns)
             self.artist_grid.addWidget(card, row, column, Qt.AlignTop)
         self.artist_container.adjustSize()
@@ -845,9 +850,12 @@ class LibraryBrowser(QWidget):
     def set_artist_images(self, mapping: dict[str, str]) -> None:
         for key, path in dict(mapping or {}).items():
             key=str(key)
+            path=str(path or "")
+            if path:
+                self.artist_image_paths[key]=path
             card = self.artist_cards.get(key)
             if card is not None and path:
-                card.set_image(str(path), artist_photo=True)
+                card.set_image(path, artist_photo=True)
             elif not path:
                 self._artist_art_requested.discard(key)
 
