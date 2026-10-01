@@ -9,6 +9,7 @@ This page is intentionally exhaustive. For a shorter route by goal, use the [doc
 - [5-minute Visual Tour](VISUAL_TOUR.md)
 - [Why Melodex?](WHY_MELODEX.md)
 - [User Guide](USER_GUIDE.md)
+- [UX Redesign](UX_REDESIGN.md)
 - [FAQ](FAQ.md)
 - [Troubleshooting](TROUBLESHOOTING.md)
 
