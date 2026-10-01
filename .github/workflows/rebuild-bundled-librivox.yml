@@ -6,6 +6,7 @@ on:
       - campaign/live-provider-verification-2026-10-01
     paths:
       - "scripts/rebuild_bundled_librivox.py"
+      - "desktop/bundled_provider_sources/librivox/**"
       - ".github/workflows/rebuild-bundled-librivox.yml"
 
 permissions:
@@ -16,21 +17,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Read known-good 0.1.2 bundle from main
+      - name: Rebuild and validate LibriVox bundle
         run: |
-          git show origin/main:desktop/melodex/bundled_providers/LibriVox-0.1.2.mdxprovider > /tmp/LibriVox-0.1.2.mdxprovider
-      - name: Rebuild and validate 0.1.3
-        run: |
-          python scripts/rebuild_bundled_librivox.py             /tmp/LibriVox-0.1.2.mdxprovider             desktop/melodex/bundled_providers/LibriVox-0.1.3.mdxprovider
+          rm -f desktop/melodex/bundled_providers/LibriVox-0.1.3.mdxprovider
+          python scripts/rebuild_bundled_librivox.py             desktop/melodex/bundled_providers/LibriVox-0.1.4.mdxprovider
           python - <<'PY'
           import zipfile
           from pathlib import Path
-          p=Path("desktop/melodex/bundled_providers/LibriVox-0.1.3.mdxprovider")
+          p=Path("desktop/melodex/bundled_providers/LibriVox-0.1.4.mdxprovider")
           with zipfile.ZipFile(p) as zf:
               assert zf.testzip() is None
           print("CRC OK", p.stat().st_size)
@@ -39,10 +36,10 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add desktop/melodex/bundled_providers/LibriVox-0.1.3.mdxprovider
+          git add -A desktop/melodex/bundled_providers
           if git diff --cached --quiet; then
             echo "Bundle already matches rebuilt output."
           else
-            git commit -m "build: regenerate bundled LibriVox 0.1.3"
+            git commit -m "build: regenerate bundled LibriVox 0.1.4"
             git push origin HEAD:campaign/live-provider-verification-2026-10-01
           fi
