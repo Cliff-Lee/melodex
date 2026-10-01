@@ -1321,3 +1321,87 @@ def test_now_playing_warms_cached_art_and_online_lyrics_before_network(monkeypat
 
     window.close()
     app.processEvents()
+
+
+
+def test_artist_releases_credits_are_compact_native_summaries(monkeypatch, tmp_path):
+    try:
+        from PySide6.QtWidgets import QApplication, QLabel, QTextBrowser
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+
+    window = main_window.MainWindow()
+    widget = window.rich_now
+
+    assert isinstance(widget.artist_info, QLabel)
+    assert isinstance(widget.releases, QLabel)
+    assert isinstance(widget.credits, QLabel)
+    assert not isinstance(widget.artist_info, QTextBrowser)
+    assert "border:0" in widget.artist_info.styleSheet()
+    assert "border:0" in widget.releases.styleSheet()
+    assert "border:0" in widget.credits.styleSheet()
+
+    artist_html = widget._artist_html({
+        "name": "Example Artist",
+        "type": "Group",
+        "begin_area": "Newport",
+        "begin": "2000",
+        "genres": ["welsh", "hip hop"],
+        "members": [
+            {"name": f"Member {i}", "type": "member", "ended": False}
+            for i in range(8)
+        ],
+        "related": [
+            {"name": f"Project {i}", "type": "member of"}
+            for i in range(8)
+        ],
+        "links": [
+            {"type": f"site {i}", "url": f"https://example.com/{i}"}
+            for i in range(7)
+        ],
+    }, {"path": "/tmp/photo.jpg"})
+    assert "<img" not in artist_html.casefold()
+    assert "Example Artist" in artist_html
+    assert "Newport" in artist_html
+    assert "Member 5" in artist_html
+    assert "Member 6" not in artist_html
+    assert "Project 5" in artist_html
+    assert "Project 6" not in artist_html
+    assert "site 4" in artist_html
+    assert "site 5" not in artist_html
+
+    release_html = widget._discography_html([
+        {"id": f"rg-{i}", "title": f"Album {i}", "year": 2000 + i, "primary_type": "Album"}
+        for i in range(10)
+    ])
+    assert "Showing 6 of 10" in release_html
+    assert "Album 5" in release_html
+    assert "Album 6" not in release_html
+
+    credits_html = widget._credits_html([
+        {"role": "producer", "name": "A"},
+        {"role": "producer", "name": "B"},
+        {"role": "producer", "name": "A"},
+        {"role": "performer", "name": "C"},
+    ])
+    assert "A · B" in credits_html
+    assert credits_html.count("producer") == 1
+
+    widget._set_artist_photo_credit({
+        "path": "/tmp/photo.jpg",
+        "attribution": "A very long photographer attribution that should not dominate the page",
+        "description_url": "https://commons.wikimedia.org/wiki/File:Example.jpg",
+        "license_name": "CC BY-SA 4.0",
+    })
+    assert "Commons" in widget.artist_photo_credit.text()
+    assert "CC BY-SA 4.0" in widget.artist_photo_credit.text()
+    assert "A very long photographer attribution" in widget.artist_photo_credit.toolTip()
+
+    window.close()
+    app.processEvents()
