@@ -658,6 +658,9 @@ class RichMetadataService:
 
     @staticmethod
     def _extract_wikidata_qid(artist: dict[str, Any]) -> str:
+        explicit=str(artist.get("wikidata_qid") or "").strip()
+        if re.fullmatch(r"Q\d+",explicit):
+            return explicit
         for row in list(artist.get("links") or []):
             if not isinstance(row, dict):
                 continue
