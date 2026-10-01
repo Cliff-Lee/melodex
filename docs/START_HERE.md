@@ -40,7 +40,7 @@ That is enough to start.
 
 You do not need to configure Flow, providers or routing first. If you want more control later, choose **Tune it…** or enable **Power tools**.
 
-Desktop builds include six streaming providers, installed on first launch; they are ready to use without configuration. Adding local music, Jamendo, Provider Bridge and LLM control are optional. See [Music sources](SOURCES.md) for the bundled providers and rights notes.
+Desktop builds include six streaming providers, installed on first launch; they are ready to use without configuration. **Sources & plugins** begins by explaining this explicitly: plugins are optional extras for more music, artwork, lyrics, recommendations or context. Adding local music, community plugins, Provider Bridge and LLM control are optional. See [Music sources](SOURCES.md) for the bundled providers and rights notes.
 
 ## Five controls worth knowing
 
@@ -55,8 +55,8 @@ Desktop builds include six streaming providers, installed on first launch; they 
 
 Open **My Music**:
 
-- choose **Find missing artwork** to explicitly look online for covers that are still missing;
-- switch to **Artists** for a visual artist browser;
+- choose **Find missing artwork** to explicitly recover covers that are still missing; large passes show completed/total plus found/no-match/failed counts and can be paused, canceled or retried;
+- switch to **Artists** for a visual artist browser and choose **Get artist photos** when portraits are missing;
 - switch to **Tracks** and use **Edit** to correct an unknown artist, title, album, album artist, year or genre.
 
 Melodex stores those corrections locally and does not rewrite the original audio files. See [My Music](MY_MUSIC.md).
