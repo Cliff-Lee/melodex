@@ -214,7 +214,7 @@ class MainWindow(QMainWindow):
 
         side.addStretch(1)
 
-        sources_nav = add_nav("Sources & plugins", "sources")
+        sources_nav = add_nav("Sources && plugins", "sources")
         set_help(
             sources_nav,
             "Sources & plugins",
@@ -301,28 +301,29 @@ class MainWindow(QMainWindow):
         # than requiring a permanent sidebar destination.
         bar = QWidget()
         bar.setObjectName("playerBar")
-        bar.setFixedHeight(104)
+        bar.setFixedHeight(92)
         bl = QHBoxLayout(bar)
         bl.setContentsMargins(16, 10, 18, 10)
         bl.setSpacing(9)
 
-        prev = QPushButton("◀")
+        prev = QPushButton("⏮")
         prev.setObjectName("transportButton")
         prev.clicked.connect(self.player.previous)
-        play = QPushButton("▶ / ❚❚")
-        play.setObjectName("transportButtonWide")
-        play.clicked.connect(self.player.play_pause)
-        nxt = QPushButton("▶")
+        self.play_button = QPushButton("▶")
+        self.play_button.setObjectName("transportButton")
+        self.play_button.clicked.connect(self.player.play_pause)
+        nxt = QPushButton("⏭")
         nxt.setObjectName("transportButton")
         nxt.clicked.connect(self.player.next)
+        self.player.playingChanged.connect(self._update_play_button)
         set_help(prev, "Previous", "Restart the current track or return to the previous track.")
-        set_help(play, "Play / pause", "Pause or continue the current music.")
+        set_help(self.play_button, "Play / pause", "Pause or continue the current music.")
         set_help(nxt, "Next", "Move to the next track in the queue.")
         bl.addWidget(prev)
-        bl.addWidget(play)
+        bl.addWidget(self.play_button)
         bl.addWidget(nxt)
 
-        self.player_cover = CoverLabel(64)
+        self.player_cover = CoverLabel(56)
         self.player_cover.set_cover("", title="Melodex", key="melodex")
         self.player_cover.setToolTip("Now playing artwork")
         bl.addWidget(self.player_cover)
@@ -398,6 +399,7 @@ class MainWindow(QMainWindow):
                 font-family:"SF Pro Text","Segoe UI",Arial;
                 font-size:13px;
             }
+            QLabel{background:transparent}
             QWidget#sidebar{
                 background:#0a0d12;
                 border-right:1px solid #202733;
@@ -600,6 +602,10 @@ class MainWindow(QMainWindow):
             }
         """)
         self._update_nav_state("home")
+
+    def _update_play_button(self, playing: bool) -> None:
+        if hasattr(self,"play_button"):
+            self.play_button.setText("❚❚" if playing else "▶")
 
     def _page_layout(self, page: str, title: str, subtitle: str=""):
         lay=QVBoxLayout(self.pages[page]); lay.setContentsMargins(28,24,28,24)
@@ -1664,11 +1670,19 @@ class MainWindow(QMainWindow):
         current=UserState.track_key(dict(getattr(self,"home_recent_track",{}) or {}))
         if token!=current or not isinstance(result,dict):
             return
+        path=str(result.get("path") or "")
         self.home_continue_cover.set_cover(
-            str(result.get("path") or ""),
+            path,
             title=str(self.home_recent_track.get("album") or self.home_recent_track.get("title") or ""),
             key=token,
         )
+        current=dict(self.current_track or {})
+        if current and token==UserState.track_key(current) and hasattr(self,"player_cover"):
+            self.player_cover.set_cover(
+                path,
+                title=str(current.get("album") or current.get("title") or ""),
+                key=token,
+            )
 
     def _home_continue_play(self) -> None:
         track=dict(getattr(self,"home_recent_track",{}) or {})
