@@ -377,3 +377,126 @@ def test_plugin_centre_is_outcome_and_management_focused(monkeypatch, tmp_path):
     dialog.close()
     window.close()
     app.processEvents()
+
+
+
+def test_plugins_surface_where_their_features_are_used(monkeypatch, tmp_path):
+    try:
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+
+    window = main_window.MainWindow()
+    window.show()
+    app.processEvents()
+
+    extensions = [
+        {
+            "id": "org.example.art",
+            "name": "Cover Helper",
+            "enabled": True,
+            "capabilities": ["artwork"],
+            "configuration_status": {"declared": False, "ready": True},
+        },
+        {
+            "id": "org.example.lyrics",
+            "name": "Lyric Helper",
+            "enabled": True,
+            "capabilities": ["lyrics"],
+            "configuration_status": {"declared": False, "ready": True},
+        },
+        {
+            "id": "org.example.context",
+            "name": "Liner Notes",
+            "enabled": True,
+            "capabilities": ["context"],
+            "configuration_status": {"declared": False, "ready": True},
+        },
+        {
+            "id": "org.example.recommend",
+            "name": "Taste Helper",
+            "enabled": True,
+            "capabilities": ["library_suggestions"],
+            "configuration_status": {"declared": False, "ready": True},
+        },
+        {
+            "id": "org.example.disabled",
+            "name": "Disabled Helper",
+            "enabled": False,
+            "capabilities": ["artwork", "lyrics"],
+            "configuration_status": {"declared": False, "ready": True},
+        },
+        {
+            "id": "org.example.setup",
+            "name": "Needs Setup",
+            "enabled": True,
+            "capabilities": ["context"],
+            "configuration_status": {"declared": True, "ready": False},
+        },
+    ]
+    monkeypatch.setattr(window.providers, "extensions", lambda: list(extensions))
+
+    window._refresh_plugin_presence()
+    app.processEvents()
+
+    assert "Cover Helper" in window.artwork_plugin_presence.label.text()
+    assert "Disabled Helper" not in window.artwork_plugin_presence.label.text()
+    assert bool(window.artwork_plugin_presence.property("active"))
+
+    assert "Taste Helper" in window.recommendation_plugin_presence.label.text()
+    assert "Lyric Helper" in window.rich_now.lyrics_plugin_presence.label.text()
+    assert "Liner Notes" in window.rich_now.context_plugin_presence.label.text()
+    assert "Needs Setup" not in window.rich_now.context_plugin_presence.label.text()
+
+    opened = []
+    monkeypatch.setattr(window, "_plugin_directory", lambda capability="": opened.append(capability))
+
+    window.search_plugin_presence.action.click()
+    window.artwork_plugin_presence.action.click()
+    window.recommendation_plugin_presence.action.click()
+    window.rich_now.lyrics_plugin_presence.action.click()
+    window.rich_now.context_plugin_presence.action.click()
+
+    assert opened == [
+        "search",
+        "artwork",
+        "library_suggestions",
+        "lyrics",
+        "context",
+    ]
+
+    window.close()
+    app.processEvents()
+
+
+def test_feature_presence_bar_distinguishes_core_only_from_active_plugins():
+    try:
+        from PySide6.QtWidgets import QApplication
+        from melodex.ux_components import FeaturePresenceBar
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    bar = FeaturePresenceBar(
+        "Artwork helpers",
+        baseline="Built-in matching is active",
+        action_text="Add artwork helper…",
+    )
+
+    assert "Built-in matching is active" in bar.label.text()
+    assert not bool(bar.property("active"))
+
+    bar.set_items(["Cover Helper", "Cover Helper", "Second Source"])
+    assert "Cover Helper" in bar.label.text()
+    assert "Second Source" in bar.label.text()
+    assert bool(bar.property("active"))
+
+    bar.deleteLater()
+    app.processEvents()
