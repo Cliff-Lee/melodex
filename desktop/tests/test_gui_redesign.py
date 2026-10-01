@@ -112,6 +112,14 @@ def test_redesigned_main_window_builds_with_goal_navigation(monkeypatch, tmp_pat
     assert hasattr(window, "source_summary_library")
     assert hasattr(window, "source_summary_included")
     assert hasattr(window, "source_summary_enhancements")
+    assert set(window.source_feature_buttons) == {
+        "search",
+        "lyrics",
+        "artwork",
+        "recommendations",
+        "context",
+    }
+    assert window.source_feature_buttons["lyrics"].text() == "Lyrics"
     assert window.now_views.tabText(0) == "Now Playing"
     assert window.now_views.tabText(1) == "Visuals"
     assert window.playlists_stack.currentWidget() is window.playlists_empty
@@ -279,4 +287,64 @@ def test_source_card_uses_icon_and_origin_badge():
     assert badge.text() == "“"
     assert card.findChild(QLabel, "originPill") is not None
     card.deleteLater()
+    app.processEvents()
+
+
+
+def test_plugin_centre_is_outcome_and_management_focused(monkeypatch, tmp_path):
+    try:
+        from PySide6.QtWidgets import QApplication, QLabel
+        import melodex.main_window as main_window
+        from melodex.plugin_directory import PluginDirectoryDialog, PluginDirectoryCard
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+    monkeypatch.setattr(PluginDirectoryDialog, "load_registry", lambda self, force=False: None)
+
+    window = main_window.MainWindow()
+    dialog = PluginDirectoryDialog(window.providers, parent=window)
+
+    assert dialog.view.itemData(0) == "all"
+    assert dialog.view.findData("installed") >= 0
+    assert dialog.view.findData("setup") >= 0
+    assert dialog.view.findData("updates") >= 0
+    assert dialog.toggle_button.text() == "Disable"
+    assert dialog.remove_button.text() == "Remove"
+    assert dialog.toggle_button.isEnabled() is False
+    assert dialog.remove_button.isEnabled() is False
+
+    lyrics_entry = {
+        "id": "org.example.lyrics",
+        "name": "Lyrics helper",
+        "kind": "enrichment",
+        "status": "community",
+        "description": "Adds lyrics.",
+        "capabilities": ["lyrics"],
+        "distribution": {},
+        "source": {},
+        "review": {},
+        "permissions": [],
+    }
+    assert PluginDirectoryDialog._where_used(lyrics_entry) == "Now Playing → Lyrics"
+    assert PluginDirectoryDialog._where_used(
+        {**lyrics_entry, "kind": "provider", "capabilities": ["search", "playback"]}
+    ) == "Explore → Search everything"
+
+    card = PluginDirectoryCard(
+        lyrics_entry,
+        "Setup needed",
+        installed=True,
+    )
+    state = card.findChild(QLabel, "pluginDirectoryState")
+    assert state is not None
+    assert state.text() == "Setup needed"
+    assert state.property("state") == "attention"
+
+    card.deleteLater()
+    dialog.close()
+    window.close()
     app.processEvents()
