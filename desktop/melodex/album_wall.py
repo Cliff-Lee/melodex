@@ -256,6 +256,7 @@ class AlbumWallWidget(QWidget):
         self._track_to_album.clear()
         self._art_requested.clear()
         self.selected_key = ""
+        self.current_key = ""
 
         for raw in list(self.model.get("albums") or []):
             if not isinstance(raw, dict):
@@ -277,11 +278,14 @@ class AlbumWallWidget(QWidget):
         self.fit_wall()
         albums = int(self.model.get("album_count") or len(self.albums))
         analysed = int(self.model.get("analysed_albums") or 0)
-        self.status.setText(
-            f"{albums:,} albums · {analysed:,} positioned from Flow analysis · "
-            "wheel to zoom · drag to explore · double-click an album to play"
-        )
-        self._schedule_visible_art()
+        if albums:
+            self.status.setText(
+                f"{albums:,} albums · {analysed:,} positioned from Flow analysis · "
+                "wheel to zoom · drag to explore · double-click an album to play"
+            )
+            self._schedule_visible_art()
+        else:
+            self.status.setText("Add local music to build your Album Wall.")
 
     def selected_album(self) -> dict[str, Any]:
         return dict(self.albums.get(self.selected_key) or {})
@@ -418,7 +422,6 @@ class AlbumWallWidget(QWidget):
             tile = self.tiles.get(str(key))
             if tile and path:
                 tile.set_cover_path(str(path))
-        QTimer.singleShot(60, self._request_visible_art)
 
 
 __all__ = ["AlbumWallWidget"]
