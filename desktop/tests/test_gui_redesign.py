@@ -500,3 +500,83 @@ def test_feature_presence_bar_distinguishes_core_only_from_active_plugins():
 
     bar.deleteLater()
     app.processEvents()
+
+
+
+def test_lyrics_lookup_outcomes_are_distinct_in_now_playing(monkeypatch, tmp_path):
+    try:
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+        from melodex.metadata import track_key
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+
+    window = main_window.MainWindow()
+    widget = window.rich_now
+    widget.track = {
+        "artist": "Example Artist",
+        "title": "Example Song",
+        "provider_id": "local",
+        "track_id": "example-song",
+    }
+    key = track_key(widget.track)
+
+    widget._stage_loaded(
+        key,
+        "community lyrics",
+        {
+            "lyrics": {
+                "text": "",
+                "synced": [],
+                "source": "LRCLIB community lyrics",
+                "instrumental": False,
+                "status": "not_found",
+                "error": "",
+            }
+        },
+    )
+    assert "No confident online match" in widget.lyrics.toPlainText()
+    assert widget.online_lyrics_button.text() == "Try again"
+    assert "no confident match" in widget.lyrics_source.text().casefold()
+
+    widget._stage_loaded(
+        key,
+        "community lyrics",
+        {
+            "lyrics": {
+                "text": "",
+                "synced": [],
+                "source": "LRCLIB",
+                "instrumental": False,
+                "status": "error",
+                "error": "temporary service error",
+            }
+        },
+    )
+    assert "could not connect" in widget.lyrics.toPlainText().casefold()
+    assert "temporary service error" in widget.lyrics_source.text()
+
+    widget._stage_loaded(
+        key,
+        "community lyrics",
+        {
+            "lyrics": {
+                "text": "",
+                "synced": [],
+                "source": "LRCLIB community lyrics",
+                "instrumental": True,
+                "status": "instrumental",
+                "error": "",
+            }
+        },
+    )
+    assert "Instrumental track" in widget.lyrics.toPlainText()
+    assert widget.online_lyrics_button.text() == "Refresh online"
+
+    window.close()
+    app.processEvents()
