@@ -2,7 +2,7 @@
 
 Album Wall is a visual, local-first way to browse a Melodex collection as a place rather than a scrolling list.
 
-Open **Album wall** from the desktop sidebar. Each album appears once as a cover tile. Drag the wall to explore it, use the mouse wheel to zoom, search by artist or album, and double-click a cover to play the album in track order.
+Open **Album Wall** from Explore. Each album appears once as a cover tile. The wall opens near a readable sleeve size rather than shrinking the whole collection into one overview. Drag with the mouse or use two-finger trackpad scrolling to pan around the collection; double-click a cover to play the album in track order.
 
 For local libraries, a release folder is the primary album boundary, so separate editions of the same artist/title remain separate tiles. Common multi-disc folders such as `CD1` and `Disc 2` are folded back into their parent album.
 
@@ -21,7 +21,7 @@ Changing lenses rearranges the same album objects rather than opening a separate
 
 Album Wall deliberately avoids a recommendation-feed model. For a given library and analysis state, positions are deterministic. The intent is that users can gradually learn where music lives.
 
-When Flow analysis is unavailable or an album has not yet been analysed, that album still appears at a deterministic fallback position. It does not disappear from the wall. Running **Analyse my library** progressively turns those fallback locations into sonic neighbourhoods.
+When Flow analysis is unavailable or an album has not yet been analysed, that album still appears at a deterministic fallback position. It does not disappear from the wall. Using **Wall options → Improve sonic layout** progressively turns those fallback locations into sonic neighbourhoods.
 
 The layout also packs album tiles into nearby free cells. This keeps semantic position meaningful while preventing hundreds of covers from being drawn directly on top of one another.
 
@@ -41,14 +41,21 @@ The wall currently displays at most 1,200 albums at once. Very large libraries p
 
 ## Interaction
 
+The wall is designed to feel like a large canvas rather than a tiny diagram.
+
 - **Drag** — pan around the collection.
-- **Wheel** — semantic zoom. At low zoom the wall is primarily artwork; labels appear as you move closer.
+- **Two-finger trackpad scroll** — pan naturally in both directions.
+- **Mouse wheel** — zoom smoothly around the pointer.
+- **Cmd/Ctrl + trackpad scroll** — zoom on trackpads without turning ordinary two-finger navigation into accidental zoom.
 - **Find** — search artist or album and centre it.
 - **Now playing** — return to the album containing the current local track.
-- **Fit wall** — show the whole collection.
-- **Single click** — select an album.
+- **Actual size** — return to the normal sleeve-browsing scale.
+- **Overview** — temporarily fit the whole collection when you want orientation.
+- **Single click** — select an album and reveal its details.
 - **Double click** — play the album.
-- **Play album / Queue album** — explicit controls above the wall.
+- **Play selected / Queue selected** — explicit playback controls above the wall.
+
+Album Wall intentionally does **not** fit the entire collection on every open. An overview is useful for orientation, but it makes real album covers too small for ordinary browsing.
 
 The currently playing album gets a distinct outline so it remains visible while exploring elsewhere.
 
@@ -63,8 +70,14 @@ This distinction is intentional:
     Music Map   → understand connections between tracks
     Album Wall  → inhabit and browse a collection of records
 
+## Progressive disclosure
+
+Ordinary browsing keeps only the lens, search, navigation and selected-album playback controls visible. **Wall options…** reveals the less-frequent actions—rebuild, sonic analysis and missing-cover recovery—without permanently reducing the canvas.
+
+Global **Power tools** does not force this panel open.
+
 ## Current scope
 
-The first implementation establishes the spatial album browser, lenses, semantic zoom, playback/queue integration, current-album highlighting, stable fallback positions, and lazy local artwork.
+The current implementation provides the spatial album browser, lenses, smooth bounded zoom, trackpad/mouse panning, playback/queue integration, current-album highlighting, stable fallback positions, and lazy local artwork.
 
 Potential later extensions include drawing a route across albums to create a Flow journey, pinning personal album locations, saved wall viewpoints, artist stacks, visual rediscovery dust, and shareable Atlas layouts. Those are not part of the current implementation.
