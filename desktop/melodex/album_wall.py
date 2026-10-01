@@ -4,7 +4,7 @@ import hashlib
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QEasingCurve, QRect, QRectF, Qt, QTimer, QVariantAnimation, Signal
+from PySide6.QtCore import QAbstractAnimation, QEasingCurve, QRect, QRectF, Qt, QTimer, QVariantAnimation, Signal
 from PySide6.QtGui import QBrush, QColor, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import (
     QComboBox,
@@ -243,7 +243,7 @@ class _WallView(QGraphicsView):
         target = max(0.58, min(2.35, current * float(multiplier)))
         if abs(target - current) < 0.002:
             return
-        if self._zoom_animation.state() == QVariantAnimation.Running:
+        if self._zoom_animation.state() == QAbstractAnimation.Running:
             self._zoom_animation.stop()
         self._zoom_animation.setStartValue(current)
         self._zoom_animation.setEndValue(target)
