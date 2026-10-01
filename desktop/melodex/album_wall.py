@@ -123,7 +123,7 @@ class _AlbumTile(QGraphicsObject):
             gradient = QLinearGradient(cover.topLeft(), cover.bottomRight())
             gradient.setColorAt(0.0, a.darker(150))
             gradient.setColorAt(1.0, b.darker(175))
-            painter.fillRect(cover, gradient)
+            painter.fillRect(cover, QBrush(gradient))
 
             title = str(self.album.get("title") or "?").strip()
             words = [word for word in title.replace("-", " ").split() if word]
