@@ -272,8 +272,9 @@ def test_source_card_uses_icon_and_origin_badge():
         icon_key="lyrics",
         origin="Registry",
     )
-    # Object names are the stable UX contract; native icon rendering differs by OS.
-    assert card.findChild(QLabel, "sourceBadge") is not None
+    badge = card.findChild(QLabel, "sourceBadge")
+    assert badge is not None
+    assert badge.text() == "“"
     assert card.findChild(QLabel, "originPill") is not None
     card.deleteLater()
     app.processEvents()
