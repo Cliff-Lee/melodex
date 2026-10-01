@@ -446,6 +446,14 @@ class LibraryBrowser(QWidget):
         self.artist_page = QWidget()
         artist_page_layout = QVBoxLayout(self.artist_page)
         artist_page_layout.setContentsMargins(0, 0, 0, 0)
+        self.artist_photo_note = QLabel(
+            "Artist view uses real artist photos when Melodex can identify them. "
+            "Choose Get artist photos to look up missing images; album covers are not used as artist portraits."
+        )
+        self.artist_photo_note.setWordWrap(True)
+        self.artist_photo_note.setStyleSheet("color:#8f9bad")
+        artist_page_layout.addWidget(self.artist_photo_note)
+
         self.artist_scroll = QScrollArea()
         self.artist_scroll.setWidgetResizable(True)
         self.artist_scroll.setFrameShape(QFrame.NoFrame)
@@ -557,9 +565,15 @@ class LibraryBrowser(QWidget):
             "tracks": self.track_list,
         }[name]
         self.stack.setCurrentWidget(target)
-        self.images_button.setText(
-            "Find artist photos" if name == "artists" else "Find missing artwork"
-        )
+        if name == "artists":
+            self.images_button.setText("Get artist photos")
+            self.images_button.setObjectName("primaryButton")
+        else:
+            self.images_button.setText("Find missing artwork")
+            self.images_button.setObjectName("quietButton")
+        self.images_button.style().unpolish(self.images_button)
+        self.images_button.style().polish(self.images_button)
+        self.images_button.update()
         self._apply_filter()
 
     def _apply_filter(self) -> None:
@@ -634,8 +648,6 @@ class LibraryBrowser(QWidget):
                 artist_path=self.artist_image_paths.get(key,"")
                 if artist_path:
                     card.set_image(artist_path,artist_photo=True)
-                else:
-                    self._apply_artist_fallback_image(card, artist)
             row, column = divmod(index, columns)
             self.artist_grid.addWidget(card, row, column, Qt.AlignTop)
         self.artist_container.adjustSize()
@@ -731,19 +743,6 @@ class LibraryBrowser(QWidget):
         if isinstance(track, dict):
             self.playTrackRequested.emit(dict(track))
 
-    def _apply_artist_fallback_image(
-        self,
-        card: ArtistCard,
-        artist: dict[str, Any],
-    ) -> None:
-        if card.has_artist_photo:
-            return
-        for album_key in list(artist.get("album_keys") or []):
-            path = self.artwork_paths.get(str(album_key), "")
-            if path:
-                card.set_image(path, artist_photo=False)
-                return
-
     def _request_artwork(self) -> None:
         batch = []
         for album in self.albums[:300]:
@@ -796,7 +795,7 @@ class LibraryBrowser(QWidget):
                         "artist": str(artist.get("name") or ""),
                         "track": track,
                     })
-                if len(batch) >= 6:
+                if len(batch) >= 12:
                     break
             if batch:
                 self.artistImageRequested.emit(batch)
@@ -831,14 +830,6 @@ class LibraryBrowser(QWidget):
             card = self.cards.get(key)
             if card is not None:
                 card.set_cover(path)
-
-            for artist_key, artist_card in self.artist_cards.items():
-                artist = artist_card.artist
-                if (
-                    not artist_card.has_artist_photo
-                    and key in [str(x) for x in list(artist.get("album_keys") or [])]
-                ):
-                    self._apply_artist_fallback_image(artist_card, artist)
 
             for track_key, album_key in self.track_album_key.items():
                 if str(album_key) != key:
