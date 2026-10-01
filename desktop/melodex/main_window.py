@@ -641,6 +641,21 @@ class MainWindow(QMainWindow):
                 border:1px solid #2a3a4d;
                 border-radius:14px;
             }
+            QFrame#sourceFirstRun{
+                background:#102033;
+                border:1px solid #345a82;
+                border-radius:12px;
+            }
+            QLabel#sourceFirstRunTitle{
+                font-size:16px;
+                font-weight:740;
+                color:#e8f2ff;
+            }
+            QLabel#sourceFirstRunBody{
+                color:#aebed1;
+                font-size:11px;
+            }
+
             QFrame#pluginFeaturePicker{
                 background:#101720;
                 border:1px solid #253346;
@@ -1765,12 +1780,52 @@ class MainWindow(QMainWindow):
         self.chat=QTextEdit(); self.chat.setReadOnly(True); l.addWidget(self.chat,1)
         row=QHBoxLayout(); self.ask_box=QLineEdit(); self.ask_box.setPlaceholderText("e.g. Keep this mood but make the next hour stranger"); self.ask_box.returnPressed.connect(self._ask); ask=QPushButton("Ask"); ask.clicked.connect(self._ask); cfg=QPushButton("Connect LLM…"); cfg.clicked.connect(self._llm_settings_dialog); row.addWidget(self.ask_box,1); row.addWidget(ask); row.addWidget(cfg); l.addLayout(row)
 
+    def _dismiss_sources_intro(self) -> None:
+        self.state.set_bool("sources_intro_seen",True)
+        if hasattr(self,"source_welcome"):
+            self.source_welcome.hide()
+
     def _build_sources(self):
         l=self._page_layout(
             "sources",
             "Sources & plugins",
             "See what Melodex includes, what you have connected, and which optional enhancements are installed. Technical details stay under Power tools.",
         )
+
+        self.source_welcome=QFrame()
+        self.source_welcome.setObjectName("sourceFirstRun")
+        welcome_l=QHBoxLayout(self.source_welcome)
+        welcome_l.setContentsMargins(16,13,16,13)
+        welcome_l.setSpacing(12)
+
+        welcome_text=QVBoxLayout()
+        welcome_text.setSpacing(3)
+        welcome_title=QLabel("You are already ready to listen")
+        welcome_title.setObjectName("sourceFirstRunTitle")
+        welcome_body=QLabel(
+            "Your own library and the sources included with Melodex work without extra setup. "
+            "Plugins are optional: add them only when you want more music, artwork, lyrics, "
+            "recommendations or context."
+        )
+        welcome_body.setObjectName("sourceFirstRunBody")
+        welcome_body.setWordWrap(True)
+        welcome_text.addWidget(welcome_title)
+        welcome_text.addWidget(welcome_body)
+        welcome_l.addLayout(welcome_text,1)
+
+        welcome_plugins=QPushButton("Browse optional features")
+        welcome_plugins.setObjectName("secondaryButton")
+        welcome_plugins.clicked.connect(self._plugin_directory)
+        welcome_done=QPushButton("Got it")
+        welcome_done.setObjectName("quietButton")
+        welcome_done.clicked.connect(self._dismiss_sources_intro)
+        welcome_l.addWidget(welcome_plugins)
+        welcome_l.addWidget(welcome_done)
+
+        self.source_welcome.setVisible(
+            not self.state.get_bool("sources_intro_seen",False)
+        )
+        l.addWidget(self.source_welcome)
 
         overview=QFrame()
         overview.setObjectName("sourceOverview")
