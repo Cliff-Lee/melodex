@@ -42,3 +42,16 @@ See [Releasing Melodex](../RELEASING.md) for the release process.
 - Album-cover progress is visible on the action button and advances after each album.
 - Artist and album enrichment passes cannot run simultaneously, avoiding competing metadata/network crawls.
 - Unexpected worker errors now return control to the queue so the next item can continue.
+
+
+### Plugin Centre and lyrics audit
+
+- Sources & plugins is regrouped into built-in connections, sources included with Melodex, separately installed music plugins and installed enhancements.
+- Source/plugin cards now use native feature icons and origin badges instead of anonymous initial tiles.
+- Added **Check installed** to run bounded health checks across installed plugin packages on the current machine.
+- The registry window is redesigned as **Plugin Centre**, with visual cards, plain-language capabilities/permissions and technical package details hidden behind progressive disclosure.
+- Reference/example plugins are labeled as such, and overlapping examples (such as Radio Browser/LibriVox) explain that equivalent functionality already ships with Melodex.
+- Lyrics now support persistent user-imported/pasted text and LRC without rewriting source audio files.
+- Local lyric discovery recognises common title and artist-title sidecar names and a `Lyrics/` subfolder.
+- The Lyrics tab adds **Add lyrics file…**, **Paste lyrics…** and **Find lyrics plugin…**.
+- The empty Lyrics state now explains that Core checks local/user lyrics and installed lyrics extensions but does not scrape commercial lyrics sites.

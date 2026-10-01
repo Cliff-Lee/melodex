@@ -375,3 +375,93 @@ def test_user_selected_artist_photo_rejects_unsupported_file_type(tmp_path: Path
     source.write_text("not an image", "utf-8")
     svc = RichMetadataService(tmp_path / "data")
     assert svc.remember_artist_photo_file({"name": "Example Artist"}, source) == {}
+
+
+
+def test_lyrics_sidecar_finds_title_and_artist_title_names(tmp_path: Path):
+    album = tmp_path / "Album"
+    album.mkdir()
+    audio = album / "01 - Teardrop.mp3"
+    audio.write_bytes(b"not audio")
+    (album / "Massive Attack - Teardrop.LRC").write_text(
+        "[00:01.00]Love, love is a verb\n[00:03.00]Love is a doing word",
+        "utf-8",
+    )
+
+    svc = RichMetadataService(tmp_path / "data")
+    out = svc.local_lyrics({
+        "local_path": str(audio),
+        "provider_id": "local",
+        "track_id": str(audio),
+        "artist": "Massive Attack",
+        "title": "Teardrop",
+        "album": "Mezzanine",
+    })
+    assert out["source"] == "Massive Attack - Teardrop.LRC"
+    assert out["synced"][0]["time_ms"] == 1000
+    assert "Love, love is a verb" in out["text"]
+
+
+def test_lyrics_sidecar_finds_lyrics_subfolder(tmp_path: Path):
+    album = tmp_path / "Album"
+    lyrics_dir = album / "Lyrics"
+    lyrics_dir.mkdir(parents=True)
+    audio = album / "track.flac"
+    audio.write_bytes(b"not audio")
+    (lyrics_dir / "Track Title.txt").write_text("line one\nline two", "utf-8")
+
+    svc = RichMetadataService(tmp_path / "data")
+    out = svc.local_lyrics({
+        "local_path": str(audio),
+        "artist": "Artist",
+        "title": "Track Title",
+    })
+    assert out["text"] == "line one\nline two"
+    assert out["source"] == "Track Title.txt"
+
+
+def test_pasted_lyrics_persist_without_touching_audio(tmp_path: Path):
+    audio = tmp_path / "Song.mp3"
+    audio.write_bytes(b"original audio bytes")
+    track = {
+        "provider_id": "local",
+        "track_id": str(audio),
+        "local_path": str(audio),
+        "artist": "Artist",
+        "title": "Song",
+        "album": "Album",
+    }
+
+    first = RichMetadataService(tmp_path / "data")
+    saved = first.remember_lyrics_text(track, "first line\nsecond line")
+    assert saved["source"] == "Pasted lyrics"
+    assert audio.read_bytes() == b"original audio bytes"
+
+    second = RichMetadataService(tmp_path / "data")
+    loaded = second.local_lyrics(track)
+    assert loaded["text"] == "first line\nsecond line"
+    assert loaded["user_added"] is True
+    assert audio.read_bytes() == b"original audio bytes"
+
+
+def test_imported_lrc_is_copied_and_remains_synchronized(tmp_path: Path):
+    source = tmp_path / "downloaded.lrc"
+    source.write_text("[00:02.00]Hello\n[00:04.50]again", "utf-8")
+    track = {
+        "provider_id": "local",
+        "track_id": "song-id",
+        "artist": "Artist",
+        "title": "Song",
+    }
+    svc = RichMetadataService(tmp_path / "data")
+    saved = svc.remember_lyrics_file(track, source)
+    assert saved["synced"][0]["time_ms"] == 2000
+    cached_path = Path(saved["path"])
+    assert cached_path.is_file()
+    assert cached_path != source
+
+    source.unlink()
+    reopened = RichMetadataService(tmp_path / "data")
+    loaded = reopened.local_lyrics(track)
+    assert loaded["synced"][1]["time_ms"] == 4500
+    assert loaded["source"].startswith("Imported ")

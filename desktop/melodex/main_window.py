@@ -604,6 +604,19 @@ class MainWindow(QMainWindow):
                 border:1px solid #2b3747;
                 border-radius:12px;
             }
+            QFrame#sourceOverview{
+                background:#121b26;
+                border:1px solid #2a3a4d;
+                border-radius:14px;
+            }
+            QLabel#overviewIcon{
+                background:#193354;
+                border:1px solid #2f5d8f;
+                border-radius:12px;
+                color:#d8eaff;
+                font-size:21px;
+                font-weight:700;
+            }
             QFrame#sourceCard{
                 background:transparent;
                 border:0;
@@ -617,6 +630,15 @@ class MainWindow(QMainWindow):
                 font-weight:750;
             }
             QLabel#sourceTitle{font-size:15px;font-weight:700}
+            QLabel#originPill{
+                background:#17202c;
+                border:1px solid #2a394b;
+                border-radius:7px;
+                padding:2px 6px;
+                color:#8fa7c3;
+                font-size:9px;
+                font-weight:650;
+            }
             QLabel#sourceDescription{color:#8f9bad}
             QLabel#sourceKind{color:#7d899b;font-size:11px}
             QLabel#statusPill{
@@ -840,6 +862,9 @@ class MainWindow(QMainWindow):
         self.rich_now.accentChanged.connect(self.living_canvas.set_accent_color)
         self.rich_now.paletteChanged.connect(self.living_canvas.set_palette)
         self.rich_now.lyricsChanged.connect(self.living_canvas.set_lyrics)
+        self.rich_now.lyricsPluginRequested.connect(
+            lambda: self._plugin_directory("lyrics")
+        )
         self.living_canvas.seekRequested.connect(self.player.seek)
         self.living_canvas.modeDataRequested.connect(self._request_visual_mode_data)
         self.living_canvas.neighbourActivated.connect(self._queue_visual_neighbour)
@@ -1564,14 +1589,44 @@ class MainWindow(QMainWindow):
         l=self._page_layout(
             "sources",
             "Sources & plugins",
-            "Choose where Melodex can find music. Everyday controls stay simple; provider internals appear only when you enable Power tools.",
+            "See what Melodex includes, what you have connected, and which optional enhancements are installed. Technical details stay under Power tools.",
         )
+
+        overview=QFrame()
+        overview.setObjectName("sourceOverview")
+        overview_l=QHBoxLayout(overview)
+        overview_l.setContentsMargins(16,14,16,14)
+        overview_l.setSpacing(16)
+        self.sources_overview_icon=QLabel("◉")
+        self.sources_overview_icon.setObjectName("overviewIcon")
+        self.sources_overview_icon.setAlignment(Qt.AlignCenter)
+        self.sources_overview_icon.setFixedSize(42,42)
+        overview_l.addWidget(self.sources_overview_icon)
+        overview_text=QVBoxLayout()
+        overview_text.setSpacing(2)
+        overview_title=QLabel("Your Melodex ecosystem")
+        overview_title.setStyleSheet("font-size:17px;font-weight:700")
+        overview_text.addWidget(overview_title)
+        self.sources_overview=QLabel()
+        self.sources_overview.setWordWrap(True)
+        self.sources_overview.setStyleSheet("color:#93a0b2")
+        overview_text.addWidget(self.sources_overview)
+        overview_l.addLayout(overview_text,1)
+        self.source_check_all=QPushButton("Check installed")
+        self.source_check_all.clicked.connect(self._test_all_plugins)
+        set_help(
+            self.source_check_all,
+            "Check installed sources and plugins",
+            "Runs each installed provider or extension's bounded health check. This verifies connectivity/runtime health without changing your setup.",
+        )
+        overview_l.addWidget(self.source_check_all)
+        l.addWidget(overview)
 
         actions=QHBoxLayout()
         local=QPushButton("+ Add my music")
         local.setObjectName("primaryButton")
         local.clicked.connect(self._choose_music_folder)
-        directory=QPushButton("Explore plugins")
+        directory=QPushButton("Browse optional plugins")
         directory.clicked.connect(self._plugin_directory)
         streams=QPushButton("My streams")
         streams.clicked.connect(self._user_streams_dialog)
@@ -1585,8 +1640,8 @@ class MainWindow(QMainWindow):
         )
         set_help(
             directory,
-            "Explore plugins",
-            "Browse optional providers and extensions that add new music sources or capabilities.",
+            "Browse optional plugins",
+            "Open the Plugin Centre to add optional music sources, recommendations, artwork, lyrics, metadata or context enhancements.",
         )
         set_help(
             streams,
@@ -1873,35 +1928,61 @@ class MainWindow(QMainWindow):
 
     def _refresh_sources(self):
         self.sources_list.clear()
-        for pid in self.providers.provider_order():
+
+        def heading(text: str) -> None:
+            item=QListWidgetItem(str(text).upper())
+            item.setFlags(item.flags() & ~Qt.ItemIsSelectable)
+            item.setForeground(QColor("#718096"))
+            self.sources_list.addItem(item)
+
+        def add_provider(pid: str, *, origin: str, section_kind: str) -> None:
             p=self.providers.providers[pid]
             name=p.info.name.replace(" (reference provider)","")
             if pid=="local":
                 count=len(self.providers.local_catalog())
                 status=f"{count:,} tracks" if count else "Add music"
-                kind="On this device"
+                kind="Your library"
+                icon_key="local"
             elif pid=="jamendo":
                 configured=bool(str(self.providers.settings.get("jamendo_client_id","")).strip())
                 status="Ready" if configured else "Setup needed"
-                kind="Online source"
+                kind="Optional catalogue"
+                icon_key="provider"
             elif pid=="streams":
                 count=len(self.providers.user_streams())
                 status=f"{count} stream" if count==1 else f"{count} streams"
                 kind="Your links"
+                icon_key="stream"
             else:
                 installation=self.providers.installation_record(pid)
-                verified=bool(installation.get("registry_verified"))
-                status="Installed"
-                if p.info.configuration:
-                    config_status=self.providers.plugin_config.status(pid,p.info.configuration)
-                    if not config_status.get("ready",True):
-                        status="Setup needed"
+                config_status=(
+                    self.providers.plugin_config.status(pid,p.info.configuration)
+                    if p.info.configuration else {"ready":True}
+                )
                 health=self.providers.plugin_health(pid)
-                if health.get("status") in {"error","stopped","unhealthy"}:
+                health_state=str(health.get("status") or "untested")
+                if not config_status.get("ready",True):
+                    status="Setup needed"
+                elif health_state in {"error","stopped","unhealthy","unavailable"}:
                     status="Needs attention"
-                elif verified and status=="Installed":
+                elif health_state in {"ready","ok"}:
                     status="Ready"
-                kind="Plugin source"
+                elif health_state=="disabled":
+                    status="Disabled"
+                else:
+                    status="Not tested"
+                caps=[str(x) for x in list(p.info.capabilities or []) if x]
+                if "recommendations" in caps and "search" not in caps:
+                    kind="Recommendations"
+                    icon_key="recommendation"
+                elif "search" in caps:
+                    kind="Music source"
+                    icon_key="radio" if any(
+                        token in name.casefold() for token in ("radio","somafm")
+                    ) else "provider"
+                else:
+                    kind=section_kind
+                    icon_key="provider"
 
             item=QListWidgetItem()
             item.setData(Qt.UserRole,pid)
@@ -1910,42 +1991,85 @@ class MainWindow(QMainWindow):
                 str(p.info.description or ""),
                 status,
                 kind=kind,
+                icon_key=icon_key,
+                origin=origin,
             )
             item.setSizeHint(card.sizeHint())
             self.sources_list.addItem(item)
             self.sources_list.setItemWidget(item,card)
 
+        order=self.providers.provider_order()
+        builtins=[pid for pid in ("local","streams","jamendo") if pid in self.providers.providers]
+        bundled=[
+            pid for pid in order
+            if pid not in builtins and self.providers.is_bundled_provider(pid)
+        ]
+        optional=[
+            pid for pid in order
+            if pid not in builtins and pid not in bundled
+        ]
+
+        heading("Your music & connections")
+        for pid in builtins:
+            add_provider(
+                pid,
+                origin="Built in" if pid!="jamendo" else "Optional",
+                section_kind="Built in",
+            )
+
+        if bundled:
+            heading("Included with Melodex")
+            for pid in bundled:
+                add_provider(pid,origin="Included",section_kind="Included source")
+
+        if optional:
+            heading("Installed music plugins")
+            for pid in optional:
+                installation=self.providers.installation_record(pid)
+                method=str(installation.get("method") or "")
+                origin="Registry" if method=="registry" else "Manual" if method=="manual" else "Installed"
+                add_provider(pid,origin=origin,section_kind="Plugin source")
+
         extensions=self.providers.extensions()
         if extensions:
-            heading=QListWidgetItem("PLUGINS THAT EXTEND MELODEX")
-            heading.setFlags(heading.flags() & ~Qt.ItemIsSelectable)
-            self.sources_list.addItem(heading)
+            heading("Installed enhancements")
             for extension in extensions:
                 extension_id=str(extension.get("id") or "")
                 enabled=bool(extension.get("enabled",True))
                 config_status=dict(extension.get("configuration_status") or {})
+                health=self.providers.plugin_health(extension_id)
+                health_state=str(health.get("status") or "untested")
                 if not enabled:
                     status="Disabled"
                 elif config_status.get("declared") and not config_status.get("ready",True):
                     status="Setup needed"
+                elif health_state in {"error","stopped","unhealthy","unavailable"}:
+                    status="Needs attention"
+                elif health_state in {"ready","ok"}:
+                    status="Ready"
                 else:
-                    health=self.providers.plugin_health(extension_id)
-                    status="Needs attention" if health.get("status") in {"error","stopped","unhealthy"} else "Ready"
+                    status="Not tested"
+
                 raw_capabilities=[str(x) for x in list(extension.get("capabilities") or []) if x]
-                capabilities=", ".join(raw_capabilities) or "Adds extra Melodex capabilities"
+                capabilities=", ".join(self._capability_label(x) for x in raw_capabilities) or "Adds extra Melodex capabilities"
                 description=str(extension.get("description") or capabilities)
                 if "library_suggestions" in raw_capabilities:
-                    kind="Recommendation plugin"
+                    kind="Recommendations"; icon_key="recommendation"
                 elif "artwork" in raw_capabilities:
-                    kind="Artwork plugin"
+                    kind="Artwork"; icon_key="artwork"
                 elif "lyrics" in raw_capabilities:
-                    kind="Lyrics plugin"
+                    kind="Lyrics"; icon_key="lyrics"
                 elif "context" in raw_capabilities:
-                    kind="Context plugin"
+                    kind="Context"; icon_key="context"
                 elif any(x in raw_capabilities for x in ("metadata","identity")):
-                    kind="Metadata plugin"
+                    kind="Metadata"; icon_key="metadata"
                 else:
-                    kind="Extension"
+                    kind="Enhancement"; icon_key="plugin"
+
+                installation=self.providers.installation_record(extension_id)
+                method=str(installation.get("method") or "")
+                origin="Registry" if method=="registry" else "Manual" if method=="manual" else "Installed"
+
                 item=QListWidgetItem()
                 item.setData(Qt.UserRole,"extension:"+extension_id)
                 card=SourceCard(
@@ -1953,10 +2077,34 @@ class MainWindow(QMainWindow):
                     description,
                     status,
                     kind=kind,
+                    icon_key=icon_key,
+                    origin=origin,
                 )
                 item.setSizeHint(card.sizeHint())
                 self.sources_list.addItem(item)
                 self.sources_list.setItemWidget(item,card)
+
+        if hasattr(self,"sources_overview"):
+            active_included=len(bundled)
+            optional_count=len(optional)+len(extensions)
+            setup_needed=0
+            for pid in optional+bundled:
+                provider=self.providers.providers.get(pid)
+                if provider is not None and provider.info.configuration:
+                    if not self.providers.plugin_config.status(pid,provider.info.configuration).get("ready",True):
+                        setup_needed+=1
+            for extension in extensions:
+                state=dict(extension.get("configuration_status") or {})
+                if state.get("declared") and not state.get("ready",True):
+                    setup_needed+=1
+            summary=(
+                f"{len(builtins)} built-in connections · "
+                f"{active_included} included sources · "
+                f"{optional_count} installed optional plugin{'s' if optional_count!=1 else ''}"
+            )
+            if setup_needed:
+                summary+=f" · {setup_needed} need setup"
+            self.sources_overview.setText(summary)
 
         legacy=self.providers.quarantined_legacy_providers()
         if hasattr(self,"legacy_source_notice"):
@@ -1974,6 +2122,7 @@ class MainWindow(QMainWindow):
 
         self._refresh_source_combo()
         self._source_selection_changed()
+
 
     @staticmethod
     def _capability_label(capability: str) -> str:
@@ -3106,11 +3255,12 @@ class MainWindow(QMainWindow):
         if ok:
             self.providers.set_jamendo_client_id(value.strip()); self.statusBar().showMessage("Jamendo source updated",3000)
 
-    def _plugin_directory(self):
+    def _plugin_directory(self, capability: str = ""):
         dialog=PluginDirectoryDialog(
             self.providers,
             on_installed=self._refresh_sources,
             on_use=self._use_plugin_directory_entry,
+            initial_capability=capability,
             parent=self,
         )
         dialog.exec()
@@ -3205,6 +3355,81 @@ class MainWindow(QMainWindow):
         if value.startswith("extension:"):
             return value.split(":",1)[1]
         return value if value not in {"local", "jamendo", "streams"} else ""
+
+    def _test_all_plugins(self):
+        plugin_ids=[
+            pid for pid in self.providers.provider_order()
+            if pid not in {"local","jamendo","streams"}
+        ]
+        plugin_ids.extend(
+            str(row.get("id") or "")
+            for row in self.providers.extensions()
+            if str(row.get("id") or "")
+        )
+        plugin_ids=list(dict.fromkeys(plugin_ids))
+        if not plugin_ids:
+            self.statusBar().showMessage("No installed plugins to check",3000)
+            return
+
+        self.source_check_all.setEnabled(False)
+        self.source_check_all.setText(f"Checking 0/{len(plugin_ids)}…")
+        self.statusBar().showMessage(
+            f"Checking {len(plugin_ids)} installed source/plugin connections…"
+        )
+
+        def work():
+            results=[]
+            total=len(plugin_ids)
+            for index,plugin_id in enumerate(plugin_ids,1):
+                try:
+                    result=dict(self.providers.test_plugin_health(plugin_id,timeout=6.0) or {})
+                except Exception as exc:
+                    result={
+                        "plugin_id":plugin_id,
+                        "name":plugin_id,
+                        "status":"error",
+                        "message":str(exc),
+                    }
+                result["_index"]=index
+                result["_total"]=total
+                results.append(result)
+            return results
+
+        def done(results):
+            rows=[dict(x) for x in list(results or []) if isinstance(x,dict)]
+            self.source_check_all.setEnabled(True)
+            self.source_check_all.setText("Check installed")
+            self._refresh_sources()
+            ready=sum(
+                1 for row in rows
+                if str(row.get("status") or "") in {"ready","ok"}
+            )
+            setup=sum(
+                1 for row in rows
+                if str(row.get("status") or "")=="setup_required"
+            )
+            attention=len(rows)-ready-setup
+            bits=[f"{ready} ready"]
+            if setup:
+                bits.append(f"{setup} need setup")
+            if attention:
+                bits.append(f"{attention} need attention or are unavailable")
+            summary=" · ".join(bits)
+            self.statusBar().showMessage("Plugin check complete · "+summary,7000)
+            QMessageBox.information(
+                self,
+                "Installed plugin check",
+                "Checked the installed optional sources and enhancements.\n\n"
+                + summary
+                + "\n\nSelect any item marked Not tested/Needs attention for its individual details.",
+            )
+
+        def failed(error):
+            self.source_check_all.setEnabled(True)
+            self.source_check_all.setText("Check installed")
+            self.statusBar().showMessage(f"Plugin check stopped: {error}",5000)
+
+        self._run_async(work,done,failed)
 
     def _test_selected_plugin(self):
         plugin_id=self._selected_plugin_id()

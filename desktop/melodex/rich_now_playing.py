@@ -8,7 +8,17 @@ from typing import Any, Callable
 from PySide6.QtCore import QObject, Qt, Signal
 from PySide6.QtGui import QColor, QImage, QPixmap
 from PySide6.QtWidgets import (
-    QHBoxLayout, QLabel, QTabWidget, QTextBrowser, QVBoxLayout, QWidget
+    QFileDialog,
+    QFrame,
+    QHBoxLayout,
+    QInputDialog,
+    QLabel,
+    QMessageBox,
+    QPushButton,
+    QTabWidget,
+    QTextBrowser,
+    QVBoxLayout,
+    QWidget,
 )
 
 from .metadata import RichMetadataService, track_key
@@ -27,6 +37,7 @@ class RichNowPlayingWidget(QWidget):
     accentChanged = Signal(object)
     paletteChanged = Signal(object)
     lyricsChanged = Signal(object)
+    lyricsPluginRequested = Signal()
 
     """Progressively enriched Now Playing view.
 
@@ -73,10 +84,50 @@ class RichNowPlayingWidget(QWidget):
         self.art_source = QLabel(""); self.art_source.setWordWrap(True); self.art_source.setStyleSheet("color:#777f8a;font-size:11px"); right.addWidget(self.art_source)
 
         self.tabs = QTabWidget(); outer.addWidget(self.tabs, 1)
-        self.lyrics = QTextBrowser(); self.artist_info = QTextBrowser(); self.releases = QTextBrowser(); self.credits = QTextBrowser(); self.context = QTextBrowser(); self.info = QTextBrowser()
-        for browser in (self.lyrics, self.artist_info, self.releases, self.credits, self.context, self.info):
+
+        self.lyrics_page=QWidget()
+        lyrics_layout=QVBoxLayout(self.lyrics_page)
+        lyrics_layout.setContentsMargins(0,8,0,0)
+        lyrics_layout.setSpacing(8)
+        lyrics_actions=QHBoxLayout()
+        lyrics_actions.setSpacing(7)
+        self.import_lyrics_button=QPushButton("Add lyrics file…")
+        self.paste_lyrics_button=QPushButton("Paste lyrics…")
+        self.find_lyrics_plugin_button=QPushButton("Find lyrics plugin…")
+        self.import_lyrics_button.clicked.connect(self._import_lyrics_file)
+        self.paste_lyrics_button.clicked.connect(self._paste_lyrics)
+        self.find_lyrics_plugin_button.clicked.connect(self.lyricsPluginRequested)
+        self.import_lyrics_button.setToolTip(
+            "<b>Add lyrics file</b><br>Import an .lrc or .txt file for this track. "
+            "Melodex copies it into its own cache; your audio file is not changed."
+        )
+        self.paste_lyrics_button.setToolTip(
+            "<b>Paste lyrics</b><br>Store lyrics you already have for this track. "
+            "Timestamped LRC text is recognised automatically."
+        )
+        self.find_lyrics_plugin_button.setToolTip(
+            "<b>Find lyrics plugin</b><br>Browse optional lyric extensions. "
+            "Core Melodex does not scrape commercial lyric websites."
+        )
+        lyrics_actions.addWidget(self.import_lyrics_button)
+        lyrics_actions.addWidget(self.paste_lyrics_button)
+        lyrics_actions.addWidget(self.find_lyrics_plugin_button)
+        lyrics_actions.addStretch(1)
+        lyrics_layout.addLayout(lyrics_actions)
+
+        self.lyrics_source=QLabel("")
+        self.lyrics_source.setWordWrap(True)
+        self.lyrics_source.setStyleSheet("color:#7f8b9b;font-size:11px")
+        lyrics_layout.addWidget(self.lyrics_source)
+
+        self.lyrics = QTextBrowser()
+        self.lyrics.setOpenExternalLinks(True)
+        lyrics_layout.addWidget(self.lyrics,1)
+
+        self.artist_info = QTextBrowser(); self.releases = QTextBrowser(); self.credits = QTextBrowser(); self.context = QTextBrowser(); self.info = QTextBrowser()
+        for browser in (self.artist_info, self.releases, self.credits, self.context, self.info):
             browser.setOpenExternalLinks(True)
-        self.tabs.addTab(self.lyrics, "Lyrics")
+        self.tabs.addTab(self.lyrics_page, "Lyrics")
         self.tabs.addTab(self.artist_info, "Artist")
         self.tabs.addTab(self.releases, "Releases")
         self.tabs.addTab(self.credits, "Credits")
@@ -85,7 +136,14 @@ class RichNowPlayingWidget(QWidget):
         self._empty_tabs()
 
     def _empty_tabs(self) -> None:
-        self.lyrics.setHtml("<p style='color:#9097a2'>Checking local embedded lyrics, .lrc and .txt sidecars…</p>")
+        self.lyrics_source.setText("Checking local files, embedded tags and installed lyric plugins…")
+        self.lyrics.setHtml(
+            "<div style='margin:20px'>"
+            "<h3>Looking for lyrics…</h3>"
+            "<p style='color:#9097a2'>Melodex checks lyrics you added, common .lrc/.txt sidecars, "
+            "embedded tags and any installed lyrics extension.</p>"
+            "</div>"
+        )
         self.artist_info.setHtml("<p style='color:#9097a2'>Artist information will load after MusicBrainz identifies the track.</p>")
         self.releases.setHtml("<p style='color:#9097a2'>Release history will load independently after the artist is identified.</p>")
         self.credits.setHtml("<p style='color:#9097a2'>Recording/work credits will load independently after the track is identified.</p>")
@@ -284,18 +342,92 @@ class RichNowPlayingWidget(QWidget):
         self.synced = [dict(x) for x in list(lyrics.get("synced") or []) if isinstance(x, dict)]
         lyric_text = str(lyrics.get("text") or "")
         lyric_source = str(lyrics.get("source") or "")
+        provenance = (
+            dict(lyrics.get("provenance") or {})
+            if isinstance(lyrics.get("provenance"),dict)
+            else {}
+        )
         if self.synced:
             self._lyric_index = -2
             self._render_synced(-1)
         elif lyric_text:
-            self.lyrics.setHtml(f"<div style='font-size:18px;line-height:1.6'>{'<br>'.join(_escape(lyric_text).splitlines())}</div><p style='color:#777'>Source: {_escape(lyric_source)}</p>")
+            self.lyrics.setHtml(
+                f"<div style='font-size:18px;line-height:1.65;margin:8px 4px'>"
+                f"{'<br>'.join(_escape(lyric_text).splitlines())}</div>"
+            )
         else:
-            self.lyrics.setHtml("<p style='color:#9097a2'>No local lyrics found. Add a .lrc or .txt file beside the audio file, or embed lyrics in the audio tags.</p>")
+            self.lyrics.setHtml(
+                "<div style='margin:22px;max-width:620px'>"
+                "<h3>No lyrics found for this track</h3>"
+                "<p style='color:#9097a2'>Melodex checked user-added lyrics, local sidecars, "
+                "embedded tags and installed lyrics plugins.</p>"
+                "<p style='color:#9097a2'>You can add an <b>.lrc</b> or <b>.txt</b> file, "
+                "paste lyrics you already have, or install a lyrics plugin. "
+                "Melodex Core does not scrape commercial lyric sites.</p>"
+                "</div>"
+            )
+
+        if lyric_text or self.synced:
+            source_label=lyric_source or "Lyrics available"
+            if provenance.get("source_url"):
+                source_label += " · sourced by installed plugin"
+            if self.synced:
+                source_label += " · synchronized"
+            self.lyrics_source.setText(source_label)
+        else:
+            self.lyrics_source.setText("Lyrics unavailable · add locally or use an optional lyrics plugin")
+
         self.lyricsChanged.emit({
             "text": lyric_text,
             "synced": [dict(row) for row in self.synced],
             "source": lyric_source,
         })
+
+    def _import_lyrics_file(self) -> None:
+        if not self.track or not track_key(self.track):
+            QMessageBox.information(self,"Lyrics","Play or select a track first.")
+            return
+        path,_=QFileDialog.getOpenFileName(
+            self,
+            "Add lyrics for this track",
+            "",
+            "Lyrics (*.lrc *.txt);;LRC lyrics (*.lrc);;Text files (*.txt)",
+        )
+        if not path:
+            return
+        result=self.metadata.remember_lyrics_file(self.track,path)
+        if not result:
+            QMessageBox.warning(
+                self,
+                "Could not add lyrics",
+                "Choose a readable .lrc or .txt file containing lyrics.",
+            )
+            return
+        self.bundle["lyrics"]=dict(result)
+        self._apply_lyrics(result)
+
+    def _paste_lyrics(self) -> None:
+        if not self.track or not track_key(self.track):
+            QMessageBox.information(self,"Lyrics","Play or select a track first.")
+            return
+        text,ok=QInputDialog.getMultiLineText(
+            self,
+            "Paste lyrics",
+            "Paste plain lyrics or timestamped LRC text:",
+            "",
+        )
+        if not ok or not str(text).strip():
+            return
+        result=self.metadata.remember_lyrics_text(
+            self.track,
+            text,
+            source="Pasted lyrics",
+        )
+        if not result:
+            QMessageBox.warning(self,"Could not save lyrics","The pasted text was empty.")
+            return
+        self.bundle["lyrics"]=dict(result)
+        self._apply_lyrics(result)
 
     def _apply_musicbrainz_links(self, identity: dict[str, Any]) -> None:
         links = []

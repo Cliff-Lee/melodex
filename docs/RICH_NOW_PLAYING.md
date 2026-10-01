@@ -14,13 +14,16 @@ Melodex uses a meaningful User-Agent, caches MusicBrainz responses, and serializ
 
 ## Lyrics
 
-The public app does not scrape commercial lyric sites. Built-in lyrics support is local-first:
+The public app does not scrape commercial lyric sites. Lyrics are local-first and extensible:
 
-- synchronized `.lrc` beside the audio file;
-- plain `.txt` beside the audio file;
-- common embedded lyric tags (including ID3 USLT/SYLT where available).
+- lyrics explicitly imported or pasted into Melodex;
+- synchronized `.lrc` and plain `.txt` sidecars, including common title / artist-title naming and a `Lyrics/` subfolder;
+- common embedded lyric tags (including ID3 USLT/SYLT where available);
+- installed extensions implementing the `lyrics.lookup` capability contract.
 
-A future lyrics-provider interface can support licensed services without coupling copyrighted lyric acquisition to the core player.
+The Lyrics tab exposes **Add lyrics file…**, **Paste lyrics…** and **Find lyrics plugin…**. Imported/pasted lyrics are copied into Melodex's metadata cache and survive restarts without rewriting the source audio file.
+
+The current registry includes a small public-domain lyrics reference plugin for contract testing, not a general modern-song lyrics service. Licensed services can implement the same lyrics contract without coupling copyrighted lyric acquisition to Core.
 
 ## Visual Now Playing
 

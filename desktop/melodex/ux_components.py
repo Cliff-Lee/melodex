@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QVBoxLayout,
     QWidget,
+    QStyle,
 )
 
 
@@ -155,6 +156,22 @@ class ActionCard(QFrame):
 
 
 class SourceCard(QFrame):
+    """Human-readable source/plugin row with a recognisable native icon."""
+
+    _ICON_MAP = {
+        "local": QStyle.SP_DriveHDIcon,
+        "stream": QStyle.SP_MediaPlay,
+        "provider": QStyle.SP_DriveNetIcon,
+        "radio": QStyle.SP_MediaVolume,
+        "recommendation": QStyle.SP_BrowserReload,
+        "artwork": QStyle.SP_FileDialogContentsView,
+        "lyrics": QStyle.SP_FileIcon,
+        "context": QStyle.SP_MessageBoxInformation,
+        "metadata": QStyle.SP_FileDialogDetailedView,
+        "plugin": QStyle.SP_CommandLink,
+        "built-in": QStyle.SP_ComputerIcon,
+    }
+
     def __init__(
         self,
         name: str,
@@ -162,6 +179,8 @@ class SourceCard(QFrame):
         status: str,
         *,
         kind: str = "",
+        icon_key: str = "",
+        origin: str = "",
         parent=None,
     ):
         super().__init__(parent)
@@ -171,17 +190,33 @@ class SourceCard(QFrame):
         outer.setContentsMargins(13, 11, 13, 11)
         outer.setSpacing(12)
 
-        badge = QLabel((str(name or "?").strip()[:1] or "?").upper())
+        badge = QLabel()
         badge.setObjectName("sourceBadge")
         badge.setAlignment(Qt.AlignCenter)
-        badge.setFixedSize(42, 42)
+        badge.setFixedSize(46, 46)
+        standard = self._ICON_MAP.get(str(icon_key or "").casefold(), QStyle.SP_CommandLink)
+        icon = self.style().standardIcon(standard)
+        pixmap = icon.pixmap(25, 25)
+        if not pixmap.isNull():
+            badge.setPixmap(pixmap)
+        else:
+            badge.setText((str(name or "?").strip()[:1] or "?").upper())
         outer.addWidget(badge)
 
         text = QVBoxLayout()
-        text.setSpacing(2)
+        text.setSpacing(3)
+        title_row = QHBoxLayout()
+        title_row.setSpacing(8)
         title = QLabel(str(name or "Unknown source"))
         title.setObjectName("sourceTitle")
-        text.addWidget(title)
+        title_row.addWidget(title)
+        if origin:
+            origin_label = QLabel(str(origin))
+            origin_label.setObjectName("originPill")
+            title_row.addWidget(origin_label)
+        title_row.addStretch(1)
+        text.addLayout(title_row)
+
         desc = QLabel(str(description or ""))
         desc.setObjectName("sourceDescription")
         desc.setWordWrap(True)

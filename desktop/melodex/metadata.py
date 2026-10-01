@@ -116,10 +116,15 @@ class RichMetadataService:
         self.json_cache = self.cache_dir / "json"
         self.art_cache = self.cache_dir / "artwork"
         self.artwork_index_path = self.cache_dir / "artwork-index.json"
+        self.lyrics_cache = self.cache_dir / "lyrics"
+        self.lyrics_index_path = self.cache_dir / "lyrics-index.json"
         self.json_cache.mkdir(parents=True, exist_ok=True)
         self.art_cache.mkdir(parents=True, exist_ok=True)
+        self.lyrics_cache.mkdir(parents=True, exist_ok=True)
         self._artwork_index_lock = threading.Lock()
         self._artwork_index = self._load_artwork_index()
+        self._lyrics_index_lock = threading.Lock()
+        self._lyrics_index = self._load_lyrics_index()
         self.session = session or requests.Session()
         self.capability_broker = capability_broker
         self.session.headers.update({"User-Agent": _USER_AGENT, "Accept": "application/json"})
@@ -131,6 +136,151 @@ class RichMetadataService:
 
     def _cache_path(self, key: str) -> Path:
         return self.json_cache / f"{self._hash(key)}.json"
+
+
+    def _load_lyrics_index(self) -> dict[str, dict[str, Any]]:
+        try:
+            raw=json.loads(self.lyrics_index_path.read_text("utf-8"))
+            if not isinstance(raw,dict):
+                return {}
+            return {
+                str(key):dict(value)
+                for key,value in raw.items()
+                if isinstance(value,dict)
+            }
+        except Exception:
+            return {}
+
+    def _save_lyrics_index(self) -> None:
+        self.cache_dir.mkdir(parents=True,exist_ok=True)
+        temp=self.lyrics_index_path.with_suffix(".tmp")
+        temp.write_text(
+            json.dumps(self._lyrics_index,ensure_ascii=False,indent=2),
+            "utf-8",
+        )
+        temp.replace(self.lyrics_index_path)
+
+    @staticmethod
+    def _lyrics_keys(track: dict[str, Any]) -> list[str]:
+        artist=_norm(track.get("artist"))
+        title=_norm(track.get("title"))
+        album=_norm(track.get("album"))
+        provider=str(track.get("provider_id") or "").strip()
+        track_id=str(track.get("track_id") or "").strip()
+        keys=[]
+        if artist and title:
+            keys.append(f"artist-title:{artist}|{title}")
+            if album:
+                keys.append(f"artist-title-album:{artist}|{title}|{album}")
+        if provider and track_id:
+            keys.append(f"provider-track:{provider}|{track_id}")
+        return list(dict.fromkeys(keys))
+
+    def cached_lyrics(self, track: dict[str, Any]) -> dict[str, Any]:
+        for key in self._lyrics_keys(track):
+            row=self._lyrics_index.get(key)
+            if not isinstance(row,dict):
+                continue
+            path=Path(str(row.get("path") or "")).expanduser()
+            if not path.is_file():
+                continue
+            try:
+                text=path.read_text("utf-8-sig",errors="replace")
+            except Exception:
+                continue
+            synced=parse_lrc(text) if path.suffix.casefold()==".lrc" else []
+            plain=(
+                "\n".join(item["text"] for item in synced if item.get("text"))
+                if synced else text.strip()
+            )
+            return {
+                "text":plain,
+                "synced":synced,
+                "source":str(row.get("source") or "Melodex lyrics"),
+                "path":str(path),
+                "user_added":True,
+            }
+        return {"text":"","synced":[],"source":""}
+
+    def _remember_lyrics_path(
+        self,
+        track: dict[str, Any],
+        path: Path,
+        *,
+        source: str,
+    ) -> dict[str, Any]:
+        if not path.is_file():
+            return {}
+        row={
+            "path":str(path),
+            "source":str(source or "User-added lyrics"),
+        }
+        keys=self._lyrics_keys(track)
+        if not keys:
+            return {}
+        with self._lyrics_index_lock:
+            for key in keys:
+                self._lyrics_index[key]=dict(row)
+            self._save_lyrics_index()
+        return self.cached_lyrics(track)
+
+    def remember_lyrics_text(
+        self,
+        track: dict[str, Any],
+        text: str,
+        *,
+        source: str = "Pasted lyrics",
+    ) -> dict[str, Any]:
+        text=str(text or "").strip()
+        if not text:
+            return {}
+        keys=self._lyrics_keys(track)
+        if not keys:
+            return {}
+        synced=parse_lrc(text)
+        suffix=".lrc" if synced else ".txt"
+        key=self._hash("|".join(keys)+"|"+text)[:24]
+        target=self.lyrics_cache / f"user-{key}{suffix}"
+        target.write_text(text+"\n","utf-8")
+        return self._remember_lyrics_path(track,target,source=source)
+
+    def remember_lyrics_file(
+        self,
+        track: dict[str, Any],
+        source_path: str | Path,
+    ) -> dict[str, Any]:
+        source_path=Path(source_path).expanduser()
+        if not source_path.is_file() or source_path.suffix.casefold() not in {".lrc",".txt"}:
+            return {}
+        try:
+            text=source_path.read_text("utf-8-sig",errors="replace")
+        except Exception:
+            return {}
+        if not text.strip():
+            return {}
+        keys=self._lyrics_keys(track)
+        if not keys:
+            return {}
+        suffix=source_path.suffix.casefold()
+        key=self._hash("|".join(keys)+"|"+text)[:24]
+        target=self.lyrics_cache / f"imported-{key}{suffix}"
+        target.write_text(text,"utf-8")
+        return self._remember_lyrics_path(
+            track,
+            target,
+            source=f"Imported {source_path.name}",
+        )
+
+    def clear_cached_lyrics(self, track: dict[str, Any]) -> bool:
+        changed=False
+        with self._lyrics_index_lock:
+            for key in self._lyrics_keys(track):
+                if key in self._lyrics_index:
+                    self._lyrics_index.pop(key,None)
+                    changed=True
+            if changed:
+                self._save_lyrics_index()
+        return changed
 
 
     def _load_artwork_index(self) -> dict[str, dict[str, Any]]:
@@ -340,6 +490,12 @@ class RichMetadataService:
 
     # ---------------------------- local lyrics / artwork
     def local_lyrics(self, track: dict[str, Any]) -> dict[str, Any]:
+        # Explicit user additions are deliberate overrides and survive
+        # restarts without rewriting the source audio file.
+        remembered=self.cached_lyrics(track)
+        if str(remembered.get("text") or "").strip():
+            return remembered
+
         path_text = str(track.get("local_path") or "")
         if not path_text:
             return {"text": "", "synced": [], "source": ""}
@@ -347,16 +503,60 @@ class RichMetadataService:
         if not path.exists():
             return {"text": "", "synced": [], "source": ""}
 
-        for ext in (".lrc", ".txt"):
-            sidecar = path.with_suffix(ext)
-            if sidecar.exists():
-                try:
-                    text = sidecar.read_text("utf-8-sig", errors="replace")
-                    synced = parse_lrc(text) if ext == ".lrc" else []
-                    plain = "\n".join(row["text"] for row in synced if row.get("text")) if synced else text.strip()
-                    return {"text": plain, "synced": synced, "source": sidecar.name}
-                except Exception:
-                    pass
+        # Look for common sidecar naming conventions without recursively
+        # crawling the user's library.
+        targets={
+            _norm(path.stem),
+            _norm(track.get("title")),
+            _norm(f"{track.get('artist','')} - {track.get('title','')}"),
+            _norm(f"{track.get('artist','')} – {track.get('title','')}"),
+        }
+        targets.discard("")
+        folders=[path.parent]
+        try:
+            for child in path.parent.iterdir():
+                if child.is_dir() and child.name.casefold()=="lyrics":
+                    folders.append(child)
+                    break
+        except Exception:
+            pass
+
+        candidates: list[Path] = []
+        for folder in folders:
+            try:
+                for item in folder.iterdir():
+                    if (
+                        item.is_file()
+                        and item.suffix.casefold() in {".lrc",".txt"}
+                        and _norm(item.stem) in targets
+                    ):
+                        candidates.append(item)
+            except Exception:
+                continue
+        candidates.sort(
+            key=lambda item: (
+                0 if item.suffix.casefold()==".lrc" else 1,
+                0 if item.parent==path.parent else 1,
+                item.name.casefold(),
+            )
+        )
+        for sidecar in candidates:
+            try:
+                text = sidecar.read_text("utf-8-sig", errors="replace")
+                synced = parse_lrc(text) if sidecar.suffix.casefold() == ".lrc" else []
+                plain = (
+                    "\n".join(row["text"] for row in synced if row.get("text"))
+                    if synced else text.strip()
+                )
+                if plain:
+                    return {
+                        "text": plain,
+                        "synced": synced,
+                        "source": sidecar.name,
+                        "path": str(sidecar),
+                    }
+            except Exception:
+                pass
 
         try:
             from mutagen import File
@@ -372,13 +572,21 @@ class RichMetadataService:
                                 lyric, stamp = entry[0], entry[1]
                                 rows.append({"time_ms": int(stamp), "text": str(lyric)})
                         if rows:
-                            return {"text": "\n".join(x["text"] for x in rows), "synced": rows, "source": "embedded SYLT"}
+                            return {
+                                "text": "\n".join(x["text"] for x in rows),
+                                "synced": rows,
+                                "source": "embedded SYLT",
+                            }
                     frames = tags.getall("USLT")
                     if frames:
                         text = str(getattr(frames[0], "text", "") or "").strip()
                         if text:
                             synced = parse_lrc(text)
-                            return {"text": "\n".join(x["text"] for x in synced) if synced else text, "synced": synced, "source": "embedded lyrics"}
+                            return {
+                                "text": "\n".join(x["text"] for x in synced) if synced else text,
+                                "synced": synced,
+                                "source": "embedded lyrics",
+                            }
 
                 for key in ("LYRICS", "UNSYNCEDLYRICS", "lyrics", "\xa9lyr"):
                     try:
@@ -392,7 +600,11 @@ class RichMetadataService:
                     text = str(value or "").strip()
                     if text:
                         synced = parse_lrc(text)
-                        return {"text": "\n".join(x["text"] for x in synced) if synced else text, "synced": synced, "source": "embedded lyrics"}
+                        return {
+                            "text": "\n".join(x["text"] for x in synced) if synced else text,
+                            "synced": synced,
+                            "source": "embedded lyrics",
+                        }
         except Exception:
             pass
         return {"text": "", "synced": [], "source": ""}
