@@ -75,7 +75,7 @@ def test_visual_library_defaults_to_album_cards_and_filters():
 
 def test_redesigned_main_window_builds_with_goal_navigation(monkeypatch, tmp_path):
     try:
-        from PySide6.QtWidgets import QApplication
+        from PySide6.QtWidgets import QApplication, QLabel
         import melodex.main_window as main_window
     except ImportError as exc:
         import pytest
@@ -1038,9 +1038,9 @@ def test_sources_first_run_orientation_is_dismissible_and_persistent(monkeypatch
     app.processEvents()
 
     assert first.source_welcome.isVisible()
-    assert "already ready to listen" in first.source_welcome.findChildren(
-        type(first.sources_overview)
-    )[0].parentWidget().findChildren(type(first.sources_overview))[0].text().casefold() or True
+    title = first.source_welcome.findChild(QLabel, "sourceFirstRunTitle")
+    assert title is not None
+    assert "already ready to listen" in title.text().casefold()
 
     first._dismiss_sources_intro()
     app.processEvents()
