@@ -61,6 +61,7 @@ python scripts/terminology_check.py
 python scripts/ecosystem_check.py
 python scripts/version_check.py
 python scripts/release_check.py
+python scripts/release_readiness.py
 ```
 
 Desktop tests:
@@ -77,6 +78,8 @@ pytest -q provider-sdk/tests
 ```
 
 CI runs these checks again.
+
+`release_readiness.py` is intentionally broader than the secret/source audit. It verifies that the desktop, Linux and Android packaging workflows are present and PR-verifiable, the cross-platform install links are exposed, the expected bundled-provider payload is current, live-provider verification tooling exists, and the working release notes do not contain known stale UX claims.
 
 ## 4. Commit the release version
 
@@ -98,6 +101,8 @@ When a strict release version such as `0.3.0` reaches `main`, the **Release** wo
 6. attaches their assets to the same GitHub Release after package smoke checks pass.
 
 Ordinary development versions such as `0.7.1.dev0` do **not** create a release.
+
+Before changing a development version to a strict release version, the release-candidate PR should have successful **Tests**, **Build desktop**, **Build Linux packages**, and **Build Android** checks. Desktop PR packaging exercises macOS arm64, macOS Intel (while the compatible runner remains available) and Windows x64; Linux packaging smoke-tests the .deb/AppImage path separately.
 
 A manually pushed `v*` tag remains a fallback path, and tag-triggered workflows still validate tag/version agreement before packaging.
 
