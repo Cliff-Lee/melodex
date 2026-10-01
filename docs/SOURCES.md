@@ -27,11 +27,13 @@ On first launch, the desktop app installs these six providers into the user's lo
 | LibriVox 0.1.2 | Public-domain audiobooks and spoken-word audio | Public-domain status can depend on jurisdiction. |
 | Internet Archive Audio 0.1.0 | Publicly accessible audio search and playback | Rights and access vary by item. |
 
-These provider packages connect to their respective sources; the installer does not contain music or audiobook files. In **Sources → Show power tools**, choose **Remove selected provider** to remove one. Removed bundled sources stay removed across restarts. Choose **Restore bundled sources** to install them again. A newer manually installed provider is kept when it is newer than the bundled copy.
+These provider packages connect to their respective sources; the installer does not contain music or audiobook files. In **Sources & plugins → Power tools**, choose **Remove selected provider** to remove one. Removed bundled sources stay removed across restarts. Choose **Restore bundled sources** to install them again. A newer manually installed provider is kept when it is newer than the bundled copy.
+
+Old private development adapters are **not** part of the public bundled-provider set or public registry. If an earlier development build left one in the local Melodex data folder, current development builds quarantine it: it is not loaded, searched or played, and its old local files are left untouched.
 
 ## Plugin Directory on desktop
 
-Use **Sources → Explore plugins…** to browse the registry.
+Use **Sources & plugins → Explore plugins** to browse the registry.
 
 The directory shows publisher, status, licence, capabilities, permissions, compatibility, source repository and package verification data before installation.
 
