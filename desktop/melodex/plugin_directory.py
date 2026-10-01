@@ -124,8 +124,18 @@ class PluginDirectoryCard(QFrame):
         text.addWidget(meta)
         row.addLayout(text,1)
 
-        state=QLabel(str(badge or ("Installed" if installed else "Optional")))
-        state.setObjectName("statusPill")
+        state_text=str(badge or ("Installed" if installed else "Optional"))
+        state=QLabel(state_text)
+        state.setObjectName("pluginDirectoryState")
+        lowered=state_text.casefold()
+        semantic=(
+            "attention" if any(token in lowered for token in ("setup", "attention", "error", "unavailable"))
+            else "update" if "update" in lowered
+            else "ready" if any(token in lowered for token in ("ready", "installed"))
+            else "reference" if any(token in lowered for token in ("reference", "included"))
+            else "optional"
+        )
+        state.setProperty("state",semantic)
         row.addWidget(state)
 
 
@@ -180,7 +190,12 @@ class PluginDirectoryDialog(QDialog):
 
         filters = QHBoxLayout()
         self.search = QLineEdit()
-        self.search.setPlaceholderText("Search optional plugins…")
+        self.search.setPlaceholderText("Search plugins or features…")
+        self.view = QComboBox()
+        self.view.addItem("Browse all", "all")
+        self.view.addItem("Installed", "installed")
+        self.view.addItem("Needs setup", "setup")
+        self.view.addItem("Updates", "updates")
         self.kind = QComboBox()
         self.kind.addItem("Everything", "all")
         self.kind.addItem("Music sources", "provider")
@@ -201,6 +216,7 @@ class PluginDirectoryDialog(QDialog):
             self.capability.addItem(label, value)
         self.refresh_button = QPushButton("Refresh")
         filters.addWidget(self.search, 1)
+        filters.addWidget(self.view)
         filters.addWidget(self.kind)
         filters.addWidget(self.capability)
         filters.addWidget(self.refresh_button)
@@ -249,6 +265,9 @@ class PluginDirectoryDialog(QDialog):
         self.use_button = QPushButton("Use plugin")
         self.configure_button = QPushButton("Configure…")
         self.test_button = QPushButton("Check connection")
+        self.toggle_button = QPushButton("Disable")
+        self.remove_button = QPushButton("Remove")
+        self.remove_button.setObjectName("dangerQuietButton")
         self.source_button = QPushButton("Source code")
         self.review_button = QPushButton("Review record")
         close_button = QPushButton("Close")
@@ -256,12 +275,16 @@ class PluginDirectoryDialog(QDialog):
         self.use_button.setEnabled(False)
         self.configure_button.setEnabled(False)
         self.test_button.setEnabled(False)
+        self.toggle_button.setEnabled(False)
+        self.remove_button.setEnabled(False)
         self.source_button.setEnabled(False)
         self.review_button.setEnabled(False)
         actions.addWidget(self.install_button)
         actions.addWidget(self.use_button)
         actions.addWidget(self.configure_button)
         actions.addWidget(self.test_button)
+        actions.addWidget(self.toggle_button)
+        actions.addWidget(self.remove_button)
         actions.addStretch(1)
         actions.addWidget(self.source_button)
         actions.addWidget(self.review_button)
@@ -297,6 +320,30 @@ class PluginDirectoryDialog(QDialog):
                 color:#9aacbf;background:#17202c;border:1px solid #2a394b;
                 border-radius:6px;padding:2px 5px;font-size:9px;
             }
+            QLabel#pluginDirectoryState{
+                border-radius:9px;padding:5px 8px;font-size:10px;font-weight:700;
+            }
+            QLabel#pluginDirectoryState[state="ready"]{
+                color:#9ee7ae;background:#153423;border:1px solid #285c3c;
+            }
+            QLabel#pluginDirectoryState[state="attention"]{
+                color:#f0c783;background:#3a2a16;border:1px solid #6e5126;
+            }
+            QLabel#pluginDirectoryState[state="update"]{
+                color:#9dcbff;background:#173354;border:1px solid #315c88;
+            }
+            QLabel#pluginDirectoryState[state="reference"]{
+                color:#aab7c8;background:#1a222d;border:1px solid #344152;
+            }
+            QLabel#pluginDirectoryState[state="optional"]{
+                color:#c4b1e8;background:#2b2140;border:1px solid #51406f;
+            }
+            QPushButton#dangerQuietButton{
+                color:#e2a2a2;background:#211619;border:1px solid #513037;
+            }
+            QPushButton#dangerQuietButton:hover{
+                background:#2d1b20;border-color:#71404a;
+            }
             QFrame#pluginDetailPanel{
                 background:#101720;border:1px solid #273548;border-radius:12px;
             }
@@ -308,6 +355,7 @@ class PluginDirectoryDialog(QDialog):
 
         self.rows.currentItemChanged.connect(lambda *_: self._show_details())
         self.search.textChanged.connect(lambda *_: self._apply_filter())
+        self.view.currentIndexChanged.connect(lambda *_: self._apply_filter())
         self.kind.currentIndexChanged.connect(lambda *_: self._apply_filter())
         self.capability.currentIndexChanged.connect(lambda *_: self._apply_filter())
         self.refresh_button.clicked.connect(lambda: self.load_registry(force=True))
@@ -315,6 +363,8 @@ class PluginDirectoryDialog(QDialog):
         self.use_button.clicked.connect(self._use_selected)
         self.configure_button.clicked.connect(self._configure_selected)
         self.test_button.clicked.connect(self._test_selected)
+        self.toggle_button.clicked.connect(self._toggle_selected)
+        self.remove_button.clicked.connect(self._remove_selected)
         self.source_button.clicked.connect(self._open_source)
         self.review_button.clicked.connect(self._open_review)
         close_button.clicked.connect(self.accept)
@@ -343,6 +393,8 @@ class PluginDirectoryDialog(QDialog):
             self.use_button.setEnabled(False)
             self.configure_button.setEnabled(False)
             self.test_button.setEnabled(False)
+            self.toggle_button.setEnabled(False)
+            self.remove_button.setEnabled(False)
             if signals in self._signals:
                 self._signals.remove(signals)
 
@@ -446,6 +498,22 @@ class PluginDirectoryDialog(QDialog):
             str(self.capability.currentData() or "all"),
         )
         providers, extensions = self._installed_ids()
+        view=str(self.view.currentData() or "all")
+        filtered=[]
+        for entry in plugins:
+            installed=self._is_installed(entry)
+            plugin_id=str(entry.get("id") or "")
+            config_info=plugin_configuration_info(self.manager,plugin_id) if installed else {}
+            state=configuration_state(config_info) if installed else "not_installed"
+            update=self._update_available(entry) if installed else False
+            if view=="installed" and not installed:
+                continue
+            if view=="setup" and not (installed and state=="setup_needed"):
+                continue
+            if view=="updates" and not update:
+                continue
+            filtered.append(entry)
+        plugins=filtered
         for entry in plugins:
             plugin_id = str(entry.get("id") or "")
             installed = plugin_id in (
@@ -492,6 +560,10 @@ class PluginDirectoryDialog(QDialog):
             self.rows.setItemWidget(item,card)
         if self.rows.count():
             self.rows.setCurrentRow(0)
+            view_label=str(self.view.currentText() or "Browse all")
+            self.status.setText(
+                f"{self.rows.count()} plugin{'s' if self.rows.count()!=1 else ''} shown · {view_label}"
+            )
         else:
             self.details.setHtml(
                 "<h3>No matching plugins</h3>"
@@ -502,8 +574,36 @@ class PluginDirectoryDialog(QDialog):
             self.use_button.setEnabled(False)
             self.configure_button.setEnabled(False)
             self.test_button.setEnabled(False)
+            self.toggle_button.setEnabled(False)
+            self.remove_button.setEnabled(False)
             self.source_button.setEnabled(False)
             self.review_button.setEnabled(False)
+
+    def _extension_record(self, plugin_id: str) -> dict[str, Any]:
+        return next(
+            (
+                dict(row)
+                for row in self.manager.extensions()
+                if str(row.get("id") or "") == str(plugin_id or "")
+            ),
+            {},
+        )
+
+    @staticmethod
+    def _where_used(entry: dict[str, Any]) -> str:
+        kind=str(entry.get("kind") or "")
+        capabilities={str(x) for x in list(entry.get("capabilities") or []) if x}
+        if kind=="provider" or {"search","playback"} & capabilities:
+            return "Explore → Search everything"
+        if "library_suggestions" in capabilities or "recommendations" in capabilities:
+            return "For You"
+        if "artwork" in capabilities:
+            return "My Music → artwork tools"
+        if "lyrics" in capabilities:
+            return "Now Playing → Lyrics"
+        if {"context","metadata","identity"} & capabilities:
+            return "Now Playing"
+        return "Melodex uses it automatically when its capability is needed"
 
     def _show_details(self) -> None:
         entry = self._selected()
@@ -640,6 +740,8 @@ class PluginDirectoryDialog(QDialog):
             f"<p>{state}</p>"
             f"<h3>What it can do</h3>"
             f"<p>{html.escape(capabilities)}</p>"
+            f"<h3>Where you'll use it</h3>"
+            f"<p><b>{html.escape(self._where_used(entry))}</b></p>"
             f"<h3>Access it requests</h3>"
             f"<p>{permission_text}</p>"
             f"<h3>About this plugin</h3>"
@@ -720,6 +822,15 @@ class PluginDirectoryDialog(QDialog):
             bool(installed and list(config_info.get("fields") or []))
         )
         self.test_button.setEnabled(bool(installed))
+        extension=self._extension_record(plugin_id) if installed and kind!="provider" else {}
+        if extension:
+            enabled=bool(extension.get("enabled",True))
+            self.toggle_button.setEnabled(True)
+            self.toggle_button.setText("Disable" if enabled else "Enable")
+        else:
+            self.toggle_button.setEnabled(False)
+            self.toggle_button.setText("Disable")
+        self.remove_button.setEnabled(bool(installed))
         self.source_button.setEnabled(bool(source.get("repository")))
         self.review_button.setEnabled(bool(review.get("record")))
 
@@ -857,6 +968,53 @@ class PluginDirectoryDialog(QDialog):
         self.status.setText(
             f"{entry.get('name') or entry.get('id')}: {health_summary(result)}"
         )
+
+    def _toggle_selected(self) -> None:
+        entry=self._selected()
+        if not entry or not self._is_installed(entry) or entry.get("kind")=="provider":
+            return
+        plugin_id=str(entry.get("id") or "")
+        extension=self._extension_record(plugin_id)
+        if not extension:
+            return
+        enabled=not bool(extension.get("enabled",True))
+        self.manager.set_extension_enabled(plugin_id,enabled)
+        if self.on_installed:
+            self.on_installed()
+        self._apply_filter()
+        self.status.setText(
+            f"{entry.get('name') or plugin_id} {'enabled' if enabled else 'disabled'}."
+        )
+
+    def _remove_selected(self) -> None:
+        entry=self._selected()
+        if not entry or not self._is_installed(entry):
+            return
+        plugin_id=str(entry.get("id") or "")
+        name=str(entry.get("name") or plugin_id)
+        if (
+            QMessageBox.question(
+                self,
+                "Remove plugin",
+                f"Remove {name} from Melodex?\n\nYou can install it again later from the Plugin Centre.",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No,
+            )
+            != QMessageBox.Yes
+        ):
+            return
+        removed=(
+            self.manager.remove_provider(plugin_id)
+            if entry.get("kind")=="provider"
+            else self.manager.remove_extension(plugin_id)
+        )
+        if not removed:
+            self.status.setText(f"Could not remove {name}.")
+            return
+        if self.on_installed:
+            self.on_installed()
+        self._apply_filter()
+        self.status.setText(f"Removed {name}.")
 
     def _open_source(self) -> None:
         entry = self._selected()
