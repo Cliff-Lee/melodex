@@ -2774,6 +2774,11 @@ class MainWindow(QMainWindow):
                 if path:
                     for sibling in list(row.get("tracks") or []):
                         if isinstance(sibling,dict):
+                            match_info=(
+                                dict(artwork_info.get("match") or {})
+                                if isinstance(artwork_info.get("match"),dict)
+                                else {}
+                            )
                             self.metadata.remember_artwork(
                                 sibling,
                                 path,
@@ -2784,6 +2789,12 @@ class MainWindow(QMainWindow):
                                     artwork_info.get("license_name")
                                     or artwork_info.get("license")
                                     or ""
+                                ),
+                                match_method=str(match_info.get("method") or ""),
+                                match_confidence=(
+                                    float(match_info.get("confidence"))
+                                    if match_info.get("confidence") is not None
+                                    else None
                                 ),
                             )
             except Exception:
