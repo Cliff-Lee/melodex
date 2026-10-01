@@ -1876,14 +1876,24 @@ class RichMetadataService:
                     role=_norm(asset.get("role"))
                     if role and role not in {"portrait","thumbnail"}:
                         continue
-                    downloaded=self._download_artwork(url)
-                    if not downloaded:
-                        continue
                     provenance=(
                         dict(asset.get("provenance") or {})
                         if isinstance(asset.get("provenance"),dict)
                         else {}
                     )
+                    try:
+                        confidence=float(
+                            provenance.get("confidence")
+                            or asset.get("confidence")
+                            or 1.0
+                        )
+                    except Exception:
+                        confidence=1.0
+                    if confidence < 0.70:
+                        continue
+                    downloaded=self._download_artwork(url)
+                    if not downloaded:
+                        continue
                     extension_id=str(
                         provenance.get("source_extension_id")
                         or asset.get("_extension_id")
@@ -1988,56 +1998,111 @@ class RichMetadataService:
         local = self.local_artwork(track)
         if str(local.get("path") or ""):
             return local
+
         supplied = str(track.get("artwork") or track.get("artwork_url") or "")
         if supplied:
             downloaded = self._download_artwork(supplied)
             if downloaded:
-                result={"path": str(downloaded), "source": str(track.get("provider_id") or "provider") + " artwork", "source_url": supplied}
-                self.remember_artwork(track, downloaded, source=result["source"], source_url=supplied)
+                result={
+                    "path":str(downloaded),
+                    "source":str(track.get("provider_id") or "provider")+" artwork",
+                    "source_url":supplied,
+                    "match":{"method":"provider_supplied","confidence":1.0},
+                }
+                self.remember_artwork(
+                    track,
+                    downloaded,
+                    source=result["source"],
+                    source_url=supplied,
+                )
                 return result
 
-        broker = self.capability_broker
+        # MusicBrainz identity + Cover Art Archive is the strongest remote
+        # album-cover association. Prefer it before optional plugins.
+        for kind,mbid in (
+            ("release-group",identity.release_group_mbid),
+            ("release",identity.release_mbid),
+        ):
+            if not mbid:
+                continue
+            try:
+                data=self._caa_json(f"{kind}/{mbid}")
+                url,comment=self._front_image(data)
+                if url:
+                    downloaded=self._download_artwork(url)
+                    if downloaded:
+                        result={
+                            "path":str(downloaded),
+                            "source":"Cover Art Archive",
+                            "source_url":url,
+                            "comment":comment,
+                            "match":{
+                                "method":"musicbrainz_identity",
+                                "confidence":max(0.0,min(1.0,float(identity.score or 1.0))),
+                            },
+                        }
+                        self.remember_artwork(
+                            track,
+                            downloaded,
+                            source="Cover Art Archive",
+                            source_url=url,
+                        )
+                        return result
+            except Exception:
+                continue
+
+        broker=self.capability_broker
         if broker is not None:
             try:
-                subject = broker.entity_ref(track, identity.as_dict())
-                result = broker.lookup_artwork(
+                subject=broker.entity_ref(track,identity.as_dict())
+                lookup=broker.lookup_artwork(
                     subject,
-                    roles=["cover", "thumbnail", "other"],
+                    roles=["cover","thumbnail"],
                     max_results=8,
                 )
-                for asset in list(result.get("assets") or []):
-                    if not isinstance(asset, dict):
+                for asset in list(lookup.get("assets") or []):
+                    if not isinstance(asset,dict):
                         continue
-                    url = str(asset.get("url") or "")
+                    url=str(asset.get("url") or "").strip()
+                    if not url:
+                        continue
                     role=_norm(asset.get("role"))
-                    provenance = (
+                    provenance=(
                         dict(asset.get("provenance") or {})
-                        if isinstance(asset.get("provenance"), dict)
+                        if isinstance(asset.get("provenance"),dict)
                         else {}
                     )
                     try:
-                        confidence=float(provenance.get("confidence") or asset.get("confidence") or 1.0)
+                        confidence=float(
+                            provenance.get("confidence")
+                            or asset.get("confidence")
+                            or 1.0
+                        )
                     except Exception:
                         confidence=1.0
                     if role and role not in {"cover","thumbnail"}:
                         continue
                     if confidence < 0.70:
                         continue
-                    downloaded = self._download_artwork(url)
+                    downloaded=self._download_artwork(url)
                     if not downloaded:
                         continue
-                    extension_id = str(
+                    extension_id=str(
                         provenance.get("source_extension_id")
                         or asset.get("_extension_id")
                         or "extension"
                     )
-                    result = {
-                        "path": str(downloaded),
-                        "source": extension_id,
-                        "source_url": str(provenance.get("source_url") or url),
-                        "attribution": str(provenance.get("attribution") or ""),
-                        "license": str(provenance.get("license") or ""),
-                        "provenance": provenance,
+                    result={
+                        "path":str(downloaded),
+                        "source":extension_id,
+                        "source_url":str(provenance.get("source_url") or url),
+                        "attribution":str(provenance.get("attribution") or ""),
+                        "license":str(provenance.get("license") or ""),
+                        "provenance":provenance,
+                        "match":{
+                            "method":"artwork_plugin",
+                            "confidence":round(max(0.0,min(1.0,confidence)),4),
+                        },
                     }
                     self.remember_artwork(
                         track,
@@ -2051,26 +2116,9 @@ class RichMetadataService:
             except Exception:
                 pass
 
-        for kind, mbid in (("release-group", identity.release_group_mbid), ("release", identity.release_mbid)):
-            if not mbid:
-                continue
-            try:
-                data = self._caa_json(f"{kind}/{mbid}")
-                url, comment = self._front_image(data)
-                if url:
-                    downloaded = self._download_artwork(url)
-                    if downloaded:
-                        result={"path": str(downloaded), "source": "Cover Art Archive", "source_url": url, "comment": comment}
-                        self.remember_artwork(
-                            track,
-                            downloaded,
-                            source="Cover Art Archive",
-                            source_url=url,
-                        )
-                        return result
-            except Exception:
-                continue
-
+        # Last album-cover fallback: search MusicBrainz release groups by
+        # album + artist, then use Cover Art Archive only if the match clears
+        # the conservative confidence threshold.
         candidate=self._release_group_artwork_candidate(track,identity)
         candidate_mbid=str(candidate.get("release_group_mbid") or "")
         if candidate_mbid and candidate_mbid != identity.release_group_mbid:
@@ -2102,7 +2150,8 @@ class RichMetadataService:
                         return result
             except Exception:
                 pass
-        return {"path": "", "source": "", "source_url": ""}
+
+        return {"path":"","source":"","source_url":""}
 
     @staticmethod
     def identity_from_dict(data: dict[str, Any]) -> MetadataIdentity:
