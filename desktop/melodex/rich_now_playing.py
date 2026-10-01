@@ -101,12 +101,28 @@ class RichNowPlayingWidget(QWidget):
         self.facts = QLabel(""); self.facts.setWordWrap(True); self.facts.setStyleSheet("color:#8f96a1")
         self.progress = QLabel(""); self.progress.setWordWrap(True); self.progress.setStyleSheet("color:#7eb4ff;font-size:12px")
         self.links = QLabel(""); self.links.setOpenExternalLinks(True); self.links.setWordWrap(True)
-        self.artist_photo_thumb = QLabel(""); self.artist_photo_thumb.setAlignment(Qt.AlignCenter); self.artist_photo_thumb.setFixedSize(160, 160)
-        self.artist_photo_thumb.setStyleSheet("background:#15181d;border:1px solid #303640;border-radius:16px;color:#808894")
-        self.artist_photo_credit = QLabel(""); self.artist_photo_credit.setOpenExternalLinks(True); self.artist_photo_credit.setWordWrap(True)
-        self.artist_photo_credit.setMaximumWidth(330); self.artist_photo_credit.setStyleSheet("color:#8f96a1;font-size:10px")
+        self.artist_photo_frame=QFrame()
+        self.artist_photo_frame.setMaximumWidth(180)
+        photo_layout=QVBoxLayout(self.artist_photo_frame)
+        photo_layout.setContentsMargins(0,0,0,0)
+        photo_layout.setSpacing(4)
+        self.artist_photo_thumb = QLabel("")
+        self.artist_photo_thumb.setAlignment(Qt.AlignCenter)
+        self.artist_photo_thumb.setFixedSize(140, 140)
+        self.artist_photo_thumb.setStyleSheet(
+            "background:#15181d;border:1px solid #303640;border-radius:14px;color:#808894"
+        )
+        self.artist_photo_credit = QLabel("")
+        self.artist_photo_credit.setOpenExternalLinks(True)
+        self.artist_photo_credit.setWordWrap(True)
+        self.artist_photo_credit.setMaximumWidth(170)
+        self.artist_photo_credit.setStyleSheet("color:#7f8b99;font-size:9px")
+        photo_layout.addWidget(self.artist_photo_thumb,0,Qt.AlignLeft)
+        photo_layout.addWidget(self.artist_photo_credit)
         right.addWidget(self.title); right.addWidget(self.artist); right.addWidget(self.album); right.addWidget(self.facts)
-        right.addWidget(self.progress); right.addWidget(self.links); right.addWidget(self.artist_photo_thumb, 0, Qt.AlignLeft); right.addWidget(self.artist_photo_credit); right.addStretch(1)
+        right.addWidget(self.progress); right.addWidget(self.links)
+        right.addWidget(self.artist_photo_frame,0,Qt.AlignLeft)
+        right.addStretch(1)
         self.art_source = QLabel(""); self.art_source.setWordWrap(True); self.art_source.setStyleSheet("color:#777f8a;font-size:11px"); right.addWidget(self.art_source)
 
         self.tabs = QTabWidget(); outer.addWidget(self.tabs, 1)
@@ -251,9 +267,20 @@ class RichNowPlayingWidget(QWidget):
         )
         lyrics_layout.addWidget(self.lyrics,1)
 
-        self.artist_info = QTextBrowser(); self.releases = QTextBrowser(); self.credits = QTextBrowser(); self.info = QTextBrowser()
-        for browser in (self.artist_info, self.releases, self.credits, self.info):
-            browser.setOpenExternalLinks(True)
+        self.artist_info=QLabel()
+        self.releases=QLabel()
+        self.credits=QLabel()
+        for panel in (self.artist_info,self.releases,self.credits):
+            panel.setTextFormat(Qt.RichText)
+            panel.setOpenExternalLinks(True)
+            panel.setWordWrap(True)
+            panel.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+            panel.setMargin(10)
+            panel.setStyleSheet(
+                "background:transparent;border:0;color:#dce5ef;padding:4px"
+            )
+        self.info = QTextBrowser()
+        self.info.setOpenExternalLinks(True)
 
         self.context_page=QWidget()
         context_layout=QVBoxLayout(self.context_page)
@@ -297,9 +324,9 @@ class RichNowPlayingWidget(QWidget):
                 "embedded tags and installed lyric sources.",
             )
         )
-        self.artist_info.setHtml("<p style='color:#9097a2'>Artist information will load after MusicBrainz identifies the track.</p>")
-        self.releases.setHtml("<p style='color:#9097a2'>Release history will load independently after the artist is identified.</p>")
-        self.credits.setHtml("<p style='color:#9097a2'>Recording/work credits will load independently after the track is identified.</p>")
+        self.artist_info.setText("<p style='color:#9097a2'>Artist information will load after MusicBrainz identifies the track.</p>")
+        self.releases.setText("<p style='color:#9097a2'>Release history will load independently after the artist is identified.</p>")
+        self.credits.setText("<p style='color:#9097a2'>Recording and work credits will load independently after the track is identified.</p>")
         self.context.setHtml("<p style='color:#9097a2'>Context plugins can add liner notes, musical connections, community listening data and other sourced cards here.</p>")
         self.info.setHtml("<p style='color:#9097a2'>Identifying this track with MusicBrainz…</p>")
 
@@ -492,12 +519,12 @@ class RichNowPlayingWidget(QWidget):
             self._set_artist_photo(str(photo.get("path") or ""))
             self._set_artist_photo_credit(photo)
             artist = self.bundle.get("artist") if isinstance(self.bundle.get("artist"), dict) else {}
-            self.artist_info.setHtml(self._artist_html(artist, photo))
+            self.artist_info.setText(self._artist_html(artist, photo))
 
         elif stage == "credits":
             credits = [x for x in list(payload.get("credits") or []) if isinstance(x, dict)]
             self.bundle["credits"] = credits
-            self.credits.setHtml(self._credits_html(credits))
+            self.credits.setText(self._credits_html(credits))
 
         elif stage == "context":
             cards = [x for x in list(payload.get("cards") or []) if isinstance(x, dict)]
@@ -507,14 +534,14 @@ class RichNowPlayingWidget(QWidget):
         elif stage == "discography":
             releases = [x for x in list(payload.get("discography") or []) if isinstance(x, dict)]
             self.bundle["discography"] = releases
-            self.releases.setHtml(self._discography_html(releases))
+            self.releases.setText(self._discography_html(releases))
             if releases:
                 self._run_stage(key, "release covers", lambda: {"discography": self.metadata.hydrate_discography_covers(releases, 8), "errors": []})
 
         elif stage == "release covers":
             releases = [x for x in list(payload.get("discography") or []) if isinstance(x, dict)]
             self.bundle["discography"] = releases
-            self.releases.setHtml(self._discography_html(releases))
+            self.releases.setText(self._discography_html(releases))
 
         self._maybe_start_context(key)
         if stage in {"artist", "credits", "context"}:
@@ -1120,7 +1147,7 @@ class RichNowPlayingWidget(QWidget):
             facts.append(" · ".join(genres[:4]))
         if facts:
             self.facts.setText("   |   ".join(facts))
-        self.artist_info.setHtml(self._artist_html(artist, self.bundle.get("artist_photo") if isinstance(self.bundle.get("artist_photo"), dict) else {}))
+        self.artist_info.setText(self._artist_html(artist, self.bundle.get("artist_photo") if isinstance(self.bundle.get("artist_photo"), dict) else {}))
 
     def _update_progress(self) -> None:
         identity = self._identity
@@ -1146,15 +1173,23 @@ class RichNowPlayingWidget(QWidget):
     def _set_artist_photo_credit(self, photo: dict[str, Any]) -> None:
         if not photo or not photo.get("path"):
             self.artist_photo_credit.clear()
+            self.artist_photo_credit.setToolTip("")
             return
-        attribution = _escape(photo.get("attribution") or "Wikimedia Commons")
-        description_url = _escape(photo.get("description_url") or "")
-        license_name = _escape(photo.get("license_name") or "")
-        license_url = _escape(photo.get("license_url") or "")
-        source = f'<a href="{description_url}">Commons file</a>' if description_url else "Wikimedia Commons"
-        licence = f'<a href="{license_url}">{license_name}</a>' if license_url and license_name else license_name
-        suffix = f" · {licence}" if licence and licence.casefold() not in attribution.casefold() else ""
-        self.artist_photo_credit.setText(f"Photo: {attribution} · {source}{suffix}")
+        attribution=str(photo.get("attribution") or "Wikimedia Commons").strip()
+        description_url=str(photo.get("description_url") or "").strip()
+        license_name=str(photo.get("license_name") or "").strip()
+        visible="Photo"
+        if description_url:
+            visible += f' · <a href="{_escape(description_url)}">Commons</a>'
+        elif attribution:
+            visible += " · " + _escape(attribution[:34])
+        if license_name:
+            visible += " · " + _escape(license_name)
+        self.artist_photo_credit.setText(visible)
+        tooltip="Photo attribution: "+attribution
+        if license_name:
+            tooltip += "\nLicence: "+license_name
+        self.artist_photo_credit.setToolTip(tooltip)
 
     def _set_artist_photo(self, path: str) -> None:
         if path and Path(path).exists():
@@ -1248,76 +1283,119 @@ class RichNowPlayingWidget(QWidget):
     def _artist_html(self, artist: dict[str, Any], photo: dict[str, Any] | None = None) -> str:
         if not artist:
             return "<p style='color:#9097a2'>No MusicBrainz artist information found.</p>"
-        parts = [f"<h2>{_escape(artist.get('name'))}</h2>"]
-        dis = str(artist.get("disambiguation") or "")
+        parts=[f"<h2 style='margin:0 0 8px 0'>{_escape(artist.get('name'))}</h2>"]
+        dis=str(artist.get("disambiguation") or "").strip()
         if dis:
-            parts.append(f"<p>{_escape(dis)}</p>")
-        details = []
+            parts.append(f"<p style='font-size:16px;margin:4px 0 10px 0'>{_escape(dis)}</p>")
+        details=[]
         if artist.get("type"):
             details.append(str(artist.get("type")))
-        if artist.get("begin_area"):
-            details.append("From " + str(artist.get("begin_area")))
-        elif artist.get("area"):
-            details.append(str(artist.get("area")))
+        place=str(artist.get("begin_area") or artist.get("area") or artist.get("country") or "")
+        if place:
+            details.append("From "+place)
         if artist.get("begin"):
-            details.append("Active from " + str(artist.get("begin")))
+            details.append("Active from "+str(artist.get("begin")))
         if details:
-            parts.append(f"<p>{_escape(' · '.join(details))}</p>")
-        genres = [str(x) for x in list(artist.get("genres") or []) if x]
+            parts.append(
+                "<p style='color:#b6c2cf;font-size:15px;margin:4px 0 12px 0'>"
+                +_escape(" · ".join(details))+"</p>"
+            )
+        genres=[str(x) for x in list(artist.get("genres") or []) if x]
         if genres:
-            parts.append("<p><b>Genres / tags:</b> " + _escape(", ".join(genres)) + "</p>")
-        photo = photo or {}
-        if photo.get("path"):
-            uri = Path(str(photo.get("path"))).resolve().as_uri()
-            caption = _escape(photo.get("attribution") or photo.get("source") or "")
-            description_url = _escape(photo.get("description_url") or "")
-            license_name = _escape(photo.get("license_name") or "")
-            license_url = _escape(photo.get("license_url") or "")
-            parts.append(f'<p><img src="{uri}" width="220"></p>')
-            credit_bits = [caption] if caption else []
-            if description_url:
-                credit_bits.append(f'<a href="{description_url}">Wikimedia Commons file</a>')
-            if license_name:
-                credit_bits.append(f'<a href="{license_url}">{license_name}</a>' if license_url else license_name)
-            if credit_bits:
-                parts.append("<p style='color:#9097a2'>Photo: " + " · ".join(credit_bits) + "</p>")
-        members = [x for x in list(artist.get("members") or []) if isinstance(x, dict)]
+            parts.append(
+                "<p><b>Genres / tags</b><br>"
+                +_escape(" · ".join(genres[:8]))+"</p>"
+            )
+
+        members=[x for x in list(artist.get("members") or []) if isinstance(x,dict)]
         if members:
-            parts.append("<h3>Members / membership</h3><ul>" + "".join(f"<li>{_escape(x.get('name'))} — {_escape(x.get('type'))}{' (former)' if x.get('ended') else ''}</li>" for x in members) + "</ul>")
-        related = [x for x in list(artist.get("related") or []) if isinstance(x, dict)]
+            names=[
+                str(x.get("name") or "")
+                +(" (former)" if x.get("ended") else "")
+                for x in members[:6]
+                if str(x.get("name") or "")
+            ]
+            if names:
+                parts.append("<p><b>Members</b><br>"+_escape(" · ".join(names))+"</p>")
+
+        related=[x for x in list(artist.get("related") or []) if isinstance(x,dict)]
         if related:
-            parts.append("<h3>Related artists / projects</h3><ul>" + "".join(f"<li>{_escape(x.get('name'))} — {_escape(x.get('type'))}</li>" for x in related[:15]) + "</ul>")
-        links = [x for x in list(artist.get("links") or []) if isinstance(x, dict) and x.get("url")]
+            names=[str(x.get("name") or "") for x in related[:6] if str(x.get("name") or "")]
+            if names:
+                parts.append("<p><b>Related projects</b><br>"+_escape(" · ".join(names))+"</p>")
+
+        links=[x for x in list(artist.get("links") or []) if isinstance(x,dict) and x.get("url")]
         if links:
-            parts.append("<h3>Links</h3><ul>" + "".join(f'<li><a href="{_escape(x.get("url"))}">{_escape(x.get("type") or "website")}</a></li>' for x in links[:12]) + "</ul>")
+            rendered=[]
+            for row in links[:5]:
+                label=_escape(row.get("type") or "website")
+                rendered.append(f'<a href="{_escape(row.get("url"))}">{label}</a>')
+            parts.append("<p><b>Links</b><br>"+" · ".join(rendered)+"</p>")
+
+        # The artist photo already lives in the Now Playing hero. Deliberately
+        # do not repeat it inside the Artist tab.
         return "".join(parts)
 
     @staticmethod
     def _discography_html(rows: list[dict[str, Any]]) -> str:
         if not rows:
             return "<p style='color:#9097a2'>No release groups were returned for this artist.</p>"
-        parts = ["<h2>Release timeline</h2><table cellspacing='10'>"]
-        for row in rows:
-            title = _escape(row.get("title"))
-            year = _escape(row.get("year") or row.get("date") or "")
-            typ = _escape(row.get("primary_type") or "")
-            image = ""
-            path = str(row.get("cover_path") or "")
+        visible=list(rows[:6])
+        parts=["<h2 style='margin:0 0 10px 0'>Releases</h2><table cellspacing='7'>"]
+        for row in visible:
+            title=_escape(row.get("title"))
+            year=_escape(row.get("year") or row.get("date") or "")
+            typ=_escape(row.get("primary_type") or "")
+            image=""
+            path=str(row.get("cover_path") or "")
             if path and Path(path).exists():
-                image = f'<img src="{Path(path).resolve().as_uri()}" width="58">'
+                image=f'<img src="{Path(path).resolve().as_uri()}" width="48">'
             else:
-                image = '<span style="color:#66717f">♪</span>'
-            link = f'https://musicbrainz.org/release-group/{_escape(row.get("id"))}' if row.get("id") else ""
-            title_html = f'<a href="{link}">{title}</a>' if link else title
-            parts.append(f"<tr><td width='72'>{image}</td><td><b>{title_html}</b><br><span style='color:#aab0ba'>{year} {('· ' + typ) if typ else ''}</span></td></tr>")
+                image='<span style="color:#66717f;font-size:24px">♪</span>'
+            link=f'https://musicbrainz.org/release-group/{_escape(row.get("id"))}' if row.get("id") else ""
+            title_html=f'<a href="{link}">{title}</a>' if link else title
+            meta=" · ".join(x for x in (year,typ) if x)
+            parts.append(
+                f"<tr><td width='58'>{image}</td><td>"
+                f"<b>{title_html}</b>"
+                +(f"<br><span style='color:#9eabb9'>{meta}</span>" if meta else "")
+                +"</td></tr>"
+            )
         parts.append("</table>")
+        if len(rows)>len(visible):
+            parts.append(
+                f"<p style='color:#7f8b99;font-size:12px'>Showing {len(visible)} of {len(rows)} release groups. "
+                "Open any title in MusicBrainz for the full discography.</p>"
+            )
         return "".join(parts)
 
     @staticmethod
     def _credits_html(rows: list[dict[str, Any]]) -> str:
         if not rows:
-            return "<p style='color:#9097a2'>No structured credits were returned for this recording. MusicBrainz coverage varies by release.</p>"
-        return "<h2>Credits & relationships</h2><ul>" + "".join(f"<li><b>{_escape(x.get('role'))}</b> — {_escape(x.get('name'))}</li>" for x in rows) + "</ul>"
+            return (
+                "<p style='color:#9097a2'>No structured credits were returned for this recording. "
+                "MusicBrainz coverage varies by release.</p>"
+            )
+        grouped: dict[str,list[str]]={}
+        for row in rows:
+            role=str(row.get("role") or "Credit").strip()
+            name=str(row.get("name") or "").strip()
+            if not name:
+                continue
+            bucket=grouped.setdefault(role,[])
+            if name not in bucket:
+                bucket.append(name)
+        parts=["<h2 style='margin:0 0 10px 0'>Credits</h2>"]
+        for role,names in list(grouped.items())[:8]:
+            parts.append(
+                "<p style='margin:6px 0'><b>"+_escape(role)+"</b><br>"
+                +_escape(" · ".join(names[:8]))+"</p>"
+            )
+        if len(grouped)>8:
+            parts.append(
+                "<p style='color:#7f8b99;font-size:12px'>Additional relationships are available on MusicBrainz.</p>"
+            )
+        return "".join(parts)
 
     @staticmethod
     def _context_html(cards: list[dict[str, Any]]) -> str:
