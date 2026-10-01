@@ -1110,7 +1110,11 @@ class MainWindow(QMainWindow):
             self.living_canvas.set_window_minimized(self.isMinimized())
 
     def open_page(self, name: str):
-        self.current_page=name; self.stack.setCurrentWidget(self.pages[name])
+        if name not in self.pages:
+            return
+        self.current_page=name
+        self.stack.setCurrentWidget(self.pages[name])
+        self._update_nav_state(name)
         if name=="home": self._show_home()
         elif name=="library": self._refresh_library()
         elif name=="album_wall": self._refresh_album_wall()
@@ -1122,16 +1126,123 @@ class MainWindow(QMainWindow):
         elif name=="for_you": self._refresh_taste()
         elif name=="discover": self._refresh_source_combo()
 
-    def _show_home(self):
-        self._refresh_library(); self._refresh_sources(); self._refresh_taste()
-        count=len(self.providers.local_catalog()); src=len(self.providers.providers); ext=len(self.providers.extensions())
-        self.home_status.setText(f"{count:,} local tracks · {src} connected sources · {ext} extension{'s' if ext != 1 else ''} · Flow {'ready' if self.flow.analysis_available else 'works with metadata; install ffmpeg for deep analysis'}")
+    def _update_nav_state(self, page: str) -> None:
+        parent = {
+            "home":"home",
+            "for_you":"home",
+            "now_playing":"home",
+            "library":"library",
+            "moments":"library",
+            "explore":"explore",
+            "discover":"explore",
+            "album_wall":"explore",
+            "music_map":"explore",
+            "ask":"explore",
+            "journeys":"journeys",
+            "playlists":"playlists",
+            "sources":"sources",
+        }.get(str(page or ""), "")
+        for key,button in getattr(self,"nav_buttons",{}).items():
+            active = key == parent
+            if bool(button.property("active")) == active:
+                continue
+            button.setProperty("active",active)
+            button.style().unpolish(button)
+            button.style().polish(button)
+            button.update()
 
-    def _power_changed(self, _):
+    def _show_home(self):
+        self._refresh_taste()
+        count=len(self.providers.local_catalog())
+        src=len(self.providers.providers)
+        ext=len(self.providers.extensions())
+        flow_text = (
+            "Flow analysis ready"
+            if self.flow.analysis_available
+            else "metadata mode; install ffmpeg for deeper sonic analysis"
+        )
+        self.home_status.setText(
+            f"{count:,} local tracks · {src} music sources · {ext} plugin"
+            f"{'s' if ext != 1 else ''} · {flow_text}"
+        )
+        self._refresh_home_continue()
+
+    def _refresh_home_continue(self) -> None:
+        if not hasattr(self,"home_continue_cover"):
+            return
+        recent = self.state.recent_tracks(1)
+        track = dict(self.current_track or (recent[0] if recent else {}))
+        self.home_recent_track = track
+        if not track:
+            self.home_continue_cover.set_cover("",title="Your music",key="empty-home")
+            self.home_continue_title.setText("Nothing played yet")
+            self.home_continue_meta.setText(
+                "Choose Play something or browse My Music. Your recent listening will appear here."
+            )
+            self.home_continue_button.setEnabled(False)
+            return
+        title=str(track.get("title") or "Unknown track")
+        artist=str(track.get("artist") or "Unknown artist")
+        album=str(track.get("album") or "")
+        self.home_continue_title.setText(title)
+        self.home_continue_meta.setText(artist + (f"  ·  {album}" if album else ""))
+        self.home_continue_button.setEnabled(True)
+        self.home_continue_cover.set_cover("",title=album or title,key=UserState.track_key(track))
+        token=UserState.track_key(track)
+        self._run_async(
+            lambda:self.metadata.local_artwork(track),
+            lambda result:self._home_continue_art_loaded(token,result),
+        )
+
+    def _home_continue_art_loaded(self, token: str, result: object) -> None:
+        current=UserState.track_key(dict(getattr(self,"home_recent_track",{}) or {}))
+        if token!=current or not isinstance(result,dict):
+            return
+        self.home_continue_cover.set_cover(
+            str(result.get("path") or ""),
+            title=str(self.home_recent_track.get("album") or self.home_recent_track.get("title") or ""),
+            key=token,
+        )
+
+    def _home_continue_play(self) -> None:
+        track=dict(getattr(self,"home_recent_track",{}) or {})
+        if track:
+            self.player.set_queue([track],0,True)
+
+    def _power_changed(self, _, announce: bool = True):
         enabled = self.power_toggle.isChecked()
+        self.state.set_bool("power_tools",enabled)
         if hasattr(self, "source_power_panel"):
             self.source_power_panel.setVisible(enabled)
-        self.statusBar().showMessage("Power tools enabled" if enabled else "Simple mode", 2500)
+        if hasattr(self, "player_power_actions"):
+            self.player_power_actions.setVisible(enabled)
+        if hasattr(self, "music_map_power_panel"):
+            self.music_map_power_panel.setVisible(enabled)
+        if hasattr(self, "album_wall_power_panel"):
+            self.album_wall_power_panel.setVisible(enabled)
+        if announce:
+            self.statusBar().showMessage(
+                "Power tools enabled" if enabled else "Power tools hidden",
+                2500,
+            )
+
+    def _open_command_palette(self) -> None:
+        actions=[
+            ("Home","Start listening and see recent music.",lambda:self.open_page("home")),
+            ("My Music","Browse albums, artists and tracks.",lambda:self.open_page("library")),
+            ("Explore","Search, Album Wall and Music Map.",lambda:self.open_page("explore")),
+            ("Search everything","Search all connected music sources.",lambda:self.open_page("discover")),
+            ("Album Wall","Browse your collection spatially.",lambda:self.open_page("album_wall")),
+            ("Music Map","Explore track relationships and routes.",lambda:self.open_page("music_map")),
+            ("Now Playing","Open artwork, lyrics and visuals.",lambda:self.open_page("now_playing")),
+            ("Journeys","Open saved listening journeys.",lambda:self.open_page("journeys")),
+            ("Playlists","Open saved and imported playlists.",lambda:self.open_page("playlists")),
+            ("Sources & plugins","Manage where Melodex finds music.",lambda:self.open_page("sources")),
+            ("Ask Melodex","Open optional natural-language control.",lambda:self.open_page("ask")),
+            ("Add music folder","Choose a local music folder.",self._choose_music_folder),
+            ("Analyse local library","Analyse sonic features locally for Flow and maps.",self._analyse_library_for_intelligence),
+        ]
+        CommandPaletteDialog(actions,self).exec()
 
     def _refresh_source_combo(self):
         current=self.search_source.currentData(); self.search_source.clear(); self.search_source.addItem("All sources","all")
@@ -1227,9 +1338,49 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Source priority updated",2500)
 
     def _refresh_library(self):
-        self.library_list.clear()
-        for t in self.providers.local_catalog():
-            it=QListWidgetItem(_track_text(t)); it.setData(Qt.UserRole,t); self.library_list.addItem(it)
+        if hasattr(self,"library_browser"):
+            self.library_browser.set_catalog(self.providers.local_catalog())
+
+    def _play_library_track(self, track: object) -> None:
+        if not isinstance(track,dict):
+            return
+        tracks=self.providers.local_catalog()
+        tid=str(track.get("track_id") or "")
+        index=next(
+            (i for i,item in enumerate(tracks) if str(item.get("track_id") or "")==tid),
+            0,
+        )
+        self.player.set_queue(tracks,index,True)
+
+    def _queue_album_data(self, album: object) -> None:
+        if not isinstance(album,dict):
+            return
+        tracks=[dict(x) for x in list(album.get("tracks") or []) if isinstance(x,dict)]
+        if not tracks:
+            return
+        if not self.player.queue:
+            self.player.set_queue(tracks,0,False)
+        else:
+            self.player.append_queue(tracks,autoplay=False)
+        self.statusBar().showMessage(
+            f"Queued {len(tracks)} tracks from {album.get('title') or 'album'}",
+            3500,
+        )
+
+    def _library_artwork_requested(self, requests: object) -> None:
+        rows=[dict(x) for x in list(requests or []) if isinstance(x,dict)]
+        if not rows:
+            return
+        def load():
+            result={}
+            for row in rows:
+                key=str(row.get("key") or "")
+                track=dict(row.get("track") or {})
+                if key and track:
+                    info=self.metadata.local_artwork(track)
+                    result[key]=str(info.get("path") or "")
+            return result
+        self._run_async(load,self.library_browser.set_artwork)
 
     def _refresh_journeys(self):
         if not hasattr(self,"journey_recipes_list") or not hasattr(self,"journey_runs_list"):
