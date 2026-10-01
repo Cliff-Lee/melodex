@@ -21,29 +21,6 @@ jobs:
           python-version: "3.12"
       - name: Install desktop runtime dependencies
         run: pip install numpy mutagen requests PySide6
-      - name: Measure LibriVox API query shapes
-        run: |
-          python - <<'PY'
-          import time
-          from urllib.parse import urlencode
-          from urllib.request import Request, urlopen
-
-          base = "https://librivox.org/api/feed/audiobooks"
-          variants = [
-              ("extended-limit-8", {"title":"Odyssey","format":"json","extended":"1","coverart":"1","limit":"8","offset":"0"}),
-              ("extended-limit-1", {"title":"Odyssey","format":"json","extended":"1","coverart":"1","limit":"1","offset":"0"}),
-              ("compact-limit-8", {"title":"Odyssey","format":"json","extended":"0","coverart":"1","limit":"8","offset":"0"}),
-          ]
-          for name, params in variants:
-              start=time.monotonic()
-              try:
-                  req=Request(base+"?"+urlencode(params), headers={"User-Agent":"Melodex-LiveProvider-Diagnostic/0.1","Accept":"application/json","Connection":"close"})
-                  with urlopen(req, timeout=30) as response:
-                      payload=response.read()
-                  print(f"LIBRIVOX {name} PASS {time.monotonic()-start:.2f}s {len(payload)} bytes")
-              except Exception as exc:
-                  print(f"LIBRIVOX {name} FAIL {time.monotonic()-start:.2f}s {exc}")
-          PY
       - name: Run live bundled-provider smoke test
         env:
           PYTHONPATH: desktop
