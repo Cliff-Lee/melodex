@@ -64,6 +64,6 @@ See [Releasing Melodex](../RELEASING.md) for the release process.
 - Included sources use listener-friendly descriptions instead of protocol-oriented manifest wording.
 - The Plugin Centre uses the same visual language for artwork, lyrics, recommendations, context, metadata and music-source plugins.
 - The clean-install audit is explicit: 3 Core sources, 6 included provider packages, 0 preinstalled enrichment extensions, and 16 optional registry reference entries.
-- Lyrics now has a prominent **Find online** action using LRCLIB on demand.
+- Lyrics now has a prominent **Find online** action using LRCLIB on demand, plus an opt-in **Auto-find online** preference for tracks that have no local/plugin lyrics.
 - LRCLIB results are conservatively matched by artist/title/duration, can include synchronized LRC timing, and are not permanently cached by Melodex.
 - The Lyrics tab keeps local files, pasted lyrics and installed lyrics extensions as first-class sources, and shows provenance/source state more clearly.
