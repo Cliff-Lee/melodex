@@ -100,6 +100,11 @@ def test_redesigned_main_window_builds_with_goal_navigation(monkeypatch, tmp_pat
     assert "now_playing" not in window.nav_buttons
     assert "album_wall" not in window.nav_buttons
     assert hasattr(window, "library_browser")
+    assert hasattr(window, "sources_overview")
+    assert hasattr(window, "source_check_all")
+    assert hasattr(window.rich_now, "import_lyrics_button")
+    assert hasattr(window.rich_now, "paste_lyrics_button")
+    assert hasattr(window.rich_now, "find_lyrics_plugin_button")
     assert window.now_views.tabText(0) == "Now Playing"
     assert window.now_views.tabText(1) == "Visuals"
     assert window.playlists_stack.currentWidget() is window.playlists_empty
@@ -242,3 +247,29 @@ def test_artwork_progress_labels_are_compact():
     )
     assert len(label) <= 22
     assert label.endswith("…")
+
+
+
+def test_source_card_uses_icon_and_origin_badge():
+    try:
+        from PySide6.QtWidgets import QApplication
+        from melodex.ux_components import SourceCard
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    card = SourceCard(
+        "Lyrics helper",
+        "Adds lyrics to Now Playing.",
+        "Ready",
+        kind="Lyrics",
+        icon_key="lyrics",
+        origin="Registry",
+    )
+    labels = card.findChildren(type(card).mro()[1]) if False else []
+    # Object names are the stable UX contract; pixmap rendering is platform-specific.
+    assert card.findChild(__import__("PySide6.QtWidgets", fromlist=["QLabel"]).QLabel, "sourceBadge") is not None
+    assert card.findChild(__import__("PySide6.QtWidgets", fromlist=["QLabel"]).QLabel, "originPill") is not None
+    card.deleteLater()
+    app.processEvents()
