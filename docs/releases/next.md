@@ -1,35 +1,16 @@
 # Next release — draft notes
 
-**Development after Melodex v0.7.1.**
+**Development after Melodex v0.7.2.**
 
-This file tracks changes intended for **v0.7.2**.
+This file tracks changes intended for **v0.7.3**.
 
-## Campaign I — Native Lyrics UX
+## Campaign K — Now Playing polish
 
-- Lyrics is now a native Melodex listening surface rather than exposing plugin-management chrome in Now Playing.
-- Installed `lyrics.lookup` extensions still participate automatically underneath the native UI.
-- The old **Lyrics helpers / Add lyrics source…** strip is removed from the listener-facing Lyrics tab.
-- The primary toolbar is reduced to **Source / Refresh lyrics / Full screen / Translate / More**.
-- Edit, file import, paste, auto-find and lyric-source management move into **More**.
-- **Refresh lyrics** rechecks saved, embedded and installed lyric sources before using LRCLIB as an online fallback.
-- Installed lyric extensions are shown as ordinary source names rather than internal plugin IDs.
-- Plain lyrics and synchronized lyrics now use explicit high-contrast dark-theme typography.
-- Synced lyrics use larger current-line typography while keeping click-to-seek and full-screen behavior.
-- The source selector remains native even when only one source is available.
-- Plugin/source management remains available from **More** and Sources & plugins, but is no longer the way a listener “opens” or uses Lyrics.
-
-## Campaign J — Spatial Browsing UX
-
-- Album Wall now opens near a readable sleeve-browsing scale instead of shrinking the whole collection to fit.
-- Album Wall supports canvas-style mouse dragging and two-finger trackpad panning.
-- Smooth bounded zoom uses the mouse wheel, or Cmd/Ctrl + trackpad scroll when ordinary trackpad gestures should remain panning.
-- **Actual size** restores the normal browsing scale; **Overview** is now an explicit orientation action rather than the default.
-- Double-click remains the direct album-play gesture.
-- Album Wall maintenance actions move behind **Wall options…**, keeping the artwork canvas dominant.
-- Music Map now defaults to **Selected relationships**, showing no connection web until a track is selected.
-- Selecting a mapped track reveals only its immediate sonic relationships; **All sonic links** remains available explicitly.
-- Music Map nodes are larger and the default fitted view is slightly closer for legibility.
-- The map keeps the majority of the page: maintenance actions move behind **Map options…**, route planning behind **Plan a route…**, and Journey Designer controls behind **Journey options…**.
-- Global **Power tools** no longer forces Album Wall or Music Map control panels open.
-- Spatial pages share a consistent pan/zoom mental model and preserve double-click-to-play behavior.
+- Fix synchronized lyric contrast in the dark theme.
+- Persist online lyric results locally so revisiting a track does not refetch.
+- Strengthen album-art cache aliases so artwork survives raw/enriched metadata changes.
+- Make Context useful even when optional context extensions are unavailable.
+- Replace Artist / Releases / Credits text-browser panels with compact native presentation.
+- Remove the duplicated artist photo from the Artist tab.
+- Keep photo attribution clear without letting credits visually overlap artwork.
 
