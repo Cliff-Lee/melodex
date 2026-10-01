@@ -1286,7 +1286,7 @@ class MainWindow(QMainWindow):
         l=self._page_layout(
             "album_wall",
             "Album Wall",
-            "Browse your collection as a visual place. Drag to explore, scroll to zoom, and change the lens when you want a different way of seeing the same music.",
+            "Browse your collection as a visual place. Drag or two-finger scroll to pan, zoom when you need it, and double-click an album to play.",
         )
 
         actions=QHBoxLayout()
@@ -1357,7 +1357,7 @@ class MainWindow(QMainWindow):
         l=self._page_layout(
             "music_map",
             "Music Map",
-            "Explore relationships between tracks. Select something on the map first; route-planning and technical controls appear only when you ask for them.",
+            "Explore your music as a landscape. Pan and zoom freely; select a track to reveal its closest relationships. Routes and technical tools stay out of the way until requested.",
         )
 
         simple=QHBoxLayout()
