@@ -1,3 +1,20 @@
+# Melodex Sources
+
+## What appears on a fresh install
+
+Melodex now presents sources by origin rather than as one technical list:
+
+- **Your music & connections** — local files, your own stream URLs, and the optional built-in Jamendo connector.
+- **Included with Melodex** — Internet Archive Audio, LibriVox, Radio Browser, SomaFM, Wikimedia Commons Audio and ccMixter.
+- **Installed music plugins** — providers you separately installed from the registry or a local package.
+- **Installed enhancements** — artwork, lyrics, metadata, context or recommendation extensions.
+
+The included providers are carried with the desktop app and installed automatically on first run unless you explicitly remove/disable one. Registry examples are optional and are not preinstalled.
+
+Use **Check installed** for a bounded live health check on the current computer/network. A package passing repository tests does not by itself prove its upstream service is currently reachable.
+
+See [Plugin and source audit](PLUGIN_AUDIT.md) for the complete matrix.
+
 # Music sources
 
 Melodex is source-neutral. A source is any provider that can search/browse music and resolve a selected track to a playable local file or stream.
