@@ -41,6 +41,8 @@ _DASHED_VERSION = re.compile(
 )
 _LYRIC_SUCCESS_TTL = 6 * 60 * 60
 _LYRIC_MISS_TTL = 10 * 60
+_LYRIC_DISK_SUCCESS_TTL = 30 * 86400
+_LYRIC_DISK_MISS_TTL = 6 * 60 * 60
 
 
 def _norm(value: Any) -> str:
@@ -383,8 +385,10 @@ class RichMetadataService:
             keys.append("folder:" + _norm(str(folder)))
         if album and album_artist:
             keys.append(f"album-artist:{album_artist}|{album}|{year}")
+            keys.append(f"album-artist:{album_artist}|{album}")
         if album and artist and artist not in {"unknown artist", "various artists"}:
             keys.append(f"artist-album:{artist}|{album}|{year}")
+            keys.append(f"artist-album:{artist}|{album}")
         if album and year:
             keys.append(f"album-year:{album}|{year}")
         if album and artist in {"", "unknown artist", "various artists"}:
@@ -688,15 +692,41 @@ class RichMetadataService:
         now=time.monotonic()
         with self._community_lyrics_cache_lock:
             cached=self._community_lyrics_cache.get(key)
-            if not cached:
-                return None
-            expires,result=cached
-            if expires <= now:
+            if cached:
+                expires,result=cached
+                if expires > now:
+                    out=dict(result)
+                    out["cache"]="memory"
+                    return out
                 self._community_lyrics_cache.pop(key,None)
-                return None
-            out=dict(result)
-            out["cache"]="memory"
-            return out
+
+        disk=self._cached_json(
+            "community-lyrics:"+key,
+            _LYRIC_DISK_SUCCESS_TTL,
+        )
+        if not isinstance(disk,dict):
+            return None
+        expires_at=float(disk.get("expires_at") or 0.0)
+        result=disk.get("result")
+        if expires_at <= time.time() or not isinstance(result,dict):
+            return None
+        out=dict(result)
+        out["cache"]="disk"
+        remaining=max(1.0,expires_at-time.time())
+        with self._community_lyrics_cache_lock:
+            self._community_lyrics_cache[key]=(
+                time.monotonic()+min(remaining,_LYRIC_SUCCESS_TTL),
+                dict(result),
+            )
+        return out
+
+    def cached_community_lyrics(self, track: dict[str, Any]) -> dict[str, Any]:
+        """Return a previously fetched online lyric result without networking."""
+        key=_lyrics_lookup_key(track)
+        if not key.strip("|"):
+            return {}
+        cached=self._community_lyrics_cached(key)
+        return dict(cached or {})
 
     def _cache_community_lyrics(
         self,
@@ -707,7 +737,32 @@ class RichMetadataService:
     ) -> dict[str, Any]:
         payload=dict(result)
         with self._community_lyrics_cache_lock:
-            self._community_lyrics_cache[key]=(time.monotonic()+max(1.0,float(ttl)),payload)
+            self._community_lyrics_cache[key]=(
+                time.monotonic()+max(1.0,float(ttl)),
+                dict(payload),
+            )
+
+        status=str(payload.get("status") or "")
+        has_content=bool(
+            str(payload.get("text") or "").strip()
+            or list(payload.get("synced") or [])
+            or payload.get("instrumental")
+        )
+        disk_ttl=(
+            _LYRIC_DISK_SUCCESS_TTL
+            if has_content or status=="found"
+            else _LYRIC_DISK_MISS_TTL
+        )
+        try:
+            self._save_json(
+                "community-lyrics:"+key,
+                {
+                    "expires_at":time.time()+disk_ttl,
+                    "result":dict(payload),
+                },
+            )
+        except Exception:
+            pass
         return dict(payload)
 
     @staticmethod
@@ -2207,6 +2262,18 @@ class RichMetadataService:
             "ecosystem": {},
         }
         out["lyrics"] = self.local_lyrics(track)
+        if not (
+            str((out.get("lyrics") or {}).get("text") or "").strip()
+            or list((out.get("lyrics") or {}).get("synced") or [])
+            or bool((out.get("lyrics") or {}).get("instrumental"))
+        ):
+            cached_online=self.cached_community_lyrics(track)
+            if (
+                str(cached_online.get("text") or "").strip()
+                or list(cached_online.get("synced") or [])
+                or bool(cached_online.get("instrumental"))
+            ):
+                out["lyrics"]=cached_online
         broker = self.capability_broker
         identity_data: dict[str, Any] | None = None
 
