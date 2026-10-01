@@ -798,12 +798,80 @@ class RichMetadataService:
             return f"https://{lang}.wikipedia.org/w/api.php", title
         return "", ""
 
+    def _wikipedia_artist_page_by_name(
+        self,
+        artist: dict[str, Any],
+    ) -> tuple[str, str]:
+        """Find a likely English Wikipedia artist page without blind guessing."""
+        artist_name=str(artist.get("name") or artist.get("artist") or "").strip()
+        tokens=[x for x in _norm(artist_name).split() if x]
+        if not artist_name or not tokens:
+            return "", ""
+
+        hints=[]
+        artist_type=_norm(artist.get("type"))
+        if artist_type == "group":
+            hints.append("band")
+        elif artist_type == "person":
+            hints.append("musician")
+        disambiguation=str(artist.get("disambiguation") or "").strip()
+        if disambiguation:
+            hints.append(disambiguation)
+        query=" ".join([f'"{artist_name}"', *(hints or ["musician band singer producer"])])
+
+        params={
+            "action":"query",
+            "format":"json",
+            "formatversion":"2",
+            "list":"search",
+            "srlimit":"8",
+            "srsearch":query,
+        }
+        url=_WP_API+"?"+urllib.parse.urlencode(params)
+        data=self._remote_json(
+            f"wikipedia-artist-search:{artist_name.casefold()}:{'|'.join(hints).casefold()}",
+            url,
+            45 * 86400,
+        )
+        rows=((data.get("query") or {}).get("search") if isinstance(data,dict) else None) or []
+        music_hints={
+            "musician","singer","band","rapper","producer","composer","dj",
+            "musical","electronic","rock","hip hop","jazz","folk","ambient",
+        }
+
+        best: tuple[float,str] | None=None
+        for row in rows:
+            if not isinstance(row,dict):
+                continue
+            title=str(row.get("title") or "").strip()
+            if not title:
+                continue
+            base=re.sub(r"\s*\([^)]*\)\s*$","",title).strip()
+            title_score=max(_ratio(artist_name,title),_ratio(artist_name,base))
+            snippet=_norm(self._plain_extmetadata(row.get("snippet") or ""))
+            has_music_hint=any(hint in snippet for hint in music_hints)
+            exact=_norm(base)==_norm(artist_name)
+
+            # Multi-word exact titles can pass with a weaker snippet. Common or
+            # single-word stage names must look explicitly musical.
+            if len(tokens)==1 and not has_music_hint:
+                continue
+            if not exact and (title_score < 0.90 or not has_music_hint):
+                continue
+
+            score=title_score + (0.25 if exact else 0.0) + (0.15 if has_music_hint else 0.0)
+            if best is None or score > best[0]:
+                best=(score,title)
+        return (_WP_API,best[1]) if best else ("","")
+
     def _wikipedia_page_image(
         self,
         artist: dict[str, Any],
         entity: dict[str, Any],
     ) -> tuple[str, str]:
         api,title=self._wikipedia_link(artist,entity)
+        if not api or not title:
+            api,title=self._wikipedia_artist_page_by_name(artist)
         if not api or not title:
             return "", ""
         params={
@@ -1034,7 +1102,71 @@ class RichMetadataService:
                     result["wikipedia_url"]=page_url
                 return result
 
-        # 3. Last resort: search Wikimedia Commons itself. Matching is
+        # 3. Optional artwork extensions may know artist portraits from
+        # additional user-chosen sources. The capability contract keeps
+        # provenance attached and avoids baking another service into core.
+        broker=self.capability_broker
+        if broker is not None:
+            try:
+                subject=broker.entity_ref(
+                    {"artist":artist_name,"name":artist_name},
+                    {
+                        "artist":artist_name,
+                        "artist_mbid":str(working.get("mbid") or ""),
+                        "wikidata_id":qid,
+                    },
+                    entity_type="artist",
+                )
+                lookup=broker.lookup_artwork(
+                    subject,
+                    roles=["portrait","artist","profile","thumbnail"],
+                    max_results=8,
+                )
+                for asset in list(lookup.get("assets") or []):
+                    if not isinstance(asset,dict):
+                        continue
+                    url=str(asset.get("url") or "").strip()
+                    if not url:
+                        continue
+                    role=_norm(asset.get("role"))
+                    if role and role not in {"portrait","artist","profile","thumbnail"}:
+                        continue
+                    downloaded=self._download_artwork(url)
+                    if not downloaded:
+                        continue
+                    provenance=(
+                        dict(asset.get("provenance") or {})
+                        if isinstance(asset.get("provenance"),dict)
+                        else {}
+                    )
+                    extension_id=str(
+                        provenance.get("source_extension_id")
+                        or asset.get("_extension_id")
+                        or "artwork extension"
+                    )
+                    result={
+                        **empty,
+                        "path":str(downloaded),
+                        "source":extension_id,
+                        "source_url":str(provenance.get("source_url") or url),
+                        "attribution":str(provenance.get("attribution") or ""),
+                        "license_name":str(provenance.get("license") or ""),
+                        "discovery_source":"Artwork plugin",
+                        "wikidata_qid":qid,
+                    }
+                    self._remember_artwork_by_keys(
+                        self._artist_artwork_keys({**working,"wikidata_qid":qid}),
+                        downloaded,
+                        source=extension_id,
+                        source_url=result["source_url"],
+                        attribution=result["attribution"],
+                        license_name=result["license_name"],
+                    )
+                    return result
+            except Exception:
+                pass
+
+        # 4. Last resort: search Wikimedia Commons itself. Matching is
         # deliberately conservative to avoid showing the wrong person/band.
         try:
             image_name,_description_url=self._commons_artist_image(artist_name)
