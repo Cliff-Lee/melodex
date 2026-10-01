@@ -484,6 +484,12 @@ class RichMetadataService:
 
     # ---------------------------- local lyrics / artwork
     def local_lyrics(self, track: dict[str, Any]) -> dict[str, Any]:
+        # Explicit user additions are deliberate overrides and survive
+        # restarts without rewriting the source audio file.
+        remembered=self.cached_lyrics(track)
+        if str(remembered.get("text") or "").strip():
+            return remembered
+
         path_text = str(track.get("local_path") or "")
         if not path_text:
             return {"text": "", "synced": [], "source": ""}
@@ -491,16 +497,60 @@ class RichMetadataService:
         if not path.exists():
             return {"text": "", "synced": [], "source": ""}
 
-        for ext in (".lrc", ".txt"):
-            sidecar = path.with_suffix(ext)
-            if sidecar.exists():
-                try:
-                    text = sidecar.read_text("utf-8-sig", errors="replace")
-                    synced = parse_lrc(text) if ext == ".lrc" else []
-                    plain = "\n".join(row["text"] for row in synced if row.get("text")) if synced else text.strip()
-                    return {"text": plain, "synced": synced, "source": sidecar.name}
-                except Exception:
-                    pass
+        # Look for common sidecar naming conventions without recursively
+        # crawling the user's library.
+        targets={
+            _norm(path.stem),
+            _norm(track.get("title")),
+            _norm(f"{track.get('artist','')} - {track.get('title','')}"),
+            _norm(f"{track.get('artist','')} – {track.get('title','')}"),
+        }
+        targets.discard("")
+        folders=[path.parent]
+        try:
+            for child in path.parent.iterdir():
+                if child.is_dir() and child.name.casefold()=="lyrics":
+                    folders.append(child)
+                    break
+        except Exception:
+            pass
+
+        candidates: list[Path] = []
+        for folder in folders:
+            try:
+                for item in folder.iterdir():
+                    if (
+                        item.is_file()
+                        and item.suffix.casefold() in {".lrc",".txt"}
+                        and _norm(item.stem) in targets
+                    ):
+                        candidates.append(item)
+            except Exception:
+                continue
+        candidates.sort(
+            key=lambda item: (
+                0 if item.suffix.casefold()==".lrc" else 1,
+                0 if item.parent==path.parent else 1,
+                item.name.casefold(),
+            )
+        )
+        for sidecar in candidates:
+            try:
+                text = sidecar.read_text("utf-8-sig", errors="replace")
+                synced = parse_lrc(text) if sidecar.suffix.casefold() == ".lrc" else []
+                plain = (
+                    "\n".join(row["text"] for row in synced if row.get("text"))
+                    if synced else text.strip()
+                )
+                if plain:
+                    return {
+                        "text": plain,
+                        "synced": synced,
+                        "source": sidecar.name,
+                        "path": str(sidecar),
+                    }
+            except Exception:
+                pass
 
         try:
             from mutagen import File
@@ -516,13 +566,21 @@ class RichMetadataService:
                                 lyric, stamp = entry[0], entry[1]
                                 rows.append({"time_ms": int(stamp), "text": str(lyric)})
                         if rows:
-                            return {"text": "\n".join(x["text"] for x in rows), "synced": rows, "source": "embedded SYLT"}
+                            return {
+                                "text": "\n".join(x["text"] for x in rows),
+                                "synced": rows,
+                                "source": "embedded SYLT",
+                            }
                     frames = tags.getall("USLT")
                     if frames:
                         text = str(getattr(frames[0], "text", "") or "").strip()
                         if text:
                             synced = parse_lrc(text)
-                            return {"text": "\n".join(x["text"] for x in synced) if synced else text, "synced": synced, "source": "embedded lyrics"}
+                            return {
+                                "text": "\n".join(x["text"] for x in synced) if synced else text,
+                                "synced": synced,
+                                "source": "embedded lyrics",
+                            }
 
                 for key in ("LYRICS", "UNSYNCEDLYRICS", "lyrics", "\xa9lyr"):
                     try:
@@ -536,7 +594,11 @@ class RichMetadataService:
                     text = str(value or "").strip()
                     if text:
                         synced = parse_lrc(text)
-                        return {"text": "\n".join(x["text"] for x in synced) if synced else text, "synced": synced, "source": "embedded lyrics"}
+                        return {
+                            "text": "\n".join(x["text"] for x in synced) if synced else text,
+                            "synced": synced,
+                            "source": "embedded lyrics",
+                        }
         except Exception:
             pass
         return {"text": "", "synced": [], "source": ""}
