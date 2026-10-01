@@ -2984,9 +2984,19 @@ class MainWindow(QMainWindow):
         dialog=PluginDirectoryDialog(
             self.providers,
             on_installed=self._refresh_sources,
+            on_use=self._use_plugin_directory_entry,
             parent=self,
         )
         dialog.exec()
+
+    def _use_plugin_directory_entry(self, entry: dict[str,Any]) -> None:
+        plugin_id=str(entry.get("id") or "")
+        if not plugin_id:
+            return
+        if str(entry.get("kind") or "") == "provider":
+            self._open_provider_search(plugin_id)
+        else:
+            self._use_extension(plugin_id)
 
     def _export_diagnostics(self):
         filename,_=QFileDialog.getSaveFileName(
