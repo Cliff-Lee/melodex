@@ -1823,6 +1823,12 @@ class MainWindow(QMainWindow):
             item=QListWidgetItem(f"{record.get('name') or 'Journey recipe'}\n{subtitle}")
             item.setData(Qt.UserRole,record)
             self.journey_recipes_list.addItem(item)
+        if self.journey_recipes_list.count()==0:
+            empty=QListWidgetItem(
+                "No saved journeys yet\nDesign a journey to remember a route you may want to reuse."
+            )
+            empty.setFlags(empty.flags() & ~Qt.ItemIsSelectable)
+            self.journey_recipes_list.addItem(empty)
 
         self.journey_runs_list.clear()
         for run in self.state.journey_runs(80):
@@ -1843,6 +1849,12 @@ class MainWindow(QMainWindow):
             )
             item.setData(Qt.UserRole,run)
             self.journey_runs_list.addItem(item)
+        if self.journey_runs_list.count()==0:
+            empty=QListWidgetItem(
+                "No journey runs yet\nWhen you play a journey, Melodex will keep a private local record of how it evolved."
+            )
+            empty.setFlags(empty.flags() & ~Qt.ItemIsSelectable)
+            self.journey_runs_list.addItem(empty)
 
     def _selected_journey_recipe_record(self):
         item=self.journey_recipes_list.currentItem() if hasattr(self,"journey_recipes_list") else None
@@ -2147,8 +2159,27 @@ class MainWindow(QMainWindow):
 
     def _refresh_playlists(self):
         self.playlists_list.clear()
-        for p in self.state.playlists():
-            item=QListWidgetItem(f"{p.get('name')}\n{p.get('description','')}"); item.setData(Qt.UserRole,p); self.playlists_list.addItem(item)
+        records=self.state.playlists()
+        for p in records:
+            name=str(p.get("name") or "Playlist")
+            description=str(p.get("description") or "").strip()
+            count=int(p.get("track_count") or 0)
+            source=str(p.get("source") or "")
+            subtitle=f"{count} track{'s' if count!=1 else ''}"
+            if source:
+                subtitle+=f" · {source.replace('import:','imported ')}"
+            if description:
+                subtitle+=f"\n{description}"
+            item=QListWidgetItem(f"{name}\n{subtitle}")
+            item.setData(Qt.UserRole,p)
+            self.playlists_list.addItem(item)
+        if not records:
+            empty=QListWidgetItem(
+                "No playlists yet\nImport one, paste one from an AI chat, or export the music already in your queue."
+            )
+            empty.setFlags(empty.flags() & ~Qt.ItemIsSelectable)
+            self.playlists_list.addItem(empty)
+        self._playlist_selection_changed()
 
     @staticmethod
     def _playlist_tracks(record):
@@ -2287,13 +2318,39 @@ class MainWindow(QMainWindow):
 
     def _refresh_moments(self):
         self.moments_list.clear()
-        for m in self.state.moments():
+        records=self.state.moments()
+        for m in records:
             t=m.get("track") if isinstance(m.get("track"),dict) else {}
             if not t:
-                try: t=json.loads(m.get("track_json") or "{}")
-                except Exception: t={}
+                try:
+                    t=json.loads(m.get("track_json") or "{}")
+                except Exception:
+                    t={}
             sec=int(m.get("position_ms",0))//1000
-            self.moments_list.addItem(f"{_track_text(t)} · {sec//60}:{sec%60:02d}   {m.get('label','')}")
+            label=str(m.get("label") or "").strip()
+            title=f"{t.get('title') or 'Unknown track'} — {t.get('artist') or 'Unknown artist'}"
+            subtitle=f"{sec//60}:{sec%60:02d}" + (f" · {label}" if label else "")
+            item=QListWidgetItem(f"{title}\n{subtitle}")
+            item.setData(Qt.UserRole,dict(m))
+            self.moments_list.addItem(item)
+        if not records:
+            empty=QListWidgetItem(
+                "No moments saved yet\nRemember the exact part of a song you love, then it will appear here."
+            )
+            empty.setFlags(empty.flags() & ~Qt.ItemIsSelectable)
+            self.moments_list.addItem(empty)
+
+    def _play_saved_moment(self, item: QListWidgetItem) -> None:
+        data=item.data(Qt.UserRole)
+        if not isinstance(data,dict):
+            return
+        track=data.get("track") if isinstance(data.get("track"),dict) else {}
+        if not track:
+            return
+        position=max(0,int(data.get("position_ms") or 0))
+        self.player.set_queue([dict(track)],0,True)
+        if position:
+            QTimer.singleShot(700,lambda:self.player.seek(position))
 
     def _refresh_taste(self):
         s=self.state.taste_summary(); self.taste_label.setText(f"Taste memory: {s.get('tracks',0)} tracks learned · {s.get('artists',0)} artists · completion rate {float(s.get('completion_rate',0))*100:.0f}%")
