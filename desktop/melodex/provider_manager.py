@@ -751,14 +751,20 @@ class ProviderManager:
                         reason=str(runtime.get("last_error") or "call_error"),
                         checked=bool(cached.get("checked")),
                     )
+                reason=str(runtime.get("last_error") or "call_error")
+                transient=reason in {"timeout","network_error","tls_error"}
                 return self._health_result(
                     plugin_id=plugin_id,
                     name=extension.info.name,
                     kind="extension",
-                    status="error",
-                    message="Recent extension call failed",
+                    status="unavailable" if transient else "error",
+                    message=(
+                        "Optional source is temporarily unavailable"
+                        if transient
+                        else "Recent extension call failed"
+                    ),
                     check_scope="runtime",
-                    reason=str(runtime.get("last_error") or "call_error"),
+                    reason=reason,
                 )
             cached = self._plugin_health_cache.get(plugin_id)
             if cached:
