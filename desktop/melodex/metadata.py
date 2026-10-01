@@ -1015,9 +1015,17 @@ class RichMetadataService:
             response = self.session.get(url, timeout=15, headers={"Accept": "image/*", "User-Agent": _USER_AGENT})
             response.raise_for_status()
             ctype = str(response.headers.get("Content-Type") or "").casefold()
-            ext = ".png" if "png" in ctype else ".webp" if "webp" in ctype else ".jpg"
+            content=bytes(response.content or b"")
+            if not ctype.startswith("image/") or len(content) < 128:
+                return None
+            ext = (
+                ".png" if "png" in ctype
+                else ".webp" if "webp" in ctype
+                else ".gif" if "gif" in ctype
+                else ".jpg"
+            )
             out = self.art_cache / f"web-{key}{ext}"
-            out.write_bytes(response.content)
+            out.write_bytes(content)
             return out
         except Exception:
             return None
@@ -1133,6 +1141,12 @@ class RichMetadataService:
         area = data.get("area") if isinstance(data.get("area"), dict) else {}
         begin_area = data.get("begin-area") if isinstance(data.get("begin-area"), dict) else {}
         life = data.get("life-span") if isinstance(data.get("life-span"), dict) else {}
+        aliases=[
+            str(x.get("name") or "").strip()
+            for x in list(data.get("aliases") or [])
+            if isinstance(x,dict) and str(x.get("name") or "").strip()
+        ]
+        aliases=list(dict.fromkeys(aliases))[:16]
         genres = [str(x.get("name") or "") for x in list(data.get("genres") or []) if isinstance(x, dict) and x.get("name")]
         if not genres:
             genres = [str(x.get("name") or "") for x in list(data.get("tags") or []) if isinstance(x, dict) and x.get("name")][:8]
@@ -1159,7 +1173,8 @@ class RichMetadataService:
             "country": str(data.get("country") or ""), "area": str(area.get("name") or ""),
             "begin_area": str(begin_area.get("name") or ""), "begin": str(life.get("begin") or ""),
             "end": str(life.get("end") or ""), "ended": bool(life.get("ended")),
-            "disambiguation": str(data.get("disambiguation") or ""), "genres": genres[:10],
+            "disambiguation": str(data.get("disambiguation") or ""), "aliases": aliases,
+            "genres": genres[:10],
             "members": members[:30], "related": related[:20], "links": links[:20],
             "wikidata_qid": self._extract_wikidata_qid({"links": links}),
         }
@@ -1213,6 +1228,135 @@ class RichMetadataService:
         thumbs = image.get("thumbnails") if isinstance(image.get("thumbnails"), dict) else {}
         url = str(thumbs.get("500") or thumbs.get("1200") or thumbs.get("250") or image.get("image") or "")
         return url, str(image.get("comment") or "")
+
+    @staticmethod
+    def _artist_search_names(artist: dict[str, Any]) -> list[str]:
+        names=[]
+        for raw in (
+            artist.get("name"),
+            artist.get("artist"),
+            artist.get("sort_name"),
+            *list(artist.get("aliases") or []),
+        ):
+            if isinstance(raw,dict):
+                raw=raw.get("name")
+            name=" ".join(str(raw or "").split())
+            if not name:
+                continue
+            if "," in name and not any(ch in name for ch in ("&","+")):
+                parts=[part.strip() for part in name.split(",",1)]
+                if len(parts)==2 and all(parts):
+                    names.append(parts[1]+" "+parts[0])
+            names.append(name)
+        return list(dict.fromkeys(names))[:6]
+
+    @staticmethod
+    def _credited_artist_name(row: dict[str, Any]) -> str:
+        credit=list(row.get("artist-credit") or [])
+        return "".join(
+            str(item.get("name") or "") + str(item.get("joinphrase") or "")
+            for item in credit
+            if isinstance(item,dict)
+        ).strip()
+
+    def _release_group_artwork_candidate(
+        self,
+        track: dict[str, Any],
+        identity: MetadataIdentity,
+    ) -> dict[str, Any]:
+        album=str(track.get("album") or identity.album or "").strip()
+        artist=str(
+            track.get("album_artist")
+            or track.get("artist")
+            or identity.artist
+            or ""
+        ).strip()
+        artist_known=_norm(artist) not in {
+            "","unknown","unknown artist","various artists"
+        }
+        if not album:
+            return {}
+
+        terms=[f'releasegroup:"{album}"']
+        if identity.artist_mbid:
+            terms.append(f'arid:{identity.artist_mbid}')
+        elif artist_known:
+            terms.append(f'artist:"{artist}"')
+        query=" AND ".join(terms)
+
+        try:
+            data=self._mb_json(
+                "release-group/",
+                {"query":query,"fmt":"json","limit":8},
+                21 * 86400,
+            )
+        except Exception:
+            return {}
+
+        requested_year=str(track.get("year") or "")[:4]
+        best: tuple[float,dict[str,Any],dict[str,float]] | None=None
+        for row in list(data.get("release-groups") or []):
+            if not isinstance(row,dict):
+                continue
+            title_score=_ratio(album,row.get("title"))
+            if title_score < 0.88:
+                continue
+
+            credited=self._credited_artist_name(row)
+            artist_score=_ratio(artist,credited) if artist_known and credited else (
+                1.0 if identity.artist_mbid else 0.75
+            )
+            if artist_known and artist_score < 0.80:
+                continue
+
+            score=0.72*title_score + 0.23*artist_score
+            candidate_year=str(row.get("first-release-date") or "")[:4]
+            year_score=0.0
+            if requested_year and candidate_year:
+                if requested_year==candidate_year:
+                    year_score=1.0
+                    score+=0.05
+                else:
+                    try:
+                        delta=abs(int(requested_year)-int(candidate_year))
+                    except Exception:
+                        delta=99
+                    if delta > 2:
+                        score-=0.05
+
+            primary=_norm(row.get("primary-type"))
+            secondary={
+                _norm(value)
+                for value in list(row.get("secondary-types") or [])
+                if value
+            }
+            album_flags=_lyrics_version_words(album)
+            if "live" in secondary and "live" not in album_flags:
+                score-=0.08
+            if "remix" in secondary and "remix" not in album_flags:
+                score-=0.08
+            if primary in {"broadcast","other"}:
+                score-=0.05
+
+            evidence={
+                "title":title_score,
+                "artist":artist_score,
+                "year":year_score,
+            }
+            if best is None or score > best[0]:
+                best=(score,row,evidence)
+
+        if best is None or best[0] < 0.84:
+            return {}
+        row=best[1]
+        return {
+            "release_group_mbid":str(row.get("id") or ""),
+            "title":str(row.get("title") or ""),
+            "artist":self._credited_artist_name(row),
+            "score":round(best[0],4),
+            "evidence":best[2],
+            "first_release_date":str(row.get("first-release-date") or ""),
+        }
 
     @staticmethod
     def _extract_wikidata_qid(artist: dict[str, Any]) -> str:
@@ -1377,6 +1521,7 @@ class RichMetadataService:
         artist: dict[str, Any],
     ) -> tuple[str, str]:
         """Find a likely English Wikipedia artist page without blind guessing."""
+        search_names=self._artist_search_names(artist)
         artist_name=str(artist.get("name") or artist.get("artist") or "").strip()
         tokens=[x for x in _norm(artist_name).split() if x]
         if not artist_name or not tokens:
@@ -1391,51 +1536,66 @@ class RichMetadataService:
         disambiguation=str(artist.get("disambiguation") or "").strip()
         if disambiguation:
             hints.append(disambiguation)
-        query=" ".join([f'"{artist_name}"', *(hints or ["music"])])
 
-        params={
-            "action":"query",
-            "format":"json",
-            "formatversion":"2",
-            "list":"search",
-            "srlimit":"8",
-            "srsearch":query,
-        }
-        url=_WP_API+"?"+urllib.parse.urlencode(params)
-        data=self._remote_json(
-            f"wikipedia-artist-search:{artist_name.casefold()}:{'|'.join(hints).casefold()}",
-            url,
-            45 * 86400,
-        )
-        rows=((data.get("query") or {}).get("search") if isinstance(data,dict) else None) or []
         music_hints={
             "musician","singer","band","rapper","producer","composer","dj",
             "musical","electronic","rock","hip hop","jazz","folk","ambient",
         }
-
         best: tuple[float,str] | None=None
-        for row in rows:
-            if not isinstance(row,dict):
-                continue
-            title=str(row.get("title") or "").strip()
-            if not title:
-                continue
-            base=re.sub(r"\s*\([^)]*\)\s*$","",title).strip()
-            title_score=max(_ratio(artist_name,title),_ratio(artist_name,base))
-            snippet=_norm(self._plain_extmetadata(row.get("snippet") or ""))
-            has_music_hint=any(hint in snippet for hint in music_hints)
-            exact=_norm(base)==_norm(artist_name)
-
-            # Multi-word exact titles can pass with a weaker snippet. Common or
-            # single-word stage names must look explicitly musical.
-            if len(tokens)==1 and not has_music_hint:
-                continue
-            if not exact and (title_score < 0.90 or not has_music_hint):
-                continue
-
-            score=title_score + (0.25 if exact else 0.0) + (0.15 if has_music_hint else 0.0)
-            if best is None or score > best[0]:
-                best=(score,title)
+        for search_name in search_names[:4]:
+            query=" ".join([f'"{search_name}"', *(hints or ["music"])])
+            params={
+                "action":"query",
+                "format":"json",
+                "formatversion":"2",
+                "list":"search",
+                "srlimit":"8",
+                "srsearch":query,
+            }
+            url=_WP_API+"?"+urllib.parse.urlencode(params)
+            data=self._remote_json(
+                "wikipedia-artist-search:"
+                + artist_name.casefold()
+                + ":"
+                + search_name.casefold()
+                + ":"
+                + "|".join(hints).casefold(),
+                url,
+                45 * 86400,
+            )
+            rows=((data.get("query") or {}).get("search") if isinstance(data,dict) else None) or []
+            for row in rows:
+                if not isinstance(row,dict):
+                    continue
+                title=str(row.get("title") or "").strip()
+                if not title:
+                    continue
+                base=re.sub(r"\s*\([^)]*\)\s*$","",title).strip()
+                title_score=max(
+                    _ratio(search_name,title),
+                    _ratio(search_name,base),
+                    _ratio(artist_name,title),
+                    _ratio(artist_name,base),
+                )
+                snippet=_norm(self._plain_extmetadata(row.get("snippet") or ""))
+                has_music_hint=any(hint in snippet for hint in music_hints)
+                exact=(
+                    _norm(base)==_norm(search_name)
+                    or _norm(base)==_norm(artist_name)
+                )
+                search_tokens=[x for x in _norm(search_name).split() if x]
+                if len(search_tokens)==1 and not has_music_hint:
+                    continue
+                if not exact and (title_score < 0.88 or not has_music_hint):
+                    continue
+                score=(
+                    title_score
+                    + (0.25 if exact else 0.0)
+                    + (0.15 if has_music_hint else 0.0)
+                    + (0.04 if _norm(search_name)!=_norm(artist_name) else 0.0)
+                )
+                if best is None or score > best[0]:
+                    best=(score,title)
         return (_WP_API,best[1]) if best else ("","")
 
     def _wikipedia_page_image(
@@ -1478,72 +1638,83 @@ class RichMetadataService:
             return image_name,page_url
         return "", ""
 
-    def _commons_artist_image(self, artist_name: str) -> tuple[str, str]:
-        """Last-resort free-image search with conservative matching.
-
-        This deliberately avoids general web image search. Candidates must
-        contain the artist name and look music-related, and album/logo artwork
-        is rejected.
-        """
+    def _commons_artist_image(
+        self,
+        artist_name: str,
+        aliases: list[str] | tuple[str,...] = (),
+    ) -> tuple[str, str]:
+        """Last-resort free-image search with conservative matching."""
         artist_name=str(artist_name or "").strip()
-        tokens=[x for x in _norm(artist_name).split() if len(x)>1]
-        if not artist_name or not tokens:
+        search_names=list(dict.fromkeys(
+            name
+            for name in [artist_name,*[str(x or "").strip() for x in aliases]]
+            if name
+        ))[:4]
+        if not artist_name:
             return "", ""
 
-        params={
-            "action":"query",
-            "format":"json",
-            "formatversion":"2",
-            "list":"search",
-            "srnamespace":"6",
-            "srlimit":"12",
-            "srsearch":f'"{artist_name}" musician singer band performer',
-        }
-        response=self.session.get(
-            _WM_API,
-            params=params,
-            timeout=15,
-            headers={"Accept":"application/json","User-Agent":_USER_AGENT},
-        )
-        response.raise_for_status()
-        payload=response.json()
-        rows=((payload.get("query") or {}).get("search") if isinstance(payload,dict) else None) or []
         music_hints={
             "musician","singer","band","rapper","producer","composer",
             "performer","concert","festival","dj","music",
         }
         best: tuple[float,str,str] | None=None
-        for row in rows:
-            if not isinstance(row,dict):
+        for search_name in search_names:
+            tokens=[x for x in _norm(search_name).split() if len(x)>1]
+            if not tokens:
                 continue
-            title=str(row.get("title") or "")
-            image_name=title.split(":",1)[1] if ":" in title else title
-            if not self._artist_photo_filename_ok(image_name):
-                continue
-            snippet=self._plain_extmetadata(row.get("snippet") or "")
-            haystack=_norm(image_name+" "+snippet)
-            if not all(token in haystack for token in tokens):
-                continue
-            words=set(haystack.split())
-            has_music_hint=bool(words & music_hints)
-            # Single-word stage names such as Bonobo are especially ambiguous.
-            if len(tokens)==1 and not has_music_hint:
-                continue
-            filename_norm=_norm(Path(image_name).stem)
-            score=_ratio(artist_name,filename_norm)
-            if has_music_hint:
-                score+=0.25
-            if _norm(artist_name) in filename_norm:
-                score+=0.25
-            if score < 0.70:
-                continue
-            description_url=(
-                "https://commons.wikimedia.org/wiki/File:"
-                + urllib.parse.quote(image_name.replace(" ","_"))
+            params={
+                "action":"query",
+                "format":"json",
+                "formatversion":"2",
+                "list":"search",
+                "srnamespace":"6",
+                "srlimit":"12",
+                "srsearch":f'"{search_name}" musician singer band performer',
+            }
+            response=self.session.get(
+                _WM_API,
+                params=params,
+                timeout=15,
+                headers={"Accept":"application/json","User-Agent":_USER_AGENT},
             )
-            candidate=(score,image_name,description_url)
-            if best is None or candidate[0] > best[0]:
-                best=candidate
+            response.raise_for_status()
+            payload=response.json()
+            rows=((payload.get("query") or {}).get("search") if isinstance(payload,dict) else None) or []
+            for row in rows:
+                if not isinstance(row,dict):
+                    continue
+                title=str(row.get("title") or "")
+                image_name=title.split(":",1)[1] if ":" in title else title
+                if not self._artist_photo_filename_ok(image_name):
+                    continue
+                snippet=self._plain_extmetadata(row.get("snippet") or "")
+                haystack=_norm(image_name+" "+snippet)
+                if not all(token in haystack for token in tokens):
+                    continue
+                words=set(haystack.split())
+                has_music_hint=bool(words & music_hints)
+                if len(tokens)==1 and not has_music_hint:
+                    continue
+                filename_norm=_norm(Path(image_name).stem)
+                score=max(
+                    _ratio(search_name,filename_norm),
+                    _ratio(artist_name,filename_norm),
+                )
+                if has_music_hint:
+                    score+=0.25
+                if _norm(search_name) in filename_norm:
+                    score+=0.25
+                if _norm(search_name)!=_norm(artist_name):
+                    score+=0.04
+                if score < 0.70:
+                    continue
+                description_url=(
+                    "https://commons.wikimedia.org/wiki/File:"
+                    + urllib.parse.quote(image_name.replace(" ","_"))
+                )
+                candidate=(score,image_name,description_url)
+                if best is None or candidate[0] > best[0]:
+                    best=candidate
         return (best[1],best[2]) if best else ("","")
 
     def _artist_photo_from_commons(
@@ -1743,7 +1914,10 @@ class RichMetadataService:
         # 4. Last resort: search Wikimedia Commons itself. Matching is
         # deliberately conservative to avoid showing the wrong person/band.
         try:
-            image_name,_description_url=self._commons_artist_image(artist_name)
+            image_name,_description_url=self._commons_artist_image(
+                artist_name,
+                self._artist_search_names(working)[1:],
+            )
         except Exception:
             image_name=""
         if image_name:
@@ -1835,14 +2009,23 @@ class RichMetadataService:
                     if not isinstance(asset, dict):
                         continue
                     url = str(asset.get("url") or "")
-                    downloaded = self._download_artwork(url)
-                    if not downloaded:
-                        continue
+                    role=_norm(asset.get("role"))
                     provenance = (
                         dict(asset.get("provenance") or {})
                         if isinstance(asset.get("provenance"), dict)
                         else {}
                     )
+                    try:
+                        confidence=float(provenance.get("confidence") or asset.get("confidence") or 1.0)
+                    except Exception:
+                        confidence=1.0
+                    if role and role not in {"cover","thumbnail"}:
+                        continue
+                    if confidence < 0.70:
+                        continue
+                    downloaded = self._download_artwork(url)
+                    if not downloaded:
+                        continue
                     extension_id = str(
                         provenance.get("source_extension_id")
                         or asset.get("_extension_id")
@@ -1887,6 +2070,38 @@ class RichMetadataService:
                         return result
             except Exception:
                 continue
+
+        candidate=self._release_group_artwork_candidate(track,identity)
+        candidate_mbid=str(candidate.get("release_group_mbid") or "")
+        if candidate_mbid and candidate_mbid != identity.release_group_mbid:
+            try:
+                data=self._caa_json(f"release-group/{candidate_mbid}")
+                url,comment=self._front_image(data)
+                if url:
+                    downloaded=self._download_artwork(url)
+                    if downloaded:
+                        result={
+                            "path":str(downloaded),
+                            "source":"Cover Art Archive",
+                            "source_url":url,
+                            "comment":comment,
+                            "match":{
+                                "method":"release_group_search",
+                                "confidence":candidate.get("score"),
+                                "evidence":candidate.get("evidence"),
+                                "matched_album":candidate.get("title"),
+                                "matched_artist":candidate.get("artist"),
+                            },
+                        }
+                        self.remember_artwork(
+                            track,
+                            downloaded,
+                            source="Cover Art Archive",
+                            source_url=url,
+                        )
+                        return result
+            except Exception:
+                pass
         return {"path": "", "source": "", "source_url": ""}
 
     @staticmethod
