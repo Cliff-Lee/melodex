@@ -1155,75 +1155,173 @@ class MainWindow(QMainWindow):
     def _build_journeys(self):
         l=self._page_layout(
             "journeys",
-            "Journey library",
-            "Save reusable journey intent separately from private listening history. Recipes can be imported/exported without exposing local paths; runs show how live listening actually diverged from the design.",
+            "Journeys",
+            "A journey is a listening route that develops gradually instead of shuffling randomly. Save designs you want to reuse; run history stays private on this computer.",
         )
-        columns=QHBoxLayout()
 
-        recipes_panel=QWidget()
-        recipes_layout=QVBoxLayout(recipes_panel)
-        recipe_title=QLabel("Recipes")
-        recipe_title.setStyleSheet("font-size:18px;font-weight:700")
-        recipes_layout.addWidget(recipe_title)
-        recipe_help=QLabel(
-            "Recipes store routing mode + ordered semantic/exact waypoints. "
-            "Choose fresh start/destination tracks when you reuse them."
+        top=QHBoxLayout()
+        design=QPushButton("Design a journey")
+        design.setObjectName("primaryButton")
+        design.clicked.connect(self._open_journey_designer)
+        import_recipe=QPushButton("Import journey…")
+        import_recipe.clicked.connect(self._journey_recipe_import)
+        set_help(
+            design,
+            "Design a journey",
+            "Open Music Map with route tools revealed so you can choose a start, destination and the shape of the listening route.",
         )
-        recipe_help.setWordWrap(True)
-        recipe_help.setStyleSheet("color:#aab0ba")
-        recipes_layout.addWidget(recipe_help)
+        set_help(
+            import_recipe,
+            "Import journey",
+            "Open a portable .mdxjourney recipe. Recipes store intent and waypoints without exposing your private listening history.",
+        )
+        top.addWidget(design)
+        top.addWidget(import_recipe)
+        top.addStretch(1)
+        l.addLayout(top)
+
+        self.journey_tabs=QTabWidget()
+        l.addWidget(self.journey_tabs,1)
+
+        saved=QWidget()
+        saved_l=QVBoxLayout(saved)
+        saved_l.setContentsMargins(0,10,0,0)
+        saved_help=QLabel(
+            "Saved journeys remember the route idea. When you reuse one, Melodex can resolve it against the music available now."
+        )
+        saved_help.setWordWrap(True)
+        saved_help.setStyleSheet("color:#8f9bad")
+        saved_l.addWidget(saved_help)
         self.journey_recipes_list=QListWidget()
         self.journey_recipes_list.itemDoubleClicked.connect(
             lambda _item:self._journey_recipe_load_selected()
         )
-        recipes_layout.addWidget(self.journey_recipes_list,1)
+        saved_l.addWidget(self.journey_recipes_list,1)
         recipe_buttons=QHBoxLayout()
-        save_current=QPushButton("Save current design"); save_current.clicked.connect(self._journey_recipe_save_current)
-        load_selected=QPushButton("Load into Music Map"); load_selected.clicked.connect(self._journey_recipe_load_selected)
-        import_recipe=QPushButton("Import…"); import_recipe.clicked.connect(self._journey_recipe_import)
-        export_recipe=QPushButton("Export…"); export_recipe.clicked.connect(self._journey_recipe_export)
-        delete_recipe=QPushButton("Delete"); delete_recipe.clicked.connect(self._journey_recipe_delete)
-        for button in (save_current,load_selected,import_recipe,export_recipe,delete_recipe):
+        load_selected=QPushButton("Open selected")
+        load_selected.clicked.connect(self._journey_recipe_load_selected)
+        save_current=QPushButton("Save current design")
+        save_current.clicked.connect(self._journey_recipe_save_current)
+        export_recipe=QPushButton("Export…")
+        export_recipe.clicked.connect(self._journey_recipe_export)
+        delete_recipe=QPushButton("Delete")
+        delete_recipe.clicked.connect(self._journey_recipe_delete)
+        set_help(
+            save_current,
+            "Save current design",
+            "Stores the route shape currently prepared in Music Map as a reusable journey recipe.",
+        )
+        for button in (load_selected,save_current,export_recipe,delete_recipe):
             recipe_buttons.addWidget(button)
-        recipes_layout.addLayout(recipe_buttons)
+        recipe_buttons.addStretch(1)
+        saved_l.addLayout(recipe_buttons)
+        self.journey_tabs.addTab(saved,"Saved journeys")
 
-        runs_panel=QWidget()
-        runs_layout=QVBoxLayout(runs_panel)
-        runs_title=QLabel("Recent runs")
-        runs_title.setStyleSheet("font-size:18px;font-weight:700")
-        runs_layout.addWidget(runs_title)
+        runs=QWidget()
+        runs_l=QVBoxLayout(runs)
+        runs_l.setContentsMargins(0,10,0,0)
         runs_help=QLabel(
-            "Run history is private local state: original design, final adapted route, "
-            "and the steering/skip/avoid decisions that changed it."
+            "Recent runs show what actually happened after skips, steering and live replanning. This history is local to Melodex."
         )
         runs_help.setWordWrap(True)
-        runs_help.setStyleSheet("color:#aab0ba")
-        runs_layout.addWidget(runs_help)
+        runs_help.setStyleSheet("color:#8f9bad")
+        runs_l.addWidget(runs_help)
         self.journey_runs_list=QListWidget()
         self.journey_runs_list.itemDoubleClicked.connect(
             lambda _item:self._journey_run_inspect()
         )
-        runs_layout.addWidget(self.journey_runs_list,1)
+        runs_l.addWidget(self.journey_runs_list,1)
         run_buttons=QHBoxLayout()
-        inspect=QPushButton("Inspect"); inspect.clicked.connect(self._journey_run_inspect)
-        replay_original=QPushButton("Replay designed"); replay_original.clicked.connect(lambda:self._journey_run_replay("original"))
-        replay_final=QPushButton("Replay final"); replay_final.clicked.connect(lambda:self._journey_run_replay("final"))
-        run_buttons.addWidget(inspect); run_buttons.addWidget(replay_original); run_buttons.addWidget(replay_final)
+        inspect=QPushButton("Inspect")
+        inspect.clicked.connect(self._journey_run_inspect)
+        replay_original=QPushButton("Replay designed")
+        replay_original.clicked.connect(lambda:self._journey_run_replay("original"))
+        replay_final=QPushButton("Replay final")
+        replay_final.clicked.connect(lambda:self._journey_run_replay("final"))
+        run_buttons.addWidget(inspect)
+        run_buttons.addWidget(replay_original)
+        run_buttons.addWidget(replay_final)
         run_buttons.addStretch(1)
-        runs_layout.addLayout(run_buttons)
+        runs_l.addLayout(run_buttons)
+        self.journey_tabs.addTab(runs,"Recent runs")
 
-        columns.addWidget(recipes_panel,1)
-        columns.addWidget(runs_panel,1)
-        l.addLayout(columns,1)
+    def _open_journey_designer(self) -> None:
+        self.open_page("music_map")
+        self.music_map_power_panel.show()
+        self.music_path_steps.show()
+        self.statusBar().showMessage(
+            "Journey design ready · select a track for the start, another for the destination, then shape the route",
+            6000,
+        )
+
 
     def _build_playlists(self):
-        l=self._page_layout("playlists","Playlists","Saved journeys and imported playlists live locally. Import or export XSPF, M3U and M3U8.")
-        self.playlists_list=QListWidget(); self.playlists_list.itemDoubleClicked.connect(self._play_saved_playlist); l.addWidget(self.playlists_list,1)
-        row=QHBoxLayout(); imp=QPushButton("Import playlist…"); imp.clicked.connect(self._import_playlist_file); ai=QPushButton("Paste from AI…"); ai.clicked.connect(self._open_ai_playlist_import); exp=QPushButton("Export selected…"); exp.clicked.connect(self._export_selected_playlist); expq=QPushButton("Export queue…"); expq.clicked.connect(self._export_queue); row.addWidget(imp); row.addWidget(ai); row.addWidget(exp); row.addWidget(expq); row.addStretch(1); l.addLayout(row)
+        l=self._page_layout(
+            "playlists",
+            "Playlists",
+            "Keep ordinary playlists alongside AI-generated or imported ones. Melodex stores them locally and resolves tracks through the sources you have connected.",
+        )
+
+        top=QHBoxLayout()
+        imp=QPushButton("Import playlist…")
+        imp.clicked.connect(self._import_playlist_file)
+        ai=QPushButton("Paste from AI…")
+        ai.setObjectName("primaryButton")
+        ai.clicked.connect(self._open_ai_playlist_import)
+        set_help(
+            imp,
+            "Import playlist",
+            "Import XSPF, M3U or M3U8. Melodex keeps unmatched requests so they can be resolved later.",
+        )
+        set_help(
+            ai,
+            "Paste from AI",
+            "Paste a playlist generated in ChatGPT, Claude, Gemini or another AI. No AI account is connected and the pasted text is not sent back to an AI service.",
+        )
+        top.addWidget(ai)
+        top.addWidget(imp)
+        top.addStretch(1)
+        l.addLayout(top)
+
+        self.playlists_list=QListWidget()
+        self.playlists_list.itemDoubleClicked.connect(self._play_saved_playlist)
+        self.playlists_list.itemSelectionChanged.connect(self._playlist_selection_changed)
+        l.addWidget(self.playlists_list,1)
+
+        row=QHBoxLayout()
+        self.playlist_export_button=QPushButton("Export selected…")
+        self.playlist_export_button.clicked.connect(self._export_selected_playlist)
+        self.playlist_export_button.setEnabled(False)
+        expq=QPushButton("Export current queue…")
+        expq.clicked.connect(self._export_queue)
+        row.addWidget(self.playlist_export_button)
+        row.addWidget(expq)
+        row.addStretch(1)
+        l.addLayout(row)
+
+    def _playlist_selection_changed(self) -> None:
+        item=self.playlists_list.currentItem() if hasattr(self,"playlists_list") else None
+        record=item.data(Qt.UserRole) if item else None
+        if hasattr(self,"playlist_export_button"):
+            self.playlist_export_button.setEnabled(isinstance(record,dict))
+
 
     def _build_moments(self):
-        l=self._page_layout("moments","Moments","Bookmarks inside songs — the exact musical moments you wanted to remember.")
-        self.moments_list=QListWidget(); l.addWidget(self.moments_list,1)
+        l=self._page_layout(
+            "moments",
+            "Moments",
+            "Bookmarks inside songs — the exact musical moments you wanted to remember, not just a list of favourite tracks.",
+        )
+        note=QLabel(
+            "While something is playing, use the current-track actions to remember a moment. Double-click a saved moment to play from that point."
+        )
+        note.setWordWrap(True)
+        note.setStyleSheet("color:#8f9bad")
+        l.addWidget(note)
+        self.moments_list=QListWidget()
+        self.moments_list.itemDoubleClicked.connect(self._play_saved_moment)
+        l.addWidget(self.moments_list,1)
+
 
     def _build_ask(self):
         l=self._page_layout("ask","Ask Melodex","Optional. Connect OpenWebUI, Ollama or another compatible model. The player still works without any LLM.")
