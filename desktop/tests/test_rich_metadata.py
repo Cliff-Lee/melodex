@@ -367,3 +367,11 @@ def test_user_selected_artist_photo_is_copied_and_remembered(tmp_path: Path):
     cached = reopened.cached_artist_photo({"name": "Brian Eno"})
     assert cached["path"] == str(cached_path)
     assert cached["source"] == "User-selected artist photo"
+
+
+
+def test_user_selected_artist_photo_rejects_unsupported_file_type(tmp_path: Path):
+    source = tmp_path / "not-an-image.txt"
+    source.write_text("not an image", "utf-8")
+    svc = RichMetadataService(tmp_path / "data")
+    assert svc.remember_artist_photo_file({"name": "Example Artist"}, source) == {}
