@@ -20,6 +20,7 @@ _CAA_BASE = "https://coverartarchive.org"
 _WD_ENTITY_BASE = "https://www.wikidata.org/wiki/Special:EntityData"
 _WM_FILE_PATH = "https://commons.wikimedia.org/wiki/Special:FilePath"
 _WM_API = "https://commons.wikimedia.org/w/api.php"
+_WP_API = "https://en.wikipedia.org/w/api.php"
 _USER_AGENT = "Melodex/0.1 (https://github.com/Cliff-Lee/melodex)"
 _LRC_RE = re.compile(r"\[(?P<m>\d{1,3}):(?P<s>\d{1,2})(?:[\.:](?P<f>\d{1,3}))?\]")
 _VERSION_WORDS = re.compile(r"\b(live|remix|acoustic|cover|karaoke|instrumental|demo|edit|remaster(?:ed)?)\b", re.I)
@@ -527,6 +528,42 @@ class RichMetadataService:
             album=str((release or {}).get("title") or album), date=str((release or {}).get("date") or ""), score=float(score),
         )
 
+    def resolve_artist(self, name: str) -> dict[str, Any]:
+        """Resolve an artist name conservatively through MusicBrainz.
+
+        This is used only for explicit artist-photo enrichment when a local
+        track did not already supply an artist MBID. Exact/near-exact names
+        are preferred and ambiguous matches are rejected.
+        """
+        name = str(name or "").strip()
+        if not name or _norm(name) in {"unknown artist", "unknown", "various artists"}:
+            return {}
+        data = self._mb_json(
+            "artist/",
+            {"query": f'artist:"{name}"', "fmt": "json", "limit": 8},
+            45 * 86400,
+        )
+        best: tuple[float, dict[str, Any]] | None = None
+        for row in list(data.get("artists") or []):
+            if not isinstance(row, dict):
+                continue
+            score = _ratio(name, row.get("name"))
+            for alias in list(row.get("aliases") or []):
+                if isinstance(alias, dict):
+                    score = max(score, _ratio(name, alias.get("name")))
+            if best is None or score > best[0]:
+                best = (score, row)
+        if not best or best[0] < 0.88:
+            return {}
+        mbid = str(best[1].get("id") or "").strip()
+        if not mbid:
+            return {}
+        info = self.artist_info(mbid)
+        if not info:
+            return {}
+        info["match_score"] = float(best[0])
+        return info
+
     def artist_info(self, artist_mbid: str) -> dict[str, Any]:
         if not artist_mbid:
             return {}
@@ -621,6 +658,9 @@ class RichMetadataService:
 
     @staticmethod
     def _extract_wikidata_qid(artist: dict[str, Any]) -> str:
+        explicit=str(artist.get("wikidata_qid") or "").strip()
+        if re.fullmatch(r"Q\d+",explicit):
+            return explicit
         for row in list(artist.get("links") or []):
             if not isinstance(row, dict):
                 continue
@@ -722,65 +762,189 @@ class RichMetadataService:
             parts.append(license_name)
         return " / ".join(dict.fromkeys(x for x in parts if x))
 
-    def artist_photo(self, artist: dict[str, Any]) -> dict[str, Any]:
-        remembered = self.cached_artist_photo(artist)
-        if remembered:
-            return {
-                **remembered,
-                "wikidata_qid": str(artist.get("wikidata_qid") or ""),
-                "filename": "",
-                "creator": "",
-                "credit": "",
-                "license_name": str(remembered.get("license") or ""),
-                "license_url": "",
-                "description_url": str(remembered.get("source_url") or ""),
-                "attribution_required": "",
-                "copyrighted": "",
-            }
-        qid = self._extract_wikidata_qid(artist)
-        empty = {
-            "path": "", "source": "", "source_url": "", "attribution": "",
-            "wikidata_qid": qid, "filename": "", "creator": "", "credit": "",
-            "license_name": "", "license_url": "", "description_url": "",
-            "attribution_required": "", "copyrighted": "",
+    @staticmethod
+    def _artist_photo_filename_ok(image_name: str) -> bool:
+        name=_norm(Path(str(image_name or "")).stem)
+        if not name:
+            return False
+        blocked={
+            "logo","wordmark","signature","album","cover","poster",
+            "artwork","record sleeve","vinyl","compact disc",
         }
-        if not qid:
-            return empty
-        data = self._remote_json(f"wikidata:{qid}", f"{_WD_ENTITY_BASE}/{qid}.json")
-        entity = (data.get("entities") or {}).get(qid) if isinstance(data.get("entities"), dict) else {}
-        claims = entity.get("claims") if isinstance(entity, dict) else {}
-        image_name = ""
-        try:
-            p18 = list(claims.get("P18") or [])
-            mainsnak = p18[0].get("mainsnak") if p18 and isinstance(p18[0], dict) else {}
-            datavalue = mainsnak.get("datavalue") if isinstance(mainsnak, dict) else {}
-            image_name = str(datavalue.get("value") or "") if isinstance(datavalue, dict) else ""
-        except Exception:
-            image_name = ""
-        if not image_name:
-            return empty
+        return not any(token in name for token in blocked)
 
-        commons = self._commons_file_info(image_name)
-        image_url = str(commons.get("image_url") or "") or f"{_WM_FILE_PATH}/{urllib.parse.quote(image_name.replace(' ', '_'))}"
-        downloaded = self._download_artwork(image_url)
-        result = {
+    @staticmethod
+    def _wikipedia_link(artist: dict[str, Any], entity: dict[str, Any]) -> tuple[str, str]:
+        sitelinks=entity.get("sitelinks") if isinstance(entity,dict) else {}
+        if isinstance(sitelinks,dict):
+            row=sitelinks.get("enwiki")
+            if isinstance(row,dict) and row.get("title"):
+                title=str(row.get("title") or "").strip()
+                return _WP_API, title
+
+        for row in list(artist.get("links") or []):
+            if not isinstance(row,dict):
+                continue
+            url=str(row.get("url") or "").strip()
+            match=re.match(
+                r"https?://(?P<lang>[a-z0-9-]+)\.wikipedia\.org/wiki/(?P<title>[^#?]+)",
+                url,
+                flags=re.I,
+            )
+            if not match:
+                continue
+            lang=match.group("lang")
+            title=urllib.parse.unquote(match.group("title")).replace("_"," ")
+            return f"https://{lang}.wikipedia.org/w/api.php", title
+        return "", ""
+
+    def _wikipedia_page_image(
+        self,
+        artist: dict[str, Any],
+        entity: dict[str, Any],
+    ) -> tuple[str, str]:
+        api,title=self._wikipedia_link(artist,entity)
+        if not api or not title:
+            return "", ""
+        params={
+            "action":"query",
+            "format":"json",
+            "formatversion":"2",
+            "redirects":"1",
+            "prop":"pageimages",
+            "piprop":"name",
+            "pilicense":"free",
+            "titles":title,
+        }
+        url=api+"?"+urllib.parse.urlencode(params)
+        data=self._remote_json(
+            f"wikipedia-pageimage:{api}:{title.casefold()}",
+            url,
+            45 * 86400,
+        )
+        pages=((data.get("query") or {}).get("pages") if isinstance(data,dict) else None) or []
+        page=pages[0] if pages and isinstance(pages[0],dict) else {}
+        image_name=str(page.get("pageimage") or "").strip()
+        if image_name and self._artist_photo_filename_ok(image_name):
+            page_title=str(page.get("title") or title)
+            lang_match=re.match(r"https?://(?P<lang>[a-z0-9-]+)\.wikipedia\.org",api,re.I)
+            lang=lang_match.group("lang") if lang_match else "en"
+            page_url=(
+                f"https://{lang}.wikipedia.org/wiki/"
+                + urllib.parse.quote(page_title.replace(" ","_"))
+            )
+            return image_name,page_url
+        return "", ""
+
+    def _commons_artist_image(self, artist_name: str) -> tuple[str, str]:
+        """Last-resort free-image search with conservative matching.
+
+        This deliberately avoids general web image search. Candidates must
+        contain the artist name and look music-related, and album/logo artwork
+        is rejected.
+        """
+        artist_name=str(artist_name or "").strip()
+        tokens=[x for x in _norm(artist_name).split() if len(x)>1]
+        if not artist_name or not tokens:
+            return "", ""
+
+        params={
+            "action":"query",
+            "format":"json",
+            "formatversion":"2",
+            "list":"search",
+            "srnamespace":"6",
+            "srlimit":"12",
+            "srsearch":f'"{artist_name}" musician singer band performer',
+        }
+        response=self.session.get(
+            _WM_API,
+            params=params,
+            timeout=15,
+            headers={"Accept":"application/json","User-Agent":_USER_AGENT},
+        )
+        response.raise_for_status()
+        payload=response.json()
+        rows=((payload.get("query") or {}).get("search") if isinstance(payload,dict) else None) or []
+        music_hints={
+            "musician","singer","band","rapper","producer","composer",
+            "performer","concert","festival","dj","music",
+        }
+        best: tuple[float,str,str] | None=None
+        for row in rows:
+            if not isinstance(row,dict):
+                continue
+            title=str(row.get("title") or "")
+            image_name=title.split(":",1)[1] if ":" in title else title
+            if not self._artist_photo_filename_ok(image_name):
+                continue
+            snippet=self._plain_extmetadata(row.get("snippet") or "")
+            haystack=_norm(image_name+" "+snippet)
+            if not all(token in haystack for token in tokens):
+                continue
+            words=set(haystack.split())
+            has_music_hint=bool(words & music_hints)
+            # Single-word stage names such as Bonobo are especially ambiguous.
+            if len(tokens)==1 and not has_music_hint:
+                continue
+            filename_norm=_norm(Path(image_name).stem)
+            score=_ratio(artist_name,filename_norm)
+            if has_music_hint:
+                score+=0.25
+            if _norm(artist_name) in filename_norm:
+                score+=0.25
+            if score < 0.70:
+                continue
+            description_url=(
+                "https://commons.wikimedia.org/wiki/File:"
+                + urllib.parse.quote(image_name.replace(" ","_"))
+            )
+            candidate=(score,image_name,description_url)
+            if best is None or candidate[0] > best[0]:
+                best=candidate
+        return (best[1],best[2]) if best else ("","")
+
+    def _artist_photo_from_commons(
+        self,
+        artist: dict[str, Any],
+        image_name: str,
+        *,
+        qid: str = "",
+        discovery_source: str = "",
+    ) -> dict[str, Any]:
+        empty = {
+            "path":"", "source":"", "source_url":"", "attribution":"",
+            "wikidata_qid":qid, "filename":"", "creator":"", "credit":"",
+            "license_name":"", "license_url":"", "description_url":"",
+            "attribution_required":"", "copyrighted":"",
+        }
+        image_name=str(image_name or "").strip()
+        if not image_name or not self._artist_photo_filename_ok(image_name):
+            return empty
+        commons=self._commons_file_info(image_name)
+        image_url=str(commons.get("image_url") or "")
+        if not image_url:
+            return empty
+        downloaded=self._download_artwork(image_url)
+        result={
             **empty,
-            "path": str(downloaded or ""),
-            "source": "Wikimedia Commons",
-            "source_url": image_url,
-            "description_url": str(commons.get("description_url") or ""),
-            "attribution": self._commons_credit_line(commons),
-            "wikidata_qid": qid,
-            "filename": image_name,
-            "creator": str(commons.get("creator") or ""),
-            "credit": str(commons.get("credit") or ""),
-            "license_name": str(commons.get("license_name") or ""),
-            "license_url": str(commons.get("license_url") or ""),
-            "attribution_required": str(commons.get("attribution_required") or ""),
-            "copyrighted": str(commons.get("copyrighted") or ""),
+            "path":str(downloaded or ""),
+            "source":"Wikimedia Commons",
+            "source_url":str(commons.get("description_url") or image_url),
+            "description_url":str(commons.get("description_url") or ""),
+            "attribution":self._commons_credit_line(commons),
+            "wikidata_qid":qid,
+            "filename":image_name,
+            "creator":str(commons.get("creator") or ""),
+            "credit":str(commons.get("credit") or ""),
+            "license_name":str(commons.get("license_name") or ""),
+            "license_url":str(commons.get("license_url") or ""),
+            "attribution_required":str(commons.get("attribution_required") or ""),
+            "copyrighted":str(commons.get("copyrighted") or ""),
+            "discovery_source":str(discovery_source or ""),
         }
         if downloaded:
-            keys=self._artist_artwork_keys({**artist, "wikidata_qid": qid})
+            keys=self._artist_artwork_keys({**artist,"wikidata_qid":qid})
             self._remember_artwork_by_keys(
                 keys,
                 downloaded,
@@ -790,6 +954,100 @@ class RichMetadataService:
                 license_name=str(result.get("license_name") or ""),
             )
         return result
+
+    def artist_photo(self, artist: dict[str, Any]) -> dict[str, Any]:
+        remembered=self.cached_artist_photo(artist)
+        if remembered:
+            return {
+                **remembered,
+                "wikidata_qid":str(artist.get("wikidata_qid") or ""),
+                "filename":"",
+                "creator":"",
+                "credit":"",
+                "license_name":str(remembered.get("license") or ""),
+                "license_url":"",
+                "description_url":str(remembered.get("source_url") or ""),
+                "attribution_required":"",
+                "copyrighted":"",
+                "discovery_source":"cache",
+            }
+
+        working=dict(artist or {})
+        artist_name=str(working.get("name") or working.get("artist") or "").strip()
+        qid=self._extract_wikidata_qid(working)
+        if not qid and artist_name and not working.get("links"):
+            try:
+                resolved=self.resolve_artist(artist_name)
+            except Exception:
+                resolved={}
+            if resolved:
+                working={**working,**resolved}
+                qid=self._extract_wikidata_qid(working)
+
+        empty={
+            "path":"", "source":"", "source_url":"", "attribution":"",
+            "wikidata_qid":qid, "filename":"", "creator":"", "credit":"",
+            "license_name":"", "license_url":"", "description_url":"",
+            "attribution_required":"", "copyrighted":"",
+            "discovery_source":"",
+        }
+        entity={}
+        if qid:
+            try:
+                data=self._remote_json(
+                    f"wikidata:{qid}",
+                    f"{_WD_ENTITY_BASE}/{qid}.json",
+                )
+                entity=(data.get("entities") or {}).get(qid) if isinstance(data.get("entities"),dict) else {}
+            except Exception:
+                entity={}
+
+        # 1. Wikidata's explicit image claim is the strongest free-image match.
+        if isinstance(entity,dict):
+            claims=entity.get("claims") if isinstance(entity.get("claims"),dict) else {}
+            try:
+                p18=list(claims.get("P18") or [])
+                mainsnak=p18[0].get("mainsnak") if p18 and isinstance(p18[0],dict) else {}
+                datavalue=mainsnak.get("datavalue") if isinstance(mainsnak,dict) else {}
+                image_name=str(datavalue.get("value") or "") if isinstance(datavalue,dict) else ""
+            except Exception:
+                image_name=""
+            if image_name:
+                result=self._artist_photo_from_commons(
+                    working,image_name,qid=qid,discovery_source="Wikidata portrait",
+                )
+                if result.get("path"):
+                    return result
+
+        # 2. Wikipedia often has a freely licensed lead image even when the
+        # Wikidata P18 field is empty.
+        try:
+            image_name,page_url=self._wikipedia_page_image(working,entity)
+        except Exception:
+            image_name,page_url="",""
+        if image_name:
+            result=self._artist_photo_from_commons(
+                working,image_name,qid=qid,discovery_source="Wikipedia lead image",
+            )
+            if result.get("path"):
+                if page_url:
+                    result["wikipedia_url"]=page_url
+                return result
+
+        # 3. Last resort: search Wikimedia Commons itself. Matching is
+        # deliberately conservative to avoid showing the wrong person/band.
+        try:
+            image_name,_description_url=self._commons_artist_image(artist_name)
+        except Exception:
+            image_name=""
+        if image_name:
+            result=self._artist_photo_from_commons(
+                working,image_name,qid=qid,discovery_source="Wikimedia artist search",
+            )
+            if result.get("path"):
+                return result
+
+        return empty
 
     def discography(self, artist_mbid: str, limit: int = 18) -> list[dict[str, Any]]:
         """Return release metadata quickly; artwork is hydrated in a later stage.

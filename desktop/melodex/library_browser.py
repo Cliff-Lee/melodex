@@ -343,6 +343,9 @@ class LibraryBrowser(QWidget):
         self._visible_artists: list[dict[str, Any]] = []
         self._art_requested: set[str] = set()
         self._artist_art_requested: set[str] = set()
+        self._artist_lookup_queue: list[dict[str, Any]] = []
+        self._artist_lookup_inflight = 0
+        self._artist_lookup_active = False
         self._tracks_built = False
 
         outer = QVBoxLayout(self)
@@ -446,6 +449,14 @@ class LibraryBrowser(QWidget):
         self.artist_page = QWidget()
         artist_page_layout = QVBoxLayout(self.artist_page)
         artist_page_layout.setContentsMargins(0, 0, 0, 0)
+        self.artist_photo_note = QLabel(
+            "Artist view uses real artist photos when Melodex can identify them. "
+            "Choose Get artist photos to look up missing images; album covers are not used as artist portraits."
+        )
+        self.artist_photo_note.setWordWrap(True)
+        self.artist_photo_note.setStyleSheet("color:#8f9bad")
+        artist_page_layout.addWidget(self.artist_photo_note)
+
         self.artist_scroll = QScrollArea()
         self.artist_scroll.setWidgetResizable(True)
         self.artist_scroll.setFrameShape(QFrame.NoFrame)
@@ -509,6 +520,9 @@ class LibraryBrowser(QWidget):
         self.catalog = [dict(item) for item in catalog if isinstance(item, dict)]
         self._art_requested.clear()
         self._artist_art_requested.clear()
+        self._artist_lookup_queue.clear()
+        self._artist_lookup_inflight = 0
+        self._artist_lookup_active = False
         if not self.catalog:
             self.albums = []
             self.artist_rows = []
@@ -557,9 +571,15 @@ class LibraryBrowser(QWidget):
             "tracks": self.track_list,
         }[name]
         self.stack.setCurrentWidget(target)
-        self.images_button.setText(
-            "Find artist photos" if name == "artists" else "Find missing artwork"
-        )
+        if name == "artists":
+            self.images_button.setText("Get artist photos")
+            self.images_button.setObjectName("primaryButton")
+        else:
+            self.images_button.setText("Find missing artwork")
+            self.images_button.setObjectName("quietButton")
+        self.images_button.style().unpolish(self.images_button)
+        self.images_button.style().polish(self.images_button)
+        self.images_button.update()
         self._apply_filter()
 
     def _apply_filter(self) -> None:
@@ -634,8 +654,6 @@ class LibraryBrowser(QWidget):
                 artist_path=self.artist_image_paths.get(key,"")
                 if artist_path:
                     card.set_image(artist_path,artist_photo=True)
-                else:
-                    self._apply_artist_fallback_image(card, artist)
             row, column = divmod(index, columns)
             self.artist_grid.addWidget(card, row, column, Qt.AlignTop)
         self.artist_container.adjustSize()
@@ -731,19 +749,6 @@ class LibraryBrowser(QWidget):
         if isinstance(track, dict):
             self.playTrackRequested.emit(dict(track))
 
-    def _apply_artist_fallback_image(
-        self,
-        card: ArtistCard,
-        artist: dict[str, Any],
-    ) -> None:
-        if card.has_artist_photo:
-            return
-        for album_key in list(artist.get("album_keys") or []):
-            path = self.artwork_paths.get(str(album_key), "")
-            if path:
-                card.set_image(path, artist_photo=False)
-                return
-
     def _request_artwork(self) -> None:
         batch = []
         for album in self.albums[:300]:
@@ -775,14 +780,14 @@ class LibraryBrowser(QWidget):
 
     def _request_online_artwork(self) -> None:
         if self.current_view() == "artists":
-            batch = []
             artists = self._visible_artists if self._visible_artists else self.artist_rows
+            self._artist_lookup_queue = []
+            self._artist_lookup_inflight = 0
             for artist in artists:
                 key = str(artist.get("key") or "")
                 card = self.artist_cards.get(key)
                 if (
                     not key
-                    or key in self._artist_art_requested
                     or card is None
                     or card.has_artist_photo
                     or _norm(artist.get("name")) == "unknown artist"
@@ -790,16 +795,13 @@ class LibraryBrowser(QWidget):
                     continue
                 track = dict(artist.get("representative_track") or {})
                 if track:
-                    self._artist_art_requested.add(key)
-                    batch.append({
+                    self._artist_lookup_queue.append({
                         "key": key,
                         "artist": str(artist.get("name") or ""),
                         "track": track,
                     })
-                if len(batch) >= 6:
-                    break
-            if batch:
-                self.artistImageRequested.emit(batch)
+            self._artist_lookup_active = bool(self._artist_lookup_queue)
+            self._emit_next_artist_lookup_batch()
             return
 
         batch = []
@@ -821,6 +823,29 @@ class LibraryBrowser(QWidget):
         if batch:
             self.onlineArtworkRequested.emit(batch)
 
+    def _emit_next_artist_lookup_batch(self) -> bool:
+        if not self._artist_lookup_active or not self._artist_lookup_queue:
+            self._artist_lookup_active = False
+            self._artist_lookup_inflight = 0
+            return False
+        batch=self._artist_lookup_queue[:10]
+        self._artist_lookup_queue=self._artist_lookup_queue[10:]
+        self._artist_lookup_inflight=len(batch)
+        for row in batch:
+            key=str(row.get("key") or "")
+            if key:
+                self._artist_art_requested.add(key)
+        self.artistImageRequested.emit(batch)
+        return True
+
+    def continue_artist_image_lookup(self) -> bool:
+        """Continue an explicit whole-library portrait lookup after one batch."""
+        self._artist_lookup_inflight = 0
+        return self._emit_next_artist_lookup_batch()
+
+    def artist_image_lookup_remaining(self) -> int:
+        return len(self._artist_lookup_queue) + int(self._artist_lookup_inflight or 0)
+
     def set_artwork(self, mapping: dict[str, str]) -> None:
         for key, path in dict(mapping or {}).items():
             key = str(key)
@@ -831,14 +856,6 @@ class LibraryBrowser(QWidget):
             card = self.cards.get(key)
             if card is not None:
                 card.set_cover(path)
-
-            for artist_key, artist_card in self.artist_cards.items():
-                artist = artist_card.artist
-                if (
-                    not artist_card.has_artist_photo
-                    and key in [str(x) for x in list(artist.get("album_keys") or [])]
-                ):
-                    self._apply_artist_fallback_image(artist_card, artist)
 
             for track_key, album_key in self.track_album_key.items():
                 if str(album_key) != key:

@@ -33,11 +33,16 @@ def test_every_bundled_provider_has_manifest_and_python_entrypoint():
             compile(archive.read("provider.py"), f"{package.name}:provider.py", "exec")
 
 
-def _provider_package(path: Path, plugin_id: str, version: str) -> Path:
+def _provider_package(
+    path: Path,
+    plugin_id: str,
+    version: str,
+    name: str = "Test provider",
+) -> Path:
     manifest = {
         "schema_version": 1,
         "id": plugin_id,
-        "name": "Test provider",
+        "name": name,
         "version": version,
         "capabilities": ["search", "track", "playback"],
         "permissions": {"network_hosts": []},
@@ -93,3 +98,37 @@ def test_newer_manual_provider_is_not_downgraded_by_bundle(tmp_path: Path):
         assert second.installation_record("org.melodex.somafm")["method"] == "manual"
     finally:
         second.close()
+
+
+def test_legacy_private_development_provider_is_quarantined_and_rejected(tmp_path: Path):
+    data_dir = tmp_path / "data"
+    legacy_name = "Music" + "MP3" + " (Experimental)"
+    plugin_id = "org.example.legacy.private"
+    package = _provider_package(
+        tmp_path / "legacy-private.mdxprovider",
+        plugin_id,
+        "0.1.0",
+        name=legacy_name,
+    )
+
+    manager = ProviderManager(data_dir)
+    try:
+        import pytest
+        with pytest.raises(ValueError, match="legacy development provider"):
+            manager.install_package(package)
+        assert not (manager.installer.providers_dir / plugin_id).exists()
+
+        # Simulate an old development build that had already installed the
+        # provider before the public-release quarantine existed.
+        manager.installer.install(package)
+    finally:
+        manager.close()
+
+    reopened = ProviderManager(data_dir)
+    try:
+        assert plugin_id not in reopened.providers
+        rows = reopened.quarantined_legacy_providers()
+        assert any(row["id"] == plugin_id for row in rows)
+        assert any(row["name"] == legacy_name for row in rows)
+    finally:
+        reopened.close()

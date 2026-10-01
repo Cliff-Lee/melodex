@@ -58,6 +58,8 @@ def test_visual_library_defaults_to_album_cards_and_filters():
     assert browser.stack.currentWidget() is browser.artist_page
     assert len(browser.artist_rows) == 2
     assert len(browser.artist_cards) == 2
+    assert browser.images_button.text() == "Get artist photos"
+    assert all(not card.has_artist_photo for card in browser.artist_cards.values())
 
     browser.set_view("tracks")
     assert browser.stack.currentWidget() is browser.track_list
@@ -107,6 +109,9 @@ def test_redesigned_main_window_builds_with_goal_navigation(monkeypatch, tmp_pat
     window._update_play_button(False)
     assert window.play_button.text() == "▶"
 
+    window.open_page("sources")
+    app.processEvents()
+    assert window.source_primary_button.text() == "Use selected"
     window.open_page("explore")
     app.processEvents()
     assert window.stack.currentWidget() is window.pages["explore"]
@@ -118,4 +123,46 @@ def test_redesigned_main_window_builds_with_goal_navigation(monkeypatch, tmp_pat
     assert not window.player_power_actions.isVisible()
 
     window.close()
+    app.processEvents()
+
+
+def test_artist_photo_lookup_walks_the_whole_missing_artist_list():
+    try:
+        from PySide6.QtWidgets import QApplication
+        from melodex.library_browser import LibraryBrowser
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    browser = LibraryBrowser()
+    tracks = [
+        _track(
+            f"/artists/{index:02d}.mp3",
+            f"Artist {index:02d}",
+            f"Album {index:02d}",
+            f"Track {index:02d}",
+            1,
+            2000 + index,
+        )
+        for index in range(15)
+    ]
+    browser.set_catalog(tracks)
+    browser.set_view("artists")
+
+    batches = []
+    browser.artistImageRequested.connect(
+        lambda rows: batches.append([dict(row) for row in rows])
+    )
+
+    browser._request_online_artwork()
+    assert len(batches) == 1
+    assert len(batches[0]) == 10
+
+    assert browser.continue_artist_image_lookup() is True
+    assert len(batches) == 2
+    assert len(batches[1]) == 5
+
+    assert browser.continue_artist_image_lookup() is False
+    browser.deleteLater()
     app.processEvents()

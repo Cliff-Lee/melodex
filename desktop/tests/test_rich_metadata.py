@@ -147,3 +147,94 @@ def test_identify_can_match_unknown_artist_from_track_and_album(tmp_path: Path):
     assert 'release:"Known Album"' in seen["query"]
     assert ident.artist == "Recovered Artist"
     assert ident.release_group_mbid == "rg-2"
+
+
+def test_resolve_artist_by_name_uses_conservative_musicbrainz_match(tmp_path: Path):
+    svc = RichMetadataService(tmp_path / "data")
+    calls = []
+
+    def fake_mb(path, params, max_age):
+        calls.append((path, dict(params)))
+        if path == "artist/":
+            return {
+                "artists": [
+                    {"id": "artist-good", "name": "Aesop Rock", "aliases": []},
+                    {"id": "artist-bad", "name": "Aesop", "aliases": []},
+                ]
+            }
+        if path == "artist/artist-good":
+            return {
+                "id": "artist-good",
+                "name": "Aesop Rock",
+                "sort-name": "Aesop Rock",
+                "relations": [],
+            }
+        return {}
+
+    svc._mb_json = fake_mb
+    info = svc.resolve_artist("Aesop Rock")
+    assert info["mbid"] == "artist-good"
+    assert info["name"] == "Aesop Rock"
+    assert info["match_score"] > 0.95
+    assert calls[0][0] == "artist/"
+
+
+def test_artist_photo_falls_back_to_wikipedia_lead_image(tmp_path: Path):
+    svc = RichMetadataService(tmp_path / "data")
+    portrait = tmp_path / "portrait.jpg"
+    portrait.write_bytes(b"portrait")
+
+    def fake_remote(key, url, max_age=0):
+        if key.startswith("wikidata:"):
+            return {
+                "entities": {
+                    "Q123": {
+                        "claims": {},
+                        "sitelinks": {
+                            "enwiki": {"title": "Bill Withers"}
+                        },
+                    }
+                }
+            }
+        if key.startswith("wikipedia-pageimage:"):
+            return {
+                "query": {
+                    "pages": [{
+                        "title": "Bill Withers",
+                        "pageimage": "Bill Withers 1976.jpg",
+                    }]
+                }
+            }
+        return {}
+
+    svc._remote_json = fake_remote
+    svc._commons_file_info = lambda image_name: {
+        "image_url": "https://upload.wikimedia.org/example.jpg",
+        "description_url": "https://commons.wikimedia.org/wiki/File:Bill_Withers_1976.jpg",
+        "creator": "Photographer",
+        "credit": "",
+        "explicit_attribution": "",
+        "license_name": "CC BY-SA 4.0",
+        "license_url": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "usage_terms": "",
+        "copyrighted": "",
+        "attribution_required": "true",
+    }
+    svc._download_artwork = lambda url: portrait
+
+    result = svc.artist_photo({
+        "name": "Bill Withers",
+        "wikidata_qid": "Q123",
+        "links": [],
+    })
+
+    assert result["path"] == str(portrait)
+    assert result["filename"] == "Bill Withers 1976.jpg"
+    assert result["discovery_source"] == "Wikipedia lead image"
+    assert result["source"] == "Wikimedia Commons"
+
+
+def test_artist_photo_filename_rejects_album_and_logo_art():
+    assert RichMetadataService._artist_photo_filename_ok("Brian Eno 2015.jpg")
+    assert not RichMetadataService._artist_photo_filename_ok("Boards of Canada logo.svg")
+    assert not RichMetadataService._artist_photo_filename_ok("Bonobo album cover.jpg")
