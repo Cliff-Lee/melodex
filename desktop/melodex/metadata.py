@@ -41,6 +41,8 @@ _DASHED_VERSION = re.compile(
 )
 _LYRIC_SUCCESS_TTL = 6 * 60 * 60
 _LYRIC_MISS_TTL = 10 * 60
+_LYRIC_DISK_SUCCESS_TTL = 30 * 86400
+_LYRIC_DISK_MISS_TTL = 24 * 60 * 60
 
 
 def _norm(value: Any) -> str:
@@ -160,8 +162,9 @@ class MetadataIdentity:
 class RichMetadataService:
     """Local-first enrichment with a small MusicBrainz/Cover Art cache.
 
-    Lyrics are local-first. User-initiated or explicitly enabled community lookup
-    is handled separately and third-party lyric text is not persisted to disk.
+    Lyrics are local-first. Community lyrics are cached locally with source
+    provenance and a bounded TTL so revisiting a track does not repeat network
+    requests. This cache is separate from user-saved/editable lyrics.
     """
 
     _mb_lock = threading.Lock()
@@ -684,19 +687,56 @@ class RichMetadataService:
             pass
         return {"text": "", "synced": [], "source": ""}
 
+    def _community_lyrics_disk_key(self, key: str) -> str:
+        return "lrclib-cache:" + str(key or "")
+
     def _community_lyrics_cached(self, key: str) -> dict[str, Any] | None:
         now=time.monotonic()
         with self._community_lyrics_cache_lock:
             cached=self._community_lyrics_cache.get(key)
-            if not cached:
-                return None
-            expires,result=cached
-            if expires <= now:
+            if cached:
+                expires,result=cached
+                if expires > now:
+                    out=dict(result)
+                    out["cache"]="memory"
+                    return out
                 self._community_lyrics_cache.pop(key,None)
+
+        # Persistent cache is deliberately separate from saved/personal lyrics:
+        # it is read-only, carries the original provenance and expires.
+        disk=self._cached_json(
+            self._community_lyrics_disk_key(key),
+            _LYRIC_DISK_SUCCESS_TTL,
+        )
+        if isinstance(disk,dict):
+            status=str(disk.get("status") or "")
+            ttl=(
+                _LYRIC_DISK_MISS_TTL
+                if status in {"not_found","missing_metadata","error"}
+                else _LYRIC_DISK_SUCCESS_TTL
+            )
+            path=self._cache_path(self._community_lyrics_disk_key(key))
+            try:
+                if time.time()-path.stat().st_mtime > ttl:
+                    return None
+            except Exception:
                 return None
-            out=dict(result)
-            out["cache"]="memory"
+            out=dict(disk)
+            out["cache"]="disk"
+            with self._community_lyrics_cache_lock:
+                self._community_lyrics_cache[key]=(
+                    time.monotonic()+min(float(ttl),_LYRIC_SUCCESS_TTL),
+                    dict(disk),
+                )
             return out
+        return None
+
+    def cached_community_lyrics(
+        self,
+        track: dict[str, Any],
+    ) -> dict[str, Any]:
+        key=_lyrics_lookup_key(dict(track or {}))
+        return dict(self._community_lyrics_cached(key) or {})
 
     def _cache_community_lyrics(
         self,
@@ -707,7 +747,14 @@ class RichMetadataService:
     ) -> dict[str, Any]:
         payload=dict(result)
         with self._community_lyrics_cache_lock:
-            self._community_lyrics_cache[key]=(time.monotonic()+max(1.0,float(ttl)),payload)
+            self._community_lyrics_cache[key]=(
+                time.monotonic()+max(1.0,float(ttl)),
+                payload,
+            )
+        try:
+            self._save_json(self._community_lyrics_disk_key(key),payload)
+        except Exception:
+            pass
         return dict(payload)
 
     @staticmethod
@@ -772,9 +819,9 @@ class RichMetadataService:
     ) -> dict[str, Any]:
         """Fetch lyrics on demand from LRCLIB with conservative fallbacks.
 
-        Third-party lyric text is never persisted to disk. Successful,
-        instrumental and not-found results are cached in memory only so
-        replaying the same track does not immediately repeat the request.
+        Successful, instrumental and bounded not-found results are cached
+        locally with provenance. They remain read-only cache entries rather
+        than user-saved lyrics, and explicit refresh bypasses the cache.
         """
         track=dict(track or {})
         title=str(track.get("title") or "").strip()
@@ -789,6 +836,12 @@ class RichMetadataService:
         if force:
             with self._community_lyrics_cache_lock:
                 self._community_lyrics_cache.pop(key,None)
+            try:
+                self._cache_path(self._community_lyrics_disk_key(key)).unlink(
+                    missing_ok=True
+                )
+            except Exception:
+                pass
 
         if not title or not artist or _norm(artist) in {"unknown artist","unknown"}:
             return {
