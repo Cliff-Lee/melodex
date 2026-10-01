@@ -873,7 +873,11 @@ class MainWindow(QMainWindow):
             "Stay with the music first. Artwork, lyrics and context are primary; visualisations are there when you want them.",
         )
         self.now_views = QTabWidget()
-        self.rich_now = RichNowPlayingWidget(self.metadata, self)
+        self.rich_now = RichNowPlayingWidget(
+            self.metadata,
+            self,
+            auto_online_lyrics=self.state.get_bool("auto_online_lyrics", False),
+        )
         self.living_canvas = LivingCanvasView(self, self.data_dir / "visualizers")
         self.rich_now.knowledgeChanged.connect(self._remember_now_playing_knowledge)
         self.rich_now.accentChanged.connect(self.living_canvas.set_accent_color)
@@ -881,6 +885,9 @@ class MainWindow(QMainWindow):
         self.rich_now.lyricsChanged.connect(self.living_canvas.set_lyrics)
         self.rich_now.lyricsPluginRequested.connect(
             lambda: self._plugin_directory("lyrics")
+        )
+        self.rich_now.onlineLyricsPreferenceChanged.connect(
+            lambda enabled: self.state.set_bool("auto_online_lyrics", bool(enabled))
         )
         self.living_canvas.seekRequested.connect(self.player.seek)
         self.living_canvas.modeDataRequested.connect(self._request_visual_mode_data)
