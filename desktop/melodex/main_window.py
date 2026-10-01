@@ -651,6 +651,39 @@ class MainWindow(QMainWindow):
                 border:1px solid #26384c;
                 border-radius:10px;
             }
+            QFrame#artworkProgressPanel{
+                background:#101821;
+                border:1px solid #2a3d53;
+                border-radius:11px;
+            }
+            QLabel#artworkProgressTitle{
+                font-size:12px;
+                font-weight:720;
+                color:#d8e6f6;
+            }
+            QLabel#artworkProgressSummary{
+                font-size:10px;
+                color:#93a7bd;
+            }
+            QLabel#artworkProgressDetail{
+                font-size:10px;
+                color:#8492a3;
+            }
+            QProgressBar{
+                min-height:14px;
+                max-height:14px;
+                border:1px solid #2b3a4c;
+                border-radius:7px;
+                background:#0c121a;
+                text-align:center;
+                color:#d6e5f5;
+                font-size:9px;
+            }
+            QProgressBar::chunk{
+                border-radius:6px;
+                background:#365f8d;
+            }
+
             QFrame#featurePresenceBar[active="true"]{
                 background:#111f2c;
                 border-color:#315274;
