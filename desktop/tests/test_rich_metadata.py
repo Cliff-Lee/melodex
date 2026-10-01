@@ -465,3 +465,110 @@ def test_imported_lrc_is_copied_and_remains_synchronized(tmp_path: Path):
     loaded = reopened.local_lyrics(track)
     assert loaded["synced"][1]["time_ms"] == 4500
     assert loaded["source"].startswith("Imported ")
+
+
+
+def test_community_lyrics_prefers_exact_lrclib_match_without_persisting(tmp_path: Path):
+    svc = RichMetadataService(tmp_path / "data")
+
+    class Response:
+        status_code = 200
+        def json(self):
+            return {
+                "id": 42,
+                "trackName": "Example Song",
+                "artistName": "Example Artist",
+                "albumName": "Example Album",
+                "duration": 201.2,
+                "plainLyrics": "Line one\nLine two",
+                "syncedLyrics": "[00:01.00]Line one\n[00:03.50]Line two",
+                "instrumental": False,
+            }
+        def raise_for_status(self):
+            return None
+
+    calls = []
+    def fake_get(url, **kwargs):
+        calls.append((url, kwargs))
+        return Response()
+
+    svc.session.get = fake_get
+    result = svc.community_lyrics({
+        "artist": "Example Artist",
+        "title": "Example Song",
+        "album": "Example Album",
+        "duration": 201.0,
+    })
+
+    assert result["source"] == "LRCLIB community lyrics"
+    assert result["text"] == "Line one\nLine two"
+    assert len(result["synced"]) == 2
+    assert result["synced"][0]["time_ms"] == 1000
+    assert calls[0][0].endswith("/api/get")
+    assert not list((tmp_path / "data" / "rich-metadata" / "lyrics").glob("*lrclib*"))
+
+
+def test_community_lyrics_search_rejects_wrong_artist(tmp_path: Path):
+    svc = RichMetadataService(tmp_path / "data")
+
+    class ExactMiss:
+        status_code = 404
+        def json(self):
+            return {}
+        def raise_for_status(self):
+            return None
+
+    class Search:
+        status_code = 200
+        def json(self):
+            return [{
+                "id": 9,
+                "trackName": "Example Song",
+                "artistName": "Completely Different Artist",
+                "albumName": "Example Album",
+                "duration": 200.0,
+                "plainLyrics": "Wrong lyric",
+                "syncedLyrics": None,
+                "instrumental": False,
+            }]
+        def raise_for_status(self):
+            return None
+
+    responses = iter([ExactMiss(), Search()])
+    svc.session.get = lambda *args, **kwargs: next(responses)
+    result = svc.community_lyrics({
+        "artist": "Example Artist",
+        "title": "Example Song",
+        "album": "Example Album",
+        "duration": 200.0,
+    })
+    assert result["text"] == ""
+
+
+def test_community_lyrics_can_report_instrumental(tmp_path: Path):
+    svc = RichMetadataService(tmp_path / "data")
+
+    class Response:
+        status_code = 200
+        def json(self):
+            return {
+                "id": 77,
+                "trackName": "Instrumental",
+                "artistName": "Example Artist",
+                "albumName": "",
+                "duration": 180.0,
+                "plainLyrics": None,
+                "syncedLyrics": None,
+                "instrumental": True,
+            }
+        def raise_for_status(self):
+            return None
+
+    svc.session.get = lambda *args, **kwargs: Response()
+    result = svc.community_lyrics({
+        "artist": "Example Artist",
+        "title": "Instrumental",
+        "duration": 180.0,
+    })
+    assert result["instrumental"] is True
+    assert result["text"] == ""
