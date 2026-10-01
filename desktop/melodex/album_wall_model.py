@@ -54,6 +54,13 @@ def _year(track: dict[str, Any]) -> int:
         match = re.search(r"(?:19|20)\d{2}", str(track.get(key) or ""))
         if match:
             return int(match.group(0))
+    local_path = str(track.get("local_path") or "").strip()
+    if local_path:
+        parts = list(Path(local_path).expanduser().parts)
+        for part in reversed(parts[-4:-1]):
+            match = re.search(r"(?:19|20)\d{2}", str(part))
+            if match:
+                return int(match.group(0))
     return 0
 
 
@@ -216,52 +223,118 @@ def layout_album_positions(
     model: dict[str, Any],
     lens: str = "sound",
     *,
-    tile_width: float = 154.0,
-    tile_height: float = 184.0,
-    extent_x: float = 1800.0,
-    extent_y: float = 1180.0,
+    tile_width: float = 184.0,
+    tile_height: float = 218.0,
 ) -> dict[str, tuple[float, float]]:
-    """Pack tiles near semantic targets while preventing cover collisions."""
+    """Lay albums out densely enough to browse, while preserving lens meaning."""
     albums = [dict(a) for a in list(model.get("albums") or []) if isinstance(a, dict)]
     if not albums:
         return {}
 
-    if lens == "shelves":
-        ordered = sorted(albums, key=lambda a: (_norm(a.get("artist")), _norm(a.get("title"))))
-        cols = max(1, int(math.ceil(math.sqrt(len(ordered) * tile_height / tile_width))))
-        rows = int(math.ceil(len(ordered) / cols))
-        return {
-            a["key"]: (
-                (i % cols - (cols - 1) / 2) * tile_width,
-                (i // cols - (rows - 1) / 2) * tile_height,
+    count = len(albums)
+    # Aim for a landscape wall instead of projecting every collection into a
+    # fixed 3600×2360 scene. This keeps 50–100 album libraries readable.
+    aspect = 1.65
+    cols = max(
+        4,
+        int(
+            math.ceil(
+                math.sqrt(
+                    count * aspect * tile_height / max(tile_width, 1.0)
+                )
             )
-            for i, a in enumerate(ordered)
+        ),
+    )
+    rows = max(1, int(math.ceil(count / cols)))
+
+    if lens == "shelves":
+        ordered = sorted(
+            albums,
+            key=lambda a: (
+                _norm(a.get("artist")),
+                _norm(a.get("title")),
+                str(a.get("key") or ""),
+            ),
+        )
+        return {
+            str(album.get("key") or ""): (
+                (i % cols - (cols - 1) / 2.0) * tile_width,
+                (i // cols - (rows - 1) / 2.0) * tile_height,
+            )
+            for i, album in enumerate(ordered)
         }
 
-    cols = max(9, int(2 * extent_x / tile_width))
-    rows = max(7, int(2 * extent_y / tile_height))
+    if lens == "time":
+        # Time is a chronological shelf, not a scatter plot. Undated albums
+        # remain useful and are grouped after dated records rather than forming
+        # one strange vertical outlier column.
+        dated = sorted(
+            (a for a in albums if int(a.get("year") or 0) > 0),
+            key=lambda a: (
+                int(a.get("year") or 0),
+                _norm(a.get("artist")),
+                _norm(a.get("title")),
+            ),
+        )
+        undated = sorted(
+            (a for a in albums if int(a.get("year") or 0) <= 0),
+            key=lambda a: (
+                _norm(a.get("artist")),
+                _norm(a.get("title")),
+            ),
+        )
+        ordered = dated + undated
+        time_rows = max(3, min(7, int(math.ceil(math.sqrt(max(1, count)) / 1.25))))
+        positions: dict[str, tuple[float, float]] = {}
+        dated_cols = int(math.ceil(len(dated) / time_rows)) if dated else 0
+        gap = 1 if dated and undated else 0
+        for i, album in enumerate(dated):
+            col, row = i // time_rows, i % time_rows
+            positions[str(album.get("key") or "")] = (
+                col * tile_width,
+                row * tile_height,
+            )
+        for i, album in enumerate(undated):
+            col, row = i // time_rows, i % time_rows
+            positions[str(album.get("key") or "")] = (
+                (dated_cols + gap + col) * tile_width,
+                row * tile_height,
+            )
+        if positions:
+            xs = [x for x, _y in positions.values()]
+            ys = [y for _x, y in positions.values()]
+            cx = (min(xs) + max(xs)) / 2.0
+            cy = (min(ys) + max(ys)) / 2.0
+            positions = {key: (x - cx, y - cy) for key, (x, y) in positions.items()}
+        return positions
+
+    grid_cols = cols
+    grid_rows = rows
     occupied: set[tuple[int, int]] = set()
     positions: dict[str, tuple[float, float]] = {}
-    ordered = sorted(albums, key=lambda a: (
-        -int(a.get("analysed_tracks") or 0),
-        -float(a.get("familiarity") or 0),
-        -int(a.get("plays") or 0),
-        str(a.get("key") or ""),
-    ))
+    ordered = sorted(
+        albums,
+        key=lambda a: (
+            -int(a.get("analysed_tracks") or 0),
+            -float(a.get("familiarity") or 0),
+            -int(a.get("plays") or 0),
+            str(a.get("key") or ""),
+        ),
+    )
 
     def cell_for(x: float, y: float) -> tuple[int, int]:
-        col = round(((max(-1.18, min(1.18, x)) + 1.18) / 2.36) * (cols - 1))
-        row = round(((max(-1.18, min(1.18, y)) + 1.18) / 2.36) * (rows - 1))
+        col = round(((max(-1.0, min(1.0, x)) + 1.0) / 2.0) * (grid_cols - 1))
+        row = round(((max(-1.0, min(1.0, y)) + 1.0) / 2.0) * (grid_rows - 1))
         return int(col), int(row)
 
     def nearest_free(origin: tuple[int, int]) -> tuple[int, int]:
         if origin not in occupied:
             return origin
         ox, oy = origin
-        for radius in range(1, max(cols, rows) + 1):
+        for radius in range(1, max(grid_cols, grid_rows) + 1):
             candidates = []
-            for x in range(max(0, ox - radius), min(cols, ox + radius + 1)):
-                for y in range(max(0, oy - radius), min(rows, oy + radius + 1)):
+            for x in range(max(0, ox - radius), min(grid_cols, ox + radius + 1)):
+                for y in range(max(0, oy - radius), min(grid_rows, oy + radius + 1)):
                     if max(abs(x - ox), abs(y - oy)) == radius and (x, y) not in occupied:
                         candidates.append(((x - ox) ** 2 + (y - oy) ** 2, y, x))
             if candidates:
@@ -273,8 +346,8 @@ def layout_album_positions(
         x, y = _target(album, lens)
         col, row = nearest_free(cell_for(x, y))
         occupied.add((col, row))
-        px = (col / max(1, cols - 1) * 2 - 1) * extent_x
-        py = (row / max(1, rows - 1) * 2 - 1) * extent_y
+        px = (col - (grid_cols - 1) / 2.0) * tile_width
+        py = (row - (grid_rows - 1) / 2.0) * tile_height
         positions[str(album.get("key") or "")] = (px, py)
 
     return positions
