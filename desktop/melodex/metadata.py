@@ -234,9 +234,12 @@ class RichMetadataService:
         text=str(text or "").strip()
         if not text:
             return {}
+        keys=self._lyrics_keys(track)
+        if not keys:
+            return {}
         synced=parse_lrc(text)
         suffix=".lrc" if synced else ".txt"
-        key=self._hash("|".join(self._lyrics_keys(track))+"|"+text)[:24]
+        key=self._hash("|".join(keys)+"|"+text)[:24]
         target=self.lyrics_cache / f"user-{key}{suffix}"
         target.write_text(text+"\n","utf-8")
         return self._remember_lyrics_path(track,target,source=source)
@@ -255,8 +258,11 @@ class RichMetadataService:
             return {}
         if not text.strip():
             return {}
+        keys=self._lyrics_keys(track)
+        if not keys:
+            return {}
         suffix=source_path.suffix.casefold()
-        key=self._hash("|".join(self._lyrics_keys(track))+"|"+text)[:24]
+        key=self._hash("|".join(keys)+"|"+text)[:24]
         target=self.lyrics_cache / f"imported-{key}{suffix}"
         target.write_text(text,"utf-8")
         return self._remember_lyrics_path(
