@@ -818,3 +818,60 @@ def test_online_lyrics_translation_signal_contains_only_current_lyrics(monkeypat
 
     window.close()
     app.processEvents()
+
+
+
+def test_online_lyrics_miss_does_not_replace_existing_local_lyrics(monkeypatch, tmp_path):
+    try:
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+        from melodex.metadata import track_key
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+
+    window = main_window.MainWindow()
+    widget = window.rich_now
+    widget.track = {
+        "artist": "Example Artist",
+        "title": "Example Song",
+        "provider_id": "local",
+        "track_id": "example-song",
+        "local_path": str(tmp_path / "song.mp3"),
+    }
+    local = {
+        "text": "My local lyric",
+        "synced": [],
+        "source": "Example Song.txt",
+        "path": str(tmp_path / "Example Song.txt"),
+    }
+    widget._local_lyrics = dict(local)
+    widget._active_lyrics_source = "local"
+    widget._apply_lyrics(local)
+
+    widget._stage_loaded(
+        track_key(widget.track),
+        "community lyrics",
+        {
+            "lyrics": {
+                "text": "",
+                "synced": [],
+                "source": "LRCLIB community lyrics",
+                "instrumental": False,
+                "status": "not_found",
+                "error": "",
+            }
+        },
+    )
+
+    assert widget._active_lyrics_source == "local"
+    assert widget._current_lyrics["source"] == "Example Song.txt"
+    assert "My local lyric" in widget.lyrics.toPlainText()
+    assert widget.online_lyrics_button.text() == "Try again"
+
+    window.close()
+    app.processEvents()
