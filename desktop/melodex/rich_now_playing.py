@@ -367,11 +367,19 @@ class RichNowPlayingWidget(QWidget):
 
         if stage == "community lyrics":
             lyrics=payload.get("lyrics") if isinstance(payload.get("lyrics"),dict) else {}
-            self.bundle["lyrics"]=dict(lyrics)
             self._online_lyrics=dict(lyrics)
-            if self._lyrics_has_content(lyrics) or str(lyrics.get("status") or ""):
+            if self._lyrics_has_content(lyrics):
+                self.bundle["lyrics"]=dict(lyrics)
                 self._active_lyrics_source="online"
-            self._apply_lyrics(lyrics)
+                self._apply_lyrics(lyrics)
+            elif self._lyrics_has_content(self._local_lyrics):
+                self.bundle["lyrics"]=dict(self._local_lyrics)
+                self._active_lyrics_source="local"
+                self._apply_lyrics(self._local_lyrics)
+            else:
+                self.bundle["lyrics"]=dict(lyrics)
+                self._active_lyrics_source="online"
+                self._apply_lyrics(lyrics)
             self.online_lyrics_button.setEnabled(True)
             status=str(lyrics.get("status") or "")
             self.online_lyrics_button.setText(
@@ -1231,7 +1239,7 @@ class RichNowPlayingWidget(QWidget):
         body = "<h2>Track identity</h2><table cellspacing='7'>" + "".join(rows) + "</table>" if rows else "<p>No external identity data yet.</p>"
         if errors:
             body += "<h3>Enrichment notes</h3><ul>" + "".join(f"<li>{_escape(x)}</li>" for x in errors) + "</ul>"
-        body += "<p style='color:#777'>Online metadata: MusicBrainz. Artist photos: Wikimedia Commons via Wikidata when linked. Cover images: Cover Art Archive or the playback provider. Lyrics: local files/tags only.</p>"
+        body += "<p style='color:#777'>Online metadata: MusicBrainz. Artist photos: Wikimedia Commons via Wikidata when linked. Cover images: Cover Art Archive or the playback provider. Lyrics: local files/tags and installed plugins first; LRCLIB only when requested or explicitly enabled.</p>"
         return body
 
     # ---------------------------- synchronized lyrics
