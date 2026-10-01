@@ -58,6 +58,8 @@ def test_visual_library_defaults_to_album_cards_and_filters():
     assert browser.stack.currentWidget() is browser.artist_page
     assert len(browser.artist_rows) == 2
     assert len(browser.artist_cards) == 2
+    assert browser.images_button.text() == "Get artist photos"
+    assert all(not card.has_artist_photo for card in browser.artist_cards.values())
 
     browser.set_view("tracks")
     assert browser.stack.currentWidget() is browser.track_list
@@ -107,6 +109,9 @@ def test_redesigned_main_window_builds_with_goal_navigation(monkeypatch, tmp_pat
     window._update_play_button(False)
     assert window.play_button.text() == "▶"
 
+    window.open_page("sources")
+    app.processEvents()
+    assert window.source_primary_button.text() == "Use selected"
     window.open_page("explore")
     app.processEvents()
     assert window.stack.currentWidget() is window.pages["explore"]
