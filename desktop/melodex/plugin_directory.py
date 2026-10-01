@@ -427,7 +427,6 @@ class PluginDirectoryDialog(QDialog):
             installed = plugin_id in (
                 providers if entry.get("kind") == "provider" else extensions
             )
-            capabilities = ", ".join(str(x) for x in entry.get("capabilities") or [])
             update_available = installed and self._update_available(entry)
             config_info = (
                 plugin_configuration_info(self.manager, plugin_id)
@@ -435,36 +434,37 @@ class PluginDirectoryDialog(QDialog):
                 else {}
             )
             config_state = configuration_state(config_info)
-            health = (
-                self.manager.plugin_health(plugin_id)
-                if installed
-                else {}
-            )
+            health = self.manager.plugin_health(plugin_id) if installed else {}
             health_state = health_badge(health) if installed else ""
             badge = (
-                "UPDATE · SETUP NEEDED"
+                "Update · setup"
                 if update_available and config_state == "setup_needed"
-                else "UPDATE"
+                else "Update available"
                 if update_available
-                else "SETUP NEEDED"
+                else "Setup needed"
                 if installed and config_state == "setup_needed"
-                else f"INSTALLED · {health_state}"
+                else health_state.title()
                 if installed and health_state
-                else "INSTALLED"
+                else "Installed"
                 if installed
-                else str(entry.get("status") or "").upper()
+                else "Optional"
             )
-            item = QListWidgetItem(
-                f"{entry.get('name') or plugin_id}    ·    {badge}\n"
-                f"{entry.get('kind','')} · {capabilities}"
-            )
+            item = QListWidgetItem()
             item.setData(Qt.UserRole, entry)
+            card=PluginDirectoryCard(entry,badge,installed=installed)
+            item.setSizeHint(card.sizeHint())
             self.rows.addItem(item)
+            self.rows.setItemWidget(item,card)
         if self.rows.count():
             self.rows.setCurrentRow(0)
         else:
-            self.details.setPlainText("No registry entries match these filters.")
+            self.details.setHtml(
+                "<h3>No matching plugins</h3>"
+                "<p style='color:#8f9bad'>Try clearing a filter or searching for a different feature.</p>"
+            )
+            self.tech_details.clear()
             self.install_button.setEnabled(False)
+            self.use_button.setEnabled(False)
             self.configure_button.setEnabled(False)
             self.test_button.setEnabled(False)
             self.source_button.setEnabled(False)
@@ -474,7 +474,9 @@ class PluginDirectoryDialog(QDialog):
         entry = self._selected()
         if not entry:
             self.details.clear()
+            self.tech_details.clear()
             self.install_button.setEnabled(False)
+            self.use_button.setEnabled(False)
             self.configure_button.setEnabled(False)
             self.test_button.setEnabled(False)
             self.source_button.setEnabled(False)
@@ -484,11 +486,23 @@ class PluginDirectoryDialog(QDialog):
         distribution = dict(entry.get("distribution") or {})
         source = dict(entry.get("source") or {})
         review = dict(entry.get("review") or {})
-        capabilities = ", ".join(str(x) for x in entry.get("capabilities") or []) or "—"
-        permissions = (
-            "\n".join("• " + str(x) for x in entry.get("permissions") or [])
-            or "None declared"
-        )
+        capability_values=[str(x) for x in list(entry.get("capabilities") or []) if x]
+        capability_labels=[
+            {
+                "search":"search music",
+                "track":"track details",
+                "playback":"play music",
+                "offline":"offline downloads",
+                "recommendations":"recommendations",
+                "identity":"track matching",
+                "metadata":"metadata",
+                "artwork":"artwork",
+                "lyrics":"lyrics",
+                "context":"context",
+                "library_suggestions":"local recommendations",
+            }.get(value,value.replace("_"," "))
+            for value in capability_values
+        ]
         installed = self._is_installed(entry)
         installed_version = self._installed_version(entry) if installed else ""
         update_available = self._update_available(entry) if installed else False
@@ -499,11 +513,105 @@ class PluginDirectoryDialog(QDialog):
             if installed
             else {}
         )
+        config_state=configuration_state(config_info) if installed else "not_installed"
         config_text = configuration_summary(config_info) if installed else "Not installed"
         health = self.manager.plugin_health(plugin_id) if installed else {}
         health_text = health_summary(health) if installed else "Not installed"
         compatible, compatibility_reason = self.manager.registry.compatibility(entry)
         sha256 = str(distribution.get("sha256") or "")
+
+        status=str(entry.get("status") or "").casefold()
+        if status=="example":
+            trust_text=(
+                "Reference plugin. It is included in the Melodex registry as an "
+                "open example you can inspect, install and test; it is not preinstalled."
+            )
+        elif status=="reviewed":
+            trust_text="Reviewed registry entry. Review records are available below."
+        elif status=="community":
+            trust_text="Community registry entry. Inspect permissions and source before installing."
+        else:
+            trust_text=f"Registry status: {status or 'unspecified'}."
+
+        duplicate_note=""
+        if plugin_id in {
+            "org.melodex.example.radio-browser",
+            "org.melodex.example.librivox",
+        }:
+            duplicate_note=(
+                "<p style='color:#e0b66b'><b>Already included:</b> Melodex ships "
+                "an audited bundled version of this source. Install this reference "
+                "package only if you are testing the plugin ecosystem.</p>"
+            )
+        elif plugin_id in {
+            "org.melodex.example.musicbrainz",
+            "org.melodex.example.cover-art-archive",
+            "org.melodex.example.wikimedia-commons",
+        }:
+            duplicate_note=(
+                "<p style='color:#e0b66b'><b>Core already has related support:</b> "
+                "this reference extension demonstrates how the same kind of capability "
+                "can be supplied by a plugin.</p>"
+            )
+        elif plugin_id=="org.melodex.example.public-domain-lyrics":
+            duplicate_note=(
+                "<p style='color:#e0b66b'><b>Limited demo corpus:</b> this plugin "
+                "contains a small public-domain lyrics catalogue for testing the Lyrics "
+                "API. It is not a general modern-song lyrics service.</p>"
+            )
+
+        if installed:
+            state=(
+                "<span style='color:#7bd88f'><b>Installed</b></span>"
+                if config_state!="setup_needed"
+                else "<span style='color:#e0b66b'><b>Installed · setup needed</b></span>"
+            )
+            if update_available:
+                state += " · <span style='color:#6fa8ed'>update available</span>"
+        else:
+            state="<span style='color:#8f9bad'><b>Optional · not installed</b></span>"
+
+        permissions=list(entry.get("permissions") or [])
+        if not permissions:
+            permission_text="No extra permissions declared."
+        else:
+            friendly=[]
+            for raw in permissions:
+                value=str(raw)
+                if value.startswith("network:"):
+                    friendly.append("Internet access: "+value.split(":",1)[1])
+                elif value=="offline_downloads":
+                    friendly.append("May save supported media for offline use")
+                else:
+                    friendly.append(value.replace("_"," "))
+            permission_text="<br>".join("• "+html.escape(x) for x in friendly)
+
+        kind=str(entry.get("kind") or "")
+        kind_name={
+            "provider":"Music source",
+            "enrichment":"Enhancement",
+            "tool":"Local intelligence",
+        }.get(kind,kind.title() or "Plugin")
+        capabilities=", ".join(capability_labels) or "No user-facing capabilities listed"
+        main_html=(
+            f"<h2 style='margin-bottom:2px'>{html.escape(str(entry.get('name') or plugin_id))}</h2>"
+            f"<p style='color:#6fa8ed;margin-top:0'>{html.escape(kind_name)} · "
+            f"{html.escape(capabilities)}</p>"
+            f"<p>{html.escape(str(entry.get('description') or ''))}</p>"
+            f"{duplicate_note}"
+            f"<p>{state}</p>"
+            f"<h3>What it can do</h3>"
+            f"<p>{html.escape(capabilities)}</p>"
+            f"<h3>Access it requests</h3>"
+            f"<p>{permission_text}</p>"
+            f"<h3>About this plugin</h3>"
+            f"<p>{html.escape(trust_text)}</p>"
+            f"<p style='color:#8f9bad'>Publisher: "
+            f"{html.escape(str(entry.get('publisher') or 'Not specified'))}<br>"
+            f"Licence: {html.escape(str(entry.get('license') or 'Not specified'))}</p>"
+        )
+        self.details.setHtml(main_html)
+
         if installation:
             if installation.get("registry_verified"):
                 install_origin = "Registry — package SHA-256 verified at install"
@@ -521,36 +629,28 @@ class PluginDirectoryDialog(QDialog):
             install_origin = "Not installed"
             install_hash = "—"
             installed_at = "—"
-        text = (
-            f"{entry.get('name','')}\n"
-            f"{entry.get('id','')}\n\n"
-            f"{entry.get('description','')}\n\n"
-            f"Publisher: {entry.get('publisher') or 'Not specified'}\n"
-            f"Version: {entry.get('version','')}\n"
-            f"Registry status: {str(entry.get('status') or '').upper()}\n"
-            f"License: {entry.get('license') or 'Not specified'}\n"
-            f"Capabilities: {capabilities}\n"
-            f"Installed: {'Yes' if installed else 'No'}\n"
-            f"Installed version: {installed_version or '—'}\n"
-            f"Update available: {'Yes' if update_available else 'No'}\n"
-            f"Configuration: {config_text}\n"
-            f"Health: {health_text}\n"
-            f"Install origin: {install_origin}\n"
-            f"Installed at: {installed_at}\n"
-            f"Installed package SHA-256: {install_hash}\n"
-            f"Compatible: {'Yes' if compatible else 'No'}"
-            + (f" — {compatibility_reason}" if compatibility_reason else "")
-            + "\n\n"
-            f"Declared permissions:\n{permissions}\n\n"
-            f"Package: {distribution.get('format') or '—'}\n"
-            f"Size: {distribution.get('size_bytes') or 'not supplied'} bytes\n"
-            f"SHA-256: {sha256 or 'not supplied'}\n"
-            f"Source policy: {entry.get('source_policy') or 'not supplied'}\n"
-            f"Repository: {source.get('repository') or 'not supplied'}\n"
-            f"Last registry review: {review.get('last_reviewed_at') or 'not supplied'}\n"
-            f"Review record: {review.get('record') or 'not supplied'}"
+
+        technical=(
+            f"<b>Plugin ID</b><br>{html.escape(plugin_id)}<br><br>"
+            f"<b>Version</b><br>{html.escape(str(entry.get('version') or ''))}<br><br>"
+            f"<b>Installed version</b><br>{html.escape(installed_version or '—')}<br><br>"
+            f"<b>Configuration</b><br>{html.escape(config_text)}<br><br>"
+            f"<b>Health</b><br>{html.escape(health_text)}<br><br>"
+            f"<b>Compatibility</b><br>{'Yes' if compatible else 'No'}"
+            + (f" — {html.escape(compatibility_reason)}" if compatibility_reason else "")
+            + "<br><br>"
+            f"<b>Install origin</b><br>{html.escape(install_origin)}<br>"
+            f"Installed at: {html.escape(installed_at)}<br>"
+            f"Local package SHA-256: {html.escape(install_hash)}<br><br>"
+            f"<b>Package</b><br>{html.escape(str(distribution.get('format') or '—'))}<br>"
+            f"Size: {html.escape(str(distribution.get('size_bytes') or 'not supplied'))} bytes<br>"
+            f"Registry SHA-256: {html.escape(sha256 or 'not supplied')}<br><br>"
+            f"<b>Source policy</b><br>{html.escape(str(entry.get('source_policy') or 'not supplied'))}<br><br>"
+            f"<b>Repository</b><br>{html.escape(str(source.get('repository') or 'not supplied'))}<br><br>"
+            f"<b>Last registry review</b><br>{html.escape(str(review.get('last_reviewed_at') or 'not supplied'))}<br>"
+            f"Review record: {html.escape(str(review.get('record') or 'not supplied'))}"
         )
-        self.details.setPlainText(text)
+        self.tech_details.setHtml(technical)
 
         package_url = str(distribution.get("package_url") or "")
         self.install_button.setEnabled(
@@ -564,11 +664,11 @@ class PluginDirectoryDialog(QDialog):
         self.install_button.setText(
             "Update" if update_available else "Reinstall" if installed else "Install"
         )
-        ready = installed and configuration_state(config_info) != "setup_needed"
+        ready = installed and config_state != "setup_needed"
         self.use_button.setEnabled(bool(ready and self.on_use))
         self.use_button.setText(
             "Use source"
-            if str(entry.get("kind") or "") == "provider"
+            if kind == "provider"
             else "Use plugin"
         )
         self.configure_button.setEnabled(
