@@ -310,8 +310,16 @@ def test_plugin_centre_is_outcome_and_management_focused(monkeypatch, tmp_path):
 
     assert dialog.view.itemData(0) == "all"
     assert dialog.view.findData("installed") >= 0
+    assert dialog.view.findData("available") >= 0
     assert dialog.view.findData("setup") >= 0
     assert dialog.view.findData("updates") >= 0
+    assert set(dialog.view_buttons) == {
+        "all",
+        "installed",
+        "available",
+        "setup",
+        "updates",
+    }
     assert dialog.toggle_button.text() == "Disable"
     assert dialog.remove_button.text() == "Remove"
     assert dialog.toggle_button.isEnabled() is False
@@ -343,6 +351,27 @@ def test_plugin_centre_is_outcome_and_management_focused(monkeypatch, tmp_path):
     assert state is not None
     assert state.text() == "Setup needed"
     assert state.property("state") == "attention"
+    assert card.findChild(QLabel, "pluginCapabilityChip") is not None
+    usage = card.findChild(QLabel, "pluginDirectoryUsage")
+    assert usage is not None
+    assert "Now Playing" in usage.text()
+
+    dialog.plugins = [lyrics_entry]
+    dialog._apply_filter()
+    assert dialog.rows.count() == 1
+    assert dialog.view_buttons["all"].text() == "All  1"
+    assert dialog.view_buttons["available"].text() == "Available  1"
+    assert dialog.list_stack.currentWidget() is dialog.rows
+
+    dialog._select_view("installed")
+    assert dialog.rows.count() == 0
+    assert dialog.list_stack.currentWidget() is dialog.empty_state
+    assert dialog.empty_title.text() == "No optional plugins installed"
+    assert dialog.view_buttons["installed"].isChecked()
+
+    dialog._clear_filters()
+    assert dialog.view.currentData() == "all"
+    assert dialog.rows.count() == 1
 
     card.deleteLater()
     dialog.close()
