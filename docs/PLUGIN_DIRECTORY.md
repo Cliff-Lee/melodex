@@ -5,8 +5,8 @@ The desktop app includes a registry-backed **Plugin Directory** for discovering 
 Open:
 
 ```text
-Sources
-→ Explore plugins…
+Sources & plugins
+→ Explore plugins
 ```
 
 ## What the directory shows
@@ -63,6 +63,28 @@ If an installed plugin declares required configuration that is still missing, th
 Plugins with no required setup install normally without an extra prompt. Existing configuration is preserved across reinstall/update unless the plugin's declared configuration changes.
 
 The same shared configuration dialog is used from the Sources page and from the Plugin Directory. Secret values are never displayed back to the user; a stored secret is represented only as configured/not configured.
+
+## How to actually use an installed plugin
+
+Installation is not the final step. Melodex now exposes a **Use plugin/source** action both in the Plugin Directory and on **Sources & plugins**.
+
+What that action does depends on the plugin's declared capability:
+
+| Plugin capability | Where Melodex takes you |
+| --- | --- |
+| music provider with search | **Explore → Search everything**, already filtered to that provider |
+| `library_suggestions` | **Tune your listening**, where More like current / Forgotten favourites / Bridge / Detour invoke local-intelligence plugins |
+| `artwork` | **My Music**, where artwork enrichment is requested |
+| `lyrics` | **Now Playing**, where the plugin participates automatically |
+| `context` | **Now Playing**, where context enrichment is automatic |
+| `metadata` / `identity` | **Now Playing** and other metadata surfaces; Melodex calls these automatically when needed |
+
+This distinction is intentional:
+
+- a **provider** behaves like another place to search for music;
+- an **extension** adds a capability to an existing Melodex feature rather than creating a separate mini-application.
+
+If a plugin still needs credentials or configuration, the same button says **Set up plugin/source** first.
 
 ## Health and connection testing
 
