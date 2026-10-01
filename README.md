@@ -22,7 +22,7 @@
 
 Melodex is a source-neutral music player that tries to make listening sessions **go somewhere**.
 
-It combines your library and connected sources with taste memory, optional audio analysis, **Flow** sequencing, **Play for me**, a local **Music Map**, Moments, and a resolver that can match requested music across multiple providers.
+It combines your library and connected sources with taste memory, optional audio analysis, **Flow** sequencing, **Play for me**, a visual **Album Wall**, a local **Music Map**, Moments, and a resolver that can match requested music across multiple providers.
 
 But Melodex is also becoming something broader:
 
@@ -158,6 +158,12 @@ melodex_feedback
 Use [MCP with OpenWebUI](docs/tutorials/CONNECT_OPENWEBUI_MCP.md) or [OpenAI function calling](docs/tutorials/USE_OPENAI_FUNCTIONS.md).
 
 You can also make a playlist in ChatGPT, Claude, Gemini or another chat AI and paste it into **Playlists → Paste from AI…**. This is a copy-and-paste handoff: it does not require an AI connection or API key. Melodex matches the track details through your connected music sources and keeps unmatched requests in the saved playlist. See [Playlist interchange](docs/PLAYLIST_INTERCHANGE.md).
+
+## Browse the Album Wall
+
+The desktop **Album Wall** turns a local collection into a stable field of record covers rather than another scrolling recommendation feed. Albums can be arranged by **Sound**, **Familiarity**, **Time**, or deterministic **A–Z shelves**; Sound reuses cached Flow analysis and keeps unanalysed records visible at stable fallback positions. Artwork loads lazily from local/embedded sources, while pan, semantic zoom, search, current-album highlighting and direct album playback keep the view practical on large libraries.
+
+See [Album Wall](docs/ALBUM_WALL.md).
 
 ## Explore your library spatially
 
