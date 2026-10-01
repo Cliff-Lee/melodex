@@ -2,11 +2,27 @@
 
 ## Home
 
-**Play for me** is the default action. It uses local listening history and your local catalogue to create a session without requiring an LLM.
+Home is organised around listening intentions rather than setup.
 
-## Now Playing and Living Canvas
+Use:
 
-Open **Now Playing → Living Canvas** and choose a view from the selector. Each track has a repeatable visual identity. Cached Flow features shape its scene when available; album artwork supplies a sampled colour palette.
+- **Play something** for a balanced session from your local library;
+- **Comfort** to stay closer to familiar positive signals;
+- **Explore** to allow more surprise;
+- **Rediscover** to bring back music you have not heard recently;
+- **Tune it…** when you want explicit duration/style/familiarity controls.
+
+**Continue listening** provides a visual way back to the most recent track.
+
+Core playback, taste memory and local Flow do not require an LLM.
+
+## Now Playing and Visuals
+
+Open **Now Playing** by clicking the current track in the persistent player.
+
+The default **Now Playing** tab leads with artwork, lyrics and track context. Optional visualisations live under **Visuals** so the music remains primary.
+
+In **Visuals**, choose a view from the selector. Each track has a repeatable visual identity. Cached Flow features shape its scene when available; album artwork supplies a sampled colour palette.
 
 The modes include the animated Living Canvas, Song Fingerprint, the seekable Musical Journey, a queue/history Constellation, local Lyrics Typography, Album World, Sonic Weather, a local Visual Memory atlas and Minimal. Constellation stars can be inspected with a click and queued with a double-click. Visual Memory can zoom by session, album, week or year; it reads only the listening history already stored on this device.
 
@@ -22,19 +38,35 @@ Open **Playlists** to import or export a playlist file, or choose **Paste from A
 
 Melodex reads the track list and matches it through your connected music sources. Matched tracks are saved as a playlist and added to the queue; unmatched requests are kept in the saved playlist for later matching. Melodex does not send the pasted text to an AI service. Your connected music providers may receive artist/title searches during matching. JSON, Markdown lists or tables, plain text, CSV/TSV and M3U text are supported; **Import File…** also accepts JSON, text, CSV/TSV, XSPF and M3U/M3U8 files.
 
-## Discover
+## Explore and Search
 
-Search all connected sources at once, or choose one source from the selector.
+Open **Explore** when you want to move beyond the current session.
 
-Desktop Melodex includes six streaming providers, installed on first launch: ccMixter, SomaFM, Radio Browser, Wikimedia Commons Audio, LibriVox and Internet Archive Audio. Their catalogues stay online at their original services; Melodex does not bundle or redistribute the audio. Use **Sources → Show power tools** to remove a provider or restore bundled sources. See [Music sources](SOURCES.md) for details and rights notes.
+It offers three clear routes:
 
-Double-click a result to play it. Use **Add selected to queue** to keep your current track playing.
+- **Search everything** — search connected music sources;
+- **Album Wall** — browse your own collection spatially;
+- **Music Map** — explore sonic relationships and plan routes.
 
-## My music
+Search can query all connected sources at once. Desktop Melodex includes six bundled streaming providers on first launch: ccMixter, SomaFM, Radio Browser, Wikimedia Commons Audio, LibriVox and Internet Archive Audio. Their catalogues stay online at their original services; Melodex does not bundle or redistribute their audio.
 
-Use **Sources → Add local folder…** to add one or more folders. Melodex scans supported audio formats and reads tags where available.
+Provider internals, diagnostics and priority controls live under **Sources & plugins → Power tools**. See [Music sources](SOURCES.md) for details and rights notes.
 
-The **My music** page also has an **Add folder…** shortcut to the same picker, then becomes the main place to browse your indexed local library.
+## My Music
+
+Open **My Music** to add and browse local music.
+
+Choose **+ Add music** to add one or more folders. Melodex scans supported audio formats in place and reads tags where available.
+
+The default **Albums** view is a responsive artwork grid. **Artists** is also visual, using cached artist photos when available and falling back to representative album artwork. **Tracks** uses album art beside each track so long lists remain recognisable.
+
+Choose **Find missing artwork** to explicitly look online for missing album covers. Successful matches are cached and remembered, so they remain when you leave the page, restart Melodex or rebuild the cards.
+
+In Artists, **Find artist photos** explicitly looks for missing artist imagery and remembers successful matches.
+
+If a local track has incomplete metadata, open **Tracks → Edit**. You can correct artist, title, album, album artist, year and genre. Corrections are stored by Melodex and survive rescans, but **do not rewrite your original audio files or their embedded tags**.
+
+See [My Music](MY_MUSIC.md) for the full artwork, metadata and privacy model.
 
 ## Music map
 
@@ -88,7 +120,9 @@ Flow is not random shuffle. It evaluates the current queue and, when local audio
 
 If audio analysis is unavailable, Flow falls back to metadata-only ordering rather than pretending it knows more than it does.
 
-## Play for me
+## Tune your listening
+
+Home exposes simple listening intentions first. Choose **Tune it…** when you want the underlying session controls.
 
 Modes:
 
@@ -108,7 +142,7 @@ The Play for me page can ask installed plugins to work with a sanitized snapshot
 - **Bridge current → next** suggests a local track that could connect the two;
 - **Find a detour** keeps one sonic feature and deliberately changes two others.
 
-Use **Analyse my library** to prepare Flow features first. Suggestions and taste history stay local; plugins receive no audio, file paths or database IDs.
+Use **Improve suggestions** to prepare Flow features first. Suggestions and taste history stay local; plugins receive no audio, file paths or database IDs.
 
 ## Taste controls
 
@@ -129,4 +163,4 @@ Open the Queue panel to inspect or jump to upcoming tracks. **Flow queue** can r
 
 ## User Streams
 
-Open **Sources → User Streams…** to add direct HTTP(S) audio or internet radio streams. You can also import `.m3u`, `.m3u8` and `.pls` stream playlists. Configured streams become a normal Melodex source and can be searched, queued and played alongside other connected sources.
+Open **Sources & plugins → My streams** to add direct HTTP(S) audio or internet radio streams. You can also import `.m3u`, `.m3u8` and `.pls` stream playlists. Configured streams become a normal Melodex source and can be searched, queued and played alongside other connected sources.
