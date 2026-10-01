@@ -516,7 +516,25 @@ class MainWindow(QMainWindow):
                 border-bottom:1px solid #202733;
             }
             QListWidget::item:selected{background:#1e3552}
-            QListWidget#sourcesList::item{padding:14px}
+            QListWidget#sourcesList{
+                background:transparent;
+                border:0;
+                padding:0;
+            }
+            QListWidget#sourcesList::item{
+                background:transparent;
+                border:1px solid transparent;
+                border-radius:12px;
+                padding:4px;
+            }
+            QListWidget#sourcesList::item:hover{
+                background:#131c28;
+                border-color:#26384d;
+            }
+            QListWidget#sourcesList::item:selected{
+                background:#17263a;
+                border-color:#31547d;
+            }
             QFrame#actionCard{
                 background:#141b25;
                 border:1px solid #293544;
@@ -635,8 +653,9 @@ class MainWindow(QMainWindow):
                 font-weight:700;
             }
             QFrame#sourceCard{
-                background:transparent;
-                border:0;
+                background:#101720;
+                border:1px solid #223045;
+                border-radius:10px;
             }
             QLabel#sourceBadge{
                 background:#1c2a3e;
@@ -1716,6 +1735,7 @@ class MainWindow(QMainWindow):
 
         self.sources_list=QListWidget()
         self.sources_list.setObjectName("sourcesList")
+        self.sources_list.setSpacing(5)
         self.sources_list.itemSelectionChanged.connect(self._source_selection_changed)
         l.addWidget(self.sources_list,1)
 
