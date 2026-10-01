@@ -1,86 +1,20 @@
 # Next release — draft notes
 
-**Development after Melodex v0.7.0.**
+**Development after Melodex v0.7.1.**
 
-This file tracks changes intended for **v0.7.1**. Stable v0.7.0 notes are in [v0.7.0.md](v0.7.0.md).
+This file tracks changes intended for **v0.7.2**.
 
-See [Releasing Melodex](../RELEASING.md) for the release process.
+## Campaign I — Native Lyrics UX
 
-## v0.7.1 development
+- Lyrics is now a native Melodex listening surface rather than exposing plugin-management chrome in Now Playing.
+- Installed `lyrics.lookup` extensions still participate automatically underneath the native UI.
+- The old **Lyrics helpers / Add lyrics source…** strip is removed from the listener-facing Lyrics tab.
+- The primary toolbar is reduced to **Source / Refresh lyrics / Full screen / Translate / More**.
+- Edit, file import, paste, auto-find and lyric-source management move into **More**.
+- **Refresh lyrics** rechecks saved, embedded and installed lyric sources before using LRCLIB as an online fallback.
+- Installed lyric extensions are shown as ordinary source names rather than internal plugin IDs.
+- Plain lyrics and synchronized lyrics now use explicit high-contrast dark-theme typography.
+- Synced lyrics use larger current-line typography while keeping click-to-seek and full-screen behavior.
+- The source selector remains native even when only one source is available.
+- Plugin/source management remains available from **More** and Sources & plugins, but is no longer the way a listener “opens” or uses Lyrics.
 
-### Sources and Plugin Centre
-
-- **Sources & plugins** is now a listener-facing ecosystem hub rather than a technical provider list.
-- A lightweight first-visit message explains that local music and included sources already work; plugins are optional enhancements rather than setup requirements.
-- Outcome shortcuts open the Plugin Centre directly for **More music**, **Lyrics**, **Artwork**, **Recommendations**, or **Context**.
-- The Plugin Centre has visible **All / Installed / Available / Needs setup / Updates** views with live counts.
-- Plugin cards distinguish what a package *is* (music source, enhancement, local intelligence) from its current state (installed, ready, setup needed, update, reference, optional).
-- Cards and detail views explain **where the plugin is used** in Melodex.
-- Installed extensions can be enabled/disabled, and registry-installed packages can be removed from the normal UI.
-- Contextual feature strips surface active plugins inside Search, My Music, For You, Lyrics, and Context so users do not need to remember where plugins are managed.
-- Disabled extensions and plugins that still need setup are not presented as active.
-- **Check connections** keeps bounded health checks available without exposing provider internals by default.
-
-### Bundled providers
-
-- The public desktop payload remains restricted to the six audited included providers: **Internet Archive Audio, LibriVox, Radio Browser, SomaFM, Wikimedia Commons Audio, and ccMixter**.
-- A manual live smoke workflow verifies bundled providers using real **search → resolve → media-byte** checks without making ordinary CI depend on external service availability.
-- The six bundled providers passed the live smoke verification during this development cycle.
-- **LibriVox 0.1.4** replaces 0.1.2.
-- LibriVox search now uses the official LibriVox collection on Internet Archive and resolves public-domain audiobook media there, avoiding interactive search pressure on the volunteer-hosted LibriVox API.
-- The LibriVox provider now has checked-in source plus a deterministic rebuild script.
-- Legacy private development providers remain quarantined/rejected in public builds.
-
-### Lyrics matching
-
-- Online LRCLIB lookup now follows a conservative sequence: **exact metadata → cleaned exact metadata → structured search**.
-- Common library noise such as remaster/version suffixes and featured-artist text is cleaned for fallback matching.
-- Structured search scores candidates by title, artist, album and duration rather than trusting the first result.
-- Successful, instrumental and confident not-found results can be reused in memory during the current session; LRCLIB lyric text is still not written into Melodex's persistent lyrics store.
-- **Try again / Refresh online** bypasses that temporary cache.
-- The UI now distinguishes **found**, **instrumental**, **no confident match**, **missing metadata**, and **service/network error** rather than collapsing all failures into “no lyrics”.
-
-### Lyrics experience
-
-- Synchronized LRC lines remain highlighted with playback and can be clicked to seek.
-- **Full screen** opens a large-type, distraction-free lyrics view that stays synchronized.
-- When local/plugin and online lyrics both exist, the user can explicitly switch sources.
-- A failed online lookup never replaces valid local lyrics already being displayed.
-- **Edit saved…** is available only for local/personal lyrics and stores a Melodex-owned correction copy without rewriting the audio file.
-- **Translate…** is optional and explicit: the user selects a language, confirms the configured LLM endpoint, and the generated translation is temporary rather than saved.
-
-### Artist photos and album artwork
-
-- Artist cards reserve imagery for real artist photos rather than presenting album covers as portraits.
-- **Get artist photos** uses a conservative chain based on MusicBrainz identity, Wikidata/Wikipedia, installed artwork helpers, and Wikimedia Commons.
-- MusicBrainz aliases and sort-name variants improve artist-photo recovery for stage names and punctuation variants without weakening identity checks.
-- Album-cover recovery prefers exact MusicBrainz release/release-group identity through Cover Art Archive before optional artwork plugins.
-- A conservative MusicBrainz release-group fallback can recover covers when the recording match lacks a usable release ID.
-- Incompatible Live/Remix release groups are rejected unless the user's metadata indicates that version.
-- Low-confidence plugin artwork is ignored, and non-image HTTP responses are never cached as artwork.
-- Older remote artwork associations created before the stricter matching policy are revalidated; user-selected artist photos remain authoritative.
-
-### Artwork batch recovery
-
-- **Find missing artwork** and **Get artist photos** now process the complete missing set in bounded background batches.
-- Up to **4** album/artist lookups may run concurrently while MusicBrainz continues to obey its existing global rate limiter.
-- A persistent progress panel shows **completed / total** plus **Found / No match / Failed** counts.
-- **Pause / Resume**, **Cancel**, and **Retry failed** controls make long library passes manageable.
-- Cancel finishes only requests already in flight; retry reruns genuine failures rather than conservative no-match results.
-- Artwork is applied incrementally after each small batch so the library fills in while recovery continues.
-- Library rescans clear stale batch state, and changing Albums/Artists views does not lose the active job.
-
-### Release and packaging
-
-- Release-readiness checks now verify the cross-platform packaging surfaces, install documentation, bundled-provider payload, live-provider smoke tooling, and draft release-note hygiene.
-- macOS/Windows desktop packaging and Android packaging now run on relevant pull requests, matching the existing Linux PR packaging checks.
-- Stable releases still require a strict application version such as `0.7.1`; development versions such as `0.7.1.dev0` never publish a release automatically.
-- Linux packaging continues to produce both `.deb` and AppImage builds with Ubuntu/Debian smoke checks.
-
-### Privacy and rights boundaries
-
-- Local music, taste data, library analysis, corrections and user-added lyrics remain local by default.
-- Online lyrics are requested only explicitly or through the user's opt-in auto-find preference.
-- Lyrics translation sends text only after explicit confirmation to the user's configured LLM endpoint.
-- Melodex does not scrape commercial lyric websites or perform general web-image scraping.
-- External music, artwork, lyrics and metadata retain their original rights/licences.
