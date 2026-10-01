@@ -33,8 +33,10 @@ The **Now playing** page provides:
 - artwork-derived accent/background colour;
 - title, artist, release year, location and genre/tag context;
 - synchronized lyric highlighting as playback advances;
-- artist/band membership and related-project relationships when MusicBrainz has them;
-- structured recording/work credits;
+- a single artist portrait in the hero with compact attribution underneath;
+- a compact **Artist** summary with selected membership, related-project and link information;
+- a compact **Releases** summary showing up to six release groups with direct MusicBrainz links;
+- grouped recording/work **Credits** rather than a long raw relationship list;
 - a **Context** tab populated by `context.lookup` extensions;
 - MusicBrainz identity links and metadata-match confidence.
 
