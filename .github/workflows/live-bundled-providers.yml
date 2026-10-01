@@ -9,6 +9,7 @@ on:
       - "scripts/live_bundled_provider_smoke.py"
       - ".github/workflows/live-bundled-providers.yml"
       - "desktop/melodex/**"
+      - "desktop/bundled_provider_sources/**"
 
 jobs:
   live-provider-smoke:
@@ -21,47 +22,6 @@ jobs:
           python-version: "3.12"
       - name: Install desktop runtime dependencies
         run: pip install numpy mutagen requests PySide6
-      - name: Compare official LibriVox API URL forms
-        run: |
-          python - <<'PY'
-          import json, time
-          from urllib.parse import urlencode, quote
-          from urllib.request import Request, urlopen
-
-          def get(label, url):
-              start=time.monotonic()
-              req=Request(
-                  url,
-                  headers={
-                      "User-Agent":"Melodex-LiveProvider-Diagnostic/0.3",
-                      "Accept":"application/json",
-                      "Connection":"close",
-                  },
-              )
-              try:
-                  with urlopen(req, timeout=45) as response:
-                      payload=response.read()
-                  elapsed=time.monotonic()-start
-                  print(f"LIBRIVOX {label} PASS {elapsed:.2f}s {len(payload)} bytes status={response.status}")
-                  return json.loads(payload.decode("utf-8","replace"))
-              except Exception as exc:
-                  print(f"LIBRIVOX {label} FAIL {time.monotonic()-start:.2f}s {exc}")
-                  return None
-
-          params=urlencode({"title":"Odyssey","format":"json","limit":"1","offset":"0"})
-          query=get("query-form", "https://librivox.org/api/feed/audiobooks/?"+params)
-          time.sleep(5)
-          path=get(
-              "path-form",
-              "https://librivox.org/api/feed/audiobooks/title/"
-              + quote("^Odyssey", safe="")
-              + "?format=json&limit=1&offset=0",
-          )
-          for label, payload in (("query-form", query), ("path-form", path)):
-              rows=(payload or {}).get("books") or []
-              if rows:
-                  print("LIBRIVOX", label, "book", rows[0].get("id"), rows[0].get("title"))
-          PY
       - name: Run live bundled-provider smoke test
         env:
           PYTHONPATH: desktop
