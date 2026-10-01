@@ -11,6 +11,7 @@
   <a href="docs/TESTING.md"><strong>Help test Melodex</strong></a> ·
   <a href="https://github.com/Cliff-Lee/melodex/issues/new?template=bug_report.yml">Report a bug</a> ·
   <a href="https://github.com/Cliff-Lee/melodex/issues/new?template=feature_request.yml">Request a feature</a> ·
+  <a href="https://github.com/Cliff-Lee/melodex/discussions">Discussions</a> ·
   <a href="docs/START_HERE.md">Start here</a> ·
   <a href="docs/README.md">Docs</a>
 </p>
@@ -235,6 +236,7 @@ There are useful ways to help Melodex even if you never write code.
 - **Something broke:** [open a bug report](https://github.com/Cliff-Lee/melodex/issues/new?template=bug_report.yml).
 - **Something is confusing:** [leave beta tester feedback](https://github.com/Cliff-Lee/melodex/issues/new?template=tester_feedback.yml).
 - **You have a concrete improvement:** [request a feature](https://github.com/Cliff-Lee/melodex/issues/new?template=feature_request.yml).
+- **You want to talk through an idea or ask the community:** [start a Discussion](https://github.com/Cliff-Lee/melodex/discussions).
 - **You want to contribute:** start with [Your First Melodex Contribution](docs/FIRST_CONTRIBUTION.md).
 
 ### Community philosophy
