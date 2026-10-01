@@ -527,6 +527,42 @@ class RichMetadataService:
             album=str((release or {}).get("title") or album), date=str((release or {}).get("date") or ""), score=float(score),
         )
 
+    def resolve_artist(self, name: str) -> dict[str, Any]:
+        """Resolve an artist name conservatively through MusicBrainz.
+
+        This is used only for explicit artist-photo enrichment when a local
+        track did not already supply an artist MBID. Exact/near-exact names
+        are preferred and ambiguous matches are rejected.
+        """
+        name = str(name or "").strip()
+        if not name or _norm(name) in {"unknown artist", "unknown", "various artists"}:
+            return {}
+        data = self._mb_json(
+            "artist/",
+            {"query": f'artist:"{name}"', "fmt": "json", "limit": 8},
+            45 * 86400,
+        )
+        best: tuple[float, dict[str, Any]] | None = None
+        for row in list(data.get("artists") or []):
+            if not isinstance(row, dict):
+                continue
+            score = _ratio(name, row.get("name"))
+            for alias in list(row.get("aliases") or []):
+                if isinstance(alias, dict):
+                    score = max(score, _ratio(name, alias.get("name")))
+            if best is None or score > best[0]:
+                best = (score, row)
+        if not best or best[0] < 0.88:
+            return {}
+        mbid = str(best[1].get("id") or "").strip()
+        if not mbid:
+            return {}
+        info = self.artist_info(mbid)
+        if not info:
+            return {}
+        info["match_score"] = float(best[0])
+        return info
+
     def artist_info(self, artist_mbid: str) -> dict[str, Any]:
         if not artist_mbid:
             return {}
