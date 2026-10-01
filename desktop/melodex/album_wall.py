@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import QRectF, Qt, QTimer, QVariantAnimation, Signal
-from PySide6.QtGui import QColor, QPainter, QPen, QPixmap
+from PySide6.QtGui import QBrush, QColor, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
     QComboBox,
     QGraphicsItem,
@@ -226,7 +226,7 @@ class AlbumWallWidget(QWidget):
         self.view.setDragMode(QGraphicsView.ScrollHandDrag)
         self.view.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
         self.view.setResizeAnchor(QGraphicsView.AnchorViewCenter)
-        self.view.setBackgroundBrush(QColor("#0f1116"))
+        self.view.setBackgroundBrush(QBrush(QColor("#0f1116")))
         self.view.setRenderHint(QPainter.Antialiasing, True)
         layout.addWidget(self.view, 1)
 
@@ -247,6 +247,9 @@ class AlbumWallWidget(QWidget):
 
     def set_model(self, model: dict[str, Any], current_track: dict[str, Any] | None = None) -> None:
         self.model = dict(model or {})
+        if self._animation is not None:
+            self._animation.stop()
+            self._animation = None
         self.scene.clear()
         self.tiles.clear()
         self.albums.clear()
