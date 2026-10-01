@@ -373,6 +373,18 @@ def test_plugin_centre_is_outcome_and_management_focused(monkeypatch, tmp_path):
     assert state is not None
     assert state.text() == "Setup needed"
     assert state.property("state") == "attention"
+
+    outage_card = PluginDirectoryCard(
+        lyrics_entry,
+        "Temporarily unavailable",
+        installed=True,
+        semantic="unavailable",
+    )
+    outage_state = outage_card.findChild(QLabel, "pluginDirectoryState")
+    assert outage_state is not None
+    assert outage_state.text() == "Temporarily unavailable"
+    assert outage_state.property("state") == "unavailable"
+
     assert card.findChild(QLabel, "pluginCapabilityChip") is not None
     usage = card.findChild(QLabel, "pluginDirectoryUsage")
     assert usage is not None
@@ -396,6 +408,7 @@ def test_plugin_centre_is_outcome_and_management_focused(monkeypatch, tmp_path):
     assert dialog.rows.count() == 1
 
     card.deleteLater()
+    outage_card.deleteLater()
     dialog.close()
     window.close()
     app.processEvents()

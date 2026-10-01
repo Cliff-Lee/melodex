@@ -60,7 +60,16 @@ Plugins that need required configuration open a setup form immediately after ins
 
 ## Health status
 
-Installed third-party providers and extensions show a health state in Sources. Use **Test selected** to refresh it.
+Installed third-party providers and extensions show a listener-facing health state in the Plugin Centre. Use **Check connection** to refresh it.
+
+- **Ready** — a recent check succeeded.
+- **Not checked** — Melodex has not tested the optional source in this session.
+- **Temporarily unavailable** — the plugin is still installed, but its service timed out or could not be reached securely/on the network. Use **Try connection again** when convenient.
+- **Setup needed / Sign-in needed** — configuration or credentials need attention.
+- **Needs attention** — a non-transient plugin/protocol problem was detected.
+- **Disabled** — the optional extension is switched off.
+
+The detail panel explains the likely next step in ordinary language. Raw diagnostic status, package provenance and protocol information remain under **Technical details**.
 
 Provider checks use `provider.health`. Extensions that declare `extension.health` get a bounded active check; older extensions fall back to process startup. Runtime success/failure is still learned from actual extension calls and overrides stale health when necessary. A failed or unavailable plugin does not prevent unrelated providers/extensions from continuing to work.
 

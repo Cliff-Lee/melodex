@@ -45,3 +45,11 @@ This file tracks changes intended for **v0.7.3**.
 - TLS certificate failures, DNS/network failures and timeouts are classified as temporary **Unavailable** states rather than broken-plugin errors.
 - Explicit extension health checks use the same transient-failure classification as normal capability calls.
 - Plugin Centre health messaging now distinguishes temporary upstream availability from genuine extension/protocol failures.
+
+## K6 — Listener-friendly plugin health
+
+- Plugin Centre cards now translate low-level health states into listener-facing labels such as **Ready**, **Not checked**, **Temporarily unavailable**, **Sign-in needed** and **Needs attention**.
+- Temporary network/TLS/time-out failures get a quieter **Temporarily unavailable** treatment rather than sharing the same visual state as plugin errors.
+- Installed plugin details include a plain-language **Connection** section explaining whether the plugin is still installed and what to try next.
+- Retryable failures change **Check connection** to **Try connection again**.
+- Raw health summaries, package provenance and diagnostic information remain behind **Technical details**.

@@ -7,6 +7,7 @@ from pathlib import Path
 from melodex.plugin_health import (
     health_badge,
     health_summary,
+    health_user_presentation,
     normalise_health_status,
     safe_health_text,
 )
@@ -433,3 +434,47 @@ def test_active_extension_tls_health_failure_is_unavailable(monkeypatch, tmp_pat
         assert result["upstream_checked"] is False
     finally:
         manager.close()
+
+
+
+def test_listener_facing_health_presentation_distinguishes_temporary_outage():
+    tls = health_user_presentation({
+        "status": "unavailable",
+        "reason": "tls_error",
+    })
+    assert tls["badge"] == "Temporarily unavailable"
+    assert tls["semantic"] == "unavailable"
+    assert tls["title"] == "Secure connection unavailable"
+    assert "still installed" in tls["guidance"]
+    assert tls["action"] == "Try connection again"
+
+    network = health_user_presentation({
+        "status": "unavailable",
+        "reason": "network_error",
+    })
+    assert network["title"] == "Service unreachable"
+
+    timeout = health_user_presentation({
+        "status": "unavailable",
+        "reason": "timeout",
+    })
+    assert timeout["title"] == "Service took too long"
+
+
+def test_listener_facing_health_presentation_keeps_error_and_untested_distinct():
+    error = health_user_presentation({
+        "status": "error",
+        "reason": "protocol_error",
+    })
+    assert error["badge"] == "Needs attention"
+    assert error["semantic"] == "attention"
+    assert "protocol" in error["guidance"]
+
+    untested = health_user_presentation({"status": "untested"})
+    assert untested["badge"] == "Not checked"
+    assert untested["semantic"] == "neutral"
+    assert untested["action"] == "Check connection"
+
+    auth = health_user_presentation({"status": "auth_required"})
+    assert auth["badge"] == "Sign-in needed"
+    assert auth["action"] == "Configure…"
