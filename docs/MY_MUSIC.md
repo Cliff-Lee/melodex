@@ -71,6 +71,9 @@ If a representative track does not already contain an artist ID, Melodex can con
 
 Found photos are cached with their Wikimedia provenance and reused later.
 
+If an artist still has no suitable freely usable portrait, hover the artist card and choose **Photo…**. Melodex copies the chosen local image into its own artwork cache and remembers it for that artist. The original image file is left untouched.
+
+
 ## Tracks
 
 The **Tracks** view uses album artwork beside each track, making long lists easier to scan visually.
