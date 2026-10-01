@@ -147,7 +147,7 @@ def test_redesigned_main_window_builds_with_goal_navigation(monkeypatch, tmp_pat
     app.processEvents()
 
 
-def test_artist_photo_lookup_walks_the_whole_missing_artist_list():
+def test_artist_photo_lookup_runs_in_bounded_batches_with_progress():
     try:
         from PySide6.QtWidgets import QApplication
         from melodex.library_browser import LibraryBrowser
@@ -178,26 +178,47 @@ def test_artist_photo_lookup_walks_the_whole_missing_artist_list():
 
     browser._request_online_artwork()
     assert len(batches) == 1
-    assert len(batches[0]) == 1
+    assert len(batches[0]) == 4
     assert browser.artist_image_lookup_remaining() == 15
     assert browser.images_button.isEnabled() is False
-    assert "Artist 00" in browser.images_button.text()
-    assert browser.images_button.text().endswith("15 left")
+    assert browser.artwork_progress_panel.isVisible() is False or browser.artwork_progress.value() == 0
 
-    for expected_remaining in range(14, 0, -1):
-        assert browser.continue_artist_image_lookup() is True
-        assert len(batches[-1]) == 1
-        assert browser.artist_image_lookup_remaining() == expected_remaining
+    first_outcomes = [
+        {"key": row["key"], "status": "found" if i < 2 else "no_match"}
+        for i, row in enumerate(batches[0])
+    ]
+    browser.finish_artist_image_lookup_batch(first_outcomes)
 
-    assert browser.continue_artist_image_lookup() is False
-    assert len(batches) == 15
+    assert len(batches) == 2
+    assert len(batches[1]) == 4
+    snapshot = browser.artwork_lookup_snapshot()
+    assert snapshot["completed"] == 4
+    assert snapshot["found"] == 2
+    assert snapshot["skipped"] == 2
+    assert snapshot["failed"] == 0
+    assert snapshot["total"] == 15
+
+    # Finish the remaining batches.
+    while browser._artist_lookup_active:
+        current = list(browser._artist_lookup_inflight_rows)
+        outcomes = [
+            {"key": row["key"], "status": "no_match"}
+            for row in current
+        ]
+        browser.finish_artist_image_lookup_batch(outcomes)
+
+    snapshot = browser.artwork_lookup_snapshot()
+    assert snapshot["completed"] == 15
+    assert snapshot["total"] == 15
+    assert snapshot["active"] is False
+    assert len(batches) == 4
+    assert [len(batch) for batch in batches] == [4, 4, 4, 3]
     assert browser.images_button.isEnabled() is True
     assert browser.images_button.text() == "Get artist photos"
     browser.deleteLater()
     app.processEvents()
 
-
-def test_album_artwork_lookup_walks_all_missing_albums_not_just_twelve():
+def test_album_artwork_lookup_runs_all_missing_albums_in_bounded_batches():
     try:
         from PySide6.QtWidgets import QApplication
         from melodex.library_browser import LibraryBrowser
@@ -228,25 +249,26 @@ def test_album_artwork_lookup_walks_all_missing_albums_not_just_twelve():
 
     browser._request_online_artwork()
     assert len(batches) == 1
-    assert len(batches[0]) == 1
+    assert len(batches[0]) == 4
     assert browser.album_artwork_lookup_remaining() == 17
-    assert browser.images_button.isEnabled() is False
-    assert "Album 00" in browser.images_button.text()
-    assert browser.images_button.text().endswith("17 left")
 
-    for expected_remaining in range(16, 0, -1):
-        assert browser.continue_album_artwork_lookup() is True
-        assert len(batches[-1]) == 1
-        assert browser.album_artwork_lookup_remaining() == expected_remaining
+    while browser._album_lookup_active:
+        current = list(browser._album_lookup_inflight_rows)
+        outcomes = [
+            {"key": row["key"], "status": "found"}
+            for row in current
+        ]
+        browser.finish_album_artwork_lookup_batch(outcomes)
 
-    assert browser.continue_album_artwork_lookup() is False
-    assert len(batches) == 17
+    snapshot = browser.artwork_lookup_snapshot()
+    assert snapshot["completed"] == 17
+    assert snapshot["found"] == 17
+    assert snapshot["total"] == 17
+    assert [len(batch) for batch in batches] == [4, 4, 4, 4, 1]
     assert browser.images_button.isEnabled() is True
     assert browser.images_button.text() == "Find missing artwork"
     browser.deleteLater()
     app.processEvents()
-
-
 
 def test_artwork_progress_labels_are_compact():
     try:
@@ -874,4 +896,124 @@ def test_online_lyrics_miss_does_not_replace_existing_local_lyrics(monkeypatch, 
     assert widget.online_lyrics_button.text() == "Try again"
 
     window.close()
+    app.processEvents()
+
+
+
+def test_artwork_batch_can_pause_resume_cancel_and_retry_failed():
+    try:
+        from PySide6.QtWidgets import QApplication
+        from melodex.library_browser import LibraryBrowser
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    browser = LibraryBrowser()
+    tracks = [
+        _track(
+            f"/albums/control-{index:02d}.mp3",
+            f"Artist {index:02d}",
+            f"Album {index:02d}",
+            f"Track {index:02d}",
+            1,
+            2000 + index,
+        )
+        for index in range(10)
+    ]
+    browser.set_catalog(tracks)
+    browser.set_view("albums")
+
+    batches = []
+    browser.onlineArtworkRequested.connect(
+        lambda rows: batches.append([dict(row) for row in rows])
+    )
+    browser._request_online_artwork()
+    assert len(batches) == 1
+    assert len(browser._album_lookup_inflight_rows) == 4
+
+    browser._toggle_artwork_lookup_pause()
+    assert browser._album_lookup_paused is True
+    assert browser.artwork_pause_button.text() == "Resume"
+
+    first = list(browser._album_lookup_inflight_rows)
+    browser.finish_album_artwork_lookup_batch([
+        {"key": first[0]["key"], "status": "found"},
+        {"key": first[1]["key"], "status": "error", "error": "temporary"},
+        {"key": first[2]["key"], "status": "no_match"},
+        {"key": first[3]["key"], "status": "found"},
+    ])
+    assert len(batches) == 1
+    snapshot = browser.artwork_lookup_snapshot()
+    assert snapshot["paused"] is True
+    assert snapshot["completed"] == 4
+    assert snapshot["found"] == 2
+    assert snapshot["skipped"] == 1
+    assert snapshot["failed"] == 1
+
+    browser._toggle_artwork_lookup_pause()
+    assert browser._album_lookup_paused is False
+    assert len(batches) == 2
+
+    # Cancel while the resumed batch is in flight. It should finish that
+    # batch but not start another one.
+    browser._cancel_artwork_lookup()
+    assert browser._album_lookup_cancel_requested is True
+    second = list(browser._album_lookup_inflight_rows)
+    browser.finish_album_artwork_lookup_batch([
+        {"key": row["key"], "status": "found"}
+        for row in second
+    ])
+    assert browser._album_lookup_active is False
+    assert len(batches) == 2
+    assert browser._album_lookup_failures
+
+    # Retry only the failed item from the first batch.
+    browser._album_lookup_cancel_requested = False
+    browser._retry_failed_artwork()
+    assert browser._album_lookup_active is True
+    assert len(browser._album_lookup_inflight_rows) == 1
+    retry = list(browser._album_lookup_inflight_rows)
+    browser.finish_album_artwork_lookup_batch([
+        {"key": retry[0]["key"], "status": "found"}
+    ])
+    retry_snapshot = browser.artwork_lookup_snapshot()
+    assert retry_snapshot["total"] == 1
+    assert retry_snapshot["completed"] == 1
+    assert retry_snapshot["found"] == 1
+    assert retry_snapshot["failed"] == 0
+
+    browser.deleteLater()
+    app.processEvents()
+
+
+def test_artwork_progress_panel_reports_found_no_match_and_failed_counts():
+    try:
+        from PySide6.QtWidgets import QApplication
+        from melodex.library_browser import LibraryBrowser
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    browser = LibraryBrowser()
+    browser._album_lookup_stats = {
+        "total": 832,
+        "completed": 147,
+        "found": 101,
+        "skipped": 40,
+        "failed": 6,
+    }
+    browser._album_lookup_active = True
+    browser._refresh_artwork_progress(kind="albums")
+
+    assert browser.artwork_progress.maximum() == 832
+    assert browser.artwork_progress.value() == 147
+    assert browser.artwork_progress.format() == "147 / 832"
+    assert "Found 101" in browser.artwork_progress_summary.text()
+    assert "No match 40" in browser.artwork_progress_summary.text()
+    assert "Failed 6" in browser.artwork_progress_summary.text()
+    assert "background" in browser.artwork_progress_detail.text().casefold()
+
+    browser.deleteLater()
     app.processEvents()

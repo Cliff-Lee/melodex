@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QPushButton,
+    QProgressBar,
     QScrollArea,
     QStackedWidget,
     QVBoxLayout,
@@ -360,14 +361,26 @@ class LibraryBrowser(QWidget):
         self._visible_artists: list[dict[str, Any]] = []
         self._art_requested: set[str] = set()
         self._artist_art_requested: set[str] = set()
+        self._artwork_batch_size = 4
+        self._last_artwork_kind = ""
         self._artist_lookup_queue: list[dict[str, Any]] = []
         self._artist_lookup_inflight = 0
+        self._artist_lookup_inflight_rows: list[dict[str, Any]] = []
         self._artist_lookup_active = False
+        self._artist_lookup_paused = False
+        self._artist_lookup_cancel_requested = False
         self._artist_lookup_current = ""
+        self._artist_lookup_failures: list[dict[str, Any]] = []
+        self._artist_lookup_stats = self._new_lookup_stats()
         self._album_lookup_queue: list[dict[str, Any]] = []
         self._album_lookup_inflight = 0
+        self._album_lookup_inflight_rows: list[dict[str, Any]] = []
         self._album_lookup_active = False
+        self._album_lookup_paused = False
+        self._album_lookup_cancel_requested = False
         self._album_lookup_current = ""
+        self._album_lookup_failures: list[dict[str, Any]] = []
+        self._album_lookup_stats = self._new_lookup_stats()
         self._tracks_built = False
 
         outer = QVBoxLayout(self)
@@ -445,6 +458,55 @@ class LibraryBrowser(QWidget):
         actions.addWidget(self.images_button)
         actions.addStretch(1)
         outer.addLayout(actions)
+
+        self.artwork_progress_panel=QFrame()
+        self.artwork_progress_panel.setObjectName("artworkProgressPanel")
+        progress_l=QVBoxLayout(self.artwork_progress_panel)
+        progress_l.setContentsMargins(12,10,12,10)
+        progress_l.setSpacing(7)
+
+        progress_top=QHBoxLayout()
+        self.artwork_progress_title=QLabel("Artwork recovery")
+        self.artwork_progress_title.setObjectName("artworkProgressTitle")
+        self.artwork_progress_summary=QLabel("")
+        self.artwork_progress_summary.setObjectName("artworkProgressSummary")
+        progress_top.addWidget(self.artwork_progress_title)
+        progress_top.addStretch(1)
+        progress_top.addWidget(self.artwork_progress_summary)
+        progress_l.addLayout(progress_top)
+
+        self.artwork_progress=QProgressBar()
+        self.artwork_progress.setRange(0,1)
+        self.artwork_progress.setValue(0)
+        self.artwork_progress.setTextVisible(True)
+        self.artwork_progress.setFormat("%v / %m")
+        progress_l.addWidget(self.artwork_progress)
+
+        progress_actions=QHBoxLayout()
+        self.artwork_progress_detail=QLabel("")
+        self.artwork_progress_detail.setObjectName("artworkProgressDetail")
+        self.artwork_progress_detail.setWordWrap(True)
+        progress_actions.addWidget(self.artwork_progress_detail,1)
+
+        self.artwork_pause_button=QPushButton("Pause")
+        self.artwork_pause_button.setObjectName("quietButton")
+        self.artwork_pause_button.clicked.connect(self._toggle_artwork_lookup_pause)
+        progress_actions.addWidget(self.artwork_pause_button)
+
+        self.artwork_cancel_button=QPushButton("Cancel")
+        self.artwork_cancel_button.setObjectName("quietButton")
+        self.artwork_cancel_button.clicked.connect(self._cancel_artwork_lookup)
+        progress_actions.addWidget(self.artwork_cancel_button)
+
+        self.artwork_retry_button=QPushButton("Retry failed")
+        self.artwork_retry_button.setObjectName("quietButton")
+        self.artwork_retry_button.clicked.connect(self._retry_failed_artwork)
+        self.artwork_retry_button.hide()
+        progress_actions.addWidget(self.artwork_retry_button)
+
+        progress_l.addLayout(progress_actions)
+        self.artwork_progress_panel.hide()
+        outer.addWidget(self.artwork_progress_panel)
 
         self.stack = QStackedWidget()
         outer.addWidget(self.stack, 1)
@@ -542,14 +604,26 @@ class LibraryBrowser(QWidget):
         self.catalog = [dict(item) for item in catalog if isinstance(item, dict)]
         self._art_requested.clear()
         self._artist_art_requested.clear()
+        self._last_artwork_kind = ""
         self._artist_lookup_queue.clear()
         self._artist_lookup_inflight = 0
+        self._artist_lookup_inflight_rows = []
         self._artist_lookup_active = False
+        self._artist_lookup_paused = False
+        self._artist_lookup_cancel_requested = False
         self._artist_lookup_current = ""
+        self._artist_lookup_failures = []
+        self._artist_lookup_stats = self._new_lookup_stats()
         self._album_lookup_queue.clear()
         self._album_lookup_inflight = 0
+        self._album_lookup_inflight_rows = []
         self._album_lookup_active = False
+        self._album_lookup_paused = False
+        self._album_lookup_cancel_requested = False
         self._album_lookup_current = ""
+        self._album_lookup_failures = []
+        self._album_lookup_stats = self._new_lookup_stats()
+        self.artwork_progress_panel.hide()
         if not self.catalog:
             self.albums = []
             self.artist_rows = []
@@ -607,6 +681,265 @@ class LibraryBrowser(QWidget):
         self.images_button.style().polish(self.images_button)
         self.images_button.update()
         self._apply_filter()
+
+    @staticmethod
+    def _new_lookup_stats(total: int = 0) -> dict[str,int]:
+        return {
+            "total":max(0,int(total)),
+            "completed":0,
+            "found":0,
+            "skipped":0,
+            "failed":0,
+        }
+
+    def _active_artwork_kind(self) -> str:
+        if self._artist_lookup_active:
+            return "artists"
+        if self._album_lookup_active:
+            return "albums"
+        return ""
+
+    def artwork_lookup_snapshot(self) -> dict[str,Any]:
+        kind=self._active_artwork_kind()
+        if not kind:
+            kind=self._last_artwork_kind
+        if not kind:
+            if self._artist_lookup_stats.get("total"):
+                kind="artists"
+            elif self._album_lookup_stats.get("total"):
+                kind="albums"
+        stats=dict(
+            self._artist_lookup_stats
+            if kind=="artists"
+            else self._album_lookup_stats
+        )
+        if kind=="artists":
+            stats.update({
+                "kind":"artists",
+                "remaining":self.artist_image_lookup_remaining(),
+                "paused":self._artist_lookup_paused,
+                "active":self._artist_lookup_active,
+            })
+        elif kind=="albums":
+            stats.update({
+                "kind":"albums",
+                "remaining":self.album_artwork_lookup_remaining(),
+                "paused":self._album_lookup_paused,
+                "active":self._album_lookup_active,
+            })
+        else:
+            stats.update({"kind":"","remaining":0,"paused":False,"active":False})
+        return stats
+
+    def _refresh_artwork_progress(self, *, kind: str = "") -> None:
+        kind=kind or self._active_artwork_kind() or self._last_artwork_kind
+        if not kind:
+            if self._artist_lookup_stats.get("total"):
+                kind="artists"
+            elif self._album_lookup_stats.get("total"):
+                kind="albums"
+        if not kind:
+            self.artwork_progress_panel.hide()
+            return
+
+        stats=(
+            self._artist_lookup_stats
+            if kind=="artists"
+            else self._album_lookup_stats
+        )
+        total=max(0,int(stats.get("total") or 0))
+        completed=max(0,min(total,int(stats.get("completed") or 0)))
+        active=(
+            self._artist_lookup_active
+            if kind=="artists"
+            else self._album_lookup_active
+        )
+        paused=(
+            self._artist_lookup_paused
+            if kind=="artists"
+            else self._album_lookup_paused
+        )
+        canceling=(
+            self._artist_lookup_cancel_requested
+            if kind=="artists"
+            else self._album_lookup_cancel_requested
+        )
+        failures=(
+            self._artist_lookup_failures
+            if kind=="artists"
+            else self._album_lookup_failures
+        )
+
+        self.artwork_progress_panel.show()
+        self.artwork_progress_title.setText(
+            "Artist photo recovery" if kind=="artists" else "Album artwork recovery"
+        )
+        self.artwork_progress.setRange(0,max(1,total))
+        self.artwork_progress.setValue(completed)
+        self.artwork_progress.setFormat(f"{completed} / {total}")
+
+        found=int(stats.get("found") or 0)
+        skipped=int(stats.get("skipped") or 0)
+        failed=int(stats.get("failed") or 0)
+        self.artwork_progress_summary.setText(
+            f"Found {found} · No match {skipped} · Failed {failed}"
+        )
+
+        if canceling and active:
+            state="Canceling after current requests…"
+        elif canceling and not active:
+            state="Canceled"
+        elif paused and active:
+            state="Paused"
+        elif active:
+            state="Searching in the background"
+        elif total and completed >= total:
+            state="Complete"
+        elif total:
+            state="Stopped"
+        else:
+            state=""
+        self.artwork_progress_detail.setText(state)
+
+        self.artwork_pause_button.setText("Resume" if paused else "Pause")
+        self.artwork_pause_button.setEnabled(bool(active and not canceling))
+        self.artwork_cancel_button.setEnabled(bool(active and not canceling))
+        self.artwork_retry_button.setVisible(bool(failures) and not active)
+        self.artwork_retry_button.setText(
+            f"Retry failed ({len(failures)})"
+            if failures
+            else "Retry failed"
+        )
+
+    def _toggle_artwork_lookup_pause(self) -> None:
+        kind=self._active_artwork_kind()
+        if kind=="artists":
+            self._artist_lookup_paused=not self._artist_lookup_paused
+            if not self._artist_lookup_paused and not self._artist_lookup_inflight:
+                self._emit_next_artist_lookup_batch()
+        elif kind=="albums":
+            self._album_lookup_paused=not self._album_lookup_paused
+            if not self._album_lookup_paused and not self._album_lookup_inflight:
+                self._emit_next_album_lookup_batch()
+        self._refresh_images_button_label()
+        self._refresh_artwork_progress(kind=kind)
+
+    def _cancel_artwork_lookup(self) -> None:
+        kind=self._active_artwork_kind()
+        if kind=="artists":
+            self._artist_lookup_cancel_requested=True
+            self._artist_lookup_queue.clear()
+            if not self._artist_lookup_inflight:
+                self._artist_lookup_active=False
+        elif kind=="albums":
+            self._album_lookup_cancel_requested=True
+            self._album_lookup_queue.clear()
+            if not self._album_lookup_inflight:
+                self._album_lookup_active=False
+        self._refresh_images_button_label()
+        self._refresh_artwork_progress(kind=kind)
+
+    def _retry_failed_artwork(self) -> None:
+        if self._artist_lookup_active or self._album_lookup_active:
+            return
+        view=self._last_artwork_kind or self.current_view()
+        if view=="artists" and self._artist_lookup_failures:
+            self._artist_lookup_queue=[dict(row) for row in self._artist_lookup_failures]
+            self._artist_lookup_failures=[]
+            self._artist_lookup_stats=self._new_lookup_stats(len(self._artist_lookup_queue))
+            self._artist_lookup_active=bool(self._artist_lookup_queue)
+            self._last_artwork_kind="artists"
+            self._artist_lookup_paused=False
+            self._artist_lookup_cancel_requested=False
+            self._emit_next_artist_lookup_batch()
+        elif view=="albums" and self._album_lookup_failures:
+            self._album_lookup_queue=[dict(row) for row in self._album_lookup_failures]
+            self._album_lookup_failures=[]
+            self._album_lookup_stats=self._new_lookup_stats(len(self._album_lookup_queue))
+            self._album_lookup_active=bool(self._album_lookup_queue)
+            self._last_artwork_kind="albums"
+            self._album_lookup_paused=False
+            self._album_lookup_cancel_requested=False
+            self._emit_next_album_lookup_batch()
+        self._refresh_artwork_progress(kind=view)
+
+    def _finish_lookup_batch(
+        self,
+        kind: str,
+        outcomes: list[dict[str,Any]],
+    ) -> bool:
+        is_artist=kind=="artists"
+        inflight_rows=(
+            self._artist_lookup_inflight_rows
+            if is_artist
+            else self._album_lookup_inflight_rows
+        )
+        stats=(
+            self._artist_lookup_stats
+            if is_artist
+            else self._album_lookup_stats
+        )
+        failures=(
+            self._artist_lookup_failures
+            if is_artist
+            else self._album_lookup_failures
+        )
+        by_key={
+            str(row.get("key") or ""):dict(row)
+            for row in list(outcomes or [])
+            if isinstance(row,dict)
+        }
+        for original in list(inflight_rows):
+            key=str(original.get("key") or "")
+            outcome=by_key.get(key,{})
+            status=str(outcome.get("status") or "error")
+            stats["completed"]+=1
+            if status=="found":
+                stats["found"]+=1
+            elif status=="no_match":
+                stats["skipped"]+=1
+            else:
+                stats["failed"]+=1
+                failures.append(dict(original))
+
+        if is_artist:
+            self._artist_lookup_inflight=0
+            self._artist_lookup_inflight_rows=[]
+            self._artist_lookup_current=""
+            if self._artist_lookup_cancel_requested:
+                self._artist_lookup_active=False
+            elif not self._artist_lookup_queue:
+                self._artist_lookup_active=False
+            elif not self._artist_lookup_paused:
+                self._emit_next_artist_lookup_batch()
+        else:
+            self._album_lookup_inflight=0
+            self._album_lookup_inflight_rows=[]
+            self._album_lookup_current=""
+            if self._album_lookup_cancel_requested:
+                self._album_lookup_active=False
+            elif not self._album_lookup_queue:
+                self._album_lookup_active=False
+            elif not self._album_lookup_paused:
+                self._emit_next_album_lookup_batch()
+
+        self._refresh_images_button_label()
+        self._refresh_artwork_progress(kind=kind)
+        return bool(
+            self._artist_lookup_active if is_artist else self._album_lookup_active
+        )
+
+    def finish_artist_image_lookup_batch(
+        self,
+        outcomes: list[dict[str,Any]],
+    ) -> bool:
+        return self._finish_lookup_batch("artists",outcomes)
+
+    def finish_album_artwork_lookup_batch(
+        self,
+        outcomes: list[dict[str,Any]],
+    ) -> bool:
+        return self._finish_lookup_batch("albums",outcomes)
 
     @staticmethod
     def _progress_item_label(value: str, limit: int = 22) -> str:
@@ -862,9 +1195,8 @@ class LibraryBrowser(QWidget):
             self.artistImageCacheRequested.emit(batch)
 
     def _request_online_artwork(self) -> None:
-        # Keep metadata enrichment serial. Starting a second pass from another
-        # tab while one is active can overwhelm public metadata services and
-        # make both searches appear stalled.
+        # Keep one artwork job active at a time. Each job uses a small bounded
+        # batch; MusicBrainz itself remains rate-limited by the metadata service.
         if self._artist_lookup_active or self._album_lookup_active:
             self._refresh_images_button_label()
             return
@@ -873,6 +1205,10 @@ class LibraryBrowser(QWidget):
             artists = self._visible_artists if self._visible_artists else self.artist_rows
             self._artist_lookup_queue = []
             self._artist_lookup_inflight = 0
+            self._artist_lookup_inflight_rows = []
+            self._artist_lookup_failures = []
+            self._artist_lookup_paused = False
+            self._artist_lookup_cancel_requested = False
             for artist in artists:
                 key = str(artist.get("key") or "")
                 card = self.artist_cards.get(key)
@@ -891,7 +1227,10 @@ class LibraryBrowser(QWidget):
                         "track": track,
                     })
             self._artist_lookup_active = bool(self._artist_lookup_queue)
+            self._last_artwork_kind = "artists"
+            self._artist_lookup_stats = self._new_lookup_stats(len(self._artist_lookup_queue))
             self._refresh_images_button_label()
+            self._refresh_artwork_progress(kind="artists")
             self._emit_next_artist_lookup_batch()
             return
 
@@ -899,6 +1238,10 @@ class LibraryBrowser(QWidget):
             albums = self._visible_albums if self._visible_albums else self.albums
             self._album_lookup_queue = []
             self._album_lookup_inflight = 0
+            self._album_lookup_inflight_rows = []
+            self._album_lookup_failures = []
+            self._album_lookup_paused = False
+            self._album_lookup_cancel_requested = False
             for album in albums:
                 key = str(album.get("key") or "")
                 card = self.cards.get(key)
@@ -916,7 +1259,10 @@ class LibraryBrowser(QWidget):
                         ],
                     })
             self._album_lookup_active = bool(self._album_lookup_queue)
+            self._last_artwork_kind = "albums"
+            self._album_lookup_stats = self._new_lookup_stats(len(self._album_lookup_queue))
             self._refresh_images_button_label()
+            self._refresh_artwork_progress(kind="albums")
             self._emit_next_album_lookup_batch()
 
     def _emit_next_artist_lookup_batch(self) -> bool:
@@ -926,24 +1272,30 @@ class LibraryBrowser(QWidget):
             self._artist_lookup_current = ""
             self._refresh_images_button_label()
             return False
-        # One artist per worker makes progress visible after every lookup and
-        # prevents one slow network request from making a 10-artist batch look frozen.
-        batch=self._artist_lookup_queue[:1]
-        self._artist_lookup_queue=self._artist_lookup_queue[1:]
+        if self._artist_lookup_paused or self._artist_lookup_cancel_requested:
+            self._refresh_artwork_progress(kind="artists")
+            return False
+        batch=self._artist_lookup_queue[:self._artwork_batch_size]
+        self._artist_lookup_queue=self._artist_lookup_queue[len(batch):]
         self._artist_lookup_inflight=len(batch)
+        self._artist_lookup_inflight_rows=[dict(row) for row in batch]
         self._artist_lookup_current=str(batch[0].get("artist") or "artist") if batch else ""
         for row in batch:
             key=str(row.get("key") or "")
             if key:
                 self._artist_art_requested.add(key)
         self._refresh_images_button_label()
+        self._refresh_artwork_progress(kind="artists")
         self.artistImageRequested.emit(batch)
         return True
 
     def continue_artist_image_lookup(self) -> bool:
-        """Continue an explicit whole-library portrait lookup after one item."""
-        self._artist_lookup_inflight = 0
-        return self._emit_next_artist_lookup_batch()
+        """Compatibility helper: mark the in-flight batch as no-match and continue."""
+        outcomes=[
+            {"key":str(row.get("key") or ""),"status":"no_match"}
+            for row in self._artist_lookup_inflight_rows
+        ]
+        return self.finish_artist_image_lookup_batch(outcomes)
 
     def artist_image_lookup_remaining(self) -> int:
         return len(self._artist_lookup_queue) + int(self._artist_lookup_inflight or 0)
@@ -955,24 +1307,30 @@ class LibraryBrowser(QWidget):
             self._album_lookup_current = ""
             self._refresh_images_button_label()
             return False
-        # Artwork is also processed incrementally so every completed album
-        # advances the visible progress counter and the action is never capped at 12.
-        batch=self._album_lookup_queue[:1]
-        self._album_lookup_queue=self._album_lookup_queue[1:]
+        if self._album_lookup_paused or self._album_lookup_cancel_requested:
+            self._refresh_artwork_progress(kind="albums")
+            return False
+        batch=self._album_lookup_queue[:self._artwork_batch_size]
+        self._album_lookup_queue=self._album_lookup_queue[len(batch):]
         self._album_lookup_inflight=len(batch)
+        self._album_lookup_inflight_rows=[dict(row) for row in batch]
         if batch:
             track=dict(batch[0].get("track") or {})
             self._album_lookup_current=str(
                 track.get("album") or track.get("title") or "artwork"
             ).strip()
         self._refresh_images_button_label()
+        self._refresh_artwork_progress(kind="albums")
         self.onlineArtworkRequested.emit(batch)
         return True
 
     def continue_album_artwork_lookup(self) -> bool:
-        """Continue an explicit whole-library album-art lookup after one item."""
-        self._album_lookup_inflight = 0
-        return self._emit_next_album_lookup_batch()
+        """Compatibility helper: mark the in-flight batch as no-match and continue."""
+        outcomes=[
+            {"key":str(row.get("key") or ""),"status":"no_match"}
+            for row in self._album_lookup_inflight_rows
+        ]
+        return self.finish_album_artwork_lookup_batch(outcomes)
 
     def album_artwork_lookup_remaining(self) -> int:
         return len(self._album_lookup_queue) + int(self._album_lookup_inflight or 0)

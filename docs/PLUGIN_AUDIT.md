@@ -108,6 +108,23 @@ Legacy remote artwork cache associations created before the stricter matching po
 
 Downloaded remote artwork must return an actual `image/*` response with non-trivial image content; HTML/error responses are rejected rather than cached as artwork.
 
+### Artwork batch experience
+
+Explicit missing-artwork recovery now runs as a bounded background job rather than one serial lookup at a time.
+
+- up to **4** album or artist lookups are processed concurrently;
+- MusicBrainz requests still obey the metadata service's existing rate limiter;
+- the progress panel shows `completed / total` plus **Found / No match / Failed** counts;
+- **Pause** lets the current in-flight requests finish, then stops launching new work;
+- **Resume** continues the remaining queue;
+- **Cancel** finishes only the requests already in flight and discards the rest of the current queue;
+- **Retry failed** reruns only genuine failed requests, not conservative “no confident match” outcomes;
+- changing tabs does not lose the active job or its progress;
+- rescanning/replacing the library clears stale batch state;
+- successful artwork is applied incrementally as each bounded batch finishes, keeping the interface responsive for large libraries.
+
+The concurrency limit is deliberately small: the goal is to make hundreds or thousands of missing-image checks practical without flooding volunteer/public metadata services.
+
 ## Lyrics audit
 
 Core lyrics support is local-first:

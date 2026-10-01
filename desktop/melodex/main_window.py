@@ -4,6 +4,7 @@ import json
 import threading
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -650,6 +651,39 @@ class MainWindow(QMainWindow):
                 border:1px solid #26384c;
                 border-radius:10px;
             }
+            QFrame#artworkProgressPanel{
+                background:#101821;
+                border:1px solid #2a3d53;
+                border-radius:11px;
+            }
+            QLabel#artworkProgressTitle{
+                font-size:12px;
+                font-weight:720;
+                color:#d8e6f6;
+            }
+            QLabel#artworkProgressSummary{
+                font-size:10px;
+                color:#93a7bd;
+            }
+            QLabel#artworkProgressDetail{
+                font-size:10px;
+                color:#8492a3;
+            }
+            QProgressBar{
+                min-height:14px;
+                max-height:14px;
+                border:1px solid #2b3a4c;
+                border-radius:7px;
+                background:#0c121a;
+                text-align:center;
+                color:#d6e5f5;
+                font-size:9px;
+            }
+            QProgressBar::chunk{
+                border-radius:6px;
+                background:#365f8d;
+            }
+
             QFrame#featurePresenceBar[active="true"]{
                 background:#111f2c;
                 border-color:#315274;
@@ -2747,22 +2781,16 @@ class MainWindow(QMainWindow):
         rows=[dict(x) for x in list(requests or []) if isinstance(x,dict)]
         if not rows:
             return
-        row=rows[0]
-        track=dict(row.get("track") or {})
-        album_name=str(track.get("album") or "album").strip() or "album"
-        artist_name=str(track.get("artist") or "").strip()
-        label=f"{artist_name} · {album_name}" if artist_name else album_name
+
         self.statusBar().showMessage(
-            f"Finding album artwork · {label}"
+            f"Finding album artwork · {len(rows)} at a time"
         )
 
-        def load():
-            result={}
+        def lookup_one(row: dict[str,Any]) -> dict[str,Any]:
             key=str(row.get("key") or "")
+            track=dict(row.get("track") or {})
             if not key or not track:
-                return result
-            path=""
-            artwork_info={}
+                return {"key":key,"path":"","status":"error","error":"Missing album lookup data"}
             try:
                 local=self.metadata.local_artwork(track)
                 path=str(local.get("path") or "")
@@ -2772,64 +2800,80 @@ class MainWindow(QMainWindow):
                     artwork_info=self.metadata.artwork(track,identity)
                     path=str(artwork_info.get("path") or "")
                 if path:
+                    match_info=(
+                        dict(artwork_info.get("match") or {})
+                        if isinstance(artwork_info.get("match"),dict)
+                        else {}
+                    )
                     for sibling in list(row.get("tracks") or []):
-                        if isinstance(sibling,dict):
-                            match_info=(
-                                dict(artwork_info.get("match") or {})
-                                if isinstance(artwork_info.get("match"),dict)
-                                else {}
-                            )
-                            self.metadata.remember_artwork(
-                                sibling,
-                                path,
-                                source=str(artwork_info.get("source") or ""),
-                                source_url=str(artwork_info.get("source_url") or ""),
-                                attribution=str(artwork_info.get("attribution") or ""),
-                                license_name=str(
-                                    artwork_info.get("license_name")
-                                    or artwork_info.get("license")
-                                    or ""
-                                ),
-                                match_method=str(match_info.get("method") or ""),
-                                match_confidence=(
-                                    float(match_info.get("confidence"))
-                                    if match_info.get("confidence") is not None
-                                    else None
-                                ),
-                            )
-            except Exception:
-                path=""
-            result[key]=path
-            return result
+                        if not isinstance(sibling,dict):
+                            continue
+                        self.metadata.remember_artwork(
+                            sibling,
+                            path,
+                            source=str(artwork_info.get("source") or ""),
+                            source_url=str(artwork_info.get("source_url") or ""),
+                            attribution=str(artwork_info.get("attribution") or ""),
+                            license_name=str(
+                                artwork_info.get("license_name")
+                                or artwork_info.get("license")
+                                or ""
+                            ),
+                            match_method=str(match_info.get("method") or ""),
+                            match_confidence=(
+                                float(match_info.get("confidence"))
+                                if match_info.get("confidence") is not None
+                                else None
+                            ),
+                        )
+                    return {
+                        "key":key,
+                        "path":path,
+                        "status":"found",
+                        "source":str(artwork_info.get("source") or ""),
+                    }
+                return {"key":key,"path":"","status":"no_match","error":""}
+            except Exception as exc:
+                return {"key":key,"path":"","status":"error","error":str(exc)}
 
-        def continue_lookup(found: int = 0):
-            more=self.library_browser.continue_album_artwork_lookup()
-            if more:
-                remaining=self.library_browser.album_artwork_lookup_remaining()
-                self.statusBar().showMessage(
-                    f"Album artwork · {'found' if found else 'no match'} · "
-                    f"continuing through {remaining} remaining…"
-                )
-            else:
-                self.statusBar().showMessage(
-                    "Album artwork lookup complete",
-                    6000,
-                )
+        def load():
+            workers=max(1,min(4,len(rows)))
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                return list(pool.map(lookup_one,rows))
 
         def apply(result):
-            result_rows=dict(result or {})
-            self.library_browser.set_artwork(result_rows)
-            found=sum(1 for path in result_rows.values() if str(path or "").strip())
-            continue_lookup(found)
+            outcomes=[dict(x) for x in list(result or []) if isinstance(x,dict)]
+            self.library_browser.set_artwork({
+                str(row.get("key") or ""):str(row.get("path") or "")
+                for row in outcomes
+                if str(row.get("path") or "")
+            })
+            self.library_browser.finish_album_artwork_lookup_batch(outcomes)
+            snapshot=self.library_browser.artwork_lookup_snapshot()
+            self.statusBar().showMessage(
+                "Album artwork · "
+                f"{snapshot.get('completed',0)}/{snapshot.get('total',0)} · "
+                f"found {snapshot.get('found',0)} · "
+                f"no match {snapshot.get('skipped',0)} · "
+                f"failed {snapshot.get('failed',0)}",
+                5000 if not snapshot.get("active") else 0,
+            )
 
         def failed(error):
-            # Do not leave the progress control permanently disabled because
-            # one provider/request failed. Move on to the next album.
+            outcomes=[
+                {
+                    "key":str(row.get("key") or ""),
+                    "path":"",
+                    "status":"error",
+                    "error":str(error),
+                }
+                for row in rows
+            ]
+            self.library_browser.finish_album_artwork_lookup_batch(outcomes)
             self.statusBar().showMessage(
-                f"Artwork lookup skipped one album after an error · {error}",
-                4500,
+                f"Album artwork batch failed · {error}",
+                5000,
             )
-            continue_lookup(0)
 
         self._run_async(load,apply,failed)
 
@@ -2886,76 +2930,82 @@ class MainWindow(QMainWindow):
         rows=[dict(x) for x in list(requests or []) if isinstance(x,dict)]
         if not rows:
             return
-        row=rows[0]
-        artist_label=str(row.get("artist") or "artist").strip() or "artist"
+
         self.statusBar().showMessage(
-            f"Finding artist photo · {artist_label}"
+            f"Finding artist photos · {len(rows)} at a time"
         )
 
-        def load():
-            result={}
-            for row in rows:
-                key=str(row.get("key") or "")
-                artist_name=str(row.get("artist") or "")
-                track=dict(row.get("track") or {})
-                if not key or not artist_name or not track:
-                    continue
-                path=""
-                try:
-                    cached=self.metadata.cached_artist_photo({"name":artist_name})
-                    path=str(cached.get("path") or "")
-                    if not path:
-                        artist_mbid=str(
-                            track.get("musicbrainz_artist_id")
-                            or track.get("artist_mbid")
-                            or ""
-                        ).strip()
-                        if artist_mbid:
-                            info=self.metadata.artist_info(artist_mbid)
-                        else:
-                            # Artist portrait enrichment does not need a
-                            # recording-level MusicBrainz lookup. Resolve the
-                            # artist directly; this is faster and avoids a
-                            # needless failure point for oddly tagged tracks.
-                            info=self.metadata.resolve_artist(artist_name)
-                        if info:
-                            if not info.get("name"):
-                                info["name"]=artist_name
-                            photo=self.metadata.artist_photo(info)
-                            path=str(photo.get("path") or "")
-                except Exception:
-                    path=""
-                result[key]=path
-            return result
+        def lookup_one(row: dict[str,Any]) -> dict[str,Any]:
+            key=str(row.get("key") or "")
+            artist_name=str(row.get("artist") or "")
+            track=dict(row.get("track") or {})
+            if not key or not artist_name or not track:
+                return {"key":key,"path":"","status":"error","error":"Missing artist lookup data"}
+            try:
+                cached=self.metadata.cached_artist_photo({"name":artist_name})
+                path=str(cached.get("path") or "")
+                if not path:
+                    artist_mbid=str(
+                        track.get("musicbrainz_artist_id")
+                        or track.get("artist_mbid")
+                        or ""
+                    ).strip()
+                    if artist_mbid:
+                        info=self.metadata.artist_info(artist_mbid)
+                    else:
+                        info=self.metadata.resolve_artist(artist_name)
+                    if info:
+                        if not info.get("name"):
+                            info["name"]=artist_name
+                        photo=self.metadata.artist_photo(info)
+                        path=str(photo.get("path") or "")
+                return {
+                    "key":key,
+                    "path":path,
+                    "status":"found" if path else "no_match",
+                    "error":"",
+                }
+            except Exception as exc:
+                return {"key":key,"path":"","status":"error","error":str(exc)}
 
-        def continue_lookup(found: int = 0):
-            more=self.library_browser.continue_artist_image_lookup()
-            if more:
-                remaining=self.library_browser.artist_image_lookup_remaining()
-                self.statusBar().showMessage(
-                    f"Artist photos · {'found' if found else 'no match'} · "
-                    f"continuing through {remaining} remaining…"
-                )
-            else:
-                self.statusBar().showMessage(
-                    "Artist photo lookup complete",
-                    6000,
-                )
+        def load():
+            workers=max(1,min(4,len(rows)))
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                return list(pool.map(lookup_one,rows))
 
         def apply(result):
-            result_rows=dict(result or {})
-            self.library_browser.set_artist_images(result_rows)
-            found=sum(1 for path in result_rows.values() if str(path or "").strip())
-            continue_lookup(found)
+            outcomes=[dict(x) for x in list(result or []) if isinstance(x,dict)]
+            self.library_browser.set_artist_images({
+                str(row.get("key") or ""):str(row.get("path") or "")
+                for row in outcomes
+                if str(row.get("path") or "")
+            })
+            self.library_browser.finish_artist_image_lookup_batch(outcomes)
+            snapshot=self.library_browser.artwork_lookup_snapshot()
+            self.statusBar().showMessage(
+                "Artist photos · "
+                f"{snapshot.get('completed',0)}/{snapshot.get('total',0)} · "
+                f"found {snapshot.get('found',0)} · "
+                f"no match {snapshot.get('skipped',0)} · "
+                f"failed {snapshot.get('failed',0)}",
+                5000 if not snapshot.get("active") else 0,
+            )
 
         def failed(error):
-            # A single failed HTTP/plugin lookup must not strand the whole
-            # library pass at the same remaining count.
+            outcomes=[
+                {
+                    "key":str(row.get("key") or ""),
+                    "path":"",
+                    "status":"error",
+                    "error":str(error),
+                }
+                for row in rows
+            ]
+            self.library_browser.finish_artist_image_lookup_batch(outcomes)
             self.statusBar().showMessage(
-                f"Artist photo lookup skipped one artist after an error · {error}",
-                4500,
+                f"Artist photo batch failed · {error}",
+                5000,
             )
-            continue_lookup(0)
 
         self._run_async(load,apply,failed)
 
