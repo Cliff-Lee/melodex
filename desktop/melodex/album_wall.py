@@ -4,8 +4,8 @@ import hashlib
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QRectF, Qt, QTimer, QVariantAnimation, Signal
-from PySide6.QtGui import QBrush, QColor, QPainter, QPen, QPixmap
+from PySide6.QtCore import QRect, QRectF, Qt, QTimer, QVariantAnimation, Signal
+from PySide6.QtGui import QBrush, QColor, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import (
     QComboBox,
     QGraphicsItem,
@@ -24,9 +24,9 @@ from PySide6.QtWidgets import (
 from .album_wall_model import layout_album_positions
 
 
-_TILE_W = 144.0
-_TILE_H = 178.0
-_COVER = 132.0
+_TILE_W = 176.0
+_TILE_H = 216.0
+_COVER = 164.0
 
 
 def _norm(value: Any) -> str:
@@ -105,44 +105,99 @@ class _AlbumTile(QGraphicsObject):
         lod = QStyleOptionGraphicsItem.levelOfDetailFromTransform(painter.worldTransform())
         cover = QRectF(6, 5, _COVER, _COVER)
         painter.setRenderHint(QPainter.Antialiasing, True)
+        painter.setRenderHint(QPainter.SmoothPixmapTransform, True)
+
+        # A quiet shadow makes the wall feel like physical sleeves rather than
+        # debug nodes, without using expensive QGraphicsDropShadowEffect items.
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor(0, 0, 0, 85))
+        painter.drawRoundedRect(cover.translated(4, 5), 8, 8)
+
+        clip = QPainterPath()
+        clip.addRoundedRect(cover, 7, 7)
+        painter.save()
+        painter.setClipPath(clip)
 
         if self._pixmap.isNull():
             a, b = _placeholder_colours(self.key)
-            painter.fillRect(cover, a)
-            painter.fillRect(cover.adjusted(18, 18, -18, -18), b)
-            painter.setPen(QColor(255, 255, 255, 125))
-            painter.drawEllipse(cover.center(), 26, 26)
-            painter.drawEllipse(cover.center(), 7, 7)
-        else:
-            painter.drawPixmap(cover.toRect(), self._pixmap)
+            gradient = QLinearGradient(cover.topLeft(), cover.bottomRight())
+            gradient.setColorAt(0.0, a.darker(150))
+            gradient.setColorAt(1.0, b.darker(175))
+            painter.fillRect(cover, gradient)
 
+            title = str(self.album.get("title") or "?").strip()
+            words = [word for word in title.replace("-", " ").split() if word]
+            monogram = (
+                "".join(word[0] for word in words[:2]).upper()
+                if len(words) > 1
+                else title[:2].upper()
+            )
+            font = painter.font()
+            font.setBold(True)
+            font.setPointSizeF(34)
+            painter.setFont(font)
+            painter.setPen(QColor(255, 255, 255, 150))
+            painter.drawText(cover, Qt.AlignCenter, monogram or "?")
+            painter.setPen(QPen(QColor(255, 255, 255, 18), 1))
+            step = 22
+            x = int(cover.left()) - int(cover.height())
+            while x < int(cover.right()) + int(cover.height()):
+                painter.drawLine(
+                    x,
+                    int(cover.bottom()),
+                    x + int(cover.height()),
+                    int(cover.top()),
+                )
+                x += step
+        else:
+            target_w = max(1, int(cover.width()))
+            target_h = max(1, int(cover.height()))
+            scaled = self._pixmap.scaled(
+                target_w,
+                target_h,
+                Qt.KeepAspectRatioByExpanding,
+                Qt.SmoothTransformation,
+            )
+            source = QRect(
+                max(0, (scaled.width() - target_w) // 2),
+                max(0, (scaled.height() - target_h) // 2),
+                min(target_w, scaled.width()),
+                min(target_h, scaled.height()),
+            )
+            painter.drawPixmap(cover.toRect(), scaled, source)
+        painter.restore()
+
+        painter.setBrush(Qt.NoBrush)
         if self._current:
-            painter.setPen(QPen(QColor("#66d9ff"), 4))
-            painter.drawRoundedRect(cover.adjusted(-2, -2, 2, 2), 5, 5)
+            painter.setPen(QPen(QColor("#67d7ff"), 4))
+            painter.drawRoundedRect(cover.adjusted(-2, -2, 2, 2), 8, 8)
         elif self._selected:
-            painter.setPen(QPen(QColor("#f4f6fa"), 3))
-            painter.drawRoundedRect(cover.adjusted(-2, -2, 2, 2), 5, 5)
+            painter.setPen(QPen(QColor("#f2f5f8"), 3))
+            painter.drawRoundedRect(cover.adjusted(-2, -2, 2, 2), 8, 8)
+        else:
+            painter.setPen(QPen(QColor(255, 255, 255, 32), 1))
+            painter.drawRoundedRect(cover, 7, 7)
 
         if int(self.album.get("analysed_tracks") or 0) == 0:
             painter.setPen(Qt.NoPen)
-            painter.setBrush(QColor(12, 15, 20, 105))
-            painter.drawRect(cover)
+            painter.setBrush(QColor("#9aa4b8"))
+            painter.drawEllipse(QRectF(cover.right() - 12, cover.bottom() - 12, 6, 6))
 
-        if lod >= 0.48:
+        if lod >= 0.38:
             title = str(self.album.get("title") or "Unknown album")
             artist = str(self.album.get("artist") or "Unknown artist")
             painter.setPen(QColor("#f4f6fa"))
             font = painter.font()
-            font.setPointSizeF(max(7.5, min(10.5, 8.3 * lod)))
+            font.setPointSizeF(max(7.8, min(11.0, 9.4 * lod)))
             font.setBold(True)
             painter.setFont(font)
-            painter.drawText(QRectF(5, 141, 134, 17), Qt.AlignLeft | Qt.AlignVCenter, title[:32])
-            if lod >= 0.7:
+            painter.drawText(QRectF(6, 173, 164, 18), Qt.AlignLeft | Qt.AlignVCenter, title[:36])
+            if lod >= 0.56:
                 font.setBold(False)
-                font.setPointSizeF(max(7.0, min(9.5, 7.7 * lod)))
+                font.setPointSizeF(max(7.2, min(9.8, 8.3 * lod)))
                 painter.setFont(font)
-                painter.setPen(QColor("#aab0ba"))
-                painter.drawText(QRectF(5, 158, 134, 16), Qt.AlignLeft | Qt.AlignVCenter, artist[:32])
+                painter.setPen(QColor("#9da7b8"))
+                painter.drawText(QRectF(6, 193, 164, 17), Qt.AlignLeft | Qt.AlignVCenter, artist[:36])
 
     def mousePressEvent(self, event):
         self._selected_callback(self.key)
@@ -186,6 +241,7 @@ class AlbumWallWidget(QWidget):
     albumSelected = Signal(object)
     albumActivated = Signal(object)
     artworkRequested = Signal(object)
+    onlineArtworkRequested = Signal(object)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -196,6 +252,7 @@ class AlbumWallWidget(QWidget):
         self.selected_key = ""
         self.current_key = ""
         self._art_requested: set[str] = set()
+        self._online_requested: set[str] = set()
         self._animation: QVariantAnimation | None = None
         self._start_positions: dict[str, tuple[float, float]] = {}
         self._end_positions: dict[str, tuple[float, float]] = {}
@@ -208,18 +265,30 @@ class AlbumWallWidget(QWidget):
         self.lens.addItem("Familiarity", "familiarity")
         self.lens.addItem("Time", "time")
         self.lens.addItem("A–Z shelves", "shelves")
-        self.search = QLineEdit()
-        self.search.setPlaceholderText("Find artist or album…")
-        find = QPushButton("Find")
+        self.lens_info = QLabel("")
+        self.lens_info.setStyleSheet("color:#8f99aa")
         now = QPushButton("Now playing")
-        fit = QPushButton("Fit wall")
+        overview = QPushButton("Overview")
         controls.addWidget(QLabel("Arrange by"))
         controls.addWidget(self.lens)
-        controls.addWidget(self.search, 1)
-        controls.addWidget(find)
+        controls.addWidget(self.lens_info)
+        controls.addStretch(1)
         controls.addWidget(now)
-        controls.addWidget(fit)
+        controls.addWidget(overview)
         layout.addLayout(controls)
+
+        search_row = QHBoxLayout()
+        self.search = QLineEdit()
+        self.search.setPlaceholderText("Find artist or album…")
+        self.search.setMaximumWidth(520)
+        find = QPushButton("Find")
+        covers = QPushButton("Find missing covers online")
+        covers.setToolTip("Look up a small batch of visible missing covers using Melodex metadata services.")
+        search_row.addWidget(self.search, 1)
+        search_row.addWidget(find)
+        search_row.addWidget(covers)
+        search_row.addStretch(1)
+        layout.addLayout(search_row)
 
         self.scene = QGraphicsScene(self)
         self.view = _WallView(self.scene)
@@ -230,15 +299,20 @@ class AlbumWallWidget(QWidget):
         self.view.setRenderHint(QPainter.Antialiasing, True)
         layout.addWidget(self.view, 1)
 
+        self.selection = QLabel("Select an album to see its details.")
+        self.selection.setStyleSheet("color:#e7ebf2;font-size:13px;padding:4px 2px")
+        layout.addWidget(self.selection)
+
         self.status = QLabel("Add local music to build your Album Wall.")
-        self.status.setStyleSheet("color:#aab0ba")
+        self.status.setStyleSheet("color:#8f99aa")
         layout.addWidget(self.status)
 
         self.lens.currentIndexChanged.connect(self._relayout)
         self.search.returnPressed.connect(self.find)
         find.clicked.connect(self.find)
         now.clicked.connect(self.centre_current)
-        fit.clicked.connect(self.fit_wall)
+        overview.clicked.connect(self.fit_wall)
+        covers.clicked.connect(self._request_online_art)
         self.view.viewportChanged.connect(self._schedule_visible_art)
         self._art_timer = QTimer(self)
         self._art_timer.setSingleShot(True)
@@ -255,6 +329,7 @@ class AlbumWallWidget(QWidget):
         self.albums.clear()
         self._track_to_album.clear()
         self._art_requested.clear()
+        self._online_requested.clear()
         self.selected_key = ""
         self.current_key = ""
 
@@ -275,16 +350,18 @@ class AlbumWallWidget(QWidget):
 
         self._place(immediate=True)
         self.highlight_track(current_track or {})
-        self.fit_wall()
         albums = int(self.model.get("album_count") or len(self.albums))
         analysed = int(self.model.get("analysed_albums") or 0)
+        self._update_lens_info()
         if albums:
+            self._initial_view()
             self.status.setText(
                 f"{albums:,} albums · {analysed:,} positioned from Flow analysis · "
                 "wheel to zoom · drag to explore · double-click an album to play"
             )
             self._schedule_visible_art()
         else:
+            self.selection.setText("Select an album to see its details.")
             self.status.setText("Add local music to build your Album Wall.")
 
     def selected_album(self) -> dict[str, Any]:
@@ -296,7 +373,17 @@ class AlbumWallWidget(QWidget):
         self.selected_key = str(key)
         if self.selected_key in self.tiles:
             self.tiles[self.selected_key].set_selected_visual(True)
-            self.albumSelected.emit(dict(self.albums[self.selected_key]))
+            album = dict(self.albums[self.selected_key])
+            year = int(album.get("year") or 0)
+            details = [
+                str(album.get("artist") or "Unknown artist"),
+                str(year) if year else "year unknown",
+                f"{int(album.get('track_count') or 0)} tracks",
+            ]
+            self.selection.setText(
+                f"{album.get('title') or 'Unknown album'}   ·   " + "   ·   ".join(details)
+            )
+            self.albumSelected.emit(album)
 
     def _activate(self, key: str) -> None:
         self._select(key)
@@ -340,7 +427,36 @@ class AlbumWallWidget(QWidget):
 
     def _relayout(self) -> None:
         self._place(immediate=False)
+        self._update_lens_info()
         QTimer.singleShot(560, self._schedule_visible_art)
+
+    def _update_lens_info(self) -> None:
+        lens = str(self.lens.currentData() or "sound")
+        albums = list(self.albums.values())
+        total = len(albums)
+        if lens == "time":
+            dated = sum(1 for album in albums if int(album.get("year") or 0) > 0)
+            suffix = f"{dated}/{total} dated" if total else ""
+        elif lens == "sound":
+            analysed = sum(1 for album in albums if int(album.get("analysed_tracks") or 0) > 0)
+            suffix = f"{analysed}/{total} sonic positions" if total else ""
+        elif lens == "familiarity":
+            suffix = "your listening history"
+        else:
+            suffix = "artist → album"
+        self.lens_info.setText(suffix)
+
+    def _initial_view(self) -> None:
+        self.view.resetTransform()
+        count = max(1, len(self.tiles))
+        scale = 0.92 if count <= 30 else 0.82 if count <= 120 else 0.72
+        self.view.scale(scale, scale)
+        if self.current_key and self.current_key in self.tiles:
+            self.view.centerOn(self.tiles[self.current_key])
+        else:
+            rect = self.scene.itemsBoundingRect()
+            if rect.isValid() and not rect.isEmpty():
+                self.view.centerOn(rect.center())
 
     def fit_wall(self) -> None:
         rect = self.scene.itemsBoundingRect()
@@ -417,11 +533,49 @@ class AlbumWallWidget(QWidget):
         if batch:
             self.artworkRequested.emit(batch)
 
+    def _request_online_art(self) -> None:
+        if not self.tiles:
+            return
+        viewport = self.view.viewport().rect()
+        visible = self.view.mapToScene(viewport).boundingRect().adjusted(-100, -100, 100, 100)
+        batch = []
+        preferred = [self.selected_key] if self.selected_key else []
+        preferred.extend(key for key in self.tiles if key != self.selected_key)
+        for key in preferred:
+            tile = self.tiles.get(key)
+            if tile is None or key in self._online_requested or not tile._pixmap.isNull():
+                continue
+            if key != self.selected_key and not tile.sceneBoundingRect().intersects(visible):
+                continue
+            album = self.albums.get(key) or {}
+            track = dict(album.get("representative_track") or {})
+            if track:
+                self._online_requested.add(key)
+                batch.append({"key": key, "track": track})
+            if len(batch) >= 6:
+                break
+        if not batch:
+            self.status.setText("No visible missing covers to look up.")
+            return
+        self.status.setText(f"Looking up {len(batch)} missing cover{'s' if len(batch) != 1 else ''}…")
+        self.onlineArtworkRequested.emit(batch)
+
     def set_artwork(self, mapping: dict[str, str]) -> None:
+        loaded = 0
         for key, path in dict(mapping or {}).items():
-            tile = self.tiles.get(str(key))
+            key = str(key)
+            tile = self.tiles.get(key)
             if tile and path:
                 tile.set_cover_path(str(path))
+                loaded += 1
+            elif key in self._online_requested:
+                self._online_requested.discard(key)
+        if mapping and any(str(key) in self._online_requested for key in mapping):
+            for key in mapping:
+                if str(key) in self._online_requested and mapping[key]:
+                    self._online_requested.add(str(key))
+        if loaded:
+            self.status.setText(f"Loaded {loaded} album cover{'s' if loaded != 1 else ''}.")
 
 
 __all__ = ["AlbumWallWidget"]
