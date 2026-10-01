@@ -116,10 +116,15 @@ class RichMetadataService:
         self.json_cache = self.cache_dir / "json"
         self.art_cache = self.cache_dir / "artwork"
         self.artwork_index_path = self.cache_dir / "artwork-index.json"
+        self.lyrics_cache = self.cache_dir / "lyrics"
+        self.lyrics_index_path = self.cache_dir / "lyrics-index.json"
         self.json_cache.mkdir(parents=True, exist_ok=True)
         self.art_cache.mkdir(parents=True, exist_ok=True)
+        self.lyrics_cache.mkdir(parents=True, exist_ok=True)
         self._artwork_index_lock = threading.Lock()
         self._artwork_index = self._load_artwork_index()
+        self._lyrics_index_lock = threading.Lock()
+        self._lyrics_index = self._load_lyrics_index()
         self.session = session or requests.Session()
         self.capability_broker = capability_broker
         self.session.headers.update({"User-Agent": _USER_AGENT, "Accept": "application/json"})
