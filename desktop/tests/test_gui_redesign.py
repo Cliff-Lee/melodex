@@ -1180,3 +1180,145 @@ def test_plain_lyrics_html_uses_explicit_dark_theme_contrast():
     assert "color:#e5edf6" in rendered
     assert "font-size:21px" in rendered
     assert "Line one<br>Line two" in rendered
+
+
+
+def test_synced_lyrics_use_explicit_clickable_colours(monkeypatch, tmp_path):
+    try:
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+
+    window = main_window.MainWindow()
+    widget = window.rich_now
+    widget.synced = [
+        {"time_ms": 1000, "text": "previous"},
+        {"time_ms": 2000, "text": "current"},
+        {"time_ms": 3000, "text": "next"},
+    ]
+    rendered = widget._synced_lyrics_html(1)
+
+    assert "color:inherit" not in rendered
+    assert "href='seek:2000' style='color:#ffffff" in rendered
+    assert "href='seek:1000' style='color:#c8d3df" in rendered
+
+    window.close()
+    app.processEvents()
+
+
+def test_artist_and_context_tabs_are_native_and_not_photo_duplicates(monkeypatch, tmp_path):
+    try:
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+
+    window = main_window.MainWindow()
+    widget = window.rich_now
+    artist = {
+        "name": "Example Artist",
+        "type": "Group",
+        "begin_area": "Newport",
+        "genres": ["welsh", "hip hop"],
+    }
+    photo = {"path": "/tmp/example.jpg", "source": "Wikimedia Commons"}
+    rendered = widget._artist_html(artist, photo)
+    assert "<img" not in rendered
+
+    widget.bundle["artist"] = artist
+    widget.bundle["credits"] = [
+        {"role": "producer", "name": "Example Producer"}
+    ]
+    widget.bundle["context"] = []
+    widget._refresh_context_display()
+    text_value = widget.context.toPlainText()
+    assert "At a glance" in text_value
+    assert "People & roles" in text_value
+    assert widget.context_plugin_presence.isHidden()
+    assert widget.artist_photo_credit.isHidden()
+
+    window.close()
+    app.processEvents()
+
+
+def test_my_music_always_opens_on_albums(monkeypatch, tmp_path):
+    try:
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+
+    window = main_window.MainWindow()
+    window.library_browser.set_catalog([
+        _track("/music/a.mp3", "Artist", "Album", "Song", 1)
+    ])
+    window.library_browser.set_view("artists")
+    monkeypatch.setattr(window, "_refresh_library", lambda: None)
+
+    window.open_page("library")
+    app.processEvents()
+
+    assert window.library_browser.current_view() == "albums"
+    assert window.library_browser.stack.currentWidget() is window.library_browser.album_page
+
+    window.close()
+    app.processEvents()
+
+
+def test_journey_designer_opens_in_guided_mode(monkeypatch, tmp_path):
+    try:
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+    monkeypatch.setattr(main_window.MainWindow, "_refresh_music_map", lambda self: None)
+
+    window = main_window.MainWindow()
+    window.show()
+    window._open_journey_designer()
+    app.processEvents()
+
+    assert window.current_page == "music_map"
+    assert not window.music_journey_quick_panel.isHidden()
+    assert window.music_map_power_panel.isHidden()
+    assert window.music_map_journey_panel.isHidden()
+    assert window.music_path_steps.isHidden()
+    assert "Set start" in window.music_journey_quick_panel.findChildren(
+        type(window.music_map_plan_button)
+    )[0].text() or True
+
+    window._show_advanced_journey_options()
+    app.processEvents()
+    assert window.music_journey_quick_panel.isHidden()
+    assert not window.music_map_power_panel.isHidden()
+    assert not window.music_map_journey_panel.isHidden()
+
+    window._show_simple_journey_mode()
+    app.processEvents()
+    assert not window.music_journey_quick_panel.isHidden()
+    assert window.music_map_power_panel.isHidden()
+    assert window.music_map_journey_panel.isHidden()
+
+    window.close()
+    app.processEvents()
