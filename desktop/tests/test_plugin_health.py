@@ -408,3 +408,28 @@ def test_extension_network_error_diagnostic_is_transient():
     assert ExternalExtension._diagnostic_error(
         RuntimeError("malformed response")
     ) == "call_error"
+
+
+
+def test_active_extension_tls_health_failure_is_unavailable(monkeypatch, tmp_path: Path):
+    manager = ProviderManager(tmp_path / "data")
+    try:
+        package = _active_extension_package(tmp_path / "tls-health.mdxplugin")
+        info = manager.install_extension(package)
+        extension = manager.capabilities.extensions[info.id]
+
+        def fail_health(*args, **kwargs):
+            raise RuntimeError(
+                "<urlopen error [SSL: CERTIFICATE_VERIFY_FAILED] "
+                "certificate verify failed>"
+            )
+
+        monkeypatch.setattr(extension, "_rpc_method", fail_health)
+        result = manager.test_plugin_health(info.id, timeout=1)
+
+        assert result["status"] == "unavailable"
+        assert result["reason"] == "tls_error"
+        assert "temporarily unavailable" in result["message"].casefold()
+        assert result["upstream_checked"] is False
+    finally:
+        manager.close()
