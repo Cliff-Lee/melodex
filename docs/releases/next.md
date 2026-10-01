@@ -33,3 +33,12 @@ See [Releasing Melodex](../RELEASING.md) for the release process.
 - Manual attempts to install those legacy development adapters into a public build are rejected.
 - The public bundled provider payload remains restricted to the six audited bundled providers.
 
+
+### Artwork lookup reliability
+
+- **Get artist photos** now advances one artist at a time, so progress updates after every lookup instead of waiting for a large batch.
+- A failed artist lookup no longer strands the full pass; Melodex skips it and continues.
+- **Find missing artwork** now traverses the complete set of missing album covers rather than stopping after 12.
+- Album-cover progress is visible on the action button and advances after each album.
+- Artist and album enrichment passes cannot run simultaneously, avoiding competing metadata/network crawls.
+- Unexpected worker errors now return control to the queue so the next item can continue.
