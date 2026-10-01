@@ -24,6 +24,8 @@ from .mind import MindEngine
 from .local_intelligence import LocalIntelligenceService
 from .music_map import MusicMapWidget
 from .music_map_model import build_music_map
+from .album_wall import AlbumWallWidget
+from .album_wall_model import build_album_wall
 from .music_knowledge import MusicKnowledgeStore, build_knowledge_graph
 from .music_pathfinder import find_music_path
 from .music_journey import STAGE_LABELS, build_music_journey
@@ -171,7 +173,7 @@ class MainWindow(QMainWindow):
         titles.addWidget(logo); titles.addWidget(tagline)
         brand.addWidget(mark); brand.addLayout(titles, 1)
         side.addLayout(brand); side.addSpacing(12)
-        for text, page in [("Home","home"),("Now playing","now_playing"),("Play for me","for_you"),("Discover","discover"),("My music","library"),("Music map","music_map"),("Journeys","journeys"),("Playlists","playlists"),("Moments","moments"),("Ask Melodex","ask"),("Sources","sources")]:
+        for text, page in [("Home","home"),("Now playing","now_playing"),("Play for me","for_you"),("Discover","discover"),("My music","library"),("Album wall","album_wall"),("Music map","music_map"),("Journeys","journeys"),("Playlists","playlists"),("Moments","moments"),("Ask Melodex","ask"),("Sources","sources")]:
             b = QPushButton(text); b.setCursor(Qt.PointingHandCursor); b.clicked.connect(lambda _=False,p=page:self.open_page(p)); side.addWidget(b)
         side.addStretch(1)
         self.power_toggle = QCheckBox("Show power tools")
@@ -181,9 +183,9 @@ class MainWindow(QMainWindow):
 
         self.stack = QStackedWidget(); body_l.addWidget(self.stack, 1)
         self.pages: dict[str, QWidget] = {}
-        for name in ["home","now_playing","for_you","discover","library","music_map","journeys","playlists","moments","ask","sources"]:
+        for name in ["home","now_playing","for_you","discover","library","album_wall","music_map","journeys","playlists","moments","ask","sources"]:
             w = QWidget(); self.pages[name]=w; self.stack.addWidget(w)
-        self._build_home(); self._build_now_playing(); self._build_for_you(); self._build_discover(); self._build_library(); self._build_music_map(); self._build_journeys(); self._build_playlists(); self._build_moments(); self._build_ask(); self._build_sources()
+        self._build_home(); self._build_now_playing(); self._build_for_you(); self._build_discover(); self._build_library(); self._build_album_wall(); self._build_music_map(); self._build_journeys(); self._build_playlists(); self._build_moments(); self._build_ask(); self._build_sources()
 
         self.queue_panel = QWidget(); self.queue_panel.setFixedWidth(320)
         ql = QVBoxLayout(self.queue_panel); ql.setContentsMargins(12,12,12,12)
@@ -291,6 +293,24 @@ class MainWindow(QMainWindow):
         l=self._page_layout("library","My music","Local music stays on your device. Melodex analyses it locally for Flow.")
         row=QHBoxLayout(); add=QPushButton("Add folder…"); add.clicked.connect(self._choose_music_folder); scan=QPushButton("Rescan"); scan.clicked.connect(self._rescan); row.addWidget(add); row.addWidget(scan); row.addStretch(1); l.addLayout(row)
         self.library_list=QListWidget(); self.library_list.itemDoubleClicked.connect(self._play_library); l.addWidget(self.library_list,1)
+
+    def _build_album_wall(self):
+        l=self._page_layout(
+            "album_wall",
+            "Album wall",
+            "Explore your collection spatially. Sound keeps related records near each other; switch lenses for familiarity, time, or a stable A–Z shelf.",
+        )
+        actions=QHBoxLayout()
+        refresh=QPushButton("Refresh wall"); refresh.clicked.connect(self._refresh_album_wall)
+        analyse=QPushButton("Analyse my library"); analyse.clicked.connect(self._analyse_library_for_album_wall)
+        play=QPushButton("Play album"); play.clicked.connect(self._play_album_wall_selected)
+        queue=QPushButton("Queue album"); queue.clicked.connect(self._queue_album_wall_selected)
+        actions.addWidget(refresh); actions.addWidget(analyse); actions.addWidget(play); actions.addWidget(queue); actions.addStretch(1)
+        l.addLayout(actions)
+        self.album_wall=AlbumWallWidget(self)
+        self.album_wall.albumActivated.connect(self._play_album_wall_album)
+        self.album_wall.artworkRequested.connect(self._album_wall_artwork_requested)
+        l.addWidget(self.album_wall,1)
 
     def _build_music_map(self):
         l=self._page_layout(
@@ -560,6 +580,7 @@ class MainWindow(QMainWindow):
         self.current_page=name; self.stack.setCurrentWidget(self.pages[name])
         if name=="home": self._show_home()
         elif name=="library": self._refresh_library()
+        elif name=="album_wall": self._refresh_album_wall()
         elif name=="music_map": self._refresh_music_map()
         elif name=="sources": self._refresh_sources()
         elif name=="moments": self._refresh_moments()
@@ -1716,6 +1737,122 @@ class MainWindow(QMainWindow):
         )
 
     # ------------------------------- Music Map
+    def _build_album_wall_payload(self):
+        catalog=self.providers.local_catalog()
+        profiles, _seed_refs, ref_map, _analysed = self.local_intelligence.build_snapshot(
+            catalog,
+            [],
+            max_tracks=5000,
+            analyse_seeds=False,
+        )
+        projection=build_music_map(profiles,max_nodes=5000,neighbours=0)
+        projected_refs={
+            str(node.get("ref") or "")
+            for node in list(projection.get("nodes") or [])
+            if isinstance(node,dict) and str(node.get("ref") or "")
+        }
+        projected_ref_map={
+            ref:dict(track)
+            for ref,track in ref_map.items()
+            if ref in projected_refs
+        }
+        return build_album_wall(
+            catalog,
+            projection,
+            projected_ref_map,
+            max_albums=1200,
+        )
+
+    def _refresh_album_wall(self):
+        catalog=self.providers.local_catalog()
+        if not catalog:
+            self.album_wall.set_model({},self.current_track)
+            self.statusBar().showMessage("Add local music to build an Album Wall",4000)
+            return
+        self.statusBar().showMessage("Building Album Wall from local metadata and cached Flow analysis…")
+        self._run_async(self._build_album_wall_payload,self._apply_album_wall_payload)
+
+    def _apply_album_wall_payload(self,payload):
+        payload=dict(payload or {})
+        self.album_wall.set_model(payload,self.current_track)
+        albums=int(payload.get("album_count") or 0)
+        analysed=int(payload.get("analysed_albums") or 0)
+        if analysed:
+            message=f"Album Wall ready · {albums} albums · {analysed} positioned from Flow analysis"
+        else:
+            message=f"Album Wall ready · {albums} albums · analyse your library for sonic neighbourhoods"
+        self.statusBar().showMessage(message,6000)
+
+    def _analyse_library_for_album_wall(self):
+        catalog=self.providers.local_catalog()
+        if not catalog:
+            QMessageBox.information(self,"Add music first","Add a local music folder before analysing your Album Wall.")
+            return
+        if not self.flow.analysis_available:
+            QMessageBox.information(
+                self,
+                "Audio analysis unavailable",
+                "Album Wall sonic layout needs ffmpeg and NumPy. The wall still works in metadata mode; install/enable them for sonic neighbourhoods.",
+            )
+            return
+        self.statusBar().showMessage("Analysing local library for Album Wall…")
+        self._run_async(
+            lambda:self.local_intelligence.analyse_catalog(catalog),
+            self._album_wall_analysis_finished,
+        )
+
+    def _album_wall_analysis_finished(self,result):
+        self.statusBar().showMessage(
+            f"Album Wall analysis ready · {int(result.get('analysed') or 0)}/{int(result.get('total') or 0)} analysed",
+            5000,
+        )
+        self._refresh_album_wall()
+
+    def _album_wall_selected(self):
+        return self.album_wall.selected_album() if hasattr(self,"album_wall") else {}
+
+    def _play_album_wall_album(self,album):
+        tracks=[dict(x) for x in list((album or {}).get("tracks") or []) if isinstance(x,dict)]
+        if tracks:
+            self.player.set_queue(tracks,0,True)
+            self.statusBar().showMessage(
+                f"Playing {album.get('artist') or 'Unknown artist'} — {album.get('title') or 'Unknown album'}",
+                4500,
+            )
+
+    def _play_album_wall_selected(self):
+        album=self._album_wall_selected()
+        if album:
+            self._play_album_wall_album(album)
+
+    def _queue_album_wall_selected(self):
+        album=self._album_wall_selected()
+        tracks=[dict(x) for x in list(album.get("tracks") or []) if isinstance(x,dict)] if album else []
+        if not tracks:
+            self.statusBar().showMessage("Select an album on the wall first",3000)
+            return
+        if not self.player.queue:
+            self.player.set_queue(tracks,0,False)
+        else:
+            self.player.append_queue(tracks,autoplay=False)
+        self.statusBar().showMessage(f"Queued {len(tracks)} tracks from {album.get('title') or 'album'}",4000)
+
+    def _album_wall_artwork_requested(self,requests):
+        rows=[dict(x) for x in list(requests or []) if isinstance(x,dict)]
+        if not rows:
+            return
+        def load():
+            result={}
+            for row in rows:
+                key=str(row.get("key") or "")
+                track=dict(row.get("track") or {})
+                if not key or not track:
+                    continue
+                info=self.metadata.local_artwork(track)
+                result[key]=str(info.get("path") or "")
+            return result
+        self._run_async(load,self.album_wall.set_artwork)
+
     def _build_music_map_payload(self):
         catalog=self.providers.local_catalog()
         profiles, _seed_refs, ref_map, _analysed = self.local_intelligence.build_snapshot(
@@ -2671,6 +2808,8 @@ class MainWindow(QMainWindow):
             self._request_cached_visual_analysis(self.current_track)
         if hasattr(self,"music_map"):
             self.music_map.highlight_track(t)
+        if hasattr(self,"album_wall"):
+            self.album_wall.highlight_track(t)
         if self.music_live_active:
             current_ref=self._music_ref_for_track(self.current_track)
             if current_ref and (
