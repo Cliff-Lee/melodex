@@ -209,3 +209,15 @@ def test_registry_cache_isolated_by_registry_url(tmp_path: Path):
     first.fetch(force=True)
     assert first.cache_path.exists()
     assert not second.cache_path.exists()
+
+
+
+def test_public_registry_is_reference_only_and_not_a_preinstall_manifest():
+    registry_path = Path(__file__).resolve().parents[2] / "provider-sdk" / "registry" / "registry.json"
+    data = json.loads(registry_path.read_text("utf-8"))
+    plugins = list(data.get("plugins") or [])
+    assert len(plugins) == 16
+    assert {str(row.get("status") or "") for row in plugins} == {"example"}
+    assert sum(1 for row in plugins if row.get("kind") == "provider") == 4
+    assert sum(1 for row in plugins if row.get("kind") == "enrichment") == 8
+    assert sum(1 for row in plugins if row.get("kind") == "tool") == 4
