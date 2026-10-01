@@ -468,7 +468,7 @@ def test_imported_lrc_is_copied_and_remains_synchronized(tmp_path: Path):
 
 
 
-def test_community_lyrics_prefers_exact_lrclib_match_without_persisting(tmp_path: Path):
+def test_community_lyrics_prefers_exact_lrclib_match_and_persists_bounded_cache(tmp_path: Path):
     svc = RichMetadataService(tmp_path / "data")
 
     class Response:
@@ -505,7 +505,17 @@ def test_community_lyrics_prefers_exact_lrclib_match_without_persisting(tmp_path
     assert len(result["synced"]) == 2
     assert result["synced"][0]["time_ms"] == 1000
     assert calls[0][0].endswith("/api/get")
-    assert not list((tmp_path / "data" / "rich-metadata" / "lyrics").glob("*lrclib*"))
+
+    reopened = RichMetadataService(tmp_path / "data")
+    cached = reopened.cached_community_lyrics({
+        "artist": "Example Artist",
+        "title": "Example Song",
+        "album": "Example Album",
+        "duration": 201.0,
+    })
+    assert cached["text"] == "Line one\nLine two"
+    assert cached["source"] == "LRCLIB community lyrics"
+    assert cached["cache"] == "disk"
 
 
 def test_community_lyrics_search_rejects_wrong_artist(tmp_path: Path):
@@ -1009,3 +1019,48 @@ def test_legacy_remote_artwork_cache_is_revalidated_but_user_photo_survives(tmp_
     }
     assert svc.cached_artist_photo({"name": "Remote Artist"}) == {}
     assert svc.cached_artist_photo({"name": "User Artist"})["path"] == str(user)
+
+
+
+def test_lrclib_force_refresh_invalidates_persistent_cache(tmp_path: Path):
+    track = {
+        "artist": "Example Artist",
+        "title": "Example Song",
+        "album": "Example Album",
+        "duration": 180.0,
+    }
+    svc = RichMetadataService(tmp_path / "data")
+    svc._cache_community_lyrics(
+        "example artist|example song|example album|180",
+        {
+            "text": "old",
+            "synced": [],
+            "source": "LRCLIB community lyrics",
+            "status": "found",
+        },
+        ttl=3600,
+    )
+    assert svc.cached_community_lyrics(track)["text"] == "old"
+
+    class Response:
+        status_code = 200
+        def json(self):
+            return {
+                "id": 99,
+                "trackName": "Example Song",
+                "artistName": "Example Artist",
+                "albumName": "Example Album",
+                "duration": 180.0,
+                "plainLyrics": "new",
+                "syncedLyrics": "",
+                "instrumental": False,
+            }
+        def raise_for_status(self):
+            return None
+
+    svc.session.get = lambda *args, **kwargs: Response()
+    refreshed = svc.community_lyrics(track, force=True)
+    assert refreshed["text"] == "new"
+
+    reopened = RichMetadataService(tmp_path / "data")
+    assert reopened.cached_community_lyrics(track)["text"] == "new"
