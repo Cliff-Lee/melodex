@@ -85,7 +85,7 @@ Core lyrics support is local-first:
 3. embedded lyrics tags;
 4. installed `lyrics` capability extensions.
 
-v0.7.1 also adds an explicit **Find online** action backed by LRCLIB. This is user-initiated rather than automatic: Melodex sends the current track metadata to LRCLIB, displays a conservative match, and does not permanently cache LRCLIB lyric text. LRCLIB is a third-party community service; lyrics remain the work of their respective rights holders.
+v0.7.1 also adds an explicit **Find online** action backed by LRCLIB. By default it is user-initiated: Melodex sends the current track metadata to LRCLIB, displays a conservative match, and does not permanently cache LRCLIB lyric text. Users can optionally enable **Auto-find online** in the Lyrics tab; that preference is stored locally and only runs when local/plugin lyrics are unavailable. LRCLIB is a third-party community service; lyrics remain the work of their respective rights holders.
 
 Melodex does not scrape commercial lyric websites.
 
