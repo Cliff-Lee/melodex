@@ -56,7 +56,7 @@ from .plugin_onboarding import plugin_needs_setup
 from .plugin_health import health_badge, health_summary
 from .diagnostics import write_diagnostics
 from .library_browser import LibraryBrowser
-from .ux_components import ActionCard, CommandPaletteDialog, CoverLabel, EmptyState, set_help
+from .ux_components import ActionCard, CommandPaletteDialog, CoverLabel, EmptyState, SourceCard, set_help
 
 
 class WorkerSignals(QObject):
