@@ -43,15 +43,21 @@ When that metadata is absent, it applies conservative repair rules for obvious c
 
 The **Artists** view is visual rather than a text-only list.
 
-Each artist card shows:
+Each artist card is semantically an **artist portrait**, not an album tile.
 
-- an artist image when one has been found and cached;
-- otherwise a representative album image;
+It shows:
+
+- a real artist photo when one has been identified and cached;
+- otherwise a neutral artist placeholder;
 - album count;
 - track count;
 - quick View / Play actions.
 
-Choose **Find artist photos** to explicitly try online metadata sources for missing artist images. Found photos are cached and reused later.
+Melodex deliberately does **not** use an album cover as though it were a photograph of the artist.
+
+Choose **Get artist photos** to explicitly try MusicBrainz/Wikidata/Wikimedia-based artist identification for missing portraits. If a representative track does not already contain an artist ID, Melodex can conservatively resolve the artist by name first. Ambiguous matches are rejected rather than guessed.
+
+Found photos are cached and reused later.
 
 ## Tracks
 
