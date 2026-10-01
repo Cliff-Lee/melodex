@@ -4,7 +4,7 @@ import hashlib
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QRect, QRectF, Qt, QTimer, QVariantAnimation, Signal
+from PySide6.QtCore import QAbstractAnimation, QEasingCurve, QRect, QRectF, Qt, QTimer, QVariantAnimation, Signal
 from PySide6.QtGui import QBrush, QColor, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import (
     QComboBox,
@@ -219,14 +219,62 @@ class _AlbumTile(QGraphicsObject):
 
 
 class _WallView(QGraphicsView):
+    """Canvas-like wall navigation with gentle zoom and trackpad panning."""
+
     viewportChanged = Signal()
 
-    def wheelEvent(self, event):
-        factor = 1.16 if event.angleDelta().y() > 0 else 1 / 1.16
-        current = self.transform().m11()
-        if (factor > 1 and current < 4.2) or (factor < 1 and current > 0.10):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._zoom_animation = QVariantAnimation(self)
+        self._zoom_animation.setDuration(135)
+        self._zoom_animation.setEasingCurve(QEasingCurve.OutCubic)
+        self._zoom_animation.valueChanged.connect(self._apply_zoom_value)
+
+    def _apply_zoom_value(self, value) -> None:
+        target = float(value)
+        current = max(0.0001, float(self.transform().m11()))
+        factor = target / current
+        if abs(factor - 1.0) > 0.0005:
             self.scale(factor, factor)
         self.viewportChanged.emit()
+
+    def smooth_zoom(self, multiplier: float) -> None:
+        current = max(0.0001, float(self.transform().m11()))
+        target = max(0.58, min(2.35, current * float(multiplier)))
+        if abs(target - current) < 0.002:
+            return
+        if self._zoom_animation.state() == QAbstractAnimation.Running:
+            self._zoom_animation.stop()
+        self._zoom_animation.setStartValue(current)
+        self._zoom_animation.setEndValue(target)
+        self._zoom_animation.start()
+
+    def wheelEvent(self, event):
+        # Native-feeling trackpad navigation: two-finger scrolling pans the
+        # wall. Mouse wheels still zoom; Cmd/Ctrl + trackpad scroll zooms.
+        pixel = event.pixelDelta()
+        zoom_modifier = bool(
+            event.modifiers() & (Qt.ControlModifier | Qt.MetaModifier)
+        )
+        if not pixel.isNull() and not zoom_modifier:
+            self.horizontalScrollBar().setValue(
+                self.horizontalScrollBar().value() - pixel.x()
+            )
+            self.verticalScrollBar().setValue(
+                self.verticalScrollBar().value() - pixel.y()
+            )
+            event.accept()
+            self.viewportChanged.emit()
+            return
+
+        delta = event.angleDelta().y()
+        if not delta and not pixel.isNull():
+            delta = pixel.y()
+        if not delta:
+            return
+        steps = max(-3.0, min(3.0, float(delta) / 120.0))
+        self.smooth_zoom(1.10 ** steps)
+        event.accept()
 
     def scrollContentsBy(self, dx: int, dy: int):
         super().scrollContentsBy(dx, dy)
@@ -260,6 +308,7 @@ class AlbumWallWidget(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         controls = QHBoxLayout()
+        controls.setSpacing(8)
         self.lens = QComboBox()
         self.lens.addItem("Sound", "sound")
         self.lens.addItem("Familiarity", "familiarity")
@@ -267,36 +316,36 @@ class AlbumWallWidget(QWidget):
         self.lens.addItem("A–Z shelves", "shelves")
         self.lens_info = QLabel("")
         self.lens_info.setStyleSheet("color:#8f99aa")
-        now = QPushButton("Now playing")
-        overview = QPushButton("Overview")
-        controls.addWidget(QLabel("Arrange by"))
-        controls.addWidget(self.lens)
-        controls.addWidget(self.lens_info)
-        controls.addStretch(1)
-        controls.addWidget(now)
-        controls.addWidget(overview)
-        layout.addLayout(controls)
-
-        search_row = QHBoxLayout()
         self.search = QLineEdit()
         self.search.setPlaceholderText("Find artist or album…")
-        self.search.setMaximumWidth(520)
+        self.search.setMaximumWidth(360)
         find = QPushButton("Find")
-        covers = QPushButton("Find missing covers online")
-        covers.setToolTip("Look up a small batch of visible missing covers using Melodex metadata services.")
-        search_row.addWidget(self.search, 1)
-        search_row.addWidget(find)
-        search_row.addWidget(covers)
-        search_row.addStretch(1)
-        layout.addLayout(search_row)
+        now = QPushButton("Now playing")
+        actual = QPushButton("Actual size")
+        overview = QPushButton("Overview")
+        controls.addWidget(QLabel("Arrange"))
+        controls.addWidget(self.lens)
+        controls.addWidget(self.lens_info)
+        controls.addSpacing(10)
+        controls.addWidget(self.search, 1)
+        controls.addWidget(find)
+        controls.addStretch(1)
+        controls.addWidget(now)
+        controls.addWidget(actual)
+        controls.addWidget(overview)
+        layout.addLayout(controls)
 
         self.scene = QGraphicsScene(self)
         self.view = _WallView(self.scene)
         self.view.setDragMode(QGraphicsView.ScrollHandDrag)
         self.view.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
         self.view.setResizeAnchor(QGraphicsView.AnchorViewCenter)
+        self.view.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.view.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.view.setBackgroundBrush(QBrush(QColor("#0f1116")))
         self.view.setRenderHint(QPainter.Antialiasing, True)
+        self.view.setRenderHint(QPainter.SmoothPixmapTransform, True)
+        self.view.setMinimumHeight(430)
         layout.addWidget(self.view, 1)
 
         self.selection = QLabel("Select an album to see its details.")
@@ -311,8 +360,8 @@ class AlbumWallWidget(QWidget):
         self.search.returnPressed.connect(self.find)
         find.clicked.connect(self.find)
         now.clicked.connect(self.centre_current)
+        actual.clicked.connect(self.actual_size)
         overview.clicked.connect(self.fit_wall)
-        covers.clicked.connect(self._request_online_art)
         self.view.viewportChanged.connect(self._schedule_visible_art)
         self._art_timer = QTimer(self)
         self._art_timer.setSingleShot(True)
@@ -357,7 +406,8 @@ class AlbumWallWidget(QWidget):
             self._initial_view()
             self.status.setText(
                 f"{albums:,} albums · {analysed:,} positioned from Flow analysis · "
-                "wheel to zoom · drag to explore · double-click an album to play"
+                "drag / two-finger scroll to pan · wheel or Cmd/Ctrl-scroll to zoom · "
+                "double-click an album to play"
             )
             self._schedule_visible_art()
         else:
@@ -447,9 +497,11 @@ class AlbumWallWidget(QWidget):
         self.lens_info.setText(suffix)
 
     def _initial_view(self) -> None:
+        # Browsing starts close to sleeve size. "Overview" is an explicit
+        # temporary overview, not the default scale for a large collection.
         self.view.resetTransform()
         count = max(1, len(self.tiles))
-        scale = 0.92 if count <= 30 else 0.82 if count <= 120 else 0.72
+        scale = 1.02 if count <= 40 else 0.96 if count <= 220 else 0.90
         self.view.scale(scale, scale)
         if self.current_key and self.current_key in self.tiles:
             self.view.centerOn(self.tiles[self.current_key])
@@ -457,6 +509,18 @@ class AlbumWallWidget(QWidget):
             rect = self.scene.itemsBoundingRect()
             if rect.isValid() and not rect.isEmpty():
                 self.view.centerOn(rect.center())
+
+    def actual_size(self) -> None:
+        centre = self.view.mapToScene(self.view.viewport().rect().center())
+        self.view.resetTransform()
+        self.view.scale(1.0, 1.0)
+        if self.selected_key in self.tiles:
+            self.view.centerOn(self.tiles[self.selected_key])
+        elif self.current_key in self.tiles:
+            self.view.centerOn(self.tiles[self.current_key])
+        else:
+            self.view.centerOn(centre)
+        self._schedule_visible_art()
 
     def fit_wall(self) -> None:
         rect = self.scene.itemsBoundingRect()
@@ -470,9 +534,9 @@ class AlbumWallWidget(QWidget):
             return
         self._select(str(key))
         self.view.centerOn(tile)
-        if self.view.transform().m11() < 0.8:
+        if self.view.transform().m11() < 0.86:
             self.view.resetTransform()
-            self.view.scale(0.95, 0.95)
+            self.view.scale(0.98, 0.98)
             self.view.centerOn(tile)
         self._schedule_visible_art()
 
@@ -532,6 +596,10 @@ class AlbumWallWidget(QWidget):
                 break
         if batch:
             self.artworkRequested.emit(batch)
+
+    def request_missing_covers(self) -> None:
+        """Explicitly request online cover recovery for the visible wall."""
+        self._request_online_art()
 
     def _request_online_art(self) -> None:
         if not self.tiles:

@@ -10,7 +10,7 @@ and
 
 > **What is actually connected?**
 
-The dots keep the same sonic positions while the **Connections** selector changes which relationships are drawn between them.
+The dots keep the same sonic positions while the **Connections** selector changes which relationships are drawn between them. The default is deliberately **Selected relationships**: the map starts visually quiet, then reveals the selected track's immediate sonic relationships. This avoids turning a library into an unreadable web before the listener has chosen what to inspect.
 
 ## 1. The sonic landscape
 
@@ -29,13 +29,19 @@ Nearby dots therefore have similar combinations of those Flow features.
 
 This is an explainable projection of Melodex's current analysis features, not a claim that musical similarity has one objectively correct geometry.
 
-## 2. Sounds similar
+## 2. Focus first, then expand
 
-Choose:
+The default view is:
 
-**Connections → Sounds similar · Flow**
+**Connections → Selected relationships**
 
-Melodex draws local nearest-neighbour edges in the Flow feature space.
+No connection web is drawn until you select a track. Melodex then shows only that track's immediate sonic neighbours, keeping the spatial layout readable and making the selected object the clear focus.
+
+When you explicitly want the whole sonic network, choose:
+
+**Connections → All sonic links**
+
+Melodex then draws the local nearest-neighbour edges in the Flow feature space using deliberately quieter lines.
 
 These edges answer:
 
@@ -132,7 +138,7 @@ Without that plugin, Music Map still supports local artist/album links and Music
 
 ## 7. Knowledge colours and sonic colours are independent
 
-The **Colour** selector changes the dots:
+The **View** selector changes the dots:
 
 - Sonic colour
 - Energy
@@ -144,13 +150,36 @@ The **Connections** selector changes the edges.
 For example:
 
 ```text
-Colour: Rediscovery
+View: Rediscovery
 Connections: Production
 ```
 
 shows which tracks may be ready to return while simultaneously revealing common production links.
 
 That separation is intentional.
+
+## Progressive disclosure and navigation
+
+Music Map is primarily a spatial exploration surface, so the graph owns most of the page.
+
+Normal browsing shows only:
+
+- **Map options…**
+- **Play selected**
+- **Queue selected**
+- **Plan a route…**
+- the compact **View / Connections / Search / Fit map** row
+- the map itself.
+
+**Map options…** reveals analysis, refresh and bounded metadata-enrichment actions.
+
+**Plan a route…** reveals Pathfinder start/destination controls.
+
+**Journey options…** is a further disclosure inside the route planner for presets, semantic stages and live steering. Those controls are intentionally absent during ordinary map browsing.
+
+Global **Power tools** does not force any of these spatial panels open.
+
+Navigation mirrors Album Wall: drag to pan, two-finger trackpad scrolling pans, mouse-wheel or Cmd/Ctrl-scroll zooms smoothly, and **Fit map** restores a useful overview. The initial fit is slightly closer than a whole-scene thumbnail so nodes remain visually legible.
 
 ## 8. Privacy
 
@@ -178,9 +207,7 @@ The map is therefore an exploration view, not an assertion that every indexed tr
 
 ## 10. Starting a journey
 
-Select a track and choose:
-
-**Start Mind journey here**
+Select a track, choose **Plan a route…**, then use **Start listening here** when you want the selected track to become a listening anchor.
 
 The selected mapped track becomes the starting anchor for Mind + Flow.
 

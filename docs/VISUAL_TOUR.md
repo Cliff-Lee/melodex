@@ -123,6 +123,8 @@ The persistent player remains visible across the app and acts as the route into 
 
 Click the current track in the persistent player.
 
+The **Lyrics** tab is native Melodex UI: installed lyric extensions feed the same source selector and synchronized renderer rather than exposing their own page. The primary controls are **Source / Refresh lyrics / Full screen / Translate / More**, with secondary source-management actions kept out of the listening surface.
+
 The default **Now Playing** view prioritises:
 
 - artwork;

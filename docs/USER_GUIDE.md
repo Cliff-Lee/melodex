@@ -22,6 +22,20 @@ Open **Now Playing** by clicking the current track in the persistent player.
 
 The default **Now Playing** tab leads with artwork, lyrics and track context. Optional visualisations live under **Visuals** so the music remains primary.
 
+### Native Lyrics
+
+Open the **Lyrics** tab while a track is selected. Lyrics are a built-in Melodex experience even when an installed extension supplies the words.
+
+The compact toolbar contains:
+
+- **Source** — choose between available lyric results such as saved/local lyrics, an installed lyric source, or LRCLIB;
+- **Refresh lyrics** — re-check saved, embedded and installed lyric sources first, then use the online fallback only if nothing else matches;
+- **Full screen** — open the synchronized large-type view;
+- **Translate** — explicitly use your configured LLM for a temporary translation;
+- **More** — edit a saved personal copy, add/paste lyrics, control Auto-find online, or manage optional lyric sources.
+
+Synchronized lines highlight with playback and remain click-to-seek. Installed `lyrics.lookup` extensions participate automatically; you do not open or operate a separate plugin page to use them.
+
 In **Visuals**, choose a view from the selector. Each track has a repeatable visual identity. Cached Flow features shape its scene when available; album artwork supplies a sampled colour palette.
 
 The modes include the animated Living Canvas, Song Fingerprint, the seekable Musical Journey, a queue/history Constellation, local Lyrics Typography, Album World, Sonic Weather, a local Visual Memory atlas and Minimal. Constellation stars can be inspected with a click and queued with a double-click. Visual Memory can zoom by session, album, week or year; it reads only the listening history already stored on this device.

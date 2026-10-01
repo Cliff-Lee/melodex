@@ -1286,12 +1286,12 @@ class MainWindow(QMainWindow):
         l=self._page_layout(
             "album_wall",
             "Album Wall",
-            "Browse your collection as a visual place. Drag to explore, scroll to zoom, and change the lens when you want a different way of seeing the same music.",
+            "Browse your collection as a visual place. Drag or two-finger scroll to pan, zoom when you need it, and double-click an album to play.",
         )
 
         actions=QHBoxLayout()
-        improve=QPushButton("Improve sonic layout")
-        improve.clicked.connect(self._analyse_library_for_album_wall)
+        self.album_wall_options_button=QPushButton("Wall options…")
+        self.album_wall_options_button.clicked.connect(self._toggle_album_wall_tools)
         self.album_wall_play_button=QPushButton("▶ Play selected")
         self.album_wall_play_button.clicked.connect(self._play_album_wall_selected)
         self.album_wall_play_button.setEnabled(False)
@@ -1299,9 +1299,9 @@ class MainWindow(QMainWindow):
         self.album_wall_queue_button.clicked.connect(self._queue_album_wall_selected)
         self.album_wall_queue_button.setEnabled(False)
         set_help(
-            improve,
-            "Improve sonic layout",
-            "Analyses tempo, dynamics and other sonic characteristics on this computer so the Sound lens can place related albums near each other. Audio is not uploaded.",
+            self.album_wall_options_button,
+            "Wall options",
+            "Reveal occasional maintenance actions such as sonic analysis, rebuilding the wall and recovering missing covers.",
         )
         set_help(
             self.album_wall_play_button,
@@ -1313,7 +1313,7 @@ class MainWindow(QMainWindow):
             "Queue selected album",
             "Adds every track from the selected album after the music already in your queue.",
         )
-        actions.addWidget(improve)
+        actions.addWidget(self.album_wall_options_button)
         actions.addStretch(1)
         actions.addWidget(self.album_wall_play_button)
         actions.addWidget(self.album_wall_queue_button)
@@ -1325,13 +1325,19 @@ class MainWindow(QMainWindow):
         power.setContentsMargins(12,8,12,8)
         refresh=QPushButton("Rebuild wall")
         refresh.clicked.connect(self._refresh_album_wall)
-        raw_analyse=QPushButton("Run library analysis")
+        raw_analyse=QPushButton("Improve sonic layout")
         raw_analyse.clicked.connect(self._analyse_library_for_album_wall)
-        power.addWidget(QLabel("Power tools"))
+        recover_covers=QPushButton("Find missing covers")
+        recover_covers.clicked.connect(
+            lambda:self.album_wall.request_missing_covers()
+            if hasattr(self,"album_wall") else None
+        )
+        power.addWidget(QLabel("Wall options"))
         power.addWidget(refresh)
         power.addWidget(raw_analyse)
+        power.addWidget(recover_covers)
         power.addStretch(1)
-        self.album_wall_power_panel.setVisible(self.power_toggle.isChecked())
+        self.album_wall_power_panel.hide()
         l.addWidget(self.album_wall_power_panel)
 
         self.album_wall=AlbumWallWidget(self)
@@ -1351,34 +1357,57 @@ class MainWindow(QMainWindow):
         l=self._page_layout(
             "music_map",
             "Music Map",
-            "Explore relationships between tracks. Select something on the map first; route-planning and technical controls appear only when you ask for them.",
+            "Explore your music as a landscape. Pan and zoom freely; select a track to reveal its closest relationships. Routes and technical tools stay out of the way until requested.",
         )
 
         simple=QHBoxLayout()
+        self.music_map_options_button=QPushButton("Map options…")
+        self.music_map_options_button.clicked.connect(self._toggle_music_map_options)
+        self.music_map_play_button=QPushButton("▶ Play selected")
+        self.music_map_play_button.clicked.connect(self._play_music_map_selected)
+        self.music_map_play_button.setEnabled(False)
+        self.music_map_queue_button=QPushButton("+ Queue selected")
+        self.music_map_queue_button.clicked.connect(self._queue_music_map_selected)
+        self.music_map_queue_button.setEnabled(False)
+        self.music_map_plan_button=QPushButton("Plan a route…")
+        self.music_map_plan_button.clicked.connect(self._toggle_music_map_tools)
+        set_help(
+            self.music_map_options_button,
+            "Map options",
+            "Reveal occasional analysis, refresh and knowledge-enrichment actions without shrinking the map while you browse.",
+        )
+        set_help(
+            self.music_map_plan_button,
+            "Plan a route",
+            "Reveal only the start, destination and route controls. Journey shaping stays hidden until you request it.",
+        )
+        simple.addWidget(self.music_map_options_button)
+        simple.addStretch(1)
+        simple.addWidget(self.music_map_play_button)
+        simple.addWidget(self.music_map_queue_button)
+        simple.addWidget(self.music_map_plan_button)
+        l.addLayout(simple)
+
+        self.music_map_options_panel=QFrame()
+        self.music_map_options_panel.setObjectName("powerPanel")
+        map_options=QHBoxLayout(self.music_map_options_panel)
+        map_options.setContentsMargins(12,8,12,8)
         improve=QPushButton("Improve map")
         improve.clicked.connect(self._analyse_library_for_map)
-        play=QPushButton("▶ Play selected")
-        play.clicked.connect(self._play_music_map_selected)
-        queue=QPushButton("+ Queue selected")
-        queue.clicked.connect(self._queue_music_map_selected)
-        plan=QPushButton("Plan a route…")
-        plan.clicked.connect(self._toggle_music_map_tools)
-        set_help(
-            improve,
-            "Improve map",
-            "Analyses your local tracks on this computer so sonic relationships can be placed more accurately.",
-        )
-        set_help(
-            plan,
-            "Plan a route",
-            "Reveal start, destination and journey-shaping controls. You can hide them again when you only want to browse.",
-        )
-        simple.addWidget(improve)
-        simple.addStretch(1)
-        simple.addWidget(play)
-        simple.addWidget(queue)
-        simple.addWidget(plan)
-        l.addLayout(simple)
+        refresh_map=QPushButton("Refresh")
+        refresh_map.clicked.connect(self._refresh_music_map)
+        enrich_selected=QPushButton("Find selected details")
+        enrich_selected.clicked.connect(self._enrich_selected_map_knowledge)
+        enrich_map=QPushButton("Find map details (+8)")
+        enrich_map.clicked.connect(self._enrich_map_knowledge_batch)
+        map_options.addWidget(QLabel("Map options"))
+        map_options.addWidget(improve)
+        map_options.addWidget(refresh_map)
+        map_options.addWidget(enrich_selected)
+        map_options.addWidget(enrich_map)
+        map_options.addStretch(1)
+        self.music_map_options_panel.hide()
+        l.addWidget(self.music_map_options_panel)
 
         self.music_map_power_panel=QFrame()
         self.music_map_power_panel.setObjectName("powerPanel")
@@ -1387,24 +1416,18 @@ class MainWindow(QMainWindow):
         power.setSpacing(8)
 
         top=QHBoxLayout()
-        power_title=QLabel("Route & map tools")
+        power_title=QLabel("Route planner")
         power_title.setStyleSheet("font-size:15px;font-weight:700")
-        refresh=QPushButton("Refresh map")
-        refresh.clicked.connect(self._refresh_music_map)
-        enrich_selected=QPushButton("Find selected details")
-        enrich_selected.clicked.connect(self._enrich_selected_map_knowledge)
-        enrich_map=QPushButton("Find map details (+8)")
-        enrich_map.clicked.connect(self._enrich_map_knowledge_batch)
-        journey=QPushButton("Start listening here")
-        journey.clicked.connect(self._journey_from_music_map)
-        close_tools=QPushButton("Hide tools")
-        close_tools.clicked.connect(lambda:self.music_map_power_panel.hide())
+        start_here=QPushButton("Start listening here")
+        start_here.clicked.connect(self._journey_from_music_map)
+        journey_options=QPushButton("Journey options…")
+        journey_options.clicked.connect(self._toggle_music_journey_options)
+        close_tools=QPushButton("Hide route tools")
+        close_tools.clicked.connect(self._toggle_music_map_tools)
         top.addWidget(power_title)
         top.addStretch(1)
-        top.addWidget(refresh)
-        top.addWidget(enrich_selected)
-        top.addWidget(enrich_map)
-        top.addWidget(journey)
+        top.addWidget(start_here)
+        top.addWidget(journey_options)
         top.addWidget(close_tools)
         power.addLayout(top)
 
@@ -1440,6 +1463,12 @@ class MainWindow(QMainWindow):
         path_row.addWidget(clear_path)
         path_row.addWidget(self.music_path_label,1)
         power.addLayout(path_row)
+
+        self.music_map_journey_panel=QFrame()
+        self.music_map_journey_panel.setObjectName("subtlePanel")
+        journey_box=QVBoxLayout(self.music_map_journey_panel)
+        journey_box.setContentsMargins(10,8,10,8)
+        journey_box.setSpacing(7)
 
         journey_edit=QHBoxLayout()
         self.music_journey_preset=QComboBox()
@@ -1480,7 +1509,7 @@ class MainWindow(QMainWindow):
         journey_edit.addWidget(add_track)
         journey_edit.addWidget(remove_stage)
         journey_edit.addWidget(clear_stages)
-        power.addLayout(journey_edit)
+        journey_box.addLayout(journey_edit)
 
         journey_actions=QHBoxLayout()
         build_journey=QPushButton("Build journey")
@@ -1495,14 +1524,14 @@ class MainWindow(QMainWindow):
         journey_actions.addWidget(play_journey)
         journey_actions.addWidget(queue_journey)
         journey_actions.addWidget(journey_help,1)
-        power.addLayout(journey_actions)
+        journey_box.addLayout(journey_actions)
 
         self.music_journey_stages=QListWidget()
         self.music_journey_stages.setMaximumHeight(92)
         self.music_journey_stages.addItem(
             "Choose a shape or add directions after setting a start and destination."
         )
-        power.addWidget(self.music_journey_stages)
+        journey_box.addWidget(self.music_journey_stages)
 
         live_row=QHBoxLayout()
         self.music_live_steering=QComboBox()
@@ -1544,30 +1573,55 @@ class MainWindow(QMainWindow):
         live_row.addWidget(restore)
         live_row.addWidget(stop_live)
         live_row.addWidget(self.music_live_label,1)
-        power.addLayout(live_row)
+        journey_box.addLayout(live_row)
+        self.music_map_journey_panel.hide()
+        power.addWidget(self.music_map_journey_panel)
 
-        self.music_map_power_panel.setVisible(self.power_toggle.isChecked())
+        self.music_map_power_panel.hide()
         l.addWidget(self.music_map_power_panel)
 
         self.music_map=MusicMapWidget(self)
+        self.music_map.trackSelected.connect(self._music_map_selection_changed)
         self.music_map.trackActivated.connect(self._play_music_map_track)
         l.addWidget(self.music_map,1)
 
         self.music_path_steps=QListWidget()
         self.music_path_steps.setMaximumHeight(116)
         self.music_path_steps.addItem("Route explanations will appear here after you plan one.")
-        self.music_path_steps.setVisible(self.power_toggle.isChecked())
+        self.music_path_steps.hide()
         l.addWidget(self.music_path_steps)
+
+    def _toggle_album_wall_tools(self) -> None:
+        visible=not self.album_wall_power_panel.isVisible()
+        self.album_wall_power_panel.setVisible(visible)
+
+    def _toggle_music_map_options(self) -> None:
+        visible=not self.music_map_options_panel.isVisible()
+        self.music_map_options_panel.setVisible(visible)
 
     def _toggle_music_map_tools(self) -> None:
         visible=not self.music_map_power_panel.isVisible()
         self.music_map_power_panel.setVisible(visible)
         self.music_path_steps.setVisible(visible)
+        if not visible and hasattr(self,"music_map_journey_panel"):
+            self.music_map_journey_panel.hide()
         if visible:
             self.statusBar().showMessage(
-                "Route tools revealed · select a track, set start and destination, then Find route",
+                "Route planner ready · select a track, set start and destination, then Find route",
                 5000,
             )
+
+    def _toggle_music_journey_options(self) -> None:
+        if not self.music_map_power_panel.isVisible():
+            self.music_map_power_panel.show()
+            self.music_path_steps.show()
+        visible=not self.music_map_journey_panel.isVisible()
+        self.music_map_journey_panel.setVisible(visible)
+
+    def _music_map_selection_changed(self, track: object) -> None:
+        enabled=isinstance(track,dict) and bool(track)
+        self.music_map_play_button.setEnabled(enabled)
+        self.music_map_queue_button.setEnabled(enabled)
 
 
     def _build_journeys(self):
@@ -1682,6 +1736,7 @@ class MainWindow(QMainWindow):
     def _open_journey_designer(self) -> None:
         self.open_page("music_map")
         self.music_map_power_panel.show()
+        self.music_map_journey_panel.show()
         self.music_path_steps.show()
         self.statusBar().showMessage(
             "Journey design ready · select a track for the start, another for the destination, then shape the route",
@@ -2195,12 +2250,8 @@ class MainWindow(QMainWindow):
             self.source_power_panel.setVisible(enabled)
         if hasattr(self, "player_power_actions"):
             self.player_power_actions.setVisible(enabled)
-        if hasattr(self, "music_map_power_panel"):
-            self.music_map_power_panel.setVisible(enabled)
-        if hasattr(self, "music_path_steps"):
-            self.music_path_steps.setVisible(enabled)
-        if hasattr(self, "album_wall_power_panel"):
-            self.album_wall_power_panel.setVisible(enabled)
+        # Spatial browsing uses its own progressive disclosures. Global Power
+        # tools must not cover Album Wall or Music Map with controls.
         if announce:
             self.statusBar().showMessage(
                 "Power tools enabled" if enabled else "Power tools hidden",

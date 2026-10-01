@@ -217,6 +217,8 @@ def test_metadata_service_uses_extension_identity_metadata_and_lyrics(tmp_path: 
                             "source_extension_id": "org.example.lyrics",
                             "retrieved_at": "2026-09-28T00:00:00Z",
                         },
+                        "_extension_id": "org.example.lyrics",
+                        "_extension_name": "Example Lyrics Source",
                     }
                 ],
                 "errors": [],
@@ -231,7 +233,15 @@ def test_metadata_service_uses_extension_identity_metadata_and_lyrics(tmp_path: 
     assert result["identity"]["recording_mbid"] == "rec-1"
     assert result["identity"]["album"] == "Extension Album"
     assert result["lyrics"]["text"] == "extension lyrics"
-    assert result["lyrics"]["source"] == "org.example.lyrics"
+    assert result["lyrics"]["source"] == "Example Lyrics Source"
+    assert (
+        result["lyrics"]["provenance"]["source_extension_id"]
+        == "org.example.lyrics"
+    )
+    assert (
+        result["lyrics"]["provenance"]["source_extension_name"]
+        == "Example Lyrics Source"
+    )
 
 
 def test_metadata_service_uses_extension_artwork_before_caa(tmp_path: Path):
@@ -571,3 +581,32 @@ def test_broker_library_suggestions_merges_and_ranks(tmp_path: Path):
     assert [row["ref"] for row in result["suggestions"]] == ["t2", "t1"]
     assert result["suggestions"][0]["_extension_id"] == "org.example.high"
     assert result["errors"] == []
+
+
+
+def test_lyrics_capability_results_include_friendly_extension_name():
+    broker = CapabilityBroker(Path("."))
+    extension = FakeExtension(
+        "org.example.lyrics",
+        "lyrics",
+        {
+            "entries": [{
+                "kind": "plain",
+                "language": "en",
+                "text": "hello from extension",
+                "provenance": {
+                    "source_extension_id": "org.example.lyrics",
+                },
+            }]
+        },
+    )
+    extension.info.name = "Friendly Lyrics Source"
+    broker.extensions = {"org.example.lyrics": extension}
+
+    result = broker.lookup_lyrics(
+        {"entity_type": "track", "hints": {"title": "Example"}},
+        kinds=["plain"],
+    )
+
+    assert result["entries"][0]["_extension_id"] == "org.example.lyrics"
+    assert result["entries"][0]["_extension_name"] == "Friendly Lyrics Source"

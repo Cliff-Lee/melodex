@@ -2298,11 +2298,23 @@ class RichMetadataService:
                             "text": text_value,
                             "synced": rows,
                             "source": str(
-                                provenance.get("source_extension_id")
-                                or entry.get("_extension_id")
-                                or "extension"
+                                entry.get("_extension_name")
+                                or provenance.get("source_extension_name")
+                                or "Installed lyrics source"
                             ),
-                            "provenance": provenance,
+                            "provenance": {
+                                **provenance,
+                                "source_extension_id": str(
+                                    provenance.get("source_extension_id")
+                                    or entry.get("_extension_id")
+                                    or ""
+                                ),
+                                "source_extension_name": str(
+                                    entry.get("_extension_name")
+                                    or provenance.get("source_extension_name")
+                                    or ""
+                                ),
+                            },
                         }
                 except Exception as exc:
                     out["ecosystem"]["lyrics"] = {"errors": [str(exc)]}
