@@ -21,19 +21,19 @@ jobs:
           python-version: "3.12"
       - name: Install desktop runtime dependencies
         run: pip install numpy mutagen requests PySide6
-      - name: Measure LibriVox lightweight API path
+      - name: Compare official LibriVox API URL forms
         run: |
           python - <<'PY'
           import json, time
-          from urllib.parse import urlencode
+          from urllib.parse import urlencode, quote
           from urllib.request import Request, urlopen
 
-          def get(label, base, params):
+          def get(label, url):
               start=time.monotonic()
               req=Request(
-                  base+"?"+urlencode(params, doseq=True),
+                  url,
                   headers={
-                      "User-Agent":"Melodex-LiveProvider-Diagnostic/0.2",
+                      "User-Agent":"Melodex-LiveProvider-Diagnostic/0.3",
                       "Accept":"application/json",
                       "Connection":"close",
                   },
@@ -41,35 +41,26 @@ jobs:
               try:
                   with urlopen(req, timeout=45) as response:
                       payload=response.read()
-                  print(f"LIBRIVOX {label} PASS {time.monotonic()-start:.2f}s {len(payload)} bytes")
+                  elapsed=time.monotonic()-start
+                  print(f"LIBRIVOX {label} PASS {elapsed:.2f}s {len(payload)} bytes status={response.status}")
                   return json.loads(payload.decode("utf-8","replace"))
               except Exception as exc:
                   print(f"LIBRIVOX {label} FAIL {time.monotonic()-start:.2f}s {exc}")
                   return None
 
-          books=get(
-              "fields-search",
-              "https://librivox.org/api/feed/audiobooks/",
-              {
-                  "title":"Odyssey",
-                  "format":"json",
-                  "limit":"1",
-                  "offset":"0",
-                  "fields[]":["id","title","authors","url_librivox","coverart_thumbnail"],
-              },
+          params=urlencode({"title":"Odyssey","format":"json","limit":"1","offset":"0"})
+          query=get("query-form", "https://librivox.org/api/feed/audiobooks/?"+params)
+          time.sleep(5)
+          path=get(
+              "path-form",
+              "https://librivox.org/api/feed/audiobooks/title/"
+              + quote("^Odyssey", safe="")
+              + "?format=json&limit=1&offset=0",
           )
-          rows=(books or {}).get("books") or []
-          if rows:
-              book_id=str(rows[0].get("id") or "")
-              print("LIBRIVOX book_id", book_id, "title", rows[0].get("title"))
-              time.sleep(4)
-              tracks=get(
-                  "audiotracks",
-                  "https://librivox.org/api/feed/audiotracks/",
-                  {"project_id":book_id,"format":"json"},
-              )
-              if tracks is not None:
-                  print("LIBRIVOX tracks-shape", type(tracks).__name__, str(tracks)[:500])
+          for label, payload in (("query-form", query), ("path-form", path)):
+              rows=(payload or {}).get("books") or []
+              if rows:
+                  print("LIBRIVOX", label, "book", rows[0].get("id"), rows[0].get("title"))
           PY
       - name: Run live bundled-provider smoke test
         env:
