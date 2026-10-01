@@ -2260,6 +2260,9 @@ class MainWindow(QMainWindow):
                         identity=self.metadata.identify(track)
                         if identity.artist_mbid:
                             info=self.metadata.artist_info(identity.artist_mbid)
+                        else:
+                            info=self.metadata.resolve_artist(artist_name)
+                        if info:
                             if not info.get("name"):
                                 info["name"]=artist_name
                             photo=self.metadata.artist_photo(info)
