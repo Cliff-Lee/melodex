@@ -91,8 +91,12 @@ class PluginDirectoryCard(QFrame):
         title=QLabel(str(entry.get("name") or entry.get("id") or "Plugin"))
         title.setObjectName("pluginDirectoryTitle")
         title_row.addWidget(title)
-        status=str(entry.get("status") or "").casefold()
-        type_label="Reference" if status=="example" else "Community" if status=="community" else "Reviewed" if status=="reviewed" else status.title()
+        kind_value=str(entry.get("kind") or "")
+        type_label={
+            "provider":"Music source",
+            "enrichment":"Enhancement",
+            "tool":"Local intelligence",
+        }.get(kind_value,kind_value.replace("_"," ").title())
         if type_label:
             pill=QLabel(type_label)
             pill.setObjectName("pluginDirectoryType")
@@ -131,8 +135,9 @@ class PluginDirectoryCard(QFrame):
         semantic=(
             "attention" if any(token in lowered for token in ("setup", "attention", "error", "unavailable"))
             else "update" if "update" in lowered
-            else "ready" if any(token in lowered for token in ("ready", "installed"))
+            else "ready" if "ready" in lowered
             else "reference" if any(token in lowered for token in ("reference", "included"))
+            else "installed" if installed
             else "optional"
         )
         state.setProperty("state",semantic)
@@ -334,6 +339,9 @@ class PluginDirectoryDialog(QDialog):
             }
             QLabel#pluginDirectoryState[state="reference"]{
                 color:#aab7c8;background:#1a222d;border:1px solid #344152;
+            }
+            QLabel#pluginDirectoryState[state="installed"]{
+                color:#b8d5f5;background:#16283a;border:1px solid #31506e;
             }
             QLabel#pluginDirectoryState[state="optional"]{
                 color:#c4b1e8;background:#2b2140;border:1px solid #51406f;
