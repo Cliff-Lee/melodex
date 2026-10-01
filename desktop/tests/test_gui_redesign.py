@@ -55,9 +55,13 @@ def test_visual_library_defaults_to_album_cards_and_filters():
     assert browser._visible_albums[0]["title"] == "Album A"
 
     browser.set_view("artists")
-    assert browser.stack.currentWidget() is browser.artist_list
+    assert browser.stack.currentWidget() is browser.artist_page
+    assert len(browser.artist_rows) == 2
+    assert len(browser.artist_cards) == 2
+
     browser.set_view("tracks")
     assert browser.stack.currentWidget() is browser.track_list
+    assert len(browser.track_rows) == 3
 
     browser.set_catalog([])
     assert browser.stack.currentWidget() is browser.empty
