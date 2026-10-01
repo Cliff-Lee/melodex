@@ -607,7 +607,12 @@ class LibraryBrowser(QWidget):
     def _refresh_images_button_label(self) -> None:
         view=self.current_view()
         if view == "artists":
-            if self._artist_lookup_active:
+            if self._album_lookup_active:
+                self.images_button.setText(
+                    f"Artwork search running… {self.album_artwork_lookup_remaining()} left"
+                )
+                self.images_button.setEnabled(False)
+            elif self._artist_lookup_active:
                 remaining=self.artist_image_lookup_remaining()
                 self.images_button.setText(
                     f"Finding photos… {remaining} left" if remaining else "Finding photos…"
@@ -619,7 +624,12 @@ class LibraryBrowser(QWidget):
             return
 
         if view == "albums":
-            if self._album_lookup_active:
+            if self._artist_lookup_active:
+                self.images_button.setText(
+                    f"Artist search running… {self.artist_image_lookup_remaining()} left"
+                )
+                self.images_button.setEnabled(False)
+            elif self._album_lookup_active:
                 remaining=self.album_artwork_lookup_remaining()
                 self.images_button.setText(
                     f"Finding artwork… {remaining} left" if remaining else "Finding artwork…"
@@ -631,7 +641,7 @@ class LibraryBrowser(QWidget):
             return
 
         self.images_button.setText("Find missing artwork")
-        self.images_button.setEnabled(True)
+        self.images_button.setEnabled(False)
 
     def _apply_filter(self) -> None:
         if not self.catalog:
@@ -831,6 +841,13 @@ class LibraryBrowser(QWidget):
             self.artistImageCacheRequested.emit(batch)
 
     def _request_online_artwork(self) -> None:
+        # Keep metadata enrichment serial. Starting a second pass from another
+        # tab while one is active can overwhelm public metadata services and
+        # make both searches appear stalled.
+        if self._artist_lookup_active or self._album_lookup_active:
+            self._refresh_images_button_label()
+            return
+
         if self.current_view() == "artists":
             artists = self._visible_artists if self._visible_artists else self.artist_rows
             self._artist_lookup_queue = []
