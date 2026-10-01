@@ -83,3 +83,105 @@ def health_summary(result: dict[str, Any] | None) -> str:
     if scope == "runtime" and badge == "READY":
         return "READY — recent extension calls succeeded"
     return badge
+
+
+
+def health_user_presentation(result: dict[str, Any] | None) -> dict[str, str]:
+    """Return listener-facing health copy without exposing diagnostic jargon."""
+    result = dict(result or {})
+    status = normalise_health_status(result.get("status"))
+    reason = str(result.get("reason") or "").casefold().strip()
+
+    if status == "ready":
+        return {
+            "badge": "Ready",
+            "semantic": "ready",
+            "title": "Ready to use",
+            "guidance": "A recent connection or capability check succeeded.",
+            "action": "Check connection",
+        }
+    if status == "setup_required":
+        return {
+            "badge": "Setup needed",
+            "semantic": "attention",
+            "title": "Finish setup",
+            "guidance": "Add the required settings before this plugin can be used.",
+            "action": "Configure…",
+        }
+    if status == "authentication_required":
+        return {
+            "badge": "Sign-in needed",
+            "semantic": "attention",
+            "title": "Sign-in or credential needed",
+            "guidance": "Update this plugin's credentials, then check the connection again.",
+            "action": "Configure…",
+        }
+    if status == "disabled":
+        return {
+            "badge": "Disabled",
+            "semantic": "disabled",
+            "title": "Plugin disabled",
+            "guidance": "Enable it when you want Melodex to use this optional feature.",
+            "action": "Enable",
+        }
+    if status == "degraded":
+        return {
+            "badge": "Partly available",
+            "semantic": "attention",
+            "title": "Partly available",
+            "guidance": "Some checks succeeded, but a recent plugin call failed.",
+            "action": "Try connection again",
+        }
+    if status == "unavailable":
+        if reason == "tls_error":
+            title = "Secure connection unavailable"
+            guidance = (
+                "The plugin is still installed. Melodex could not establish a trusted "
+                "connection to the service; check the network and try again."
+            )
+        elif reason == "network_error":
+            title = "Service unreachable"
+            guidance = (
+                "The plugin is still installed. The service or network could not be "
+                "reached; check connectivity and try again."
+            )
+        elif reason == "timeout":
+            title = "Service took too long"
+            guidance = (
+                "The plugin is still installed. The service did not respond in time; "
+                "try the connection again later."
+            )
+        else:
+            title = "Temporarily unavailable"
+            guidance = (
+                "The plugin is still installed, but its service is not available right now."
+            )
+        return {
+            "badge": "Temporarily unavailable",
+            "semantic": "unavailable",
+            "title": title,
+            "guidance": guidance,
+            "action": "Try connection again",
+        }
+    if status == "error":
+        return {
+            "badge": "Needs attention",
+            "semantic": "attention",
+            "title": "Plugin needs attention",
+            "guidance": (
+                "This looks like a plugin or protocol problem rather than a temporary "
+                "internet outage. Check the technical details if it keeps happening."
+            ),
+            "action": "Check connection",
+        }
+
+    return {
+        "badge": "Not checked",
+        "semantic": "neutral",
+        "title": "Not checked yet",
+        "guidance": (
+            "Melodex has not tested this optional source in the current session. "
+            "You can check it now, or simply use it when needed."
+        ),
+        "action": "Check connection",
+    }
