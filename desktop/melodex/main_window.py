@@ -545,6 +545,25 @@ class MainWindow(QMainWindow):
             }
             QLabel#albumCardTitle{font-weight:700;font-size:12px}
             QLabel#albumCardMeta{color:#8995a7;font-size:11px}
+            QFrame#trackRow{
+                background:#121923;
+                border:1px solid #222e3d;
+                border-radius:10px;
+            }
+            QFrame#trackRow:hover{
+                background:#161f2b;
+                border-color:#33465e;
+            }
+            QLabel#trackTitle{font-size:14px;font-weight:700}
+            QLabel#trackMeta{color:#8f9bad;font-size:12px}
+            QLabel#warningPill{
+                background:#3a2a16;
+                border:1px solid #6e5126;
+                border-radius:8px;
+                color:#e2bd77;
+                padding:4px 7px;
+                font-size:10px;
+            }
             QLabel#coverArt{
                 background:#111722;
                 border:1px solid #253040;
@@ -953,13 +972,17 @@ class MainWindow(QMainWindow):
         self.library_browser=LibraryBrowser(self)
         self.library_browser.playAlbumRequested.connect(self._play_album_wall_album)
         self.library_browser.queueAlbumRequested.connect(self._queue_album_data)
+        self.library_browser.playArtistRequested.connect(self._play_library_artist)
         self.library_browser.playTrackRequested.connect(self._play_library_track)
+        self.library_browser.queueTrackRequested.connect(self._queue_library_track)
+        self.library_browser.editMetadataRequested.connect(self._edit_local_metadata)
         self.library_browser.addFolderRequested.connect(self._choose_music_folder)
         self.library_browser.rescanRequested.connect(self._rescan)
         self.library_browser.albumWallRequested.connect(lambda:self.open_page("album_wall"))
         self.library_browser.momentsRequested.connect(lambda:self.open_page("moments"))
         self.library_browser.artworkRequested.connect(self._library_artwork_requested)
         self.library_browser.onlineArtworkRequested.connect(self._library_online_artwork_requested)
+        self.library_browser.artistImageRequested.connect(self._library_artist_images_requested)
         l.addWidget(self.library_browser,1)
 
 
@@ -1980,6 +2003,126 @@ class MainWindow(QMainWindow):
         )
         self.player.set_queue(tracks,index,True)
 
+    def _play_library_artist(self, artist: object) -> None:
+        if not isinstance(artist,dict):
+            return
+        tracks=[dict(x) for x in list(artist.get("tracks") or []) if isinstance(x,dict)]
+        if tracks:
+            self.player.set_queue(tracks,0,True)
+
+    def _queue_library_track(self, track: object) -> None:
+        if not isinstance(track,dict):
+            return
+        if not self.player.queue:
+            self.player.set_queue([dict(track)],0,False)
+        else:
+            self.player.append_queue([dict(track)],autoplay=False)
+        self.statusBar().showMessage(
+            f"Queued {track.get('title') or 'track'}",
+            3000,
+        )
+
+    def _edit_local_metadata(self, track: object) -> None:
+        if not isinstance(track,dict) or not str(track.get("local_path") or "").strip():
+            QMessageBox.information(
+                self,
+                "Local music only",
+                "Metadata corrections are currently available for music stored on this computer.",
+            )
+            return
+
+        original=dict(track)
+        dialog=QDialog(self)
+        dialog.setWindowTitle("Correct track details")
+        dialog.resize(520,360)
+        layout=QVBoxLayout(dialog)
+        layout.setContentsMargins(22,20,22,18)
+        title=QLabel("Correct track details")
+        title.setStyleSheet("font-size:20px;font-weight:700")
+        layout.addWidget(title)
+        note=QLabel(
+            "These corrections are stored by Melodex and survive rescans. "
+            "Your original audio file and its embedded tags are not changed."
+        )
+        note.setWordWrap(True)
+        note.setStyleSheet("color:#9aa4b8")
+        layout.addWidget(note)
+
+        form=QFormLayout()
+        fields={}
+        for key,label in (
+            ("artist","Artist"),
+            ("title","Track title"),
+            ("album","Album"),
+            ("album_artist","Album artist"),
+            ("year","Year"),
+            ("genre","Genre"),
+        ):
+            edit=QLineEdit()
+            value=str(original.get(key) or "")
+            if key=="artist" and value.casefold().strip()=="unknown artist":
+                value=""
+            edit.setText(value)
+            fields[key]=edit
+            form.addRow(label+":",edit)
+        layout.addLayout(form)
+
+        buttons=QDialogButtonBox(QDialogButtonBox.Save|QDialogButtonBox.Cancel)
+        reset=buttons.addButton("Use file tags again",QDialogButtonBox.ResetRole)
+        set_help(
+            reset,
+            "Remove Melodex correction",
+            "Forget the local correction for this file and use its embedded/file metadata again.",
+        )
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        reset.clicked.connect(lambda:self._reset_local_metadata_dialog(dialog,original))
+        layout.addWidget(buttons)
+
+        if dialog.exec()!=QDialog.Accepted:
+            return
+
+        changes={key:edit.text().strip() for key,edit in fields.items()}
+        try:
+            updated=self.providers.update_local_metadata(original,changes)
+        except Exception as exc:
+            QMessageBox.warning(self,"Could not save correction",str(exc))
+            return
+        self._apply_local_metadata_update(original,updated)
+        self.statusBar().showMessage(
+            f"Saved Melodex metadata correction for {updated.get('title') or original.get('title') or 'track'}",
+            4500,
+        )
+
+    def _reset_local_metadata_dialog(self, dialog: QDialog, track: dict[str,Any]) -> None:
+        if self.providers.clear_local_metadata_correction(track):
+            self._refresh_library()
+            self.statusBar().showMessage("Removed Melodex metadata correction",3500)
+        dialog.reject()
+
+    def _apply_local_metadata_update(
+        self,
+        original: dict[str,Any],
+        updated: dict[str,Any],
+    ) -> None:
+        path=str(original.get("local_path") or "")
+        for index,item in enumerate(list(self.player.queue)):
+            if str(item.get("local_path") or "")==path:
+                self.player.queue[index]={**item,**updated}
+        self.player.queueChanged.emit(list(self.player.queue))
+
+        if str(self.current_track.get("local_path") or "")==path:
+            self.current_track={**self.current_track,**updated}
+            self.now_title.setText(str(self.current_track.get("title") or "Unknown track"))
+            pieces=[str(self.current_track.get("artist") or "Unknown artist")]
+            album=str(self.current_track.get("album") or "")
+            if album:
+                pieces.append(album)
+            self.now_meta.setText("   ·   ".join(pieces))
+            if hasattr(self,"rich_now"):
+                self.rich_now.set_track(dict(self.current_track))
+        self._refresh_library()
+
     def _queue_album_data(self, album: object) -> None:
         if not isinstance(album,dict):
             return
@@ -2026,24 +2169,81 @@ class MainWindow(QMainWindow):
                 if not key or not track:
                     continue
                 path=""
+                artwork_info={}
                 try:
                     local=self.metadata.local_artwork(track)
                     path=str(local.get("path") or "")
+                    artwork_info=dict(local)
                     if not path:
                         identity=self.metadata.identify(track)
-                        artwork=self.metadata.artwork(track,identity)
-                        path=str(artwork.get("path") or "")
+                        artwork_info=self.metadata.artwork(track,identity)
+                        path=str(artwork_info.get("path") or "")
+                    if path:
+                        for sibling in list(row.get("tracks") or []):
+                            if isinstance(sibling,dict):
+                                self.metadata.remember_artwork(
+                                    sibling,
+                                    path,
+                                    source=str(artwork_info.get("source") or ""),
+                                    source_url=str(artwork_info.get("source_url") or ""),
+                                    attribution=str(artwork_info.get("attribution") or ""),
+                                    license_name=str(artwork_info.get("license") or ""),
+                                )
                 except Exception:
                     path=""
                 result[key]=path
             return result
 
         def apply(result):
-            rows=dict(result or {})
-            self.library_browser.set_artwork(rows)
-            found=sum(1 for path in rows.values() if str(path or "").strip())
+            result_rows=dict(result or {})
+            self.library_browser.set_artwork(result_rows)
+            found=sum(1 for path in result_rows.values() if str(path or "").strip())
             self.statusBar().showMessage(
-                f"Artwork lookup finished · {found} cover{'s' if found!=1 else ''} found",
+                f"Artwork lookup finished · {found} cover{'s' if found!=1 else ''} found and remembered",
+                5000,
+            )
+
+        self._run_async(load,apply)
+
+    def _library_artist_images_requested(self, requests: object) -> None:
+        rows=[dict(x) for x in list(requests or []) if isinstance(x,dict)]
+        if not rows:
+            return
+        self.statusBar().showMessage(
+            f"Looking for artist photos for {len(rows)} artist{'s' if len(rows)!=1 else ''}…"
+        )
+
+        def load():
+            result={}
+            for row in rows:
+                key=str(row.get("key") or "")
+                artist_name=str(row.get("artist") or "")
+                track=dict(row.get("track") or {})
+                if not key or not artist_name or not track:
+                    continue
+                path=""
+                try:
+                    cached=self.metadata.cached_artist_photo({"name":artist_name})
+                    path=str(cached.get("path") or "")
+                    if not path:
+                        identity=self.metadata.identify(track)
+                        if identity.artist_mbid:
+                            info=self.metadata.artist_info(identity.artist_mbid)
+                            if not info.get("name"):
+                                info["name"]=artist_name
+                            photo=self.metadata.artist_photo(info)
+                            path=str(photo.get("path") or "")
+                except Exception:
+                    path=""
+                result[key]=path
+            return result
+
+        def apply(result):
+            result_rows=dict(result or {})
+            self.library_browser.set_artist_images(result_rows)
+            found=sum(1 for path in result_rows.values() if str(path or "").strip())
+            self.statusBar().showMessage(
+                f"Artist image lookup finished · {found} photo{'s' if found!=1 else ''} found",
                 5000,
             )
 
