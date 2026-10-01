@@ -44,5 +44,19 @@ def scrubbed_child_env(
         for key in _CHILD_ENV_ALLOWLIST
         if source.get(key)
     }
+
+    # Frozen macOS/Windows child workers may not inherit a system CA path even
+    # though the main app's requests stack works via certifi. Third-party
+    # extensions often use urllib/ssl directly, so give them the same trusted
+    # CA bundle without forwarding credentials or unrelated environment.
+    if not env.get("SSL_CERT_FILE"):
+        try:
+            import certifi
+            ca_file=str(certifi.where() or "").strip()
+            if ca_file:
+                env["SSL_CERT_FILE"]=ca_file
+        except Exception:
+            pass
+
     env[str(identifier_key)] = str(identifier)
     return env

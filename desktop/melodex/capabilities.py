@@ -381,8 +381,21 @@ class ExternalExtension:
         except Exception as exc:
             category = self._diagnostic_error(exc)
             return {
-                "status": "unavailable" if category in {"timeout", "process_error"} else "error",
-                "message": "Extension health check failed",
+                "status": (
+                    "unavailable"
+                    if category in {
+                        "timeout",
+                        "process_error",
+                        "network_error",
+                        "tls_error",
+                    }
+                    else "error"
+                ),
+                "message": (
+                    "Optional source is temporarily unavailable"
+                    if category in {"timeout", "network_error", "tls_error"}
+                    else "Extension health check failed"
+                ),
                 "check_scope": "upstream",
                 "reason": category,
                 "upstream_checked": False,
@@ -427,8 +440,28 @@ class ExternalExtension:
     @staticmethod
     def _diagnostic_error(exc: Exception) -> str:
         text = str(exc).casefold()
-        if "timed out" in text:
+        if "timed out" in text or "timeout" in text:
             return "timeout"
+        if (
+            "certificate_verify_failed" in text
+            or "certificate verify failed" in text
+            or "ssl: certificate" in text
+        ):
+            return "tls_error"
+        if any(
+            token in text
+            for token in (
+                "urlopen error",
+                "name or service not known",
+                "temporary failure in name resolution",
+                "nodename nor servname",
+                "connection refused",
+                "connection reset",
+                "remote end closed",
+                "network is unreachable",
+            )
+        ):
+            return "network_error"
         if "non-json" in text:
             return "protocol_error"
         if "stopped" in text or "broken pipe" in text:

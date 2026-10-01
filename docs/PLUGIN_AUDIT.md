@@ -177,7 +177,10 @@ The GUI separates package presence from runtime confidence:
 - **Ready** — a recent bounded check/capability call succeeded;
 - **Not tested** — installed but not yet exercised in this session;
 - **Setup needed** — required configuration is incomplete;
-- **Needs attention** — recent runtime/upstream check failed;
+- **Unavailable** — the package is present, but a timeout, DNS/network problem, or TLS/certificate failure prevented the current upstream call;
+- **Needs attention / Error** — the extension itself failed in a non-transient way, such as a protocol or process problem;
 - **Disabled** — installed extension is disabled.
 
-This is intentional. Passing repository/fixture tests does not prove that a third-party internet service is currently reachable.
+Packaged Python provider/extension workers receive Melodex's trusted certifi CA bundle when the parent OS environment does not expose a CA path. This is especially important for frozen macOS/Windows builds where an extension using `urllib`/Python SSL can otherwise fail certificate verification even while Core networking works.
+
+This distinction is intentional. Passing repository/fixture tests does not prove that a third-party internet service is currently reachable, and a temporary network failure should not make a correctly installed plugin look corrupt.
