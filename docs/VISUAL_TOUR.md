@@ -1,166 +1,250 @@
 # Melodex: a 5-minute visual tour
 
-This is the fastest way to understand Melodex.
+This tour reflects the **v0.7 desktop experience**.
 
-## 1. Add your music
+Melodex is designed to feel like a music player first. Deeper routing, provider and plugin controls remain available when you want them.
 
-Before local music is indexed, **My music** can look like this:
+## 1. The main map
 
-![Empty My Music screen](images/my-music-empty.png)
+```mermaid
+flowchart LR
+    H[Home] --> M[My Music]
+    H --> E[Explore]
+    H --> J[Journeys]
+    H --> P[Playlists]
+    M --> A[Albums]
+    M --> AR[Artists]
+    M --> T[Tracks]
+    E --> S[Search]
+    E --> W[Album Wall]
+    E --> MM[Music Map]
+    H -. optional .-> X[Sources & plugins]
+    X -. advanced .-> PT[Power tools]
+```
 
-To add music, open **Sources** and choose **Add local folder…**.
+The sidebar deliberately shows listener goals rather than every Melodex subsystem.
 
-Select a folder containing music you are authorised to play. Melodex indexes the files in place; it does not need to move your originals.
+## 2. Add your music
 
-Then return to **My music** to browse the indexed library.
+Open **My Music** and choose:
 
-**My music** also has an **Add folder…** shortcut to the same folder picker. The Sources route is used throughout the documentation because it is also where online sources, streams and plugins are managed.
+> **+ Add music**
 
-## 2. Browse your library
+Choose a folder containing music you are authorised to play.
 
-![My Music populated with tracks](images/my-music-library.png)
+Melodex indexes those files in place. It does not need to move or upload them.
 
-Once indexed, your tracks appear in **My music**.
+```text
+My Music
+├── Albums   ← default visual view
+├── Artists
+└── Tracks
+```
 
-You can use Melodex as a normal player: select a track, play it, add things to the queue and browse your collection.
+## 3. Browse the collection
 
-![My Music while a track is playing](images/my-music-playing.png)
+Albums are shown as a responsive artwork grid.
 
-The interesting part starts when you let Melodex help shape the session.
+Melodex first looks for local artwork:
 
-<a id="play-for-me"></a>
-## 3. Play for me
+```mermaid
+flowchart LR
+    A[Track / album] --> B{Artwork available?}
+    B -->|folder cover| C[Use local cover]
+    B -->|embedded| D[Use embedded cover]
+    B -->|remembered online match| E[Use cached cover]
+    B -->|still missing| F[Placeholder]
+    F -->|Find missing artwork| G[Explicit online lookup]
+    G --> H[Cache + remember association]
+```
 
-![Play for me](images/play-for-me.png)
+If an explicit online lookup finds a cover, leaving My Music and returning should **not** make it disappear.
 
-**Play for me** asks three simple questions:
+## 4. Artists are visual too
 
-1. What kind of session do you want?
-2. How long should it be?
-3. How familiar or surprising should it feel?
+Switch to **Artists**.
 
-The player uses local taste memory and available analysis to construct the journey.
+Each card uses:
 
-## 4. Familiar ↔ Surprising
+1. a remembered artist photo when available;
+2. otherwise a representative album cover;
+3. otherwise a deterministic placeholder.
 
-![Familiar to Surprising control](images/familiar-surprising.png)
+Choose **Find artist photos** when you explicitly want Melodex to try online metadata sources.
 
-Move toward **Familiar** when you want comfort and stronger known-positive signals.
+Double-click or choose **View** to move back into that artist's albums.
 
-Move toward **Surprising** when you want Melodex to take more chances.
+## 5. Tracks stay recognisable
 
-This is not a permanent preference. It describes what you want *right now*.
+Switch to **Tracks**.
 
-<a id="teach-melodex-your-taste"></a>
-## 5. Teach Melodex your taste
+Each track row includes its album artwork, title, artist and album context.
 
-![Keep and Love controls](images/taste-controls.png)
+```text
+┌──────┐  Ice Sold Here
+│cover │  Aesop Rock · Black Hole Superette
+└──────┘
+
+        ▶ Play    + Queue    Edit
+```
+
+If the artist is missing, Melodex marks the row **Needs artist**.
+
+Choose **Edit** to correct local metadata inside Melodex.
+
+The correction survives rescans but **does not rewrite the original audio file**.
+
+See [My Music](MY_MUSIC.md).
+
+## 6. Start listening from Home
+
+Home begins with intent rather than configuration:
+
+```text
+What do you feel like hearing?
+
+[ ▶ Play something ]
+
+[ Comfort ] [ Explore ] [ Rediscover ]          [ Tune it… ]
+```
+
+You do not need to understand Flow first.
+
+**Tune it…** reveals session length, listening style and Familiar ↔ Adventurous controls when you want them.
+
+## 7. Continue listening
+
+Home also keeps a visual **Continue listening** card for the most recent track.
+
+The persistent player remains visible across the app and acts as the route into **Now Playing**.
+
+## 8. Now Playing and Visuals
+
+Click the current track in the persistent player.
+
+The default **Now Playing** view prioritises:
+
+- artwork;
+- track / artist / album identity;
+- lyrics and context where available.
+
+Optional generative and analytical scenes live under **Visuals**.
+
+Visual work uses cached analysis where possible and does not need to analyse the audio again during playback.
+
+## 9. Explore
+
+**Explore** reduces discovery to three understandable choices:
+
+```text
+Search everything     Album Wall        Music Map
+direct search         visual browsing   relationships/routes
+```
+
+There are also shortcuts such as:
+
+- **More like what is playing**
+- **Find a forgotten favourite**
+- **Ask Melodex…** (optional LLM)
+
+## 10. Album Wall
+
+Album Wall turns the collection into a stable visual place rather than an alphabetical list.
+
+Use different lenses:
+
+- **Sound**
+- **Familiarity**
+- **Time**
+- **A–Z shelves**
+
+You can pan, zoom, search, select an album and play or queue it.
+
+Sound placement reuses cached Flow analysis. Albums without analysis remain visible at deterministic fallback positions.
+
+See [Album Wall](ALBUM_WALL.md).
+
+## 11. Music Map
+
+Music Map answers a different question:
+
+> **How are these tracks related?**
+
+The default map is for browsing.
+
+When you choose **Plan a route…**, Melodex reveals the deeper Pathfinder / Journey controls.
+
+```mermaid
+flowchart LR
+    A[Select start] --> B[Select destination]
+    B --> C[Find route]
+    C --> D[Inspect why each hop exists]
+    D --> E[Play / queue]
+    E --> F[Optional live steering]
+```
+
+Advanced route controls are also available through **Power tools**.
+
+## 12. Journeys
+
+A Journey is a listening route that changes gradually instead of shuffling randomly.
+
+**Saved journeys** remember the design idea.
+
+**Recent runs** remember privately what actually happened after skips, steering and replanning.
+
+Empty Journey pages explain the first useful action instead of presenting an unexplained blank list.
+
+## 13. Playlists and AI handoff
+
+Open **Playlists → Paste from AI…** to bring in a playlist created in ChatGPT, Claude, Gemini or another chat system.
+
+This is a copy-and-paste workflow:
+
+```mermaid
+flowchart LR
+    A[AI chat] -->|copy playlist text| B[Paste from AI]
+    B --> C[Melodex parses tracks]
+    C --> D[Resolver matches connected sources]
+    D --> E[Saved playlist + queue]
+```
+
+No AI account needs to be connected to Melodex.
+
+See [Playlist interchange](PLAYLIST_INTERCHANGE.md).
+
+## 14. Sources & plugins
+
+Most listeners do not need this page first.
+
+Use **Sources & plugins** when you want to:
+
+- add another local folder;
+- add your own stream URLs;
+- explore optional plugins;
+- configure a source.
+
+Enable **Power tools** only when you need provider priority, diagnostics, manual package installation, Provider Bridge or other technical controls.
+
+## 15. Teach Melodex your taste
 
 A few signals are enough:
 
-- **♥ Love** — strong positive feedback.
-- **Keep** — this belongs in my musical world.
-- **Finish the track** — useful positive evidence.
-- **Skip early** — useful negative evidence.
-- **Return later** — evidence that the track mattered.
+- **♥** — strong positive signal;
+- **Keep** — this belongs in my musical world;
+- finishing tracks — useful positive evidence;
+- early skips — useful negative evidence.
 
-A single skip is not treated as a permanent judgement. Context matters.
+A single skip is not treated as a permanent judgement.
 
-<a id="flow-not-shuffle"></a>
-## 6. Flow, not shuffle
-
-Shuffle asks:
-
-> What random track comes next?
-
-Flow asks:
-
-> **What track makes sense after this one?**
-
-When local audio analysis is available, Melodex can consider musical characteristics such as tempo, energy, key, loudness, timbre and structure.
-
-Flow then tries to order the queue so the movement between tracks feels more deliberate.
-
-A future version of this tour will show the same queue **before and after Flow** side-by-side.
-
-## 7. Music map
-
-Open **Music map** after some local tracks have Flow analysis.
-
-The map is a zoomable local sonic landscape: nearby dots share similar Flow features. Change the colour mode to look at energy, taste memory or rediscovery potential.
-
-The separate **Connections** selector lets the same fixed map answer a different question. Use **Sounds similar · Flow** for sonic-neighbour edges, or **Actually connected · all** for cached factual links such as common artists, producers, performers, works, samples/remixes and recording places.
-
-Select a mapped track to play it, queue it, or choose **Start Mind journey here**. That turns visual exploration back into a normal Melodex listening session.
-
-For a more deliberate route, use **Pathfinder**: set a start and destination, choose Balanced/Sonic/Knowledge-first, then inspect the numbered route and the reason for every hop before playing or queueing it.
-
-**Journey Designer** goes one step further: add semantic stages such as Calm, Darker, Forgotten or Energetic—or an exact selected-track waypoint—and Melodex will build a staged route through them. The included first preset is **Calm → Darker → Forgotten → Energetic**.
-
-Choose **Play live journey** to make the unfinished route adaptive while listening. Manual Next/Skip, steering or avoid rules can rebuild only the remaining queue while keeping the current song and destination fixed. Automatic transitions do not trigger replanning.
-
-The map uses cached analysis/knowledge by default; **Analyse my library** and the knowledge-enrichment buttons remain explicit user actions. Pathfinder, Journey Designer and Journey Live themselves are local and do not trigger network enrichment.
-
-## 8. Journey Library
-
-Open **Journeys** to keep the *shape* of a journey separate from one particular playlist.
-
-**Recipes** save the routing mode and ordered Journey Designer stages so you can choose new start/destination tracks later. Recipes can be imported/exported as share-safe `.mdxjourney` files; exact waypoints use portable track identity rather than local paths.
-
-**Recent runs** are private local history. Inspect a run to compare the designed and final adapted routes, or replay either route after Melodex rematches its recorded track identities onto the current Music Map.
-
-## 9. Moments
-
-![Moments](images/moments.png)
-
-Sometimes the thing you want to remember is not a whole song.
-
-Press **•••** in the player bar and use **Save a moment** to remember an exact playback position: a bass entrance, lyric, solo, breakdown or transition.
-
-## 10. Music sources
-
-![Music Sources](images/sources.png)
-
-The **Sources** page is the single place to manage where music and enrichment come from.
-
-Its normal controls include:
-
-- **Add local folder…** — add music from this computer;
-- **Jamendo settings…** — configure the built-in reference provider;
-- **User Streams…** — add direct streams or stream playlists;
-- **Explore plugins…** — browse the Plugin Directory.
-
-Turn on **Show power tools** only when you need manual `.mdxprovider` / `.mdxplugin` installation, Provider Bridge, source priority or other advanced controls.
-
-Melodex's queue, taste and Flow systems sit above those sources.
-
-<a id="ask-melodex"></a>
-## 11. Ask Melodex
-
-![Ask Melodex](images/ask-melodex.png)
-
-LLM support is optional.
-
-Connect Ollama, OpenWebUI or another compatible model if you want to express listening intent in natural language.
-
-Try:
-
-> Keep this mood but make the next hour stranger.
-
-> Give me a 45-minute session that starts familiar and gradually becomes more energetic.
-
-> Rediscover something I liked but have not played recently.
-
-You can still use the normal Melodex controls for all core listening features.
-
-## 12. Paste a playlist from an AI chat
-
-You do not need to connect the AI to Melodex. In **Playlists**, choose **Paste from AI…**, copy the optional prompt, then paste the playlist reply and choose **Analyse Playlist**. Melodex matches the track details using your connected music sources, saves the playlist and queues the tracks it can play. Unmatched requests stay in the saved playlist. See [Playlist interchange](PLAYLIST_INTERCHANGE.md) for supported formats and privacy details.
+Taste history stays local.
 
 ## Where next?
 
-- [Why Melodex?](WHY_MELODEX.md)
+- [Start Here](START_HERE.md)
+- [My Music](MY_MUSIC.md)
 - [Full user guide](USER_GUIDE.md)
-- [Install on macOS](INSTALL_MACOS.md)
-- [Install on Windows](INSTALL_WINDOWS.md)
-- [Install on Android](INSTALL_ANDROID.md)
+- [Why Melodex?](WHY_MELODEX.md)
+- [Album Wall](ALBUM_WALL.md)
+- [Music Map](MUSIC_MAP.md)
+- [Install Melodex](INSTALL.md)
