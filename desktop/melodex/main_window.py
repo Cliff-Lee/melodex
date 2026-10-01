@@ -554,6 +554,44 @@ class MainWindow(QMainWindow):
             }
             QLabel#emptyTitle{font-size:20px;font-weight:720}
             QLabel#emptyBody{color:#97a2b2;font-size:13px}
+            QFrame#homeHero{
+                background:#131c29;
+                border:1px solid #2a3d56;
+                border-radius:16px;
+            }
+            QFrame#continueCard{
+                background:#121923;
+                border:1px solid #273343;
+                border-radius:13px;
+            }
+            QFrame#powerPanel{
+                background:#111821;
+                border:1px solid #2b3747;
+                border-radius:12px;
+            }
+            QFrame#sourceCard{
+                background:transparent;
+                border:0;
+            }
+            QLabel#sourceBadge{
+                background:#1c2a3e;
+                color:#dce9fb;
+                border:1px solid #34506f;
+                border-radius:10px;
+                font-size:17px;
+                font-weight:750;
+            }
+            QLabel#sourceTitle{font-size:15px;font-weight:700}
+            QLabel#sourceDescription{color:#8f9bad}
+            QLabel#sourceKind{color:#7d899b;font-size:11px}
+            QLabel#statusPill{
+                background:#1a2634;
+                border:1px solid #30445b;
+                border-radius:9px;
+                padding:5px 8px;
+                color:#bfd4eb;
+                font-size:11px;
+            }
             QToolTip{
                 background:#18202c;
                 color:#f4f6fa;
