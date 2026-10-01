@@ -506,7 +506,7 @@ def test_community_lyrics_prefers_exact_lrclib_match_and_persists_private_cache(
     assert result["synced"][0]["time_ms"] == 1000
     assert calls[0][0].endswith("/api/get")
     cache_files = list(
-        (tmp_path / "data" / "rich-metadata" / "metadata-cache" / "json").glob("*.json")
+        (tmp_path / "data" / "metadata-cache" / "json").glob("*.json")
     )
     assert cache_files
 
