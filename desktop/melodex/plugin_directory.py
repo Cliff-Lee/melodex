@@ -610,7 +610,7 @@ class PluginDirectoryDialog(QDialog):
                     counts["setup"]+=1
                 if self._update_available(entry):
                     counts["updates"]+=1
-            else:
+            elif not _is_duplicate_reference(str(entry.get("id") or "")):
                 counts["available"]+=1
         return counts
 
@@ -718,7 +718,9 @@ class PluginDirectoryDialog(QDialog):
             update=self._update_available(entry) if installed else False
             if view=="installed" and not installed:
                 continue
-            if view=="available" and installed:
+            if view=="available" and (
+                installed or _is_duplicate_reference(plugin_id)
+            ):
                 continue
             if view=="setup" and not (installed and state=="setup_needed"):
                 continue
