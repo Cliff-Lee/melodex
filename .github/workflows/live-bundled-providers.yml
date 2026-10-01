@@ -21,6 +21,22 @@ jobs:
           python-version: "3.12"
       - name: Install desktop runtime dependencies
         run: pip install numpy mutagen requests PySide6
+      - name: Inspect bundled LibriVox network path
+        run: |
+          python - <<'PY'
+          import zipfile
+          from pathlib import Path
+          package = Path("desktop/melodex/bundled_providers/LibriVox-0.1.2.mdxprovider")
+          with zipfile.ZipFile(package) as zf:
+              lines = zf.read("provider.py").decode("utf-8").splitlines()
+          needles = ("API =", "def _pace", "def _get_json", "def _search", "provider.health")
+          wanted = set()
+          for i, line in enumerate(lines):
+              if any(needle in line for needle in needles):
+                  wanted.update(range(max(0, i - 3), min(len(lines), i + 28)))
+          for i in sorted(wanted):
+              print(f"{i+1:04d}: {lines[i]}")
+          PY
       - name: Run live bundled-provider smoke test
         env:
           PYTHONPATH: desktop
