@@ -363,9 +363,11 @@ class LibraryBrowser(QWidget):
         self._artist_lookup_queue: list[dict[str, Any]] = []
         self._artist_lookup_inflight = 0
         self._artist_lookup_active = False
+        self._artist_lookup_current = ""
         self._album_lookup_queue: list[dict[str, Any]] = []
         self._album_lookup_inflight = 0
         self._album_lookup_active = False
+        self._album_lookup_current = ""
         self._tracks_built = False
 
         outer = QVBoxLayout(self)
@@ -543,9 +545,11 @@ class LibraryBrowser(QWidget):
         self._artist_lookup_queue.clear()
         self._artist_lookup_inflight = 0
         self._artist_lookup_active = False
+        self._artist_lookup_current = ""
         self._album_lookup_queue.clear()
         self._album_lookup_inflight = 0
         self._album_lookup_active = False
+        self._album_lookup_current = ""
         if not self.catalog:
             self.albums = []
             self.artist_rows = []
@@ -614,8 +618,13 @@ class LibraryBrowser(QWidget):
                 self.images_button.setEnabled(False)
             elif self._artist_lookup_active:
                 remaining=self.artist_image_lookup_remaining()
+                current=self._artist_lookup_current
                 self.images_button.setText(
-                    f"Finding photos… {remaining} left" if remaining else "Finding photos…"
+                    f"Finding {current}… {remaining} left"
+                    if current and remaining
+                    else f"Finding photos… {remaining} left"
+                    if remaining
+                    else "Finding photos…"
                 )
                 self.images_button.setEnabled(False)
             else:
@@ -631,8 +640,13 @@ class LibraryBrowser(QWidget):
                 self.images_button.setEnabled(False)
             elif self._album_lookup_active:
                 remaining=self.album_artwork_lookup_remaining()
+                current=self._album_lookup_current
                 self.images_button.setText(
-                    f"Finding artwork… {remaining} left" if remaining else "Finding artwork…"
+                    f"Finding {current}… {remaining} left"
+                    if current and remaining
+                    else f"Finding artwork… {remaining} left"
+                    if remaining
+                    else "Finding artwork…"
                 )
                 self.images_button.setEnabled(False)
             else:
@@ -902,6 +916,7 @@ class LibraryBrowser(QWidget):
         if not self._artist_lookup_active or not self._artist_lookup_queue:
             self._artist_lookup_active = False
             self._artist_lookup_inflight = 0
+            self._artist_lookup_current = ""
             self._refresh_images_button_label()
             return False
         # One artist per worker makes progress visible after every lookup and
@@ -909,6 +924,7 @@ class LibraryBrowser(QWidget):
         batch=self._artist_lookup_queue[:1]
         self._artist_lookup_queue=self._artist_lookup_queue[1:]
         self._artist_lookup_inflight=len(batch)
+        self._artist_lookup_current=str(batch[0].get("artist") or "artist") if batch else ""
         for row in batch:
             key=str(row.get("key") or "")
             if key:
@@ -929,6 +945,7 @@ class LibraryBrowser(QWidget):
         if not self._album_lookup_active or not self._album_lookup_queue:
             self._album_lookup_active = False
             self._album_lookup_inflight = 0
+            self._album_lookup_current = ""
             self._refresh_images_button_label()
             return False
         # Artwork is also processed incrementally so every completed album
@@ -936,6 +953,11 @@ class LibraryBrowser(QWidget):
         batch=self._album_lookup_queue[:1]
         self._album_lookup_queue=self._album_lookup_queue[1:]
         self._album_lookup_inflight=len(batch)
+        if batch:
+            track=dict(batch[0].get("track") or {})
+            self._album_lookup_current=str(
+                track.get("album") or track.get("title") or "artwork"
+            ).strip()
         self._refresh_images_button_label()
         self.onlineArtworkRequested.emit(batch)
         return True
