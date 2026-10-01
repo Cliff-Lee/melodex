@@ -38,11 +38,13 @@ class PluginDirectoryDialog(QDialog):
         self,
         provider_manager,
         on_installed: Callable[[], None] | None = None,
+        on_use: Callable[[dict[str, Any]], None] | None = None,
         parent=None,
     ):
         super().__init__(parent)
         self.manager = provider_manager
         self.on_installed = on_installed
+        self.on_use = on_use
         self.plugins: list[dict[str, Any]] = []
         self._signals: list[_Signals] = []
 
@@ -103,17 +105,20 @@ class PluginDirectoryDialog(QDialog):
 
         actions = QHBoxLayout()
         self.install_button = QPushButton("Install")
+        self.use_button = QPushButton("Use")
         self.configure_button = QPushButton("Configure…")
         self.test_button = QPushButton("Test plugin")
         self.source_button = QPushButton("View source")
         self.review_button = QPushButton("View review")
         close_button = QPushButton("Close")
         self.install_button.setEnabled(False)
+        self.use_button.setEnabled(False)
         self.configure_button.setEnabled(False)
         self.test_button.setEnabled(False)
         self.source_button.setEnabled(False)
         self.review_button.setEnabled(False)
         actions.addWidget(self.install_button)
+        actions.addWidget(self.use_button)
         actions.addWidget(self.configure_button)
         actions.addWidget(self.test_button)
         actions.addWidget(self.source_button)
@@ -128,6 +133,7 @@ class PluginDirectoryDialog(QDialog):
         self.capability.currentIndexChanged.connect(lambda *_: self._apply_filter())
         self.refresh_button.clicked.connect(lambda: self.load_registry(force=True))
         self.install_button.clicked.connect(self._install_selected)
+        self.use_button.clicked.connect(self._use_selected)
         self.configure_button.clicked.connect(self._configure_selected)
         self.test_button.clicked.connect(self._test_selected)
         self.source_button.clicked.connect(self._open_source)
@@ -150,6 +156,7 @@ class PluginDirectoryDialog(QDialog):
         def failed(message):
             self.status.setText(message)
             self.install_button.setEnabled(False)
+            self.use_button.setEnabled(False)
             self.configure_button.setEnabled(False)
             self.test_button.setEnabled(False)
             if signals in self._signals:
@@ -389,6 +396,13 @@ class PluginDirectoryDialog(QDialog):
         self.install_button.setText(
             "Update" if update_available else "Reinstall" if installed else "Install"
         )
+        ready = installed and configuration_state(config_info) != "setup_needed"
+        self.use_button.setEnabled(bool(ready and self.on_use))
+        self.use_button.setText(
+            "Use source"
+            if str(entry.get("kind") or "") == "provider"
+            else "Use plugin"
+        )
         self.configure_button.setEnabled(
             bool(installed and list(config_info.get("fields") or []))
         )
@@ -475,7 +489,7 @@ class PluginDirectoryDialog(QDialog):
         self.status.setText(
             f"Installed {name}. "
             + (
-                "Ready to use."
+                "Ready. Select it and choose Use plugin/source to open the feature where it is used."
                 if ready
                 else "Setup is still required; select it and choose Configure…."
             )
@@ -485,11 +499,18 @@ class PluginDirectoryDialog(QDialog):
             "Plugin installed",
             f"Installed {name} successfully.\n\n"
             + (
-                "Ready to use."
+                "Ready. Choose Use plugin/source in the directory, or close it and use the plugin from Sources & plugins."
                 if ready
                 else "Setup is still required before this plugin is ready."
             ),
         )
+
+    def _use_selected(self) -> None:
+        entry = self._selected()
+        if not entry or not self._is_installed(entry) or not self.on_use:
+            return
+        self.accept()
+        self.on_use(dict(entry))
 
     def _configure_selected(self) -> None:
         entry = self._selected()
