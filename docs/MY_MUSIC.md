@@ -55,9 +55,19 @@ It shows:
 
 Melodex deliberately does **not** use an album cover as though it were a photograph of the artist.
 
-Choose **Get artist photos** to explicitly try MusicBrainz/Wikidata/Wikimedia-based artist identification for missing portraits. If a representative track does not already contain an artist ID, Melodex can conservatively resolve the artist by name first. Ambiguous matches are rejected rather than guessed.
+Choose **Get artist photos** to explicitly enrich missing portraits. One click now walks the whole missing-artist list in small background batches instead of stopping after the first group.
 
-Found photos are cached and reused later.
+The lookup is layered:
+
+1. cached artist portrait;
+2. MusicBrainz identity;
+3. Wikidata portrait (P18);
+4. freely licensed Wikipedia lead image;
+5. conservative Wikimedia Commons artist search.
+
+If a representative track does not already contain an artist ID, Melodex can conservatively resolve the artist by name first. Album covers, logos and ambiguous image matches are rejected rather than guessed.
+
+Found photos are cached with their Wikimedia provenance and reused later.
 
 ## Tracks
 
