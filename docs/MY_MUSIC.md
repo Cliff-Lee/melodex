@@ -62,12 +62,17 @@ The lookup is layered:
 1. cached artist portrait;
 2. MusicBrainz identity;
 3. Wikidata portrait (P18);
-4. freely licensed Wikipedia lead image;
-5. conservative Wikimedia Commons artist search.
+4. freely licensed Wikipedia lead image from a linked page (English preferred, with other Wikipedia languages as fallback);
+5. conservative Wikipedia artist-page search by name when no reliable link exists;
+6. installed artwork plugins that explicitly return portrait/thumbnail imagery for an artist;
+7. conservative Wikimedia Commons artist search.
 
-If a representative track does not already contain an artist ID, Melodex can conservatively resolve the artist by name first. Album covers, logos and ambiguous image matches are rejected rather than guessed.
+If a representative track does not already contain an artist ID, Melodex can conservatively resolve the artist by name first. Single-word/common names require stronger music-context evidence before a Wikipedia page is accepted. Album covers, logos and ambiguous image matches are rejected rather than guessed.
 
 Found photos are cached with their Wikimedia provenance and reused later.
+
+If an artist still has no suitable freely usable portrait, hover the artist card and choose **Photo…**. Melodex copies the chosen local image into its own artwork cache and remembers it for that artist. The original image file is left untouched.
+
 
 ## Tracks
 

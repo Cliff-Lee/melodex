@@ -147,6 +147,7 @@ class AlbumCard(QFrame):
 class ArtistCard(QFrame):
     openRequested = Signal(object)
     playRequested = Signal(object)
+    photoRequested = Signal(object)
 
     def __init__(self, artist: dict[str, Any], parent=None):
         super().__init__(parent)
@@ -193,10 +194,16 @@ class ArtistCard(QFrame):
         row.setSpacing(5)
         self.open_button = QPushButton("View")
         self.open_button.setObjectName("miniButton")
-        self.play_button = QPushButton("▶ Play")
+        self.play_button = QPushButton("▶")
         self.play_button.setObjectName("miniButton")
+        self.photo_button = QPushButton("Photo…")
+        self.photo_button.setObjectName("miniButton")
+        self.open_button.setMaximumWidth(48)
+        self.play_button.setMaximumWidth(42)
+        self.photo_button.setMaximumWidth(58)
         self.open_button.clicked.connect(lambda: self.openRequested.emit(dict(self.artist)))
         self.play_button.clicked.connect(lambda: self.playRequested.emit(dict(self.artist)))
+        self.photo_button.clicked.connect(lambda: self.photoRequested.emit(dict(self.artist)))
         set_help(
             self.open_button,
             "View artist albums",
@@ -207,10 +214,17 @@ class ArtistCard(QFrame):
             "Play artist",
             "Starts the local tracks Melodex currently has for this artist.",
         )
+        set_help(
+            self.photo_button,
+            "Choose artist photo",
+            "Use a local image when automatic artist-photo lookup cannot find a suitable portrait. Melodex copies it into its own artwork cache.",
+        )
         row.addWidget(self.open_button)
         row.addWidget(self.play_button)
+        row.addWidget(self.photo_button)
         self.open_button.hide()
         self.play_button.hide()
+        self.photo_button.hide()
         outer.addWidget(self.actions)
 
     def set_image(self, path: str, *, artist_photo: bool = False) -> None:
@@ -225,11 +239,13 @@ class ArtistCard(QFrame):
     def enterEvent(self, event):
         self.open_button.show()
         self.play_button.show()
+        self.photo_button.show()
         super().enterEvent(event)
 
     def leaveEvent(self, event):
         self.open_button.hide()
         self.play_button.hide()
+        self.photo_button.hide()
         super().leaveEvent(event)
 
     def mouseDoubleClickEvent(self, event):
@@ -326,6 +342,7 @@ class LibraryBrowser(QWidget):
     onlineArtworkRequested = Signal(object)
     artistImageRequested = Signal(object)
     artistImageCacheRequested = Signal(object)
+    artistPhotoFileRequested = Signal(object)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -572,15 +589,29 @@ class LibraryBrowser(QWidget):
         }[name]
         self.stack.setCurrentWidget(target)
         if name == "artists":
-            self.images_button.setText("Get artist photos")
             self.images_button.setObjectName("primaryButton")
         else:
-            self.images_button.setText("Find missing artwork")
             self.images_button.setObjectName("quietButton")
+        self._refresh_images_button_label()
         self.images_button.style().unpolish(self.images_button)
         self.images_button.style().polish(self.images_button)
         self.images_button.update()
         self._apply_filter()
+
+    def _refresh_images_button_label(self) -> None:
+        if self.current_view() != "artists":
+            self.images_button.setText("Find missing artwork")
+            self.images_button.setEnabled(True)
+            return
+        if self._artist_lookup_active:
+            remaining=self.artist_image_lookup_remaining()
+            self.images_button.setText(
+                f"Finding photos… {remaining} left" if remaining else "Finding photos…"
+            )
+            self.images_button.setEnabled(False)
+        else:
+            self.images_button.setText("Get artist photos")
+            self.images_button.setEnabled(True)
 
     def _apply_filter(self) -> None:
         if not self.catalog:
@@ -650,6 +681,7 @@ class LibraryBrowser(QWidget):
                 card = ArtistCard(artist)
                 card.openRequested.connect(self._artist_opened)
                 card.playRequested.connect(self.playArtistRequested)
+                card.photoRequested.connect(self.artistPhotoFileRequested)
                 self.artist_cards[key] = card
                 artist_path=self.artist_image_paths.get(key,"")
                 if artist_path:
@@ -801,6 +833,7 @@ class LibraryBrowser(QWidget):
                         "track": track,
                     })
             self._artist_lookup_active = bool(self._artist_lookup_queue)
+            self._refresh_images_button_label()
             self._emit_next_artist_lookup_batch()
             return
 
@@ -827,6 +860,7 @@ class LibraryBrowser(QWidget):
         if not self._artist_lookup_active or not self._artist_lookup_queue:
             self._artist_lookup_active = False
             self._artist_lookup_inflight = 0
+            self._refresh_images_button_label()
             return False
         batch=self._artist_lookup_queue[:10]
         self._artist_lookup_queue=self._artist_lookup_queue[10:]
@@ -835,6 +869,7 @@ class LibraryBrowser(QWidget):
             key=str(row.get("key") or "")
             if key:
                 self._artist_art_requested.add(key)
+        self._refresh_images_button_label()
         self.artistImageRequested.emit(batch)
         return True
 

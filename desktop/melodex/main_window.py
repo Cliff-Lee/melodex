@@ -997,6 +997,7 @@ class MainWindow(QMainWindow):
         self.library_browser.onlineArtworkRequested.connect(self._library_online_artwork_requested)
         self.library_browser.artistImageRequested.connect(self._library_artist_images_requested)
         self.library_browser.artistImageCacheRequested.connect(self._library_cached_artist_images_requested)
+        self.library_browser.artistPhotoFileRequested.connect(self._choose_artist_photo_file)
         l.addWidget(self.library_browser,1)
 
 
@@ -2390,6 +2391,38 @@ class MainWindow(QMainWindow):
             )
 
         self._run_async(load,apply)
+
+    def _choose_artist_photo_file(self, artist: object) -> None:
+        if not isinstance(artist,dict):
+            return
+        name=str(artist.get("name") or "Artist").strip() or "Artist"
+        path,_ = QFileDialog.getOpenFileName(
+            self,
+            f"Choose photo for {name}",
+            "",
+            "Images (*.jpg *.jpeg *.png *.webp);;All files (*)",
+        )
+        if not path:
+            return
+        remembered=self.metadata.remember_artist_photo_file(
+            {"name":name},
+            path,
+        )
+        saved=str(remembered.get("path") or "")
+        if not saved:
+            QMessageBox.warning(
+                self,
+                "Could not use image",
+                "Melodex could not copy that image into its artwork cache.",
+            )
+            return
+        key=str(artist.get("key") or "")
+        if key:
+            self.library_browser.set_artist_images({key:saved})
+        self.statusBar().showMessage(
+            f"Saved artist photo for {name}",
+            4500,
+        )
 
     def _library_cached_artist_images_requested(self, requests: object) -> None:
         rows=[dict(x) for x in list(requests or []) if isinstance(x,dict)]

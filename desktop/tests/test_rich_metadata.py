@@ -238,3 +238,140 @@ def test_artist_photo_filename_rejects_album_and_logo_art():
     assert RichMetadataService._artist_photo_filename_ok("Brian Eno 2015.jpg")
     assert not RichMetadataService._artist_photo_filename_ok("Boards of Canada logo.svg")
     assert not RichMetadataService._artist_photo_filename_ok("Bonobo album cover.jpg")
+
+
+
+def test_wikipedia_artist_search_accepts_music_page_for_single_word_stage_name(tmp_path: Path):
+    svc = RichMetadataService(tmp_path / "data")
+
+    def fake_remote(key, url, max_age=0):
+        if key.startswith("wikipedia-artist-search:"):
+            return {
+                "query": {
+                    "search": [
+                        {
+                            "title": "Bonobo (musician)",
+                            "snippet": "British musician, producer and DJ",
+                        },
+                        {
+                            "title": "Bonobo",
+                            "snippet": "A great ape species",
+                        },
+                    ]
+                }
+            }
+        return {}
+
+    svc._remote_json = fake_remote
+    api, title = svc._wikipedia_artist_page_by_name({
+        "name": "Bonobo",
+        "type": "Person",
+    })
+    assert api.endswith("en.wikipedia.org/w/api.php")
+    assert title == "Bonobo (musician)"
+
+
+def test_wikipedia_artist_search_rejects_non_music_single_word_page(tmp_path: Path):
+    svc = RichMetadataService(tmp_path / "data")
+
+    svc._remote_json = lambda key, url, max_age=0: {
+        "query": {
+            "search": [
+                {
+                    "title": "Air",
+                    "snippet": "The mixture of gases that forms the atmosphere",
+                }
+            ]
+        }
+    }
+    assert svc._wikipedia_artist_page_by_name({"name": "Air"}) == ("", "")
+
+
+def test_artist_photo_can_use_artwork_extension_portrait(tmp_path: Path):
+    portrait = tmp_path / "plugin-portrait.jpg"
+    portrait.write_bytes(b"portrait")
+
+    class Broker:
+        def entity_ref(self, track, identity=None, entity_type="track"):
+            assert entity_type == "artist"
+            return {
+                "entity_type": "artist",
+                "hints": {"name": track["artist"]},
+            }
+
+        def lookup_artwork(self, subject, roles=None, max_results=8):
+            assert "portrait" in roles
+            return {
+                "assets": [
+                    {
+                        "url": "https://example.invalid/brian-eno.jpg",
+                        "role": "portrait",
+                        "_extension_id": "org.example.portraits",
+                        "provenance": {
+                            "source_extension_id": "org.example.portraits",
+                            "source_url": "https://example.invalid/artist/brian-eno",
+                            "attribution": "Example archive",
+                            "license": "CC BY 4.0",
+                        },
+                    }
+                ]
+            }
+
+    svc = RichMetadataService(tmp_path / "data", capability_broker=Broker())
+    svc.resolve_artist = lambda name: {
+        "name": name,
+        "mbid": "mbid-eno",
+        "links": [],
+        "wikidata_qid": "",
+    }
+    svc._wikipedia_page_image = lambda artist, entity: ("", "")
+    svc._commons_artist_image = lambda artist_name: ("", "")
+    svc._download_artwork = lambda url: portrait
+
+    result = svc.artist_photo({"name": "Brian Eno"})
+    assert result["path"] == str(portrait)
+    assert result["source"] == "org.example.portraits"
+    assert result["discovery_source"] == "Artwork plugin"
+
+
+
+def test_wikipedia_link_falls_back_to_non_english_wikidata_sitelink(tmp_path: Path):
+    svc = RichMetadataService(tmp_path / "data")
+    api, title = svc._wikipedia_link(
+        {"name": "Example Artist", "links": []},
+        {
+            "sitelinks": {
+                "dewiki": {"title": "Beispielkünstler"},
+                "frwiki": {"title": "Artiste exemple"},
+            }
+        },
+    )
+    assert api == "https://de.wikipedia.org/w/api.php"
+    assert title == "Beispielkünstler"
+
+
+
+def test_user_selected_artist_photo_is_copied_and_remembered(tmp_path: Path):
+    source = tmp_path / "artist-photo.jpg"
+    source.write_bytes(b"user portrait")
+
+    svc = RichMetadataService(tmp_path / "data")
+    result = svc.remember_artist_photo_file({"name": "Brian Eno"}, source)
+
+    cached_path = Path(result["path"])
+    assert cached_path.is_file()
+    assert cached_path.read_bytes() == b"user portrait"
+    assert cached_path != source
+
+    reopened = RichMetadataService(tmp_path / "data")
+    cached = reopened.cached_artist_photo({"name": "Brian Eno"})
+    assert cached["path"] == str(cached_path)
+    assert cached["source"] == "User-selected artist photo"
+
+
+
+def test_user_selected_artist_photo_rejects_unsupported_file_type(tmp_path: Path):
+    source = tmp_path / "not-an-image.txt"
+    source.write_text("not an image", "utf-8")
+    svc = RichMetadataService(tmp_path / "data")
+    assert svc.remember_artist_photo_file({"name": "Example Artist"}, source) == {}
