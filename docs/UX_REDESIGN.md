@@ -169,9 +169,14 @@ Answers only:
 
 Default: visual Albums grid.
 
-Secondary views: Artists, Tracks.
+Secondary views are also visual:
+
+- **Artists** — artist photo when available, otherwise representative album artwork;
+- **Tracks** — compact rows with album artwork, artist/album context and direct actions.
 
 File paths, source IDs and technical metadata stay out of the primary view.
+
+Artwork found through an explicit online lookup becomes remembered collection metadata rather than temporary page state. User corrections to incomplete local metadata are stored as Melodex-local overrides so they survive rescans without silently rewriting the user's audio files.
 
 ### Explore
 
@@ -234,7 +239,9 @@ The first implementation establishes the system rather than redesigning every ad
 - simplified navigation;
 - persistent Power tools preference;
 - active navigation state;
-- visual My Music album browser;
+- visual My Music browser across Albums, Artists and Tracks;
+- persistent album/artist artwork associations;
+- safe Melodex-local metadata correction for incomplete local tags;
 - Home built around listening intentions;
 - Explore hub;
 - artwork in the persistent player;
