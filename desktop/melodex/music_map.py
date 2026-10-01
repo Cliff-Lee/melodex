@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from PySide6.QtCore import QEasingCurve, Qt, QVariantAnimation, Signal
+from PySide6.QtCore import QAbstractAnimation, QEasingCurve, Qt, QVariantAnimation, Signal
 from PySide6.QtGui import QColor, QBrush, QPainter, QPen
 from PySide6.QtWidgets import (
     QComboBox,
@@ -55,7 +55,7 @@ class _MapView(QGraphicsView):
         target = max(0.62, min(3.0, current * float(multiplier)))
         if abs(target - current) < 0.002:
             return
-        if self._zoom_animation.state() == QVariantAnimation.Running:
+        if self._zoom_animation.state() == QAbstractAnimation.Running:
             self._zoom_animation.stop()
         self._zoom_animation.setStartValue(current)
         self._zoom_animation.setEndValue(target)
