@@ -169,11 +169,17 @@ class RichNowPlayingWidget(QWidget):
         self.lyrics_more_menu=QMenu(self.more_lyrics_button)
         self.edit_lyrics_action=self.lyrics_more_menu.addAction("Edit saved lyrics…")
         self.edit_lyrics_action.setEnabled(False)
-        self.edit_lyrics_action.triggered.connect(self._edit_saved_lyrics)
+        self.edit_lyrics_action.triggered.connect(
+            lambda _checked=False:self._edit_saved_lyrics()
+        )
         self.import_lyrics_action=self.lyrics_more_menu.addAction("Add lyrics file…")
-        self.import_lyrics_action.triggered.connect(self._import_lyrics_file)
+        self.import_lyrics_action.triggered.connect(
+            lambda _checked=False:self._import_lyrics_file()
+        )
         self.paste_lyrics_action=self.lyrics_more_menu.addAction("Paste lyrics…")
-        self.paste_lyrics_action.triggered.connect(self._paste_lyrics)
+        self.paste_lyrics_action.triggered.connect(
+            lambda _checked=False:self._paste_lyrics()
+        )
         self.lyrics_more_menu.addSeparator()
         self.auto_online_lyrics_action=self.lyrics_more_menu.addAction("Auto-find online")
         self.auto_online_lyrics_action.setCheckable(True)
@@ -182,7 +188,7 @@ class RichNowPlayingWidget(QWidget):
             "Manage lyric sources…"
         )
         self.manage_lyrics_sources_action.triggered.connect(
-            self.lyricsPluginRequested
+            lambda _checked=False:self.lyricsPluginRequested.emit()
         )
         self.more_lyrics_button.setMenu(self.lyrics_more_menu)
         toolbar.addWidget(self.more_lyrics_button)
@@ -619,8 +625,6 @@ class RichNowPlayingWidget(QWidget):
                     source_label += " · matched by search"
                 if lyrics.get("cache")=="memory":
                     source_label += " · reused this session"
-            elif source_url:
-                source_label += " · installed plugin"
             if self.synced:
                 source_label += " · synchronized"
             self.lyrics_source.setText(source_label)
@@ -634,7 +638,7 @@ class RichNowPlayingWidget(QWidget):
                 + (f" · {error[:120]}" if error else "")
             )
         else:
-            self.lyrics_source.setText("No local/plugin lyrics · try Find online or add your own")
+            self.lyrics_source.setText("No lyric source matched yet")
 
         self._refresh_lyrics_source_picker()
         editable=self._current_lyrics_editable()
