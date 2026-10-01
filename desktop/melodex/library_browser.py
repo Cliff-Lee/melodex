@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Any
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QEvent, Qt, Signal
 from PySide6.QtWidgets import (
     QButtonGroup,
     QFrame,
@@ -257,7 +257,7 @@ class LibraryBrowser(QWidget):
         self.stack.addWidget(self.empty)
 
     def eventFilter(self, watched, event):
-        if watched is self.album_scroll.viewport() and event.type() == event.Resize:
+        if watched is self.album_scroll.viewport() and event.type() == QEvent.Resize:
             self._layout_cards()
         return super().eventFilter(watched, event)
 
