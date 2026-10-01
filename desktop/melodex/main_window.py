@@ -545,6 +545,19 @@ class MainWindow(QMainWindow):
             }
             QLabel#albumCardTitle{font-weight:700;font-size:12px}
             QLabel#albumCardMeta{color:#8995a7;font-size:11px}
+            QListWidget#visualTrackList{
+                background:transparent;
+                border:0;
+                padding:0;
+            }
+            QListWidget#visualTrackList::item{
+                background:transparent;
+                border:0;
+                padding:0;
+            }
+            QListWidget#visualTrackList::item:selected{
+                background:transparent;
+            }
             QFrame#trackRow{
                 background:#121923;
                 border:1px solid #222e3d;
@@ -983,6 +996,7 @@ class MainWindow(QMainWindow):
         self.library_browser.artworkRequested.connect(self._library_artwork_requested)
         self.library_browser.onlineArtworkRequested.connect(self._library_online_artwork_requested)
         self.library_browser.artistImageRequested.connect(self._library_artist_images_requested)
+        self.library_browser.artistImageCacheRequested.connect(self._library_cached_artist_images_requested)
         l.addWidget(self.library_browser,1)
 
 
@@ -2204,6 +2218,23 @@ class MainWindow(QMainWindow):
             )
 
         self._run_async(load,apply)
+
+    def _library_cached_artist_images_requested(self, requests: object) -> None:
+        rows=[dict(x) for x in list(requests or []) if isinstance(x,dict)]
+        if not rows:
+            return
+
+        def load():
+            result={}
+            for row in rows:
+                key=str(row.get("key") or "")
+                artist_name=str(row.get("artist") or "")
+                if key and artist_name:
+                    cached=self.metadata.cached_artist_photo({"name":artist_name})
+                    result[key]=str(cached.get("path") or "")
+            return result
+
+        self._run_async(load,self.library_browser.set_artist_images)
 
     def _library_artist_images_requested(self, requests: object) -> None:
         rows=[dict(x) for x in list(requests or []) if isinstance(x,dict)]
