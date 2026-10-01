@@ -1564,14 +1564,44 @@ class MainWindow(QMainWindow):
         l=self._page_layout(
             "sources",
             "Sources & plugins",
-            "Choose where Melodex can find music. Everyday controls stay simple; provider internals appear only when you enable Power tools.",
+            "See what Melodex includes, what you have connected, and which optional enhancements are installed. Technical details stay under Power tools.",
         )
+
+        overview=QFrame()
+        overview.setObjectName("sourceOverview")
+        overview_l=QHBoxLayout(overview)
+        overview_l.setContentsMargins(16,14,16,14)
+        overview_l.setSpacing(16)
+        self.sources_overview_icon=QLabel("◉")
+        self.sources_overview_icon.setObjectName("overviewIcon")
+        self.sources_overview_icon.setAlignment(Qt.AlignCenter)
+        self.sources_overview_icon.setFixedSize(42,42)
+        overview_l.addWidget(self.sources_overview_icon)
+        overview_text=QVBoxLayout()
+        overview_text.setSpacing(2)
+        overview_title=QLabel("Your Melodex ecosystem")
+        overview_title.setStyleSheet("font-size:17px;font-weight:700")
+        overview_text.addWidget(overview_title)
+        self.sources_overview=QLabel()
+        self.sources_overview.setWordWrap(True)
+        self.sources_overview.setStyleSheet("color:#93a0b2")
+        overview_text.addWidget(self.sources_overview)
+        overview_l.addLayout(overview_text,1)
+        self.source_check_all=QPushButton("Check installed")
+        self.source_check_all.clicked.connect(self._test_all_plugins)
+        set_help(
+            self.source_check_all,
+            "Check installed sources and plugins",
+            "Runs each installed provider or extension's bounded health check. This verifies connectivity/runtime health without changing your setup.",
+        )
+        overview_l.addWidget(self.source_check_all)
+        l.addWidget(overview)
 
         actions=QHBoxLayout()
         local=QPushButton("+ Add my music")
         local.setObjectName("primaryButton")
         local.clicked.connect(self._choose_music_folder)
-        directory=QPushButton("Explore plugins")
+        directory=QPushButton("Browse optional plugins")
         directory.clicked.connect(self._plugin_directory)
         streams=QPushButton("My streams")
         streams.clicked.connect(self._user_streams_dialog)
@@ -1585,8 +1615,8 @@ class MainWindow(QMainWindow):
         )
         set_help(
             directory,
-            "Explore plugins",
-            "Browse optional providers and extensions that add new music sources or capabilities.",
+            "Browse optional plugins",
+            "Open the Plugin Centre to add optional music sources, recommendations, artwork, lyrics, metadata or context enhancements.",
         )
         set_help(
             streams,
