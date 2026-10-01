@@ -862,6 +862,9 @@ class MainWindow(QMainWindow):
         self.rich_now.accentChanged.connect(self.living_canvas.set_accent_color)
         self.rich_now.paletteChanged.connect(self.living_canvas.set_palette)
         self.rich_now.lyricsChanged.connect(self.living_canvas.set_lyrics)
+        self.rich_now.lyricsPluginRequested.connect(
+            lambda: self._plugin_directory("lyrics")
+        )
         self.living_canvas.seekRequested.connect(self.player.seek)
         self.living_canvas.modeDataRequested.connect(self._request_visual_mode_data)
         self.living_canvas.neighbourActivated.connect(self._queue_visual_neighbour)
@@ -3252,11 +3255,12 @@ class MainWindow(QMainWindow):
         if ok:
             self.providers.set_jamendo_client_id(value.strip()); self.statusBar().showMessage("Jamendo source updated",3000)
 
-    def _plugin_directory(self):
+    def _plugin_directory(self, capability: str = ""):
         dialog=PluginDirectoryDialog(
             self.providers,
             on_installed=self._refresh_sources,
             on_use=self._use_plugin_directory_entry,
+            initial_capability=capability,
             parent=self,
         )
         dialog.exec()
