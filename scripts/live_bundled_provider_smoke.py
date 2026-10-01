@@ -11,6 +11,7 @@ from urllib.parse import urlsplit
 from melodex.provider_manager import ProviderManager
 
 
+# Real network checks; intentionally not part of deterministic PR CI.
 CASES = {
     "org.melodex.internetarchive.audio": "Grateful Dead",
     "org.melodex.librivox": "Odyssey",
