@@ -2448,10 +2448,17 @@ class MainWindow(QMainWindow):
             result_rows=dict(result or {})
             self.library_browser.set_artist_images(result_rows)
             found=sum(1 for path in result_rows.values() if str(path or "").strip())
-            self.statusBar().showMessage(
-                f"Artist image lookup finished · {found} photo{'s' if found!=1 else ''} found",
-                5000,
-            )
+            more=self.library_browser.continue_artist_image_lookup()
+            if more:
+                remaining=self.library_browser.artist_image_lookup_remaining()
+                self.statusBar().showMessage(
+                    f"Artist photos · {found} found in this batch · continuing through {remaining} remaining…"
+                )
+            else:
+                self.statusBar().showMessage(
+                    f"Artist photo lookup complete · {found} found in the final batch",
+                    6000,
+                )
 
         self._run_async(load,apply)
 
