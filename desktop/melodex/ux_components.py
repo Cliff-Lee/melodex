@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPen, QPixmap
+from PySide6.QtGui import QBrush, QColor, QLinearGradient, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
     QDialog,
     QFrame,
@@ -53,7 +53,7 @@ def placeholder_cover(title: str, key: str, size: int = 160) -> QPixmap:
     gradient = QLinearGradient(0, 0, size, size)
     gradient.setColorAt(0.0, a.darker(170))
     gradient.setColorAt(1.0, b.darker(185))
-    painter.fillRect(0, 0, size, size, gradient)
+    painter.fillRect(0, 0, size, size, QBrush(gradient))
 
     painter.setPen(QPen(QColor(255, 255, 255, 20), 1))
     step = max(16, size // 7)
