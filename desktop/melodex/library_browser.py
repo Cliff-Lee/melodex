@@ -39,7 +39,7 @@ class AlbumCard(QFrame):
         self.key = str(album.get("key") or "")
         self.setObjectName("albumCard")
         self.setCursor(Qt.PointingHandCursor)
-        self.setFixedSize(176, 268)
+        self.setFixedSize(176, 286)
         self.setMouseTracking(True)
         self.has_real_cover = False
 
@@ -57,7 +57,9 @@ class AlbumCard(QFrame):
 
         title = QLabel(str(album.get("title") or "Unknown album"))
         title.setObjectName("albumCardTitle")
-        title.setWordWrap(False)
+        title.setWordWrap(True)
+        title.setFixedHeight(34)
+        title.setAlignment(Qt.AlignLeft | Qt.AlignTop)
         title.setToolTip(str(album.get("title") or "Unknown album"))
         outer.addWidget(title)
 
@@ -67,6 +69,7 @@ class AlbumCard(QFrame):
             meta += f"  ·  {year}"
         artist = QLabel(meta)
         artist.setObjectName("albumCardMeta")
+        artist.setFixedHeight(18)
         artist.setToolTip(meta)
         outer.addWidget(artist)
 
