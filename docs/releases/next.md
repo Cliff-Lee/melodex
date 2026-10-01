@@ -18,3 +18,18 @@ This file tracks changes intended for **v0.7.2**.
 - The source selector remains native even when only one source is available.
 - Plugin/source management remains available from **More** and Sources & plugins, but is no longer the way a listener “opens” or uses Lyrics.
 
+## Campaign J — Spatial Browsing UX
+
+- Album Wall now opens near a readable sleeve-browsing scale instead of shrinking the whole collection to fit.
+- Album Wall supports canvas-style mouse dragging and two-finger trackpad panning.
+- Smooth bounded zoom uses the mouse wheel, or Cmd/Ctrl + trackpad scroll when ordinary trackpad gestures should remain panning.
+- **Actual size** restores the normal browsing scale; **Overview** is now an explicit orientation action rather than the default.
+- Double-click remains the direct album-play gesture.
+- Album Wall maintenance actions move behind **Wall options…**, keeping the artwork canvas dominant.
+- Music Map now defaults to **Selected relationships**, showing no connection web until a track is selected.
+- Selecting a mapped track reveals only its immediate sonic relationships; **All sonic links** remains available explicitly.
+- Music Map nodes are larger and the default fitted view is slightly closer for legibility.
+- The map keeps the majority of the page: maintenance actions move behind **Map options…**, route planning behind **Plan a route…**, and Journey Designer controls behind **Journey options…**.
+- Global **Power tools** no longer forces Album Wall or Music Map control panels open.
+- Spatial pages share a consistent pan/zoom mental model and preserve double-click-to-play behavior.
+
