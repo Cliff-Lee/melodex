@@ -61,6 +61,7 @@ jobs:
           python scripts/terminology_check.py
           python scripts/ecosystem_check.py
           python scripts/release_check.py
+          python scripts/release_readiness.py
 
       - name: Run release test suites
         if: steps.release.outputs.publish == 'true'
@@ -149,6 +150,7 @@ jobs:
       - run: python scripts/ecosystem_check.py
       - run: python scripts/version_check.py --release-tag "${GITHUB_REF_NAME}"
       - run: python scripts/release_check.py
+      - run: python scripts/release_readiness.py
       - run: |
           zip -r "Melodex-${GITHUB_REF_NAME}-source.zip" . -x '.git/*' '*/build/*' '*/dist/*' '*.pyc' '*/__pycache__/*'
       - uses: softprops/action-gh-release@v2
