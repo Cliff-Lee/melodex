@@ -60,6 +60,7 @@ def test_visual_library_defaults_to_album_cards_and_filters():
     assert len(browser.artist_cards) == 2
     assert browser.images_button.text() == "Get artist photos"
     assert all(not card.has_artist_photo for card in browser.artist_cards.values())
+    assert all(hasattr(card, "photo_button") for card in browser.artist_cards.values())
 
     browser.set_view("tracks")
     assert browser.stack.currentWidget() is browser.track_list
