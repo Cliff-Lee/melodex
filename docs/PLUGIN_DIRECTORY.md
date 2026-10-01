@@ -1,4 +1,4 @@
-# Melodex Plugin Directory
+# Melodex Plugin Centre
 
 The desktop app includes a registry-backed **Plugin Centre** for discovering optional providers and capability extensions. Its default view is deliberately user-facing: what a plugin does, whether it is installed, what access it requests, and how to use it. Package hashes and review metadata remain available under **Technical details**.
 
@@ -9,7 +9,7 @@ Sources & plugins
 → Browse optional plugins
 ```
 
-## What the directory shows
+## What the Plugin Centre shows
 
 Each entry can expose:
 
@@ -33,7 +33,7 @@ last registry review date
 linked review record
 ```
 
-The point is not merely convenience. The directory makes the trust boundary visible before third-party code is installed and records evidence about how new installs reached the machine.
+The point is not merely convenience. The Plugin Centre keeps the trust boundary visible before third-party code is installed, while hiding package-level detail until the user asks for it.
 
 ## Package types
 
