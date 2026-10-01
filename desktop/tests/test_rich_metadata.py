@@ -80,3 +80,70 @@ def test_local_artwork_checks_parent_of_multidisc_folder(tmp_path: Path):
     out = svc.local_artwork({"local_path": str(audio)})
     assert out["path"] == str(cover)
     assert out["source"] == "local cover file"
+
+
+
+def test_online_artwork_association_survives_new_metadata_service(tmp_path: Path):
+    audio = tmp_path / "Artist" / "Album" / "01 Track.mp3"
+    audio.parent.mkdir(parents=True)
+    audio.write_bytes(b"not audio")
+    cached = tmp_path / "data" / "metadata-cache" / "artwork" / "remembered.jpg"
+    cached.parent.mkdir(parents=True)
+    cached.write_bytes(b"image")
+    track = {
+        "provider_id": "local",
+        "track_id": str(audio),
+        "local_path": str(audio),
+        "artist": "Artist",
+        "album": "Album",
+        "year": 2001,
+        "title": "Track",
+    }
+
+    first = RichMetadataService(tmp_path / "data")
+    first.remember_artwork(
+        track,
+        cached,
+        source="Cover Art Archive",
+        source_url="https://example.invalid/cover",
+    )
+
+    second = RichMetadataService(tmp_path / "data")
+    result = second.local_artwork(track)
+    assert result["path"] == str(cached)
+    assert result["source"] == "Cover Art Archive"
+
+
+def test_identify_can_match_unknown_artist_from_track_and_album(tmp_path: Path):
+    svc = RichMetadataService(tmp_path / "data")
+    seen = {}
+
+    def fake_mb(path, params, max_age):
+        seen["query"] = params["query"]
+        return {
+            "recordings": [{
+                "id": "rec-2",
+                "title": "Known Song",
+                "artist-credit": [{
+                    "name": "Recovered Artist",
+                    "artist": {"id": "artist-2", "name": "Recovered Artist"},
+                }],
+                "releases": [{
+                    "id": "rel-2",
+                    "title": "Known Album",
+                    "date": "2007-01-01",
+                    "release-group": {"id": "rg-2"},
+                }],
+            }]
+        }
+
+    svc._mb_json = fake_mb
+    ident = svc.identify({
+        "artist": "Unknown artist",
+        "title": "Known Song",
+        "album": "Known Album",
+    })
+    assert 'artist:"Unknown artist"' not in seen["query"]
+    assert 'release:"Known Album"' in seen["query"]
+    assert ident.artist == "Recovered Artist"
+    assert ident.release_group_mbid == "rg-2"
