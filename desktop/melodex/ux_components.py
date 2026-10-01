@@ -166,6 +166,7 @@ class SourceCard(QFrame):
     ):
         super().__init__(parent)
         self.setObjectName("sourceCard")
+        self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
         outer = QHBoxLayout(self)
         outer.setContentsMargins(13, 11, 13, 11)
         outer.setSpacing(12)
