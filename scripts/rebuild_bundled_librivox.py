@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import zipfile
 from pathlib import Path
 
@@ -19,17 +20,30 @@ def rebuild(source: Path, destination: Path) -> None:
     ).encode("utf-8")
 
     provider = files["provider.py"].decode("utf-8")
-    replacements = {
-        'VERSION="0.1.2"': 'VERSION="0.1.3"',
-        "def _bytes(url,headers=None,timeout=22,attempts=3):":
-            "def _bytes(url,headers=None,timeout=28,attempts=1):",
-        'books=_fetch({key:q,"limit":"8","offset":"0"})':
-            'books=_fetch({key:q,"limit":"1","offset":"0"})',
-    }
-    for old, new in replacements.items():
-        if old not in provider:
-            raise RuntimeError(f"Expected LibriVox source fragment is missing: {old}")
-        provider = provider.replace(old, new, 1)
+
+    provider, version_count = re.subn(
+        r'VERSION\s*=\s*["\']0\\.1\\.2["\']',
+        'VERSION="0.1.3"',
+        provider,
+        count=1,
+    )
+    provider, timeout_count = re.subn(
+        r'timeout\s*=\s*22\s*,\s*attempts\s*=\s*3',
+        'timeout=28, attempts=1',
+        provider,
+        count=1,
+    )
+    provider, limit_count = re.subn(
+        r'books\s*=\s*_fetch\(\{key:q,\s*"limit":"8",\s*"offset":"0"\}\)',
+        'books=_fetch({key:q,"limit":"1","offset":"0"})',
+        provider,
+        count=1,
+    )
+    if (version_count, timeout_count, limit_count) != (1, 1, 1):
+        raise RuntimeError(
+            "Unexpected LibriVox source shape: "
+            f"version={version_count}, timeout={timeout_count}, limit={limit_count}"
+        )
     files["provider.py"] = provider.encode("utf-8")
 
     destination.parent.mkdir(parents=True, exist_ok=True)
