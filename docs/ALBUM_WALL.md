@@ -4,6 +4,8 @@ Album Wall is a visual, local-first way to browse a Melodex collection as a plac
 
 Open **Album wall** from the desktop sidebar. Each album appears once as a cover tile. Drag the wall to explore it, use the mouse wheel to zoom, search by artist or album, and double-click a cover to play the album in track order.
 
+For local libraries, a release folder is the primary album boundary, so separate editions of the same artist/title remain separate tiles. Common multi-disc folders such as `CD1` and `Disc 2` are folded back into their parent album.
+
 ## Lenses
 
 The same collection can be rearranged without changing the underlying library:
