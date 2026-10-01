@@ -1616,6 +1616,15 @@ class MainWindow(QMainWindow):
         self.source_hint.setStyleSheet("color:#8793a4")
         l.addWidget(self.source_hint)
 
+        self.legacy_source_notice=QLabel()
+        self.legacy_source_notice.setWordWrap(True)
+        self.legacy_source_notice.setStyleSheet(
+            "color:#d5b26f;background:#241d12;border:1px solid #4f3d1d;"
+            "border-radius:8px;padding:8px"
+        )
+        self.legacy_source_notice.hide()
+        l.addWidget(self.legacy_source_notice)
+
         self.source_power_panel = QFrame()
         self.source_power_panel.setObjectName("powerPanel")
         power=QVBoxLayout(self.source_power_panel)
@@ -1921,19 +1930,46 @@ class MainWindow(QMainWindow):
                 else:
                     health=self.providers.plugin_health(extension_id)
                     status="Needs attention" if health.get("status") in {"error","stopped","unhealthy"} else "Ready"
-                capabilities=", ".join(extension.get("capabilities") or []) or "Adds extra Melodex capabilities"
+                raw_capabilities=[str(x) for x in list(extension.get("capabilities") or []) if x]
+                capabilities=", ".join(raw_capabilities) or "Adds extra Melodex capabilities"
                 description=str(extension.get("description") or capabilities)
+                if "library_suggestions" in raw_capabilities:
+                    kind="Recommendation plugin"
+                elif "artwork" in raw_capabilities:
+                    kind="Artwork plugin"
+                elif "lyrics" in raw_capabilities:
+                    kind="Lyrics plugin"
+                elif "context" in raw_capabilities:
+                    kind="Context plugin"
+                elif any(x in raw_capabilities for x in ("metadata","identity")):
+                    kind="Metadata plugin"
+                else:
+                    kind="Extension"
                 item=QListWidgetItem()
                 item.setData(Qt.UserRole,"extension:"+extension_id)
                 card=SourceCard(
                     str(extension.get("name") or extension_id),
                     description,
                     status,
-                    kind="Extension",
+                    kind=kind,
                 )
                 item.setSizeHint(card.sizeHint())
                 self.sources_list.addItem(item)
                 self.sources_list.setItemWidget(item,card)
+
+        legacy=self.providers.quarantined_legacy_providers()
+        if hasattr(self,"legacy_source_notice"):
+            if legacy:
+                names=", ".join(str(row.get("name") or row.get("id") or "legacy provider") for row in legacy)
+                self.legacy_source_notice.setText(
+                    "Legacy development provider disabled: "
+                    + names
+                    + ". It is not part of public Melodex and will not be searched or played. "
+                    "Its old local files have been left untouched."
+                )
+                self.legacy_source_notice.show()
+            else:
+                self.legacy_source_notice.hide()
 
         self._refresh_source_combo()
         self._source_selection_changed()
