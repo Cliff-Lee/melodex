@@ -4052,7 +4052,7 @@ class MainWindow(QMainWindow):
                 self._path_for,
                 minutes=int(self.minutes.currentText()),
                 adventure=self.adventure.value()/100,
-                mode=self.mode.currentText(),
+                mode=str(self.mode.currentData() or "balanced"),
                 start_track=track,
             ),
             lambda plan:self._apply_mind(plan),
