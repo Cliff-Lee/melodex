@@ -48,3 +48,19 @@ def test_musicbrainz_match_parsing_without_network(tmp_path: Path):
     assert ident.artist_mbid == "artist-1"
     assert ident.release_group_mbid == "rg-1"
     assert ident.score > 0.9
+
+
+
+def test_local_artwork_prefers_sidecar_without_network(tmp_path: Path):
+    album = tmp_path / "Album"
+    album.mkdir()
+    audio = album / "01 Track.mp3"
+    audio.write_bytes(b"not audio")
+    cover = album / "Cover.JPG"
+    cover.write_bytes(b"fake image bytes")
+
+    svc = RichMetadataService(tmp_path / "data")
+    out = svc.local_artwork({"local_path": str(audio)})
+    assert out["path"] == str(cover)
+    assert out["source"] == "local cover file"
+    assert out["source_url"] == ""
