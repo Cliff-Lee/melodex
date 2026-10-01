@@ -363,6 +363,11 @@ class LibraryBrowser(QWidget):
         self._artist_lookup_queue: list[dict[str, Any]] = []
         self._artist_lookup_inflight = 0
         self._artist_lookup_active = False
+        self._artist_lookup_current = ""
+        self._album_lookup_queue: list[dict[str, Any]] = []
+        self._album_lookup_inflight = 0
+        self._album_lookup_active = False
+        self._album_lookup_current = ""
         self._tracks_built = False
 
         outer = QVBoxLayout(self)
@@ -540,6 +545,11 @@ class LibraryBrowser(QWidget):
         self._artist_lookup_queue.clear()
         self._artist_lookup_inflight = 0
         self._artist_lookup_active = False
+        self._artist_lookup_current = ""
+        self._album_lookup_queue.clear()
+        self._album_lookup_inflight = 0
+        self._album_lookup_active = False
+        self._album_lookup_current = ""
         if not self.catalog:
             self.albums = []
             self.artist_rows = []
@@ -598,20 +608,61 @@ class LibraryBrowser(QWidget):
         self.images_button.update()
         self._apply_filter()
 
+    @staticmethod
+    def _progress_item_label(value: str, limit: int = 22) -> str:
+        value=" ".join(str(value or "").split())
+        if len(value) <= limit:
+            return value
+        return value[: max(1, limit - 1)].rstrip() + "…"
+
     def _refresh_images_button_label(self) -> None:
-        if self.current_view() != "artists":
-            self.images_button.setText("Find missing artwork")
-            self.images_button.setEnabled(True)
+        view=self.current_view()
+        if view == "artists":
+            if self._album_lookup_active:
+                self.images_button.setText(
+                    f"Artwork search running… {self.album_artwork_lookup_remaining()} left"
+                )
+                self.images_button.setEnabled(False)
+            elif self._artist_lookup_active:
+                remaining=self.artist_image_lookup_remaining()
+                current=self._progress_item_label(self._artist_lookup_current)
+                self.images_button.setText(
+                    f"Finding {current}… {remaining} left"
+                    if current and remaining
+                    else f"Finding photos… {remaining} left"
+                    if remaining
+                    else "Finding photos…"
+                )
+                self.images_button.setEnabled(False)
+            else:
+                self.images_button.setText("Get artist photos")
+                self.images_button.setEnabled(True)
             return
-        if self._artist_lookup_active:
-            remaining=self.artist_image_lookup_remaining()
-            self.images_button.setText(
-                f"Finding photos… {remaining} left" if remaining else "Finding photos…"
-            )
-            self.images_button.setEnabled(False)
-        else:
-            self.images_button.setText("Get artist photos")
-            self.images_button.setEnabled(True)
+
+        if view == "albums":
+            if self._artist_lookup_active:
+                self.images_button.setText(
+                    f"Artist search running… {self.artist_image_lookup_remaining()} left"
+                )
+                self.images_button.setEnabled(False)
+            elif self._album_lookup_active:
+                remaining=self.album_artwork_lookup_remaining()
+                current=self._progress_item_label(self._album_lookup_current)
+                self.images_button.setText(
+                    f"Finding {current}… {remaining} left"
+                    if current and remaining
+                    else f"Finding artwork… {remaining} left"
+                    if remaining
+                    else "Finding artwork…"
+                )
+                self.images_button.setEnabled(False)
+            else:
+                self.images_button.setText("Find missing artwork")
+                self.images_button.setEnabled(True)
+            return
+
+        self.images_button.setText("Find missing artwork")
+        self.images_button.setEnabled(False)
 
     def _apply_filter(self) -> None:
         if not self.catalog:
@@ -811,6 +862,13 @@ class LibraryBrowser(QWidget):
             self.artistImageCacheRequested.emit(batch)
 
     def _request_online_artwork(self) -> None:
+        # Keep metadata enrichment serial. Starting a second pass from another
+        # tab while one is active can overwhelm public metadata services and
+        # make both searches appear stalled.
+        if self._artist_lookup_active or self._album_lookup_active:
+            self._refresh_images_button_label()
+            return
+
         if self.current_view() == "artists":
             artists = self._visible_artists if self._visible_artists else self.artist_rows
             self._artist_lookup_queue = []
@@ -837,34 +895,43 @@ class LibraryBrowser(QWidget):
             self._emit_next_artist_lookup_batch()
             return
 
-        batch = []
-        albums = self._visible_albums if self._visible_albums else self.albums
-        for album in albums:
-            key = str(album.get("key") or "")
-            card = self.cards.get(key)
-            if not key or card is None or card.has_real_cover:
-                continue
-            track = dict(album.get("representative_track") or {})
-            if track:
-                batch.append({
-                    "key": key,
-                    "track": track,
-                    "tracks": [dict(x) for x in list(album.get("tracks") or []) if isinstance(x,dict)],
-                })
-            if len(batch) >= 12:
-                break
-        if batch:
-            self.onlineArtworkRequested.emit(batch)
+        if self.current_view() == "albums":
+            albums = self._visible_albums if self._visible_albums else self.albums
+            self._album_lookup_queue = []
+            self._album_lookup_inflight = 0
+            for album in albums:
+                key = str(album.get("key") or "")
+                card = self.cards.get(key)
+                if not key or card is None or card.has_real_cover:
+                    continue
+                track = dict(album.get("representative_track") or {})
+                if track:
+                    self._album_lookup_queue.append({
+                        "key": key,
+                        "track": track,
+                        "tracks": [
+                            dict(x)
+                            for x in list(album.get("tracks") or [])
+                            if isinstance(x,dict)
+                        ],
+                    })
+            self._album_lookup_active = bool(self._album_lookup_queue)
+            self._refresh_images_button_label()
+            self._emit_next_album_lookup_batch()
 
     def _emit_next_artist_lookup_batch(self) -> bool:
         if not self._artist_lookup_active or not self._artist_lookup_queue:
             self._artist_lookup_active = False
             self._artist_lookup_inflight = 0
+            self._artist_lookup_current = ""
             self._refresh_images_button_label()
             return False
-        batch=self._artist_lookup_queue[:10]
-        self._artist_lookup_queue=self._artist_lookup_queue[10:]
+        # One artist per worker makes progress visible after every lookup and
+        # prevents one slow network request from making a 10-artist batch look frozen.
+        batch=self._artist_lookup_queue[:1]
+        self._artist_lookup_queue=self._artist_lookup_queue[1:]
         self._artist_lookup_inflight=len(batch)
+        self._artist_lookup_current=str(batch[0].get("artist") or "artist") if batch else ""
         for row in batch:
             key=str(row.get("key") or "")
             if key:
@@ -874,12 +941,41 @@ class LibraryBrowser(QWidget):
         return True
 
     def continue_artist_image_lookup(self) -> bool:
-        """Continue an explicit whole-library portrait lookup after one batch."""
+        """Continue an explicit whole-library portrait lookup after one item."""
         self._artist_lookup_inflight = 0
         return self._emit_next_artist_lookup_batch()
 
     def artist_image_lookup_remaining(self) -> int:
         return len(self._artist_lookup_queue) + int(self._artist_lookup_inflight or 0)
+
+    def _emit_next_album_lookup_batch(self) -> bool:
+        if not self._album_lookup_active or not self._album_lookup_queue:
+            self._album_lookup_active = False
+            self._album_lookup_inflight = 0
+            self._album_lookup_current = ""
+            self._refresh_images_button_label()
+            return False
+        # Artwork is also processed incrementally so every completed album
+        # advances the visible progress counter and the action is never capped at 12.
+        batch=self._album_lookup_queue[:1]
+        self._album_lookup_queue=self._album_lookup_queue[1:]
+        self._album_lookup_inflight=len(batch)
+        if batch:
+            track=dict(batch[0].get("track") or {})
+            self._album_lookup_current=str(
+                track.get("album") or track.get("title") or "artwork"
+            ).strip()
+        self._refresh_images_button_label()
+        self.onlineArtworkRequested.emit(batch)
+        return True
+
+    def continue_album_artwork_lookup(self) -> bool:
+        """Continue an explicit whole-library album-art lookup after one item."""
+        self._album_lookup_inflight = 0
+        return self._emit_next_album_lookup_batch()
+
+    def album_artwork_lookup_remaining(self) -> int:
+        return len(self._album_lookup_queue) + int(self._album_lookup_inflight or 0)
 
     def set_artwork(self, mapping: dict[str, str]) -> None:
         for key, path in dict(mapping or {}).items():

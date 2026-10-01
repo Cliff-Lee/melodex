@@ -23,7 +23,7 @@ Melodex tries artwork in this order:
 3. embedded artwork inside the audio file;
 4. an online artwork match that Melodex previously found and remembered.
 
-Choose **Find missing artwork** to explicitly look online for albums that still have placeholders. Melodex uses its configured metadata/artwork services in a small bounded batch.
+Choose **Find missing artwork** to explicitly look online for albums that still have placeholders. One click now walks the complete missing-album set in small background steps rather than stopping after the first 12. The button shows the remaining count while the pass is running.
 
 A successful online match is cached **and associated with the album**, so it remains available when you:
 
@@ -55,7 +55,7 @@ It shows:
 
 Melodex deliberately does **not** use an album cover as though it were a photograph of the artist.
 
-Choose **Get artist photos** to explicitly enrich missing portraits. One click now walks the whole missing-artist list in small background batches instead of stopping after the first group.
+Choose **Get artist photos** to explicitly enrich missing portraits. One click walks the whole missing-artist list one artist at a time so the visible remaining count advances after every lookup. A failed lookup is skipped and the pass continues instead of leaving the button stuck.
 
 The lookup is layered:
 
