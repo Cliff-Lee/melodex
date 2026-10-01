@@ -18,6 +18,7 @@ Start here:
 
 Then use:
 
+- [UX redesign](UX_REDESIGN.md) for the human-centred interaction model behind the current desktop interface;
 - [Album Wall](ALBUM_WALL.md) for the spatial album browser;
 - [FAQ](FAQ.md) for common questions;
 - [Troubleshooting](TROUBLESHOOTING.md) when something is not working;
