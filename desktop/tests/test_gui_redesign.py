@@ -225,3 +225,20 @@ def test_album_artwork_lookup_walks_all_missing_albums_not_just_twelve():
     assert browser.images_button.text() == "Find missing artwork"
     browser.deleteLater()
     app.processEvents()
+
+
+
+def test_artwork_progress_labels_are_compact():
+    try:
+        from melodex.library_browser import LibraryBrowser
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    assert LibraryBrowser._progress_item_label("Air") == "Air"
+    label = LibraryBrowser._progress_item_label(
+        "A Winged Victory For The Sullen",
+        22,
+    )
+    assert len(label) <= 22
+    assert label.endswith("…")
