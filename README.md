@@ -163,6 +163,14 @@ You can also make a playlist in ChatGPT, Claude, Gemini or another chat AI and p
 
 The current desktop interface is organised around listener goals rather than Melodex internals: **Home**, **My Music**, **Explore**, **Journeys**, **Playlists**, and **Sources & plugins**. Artwork and recognition lead everyday browsing; advanced provider, routing and diagnostic controls remain available through **Power tools**. The design rationale is documented in [UX redesign](docs/UX_REDESIGN.md).
 
+### My Music is a collection, not a file list
+
+**My Music** now leads with a visual album grid, with separate visual **Artists** and artwork-rich **Tracks** views. Local/embedded artwork is preferred; explicit online artwork lookups are cached and remembered so covers do not disappear when the page is rebuilt.
+
+Local tracks can also be corrected inside Melodex when tags are incomplete. Artist, title, album, album artist, year and genre corrections survive rescans but **do not rewrite the original audio files**.
+
+See [My Music](docs/MY_MUSIC.md).
+
 ## Browse the Album Wall
 
 The desktop **Album Wall** turns a local collection into a stable field of record covers rather than another scrolling recommendation feed. Albums can be arranged by **Sound**, **Familiarity**, **Time**, or deterministic **A–Z shelves**; Sound reuses cached Flow analysis and keeps unanalysed records visible at stable fallback positions. Artwork loads lazily from local/embedded sources, while pan, semantic zoom, search, current-album highlighting and direct album playback keep the view practical on large libraries.
