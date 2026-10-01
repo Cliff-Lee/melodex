@@ -1297,11 +1297,20 @@ class MainWindow(QMainWindow):
         saved_help.setWordWrap(True)
         saved_help.setStyleSheet("color:#8f9bad")
         saved_l.addWidget(saved_help)
+        self.journey_recipes_stack=QStackedWidget()
         self.journey_recipes_list=QListWidget()
         self.journey_recipes_list.itemDoubleClicked.connect(
             lambda _item:self._journey_recipe_load_selected()
         )
-        saved_l.addWidget(self.journey_recipes_list,1)
+        self.journey_recipes_empty=EmptyState(
+            "No saved journeys yet",
+            "Design a journey to remember a route you may want to reuse later.",
+            "Design a journey",
+        )
+        self.journey_recipes_empty.actionRequested.connect(self._open_journey_designer)
+        self.journey_recipes_stack.addWidget(self.journey_recipes_list)
+        self.journey_recipes_stack.addWidget(self.journey_recipes_empty)
+        saved_l.addWidget(self.journey_recipes_stack,1)
         recipe_buttons=QHBoxLayout()
         load_selected=QPushButton("Open selected")
         load_selected.clicked.connect(self._journey_recipe_load_selected)
@@ -1331,11 +1340,18 @@ class MainWindow(QMainWindow):
         runs_help.setWordWrap(True)
         runs_help.setStyleSheet("color:#8f9bad")
         runs_l.addWidget(runs_help)
+        self.journey_runs_stack=QStackedWidget()
         self.journey_runs_list=QListWidget()
         self.journey_runs_list.itemDoubleClicked.connect(
             lambda _item:self._journey_run_inspect()
         )
-        runs_l.addWidget(self.journey_runs_list,1)
+        self.journey_runs_empty=EmptyState(
+            "No journey runs yet",
+            "When you play a journey, Melodex keeps a private local record of how the route changed while you listened.",
+        )
+        self.journey_runs_stack.addWidget(self.journey_runs_list)
+        self.journey_runs_stack.addWidget(self.journey_runs_empty)
+        runs_l.addWidget(self.journey_runs_stack,1)
         run_buttons=QHBoxLayout()
         inspect=QPushButton("Inspect")
         inspect.clicked.connect(self._journey_run_inspect)
@@ -1388,10 +1404,19 @@ class MainWindow(QMainWindow):
         top.addStretch(1)
         l.addLayout(top)
 
+        self.playlists_stack=QStackedWidget()
         self.playlists_list=QListWidget()
         self.playlists_list.itemDoubleClicked.connect(self._play_saved_playlist)
         self.playlists_list.itemSelectionChanged.connect(self._playlist_selection_changed)
-        l.addWidget(self.playlists_list,1)
+        self.playlists_empty=EmptyState(
+            "No playlists yet",
+            "Paste one from an AI chat, import an existing playlist, or export the music already in your queue.",
+            "Paste from AI",
+        )
+        self.playlists_empty.actionRequested.connect(self._open_ai_playlist_import)
+        self.playlists_stack.addWidget(self.playlists_list)
+        self.playlists_stack.addWidget(self.playlists_empty)
+        l.addWidget(self.playlists_stack,1)
 
         row=QHBoxLayout()
         self.playlist_export_button=QPushButton("Export selected…")
@@ -1423,9 +1448,18 @@ class MainWindow(QMainWindow):
         note.setWordWrap(True)
         note.setStyleSheet("color:#8f9bad")
         l.addWidget(note)
+        self.moments_stack=QStackedWidget()
         self.moments_list=QListWidget()
         self.moments_list.itemDoubleClicked.connect(self._play_saved_moment)
-        l.addWidget(self.moments_list,1)
+        self.moments_empty=EmptyState(
+            "No moments saved yet",
+            "When a song reaches a part you want to remember, save that exact point and it will appear here.",
+            "Open Now Playing",
+        )
+        self.moments_empty.actionRequested.connect(lambda:self.open_page("now_playing"))
+        self.moments_stack.addWidget(self.moments_list)
+        self.moments_stack.addWidget(self.moments_empty)
+        l.addWidget(self.moments_stack,1)
 
 
     def _build_ask(self):
@@ -1975,12 +2009,12 @@ class MainWindow(QMainWindow):
             item=QListWidgetItem(f"{record.get('name') or 'Journey recipe'}\n{subtitle}")
             item.setData(Qt.UserRole,record)
             self.journey_recipes_list.addItem(item)
-        if self.journey_recipes_list.count()==0:
-            empty=QListWidgetItem(
-                "No saved journeys yet\nDesign a journey to remember a route you may want to reuse."
+        if hasattr(self,"journey_recipes_stack"):
+            self.journey_recipes_stack.setCurrentWidget(
+                self.journey_recipes_list
+                if self.journey_recipes_list.count()
+                else self.journey_recipes_empty
             )
-            empty.setFlags(empty.flags() & ~Qt.ItemIsSelectable)
-            self.journey_recipes_list.addItem(empty)
 
         self.journey_runs_list.clear()
         for run in self.state.journey_runs(80):
@@ -2001,12 +2035,12 @@ class MainWindow(QMainWindow):
             )
             item.setData(Qt.UserRole,run)
             self.journey_runs_list.addItem(item)
-        if self.journey_runs_list.count()==0:
-            empty=QListWidgetItem(
-                "No journey runs yet\nWhen you play a journey, Melodex will keep a private local record of how it evolved."
+        if hasattr(self,"journey_runs_stack"):
+            self.journey_runs_stack.setCurrentWidget(
+                self.journey_runs_list
+                if self.journey_runs_list.count()
+                else self.journey_runs_empty
             )
-            empty.setFlags(empty.flags() & ~Qt.ItemIsSelectable)
-            self.journey_runs_list.addItem(empty)
 
     def _selected_journey_recipe_record(self):
         item=self.journey_recipes_list.currentItem() if hasattr(self,"journey_recipes_list") else None
@@ -2325,12 +2359,10 @@ class MainWindow(QMainWindow):
             item=QListWidgetItem(f"{name}\n{subtitle}")
             item.setData(Qt.UserRole,p)
             self.playlists_list.addItem(item)
-        if not records:
-            empty=QListWidgetItem(
-                "No playlists yet\nImport one, paste one from an AI chat, or export the music already in your queue."
+        if hasattr(self,"playlists_stack"):
+            self.playlists_stack.setCurrentWidget(
+                self.playlists_list if records else self.playlists_empty
             )
-            empty.setFlags(empty.flags() & ~Qt.ItemIsSelectable)
-            self.playlists_list.addItem(empty)
         self._playlist_selection_changed()
 
     @staticmethod
@@ -2485,12 +2517,10 @@ class MainWindow(QMainWindow):
             item=QListWidgetItem(f"{title}\n{subtitle}")
             item.setData(Qt.UserRole,dict(m))
             self.moments_list.addItem(item)
-        if not records:
-            empty=QListWidgetItem(
-                "No moments saved yet\nRemember the exact part of a song you love, then it will appear here."
+        if hasattr(self,"moments_stack"):
+            self.moments_stack.setCurrentWidget(
+                self.moments_list if records else self.moments_empty
             )
-            empty.setFlags(empty.flags() & ~Qt.ItemIsSelectable)
-            self.moments_list.addItem(empty)
 
     def _play_saved_moment(self, item: QListWidgetItem) -> None:
         data=item.data(Qt.UserRole)
