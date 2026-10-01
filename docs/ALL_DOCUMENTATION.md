@@ -76,6 +76,7 @@ This page is intentionally exhaustive. For a shorter route by goal, use the [doc
 - [Resolver Inspector](RESOLVER_INSPECTOR.md)
 - [Playlist interchange](PLAYLIST_INTERCHANGE.md)
 - [Rich Now Playing](RICH_NOW_PLAYING.md)
+- [Album Wall](ALBUM_WALL.md)
 - [Music Map](MUSIC_MAP.md)
 - [Journey Library](JOURNEY_LIBRARY.md)
 
