@@ -1348,9 +1348,9 @@ class RichMetadataService:
             }
             album_flags=_lyrics_version_words(album)
             if "live" in secondary and "live" not in album_flags:
-                score-=0.08
+                continue
             if "remix" in secondary and "remix" not in album_flags:
-                score-=0.08
+                continue
             if primary in {"broadcast","other"}:
                 score-=0.05
 
