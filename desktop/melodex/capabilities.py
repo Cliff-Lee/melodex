@@ -1106,6 +1106,7 @@ class CapabilityBroker:
                 if isinstance(provenance, dict):
                     provenance.setdefault("source_extension_id", extension.info.id)
                 entry["_extension_id"] = extension.info.id
+                entry["_extension_name"] = extension.info.name
                 entry["_extension_order"] = order
                 entries.append(entry)
         return {
