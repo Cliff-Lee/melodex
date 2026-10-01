@@ -549,11 +549,13 @@ class PluginDirectoryDialog(QDialog):
         else:
             trust_text=f"Registry status: {status or 'unspecified'}."
 
+        duplicate_reference=False
         duplicate_note=""
         if plugin_id in {
             "org.melodex.example.radio-browser",
             "org.melodex.example.librivox",
         }:
+            duplicate_reference=True
             duplicate_note=(
                 "<p style='color:#e0b66b'><b>Already included:</b> Melodex ships "
                 "an audited bundled version of this source. Install this reference "
@@ -564,6 +566,7 @@ class PluginDirectoryDialog(QDialog):
             "org.melodex.example.cover-art-archive",
             "org.melodex.example.wikimedia-commons",
         }:
+            duplicate_reference=True
             duplicate_note=(
                 "<p style='color:#e0b66b'><b>Core already has related support:</b> "
                 "this reference extension demonstrates how the same kind of capability "
@@ -675,10 +678,17 @@ class PluginDirectoryDialog(QDialog):
                 and sha256
                 and compatible
                 and entry.get("status") != "blocked"
+                and not duplicate_reference
             )
         )
         self.install_button.setText(
-            "Update" if update_available else "Reinstall" if installed else "Install"
+            "Already included"
+            if duplicate_reference and not installed
+            else "Update"
+            if update_available
+            else "Reinstall"
+            if installed
+            else "Install"
         )
         ready = installed and config_state != "setup_needed"
         self.use_button.setEnabled(bool(ready and self.on_use))
