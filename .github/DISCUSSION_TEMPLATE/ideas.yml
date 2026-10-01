@@ -1,0 +1,28 @@
+title: "[Idea] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This is for early ideas that would benefit from conversation before becoming a tracked feature request.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem or opportunity do you see?
+      description: Start with the listener experience rather than the implementation.
+    validations:
+      required: true
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: What is your idea?
+      description: Rough ideas are welcome.
+    validations:
+      required: true
+
+  - type: textarea
+    id: value
+    attributes:
+      label: Who would this help?
+      description: What kind of Melodex user would benefit, and how?
