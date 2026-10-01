@@ -415,7 +415,10 @@ class RichMetadataService:
                 continue
             path = Path(str(row.get("path") or "")).expanduser()
             if path.is_file():
-                return dict(row)
+                source=str(row.get("source") or "")
+                policy=int(row.get("match_policy") or 0)
+                if policy >= 2 or source == "User-selected artist photo":
+                    return dict(row)
         return {}
 
     def _remember_artwork_by_keys(
@@ -427,6 +430,8 @@ class RichMetadataService:
         source_url: str = "",
         attribution: str = "",
         license_name: str = "",
+        match_method: str = "",
+        match_confidence: float | None = None,
     ) -> dict[str, Any]:
         path_obj = Path(path).expanduser()
         if not path_obj.is_file():
@@ -437,6 +442,13 @@ class RichMetadataService:
             "source_url": str(source_url or ""),
             "attribution": str(attribution or ""),
             "license": str(license_name or ""),
+            "match_policy": 2,
+            "match_method": str(match_method or ""),
+            "match_confidence": (
+                None
+                if match_confidence is None
+                else round(max(0.0,min(1.0,float(match_confidence))),4)
+            ),
         }
         with self._artwork_index_lock:
             for key in keys:
@@ -454,6 +466,8 @@ class RichMetadataService:
         source_url: str = "",
         attribution: str = "",
         license_name: str = "",
+        match_method: str = "",
+        match_confidence: float | None = None,
     ) -> dict[str, Any]:
         return self._remember_artwork_by_keys(
             self._album_artwork_keys(track),
@@ -462,6 +476,8 @@ class RichMetadataService:
             source_url=source_url,
             attribution=attribution,
             license_name=license_name,
+            match_method=match_method,
+            match_confidence=match_confidence,
         )
 
     def cached_artist_photo(self, artist: dict[str, Any]) -> dict[str, Any]:
@@ -2014,6 +2030,8 @@ class RichMetadataService:
                     downloaded,
                     source=result["source"],
                     source_url=supplied,
+                    match_method="provider_supplied",
+                    match_confidence=1.0,
                 )
                 return result
 
@@ -2046,6 +2064,8 @@ class RichMetadataService:
                             downloaded,
                             source="Cover Art Archive",
                             source_url=url,
+                            match_method="musicbrainz_identity",
+                            match_confidence=max(0.0,min(1.0,float(identity.score or 1.0))),
                         )
                         return result
             except Exception:
@@ -2111,6 +2131,8 @@ class RichMetadataService:
                         source_url=result["source_url"],
                         attribution=result["attribution"],
                         license_name=result["license"],
+                        match_method="artwork_plugin",
+                        match_confidence=confidence,
                     )
                     return result
             except Exception:
@@ -2146,6 +2168,8 @@ class RichMetadataService:
                             downloaded,
                             source="Cover Art Archive",
                             source_url=url,
+                            match_method="release_group_search",
+                            match_confidence=float(candidate.get("score") or 0.0),
                         )
                         return result
             except Exception:
