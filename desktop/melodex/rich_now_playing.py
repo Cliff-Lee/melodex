@@ -362,6 +362,10 @@ class RichNowPlayingWidget(QWidget):
             "<p style='color:#9097a2'>Melodex is building context from this track, "
             "its artist, release and recording relationships. Optional sources can add more.</p>"
         )
+        self.context_status.setText(
+            "Building core context"
+            + (" · optional sources ready" if self._context_source_names else "")
+        )
         self.info.setHtml("<p style='color:#9097a2'>Identifying this track with MusicBrainz…</p>")
 
     # ---------------------------- staged loading
