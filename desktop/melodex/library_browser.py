@@ -39,8 +39,7 @@ class AlbumCard(QFrame):
         self.key = str(album.get("key") or "")
         self.setObjectName("albumCard")
         self.setCursor(Qt.PointingHandCursor)
-        self.setFixedWidth(176)
-        self.setMinimumHeight(238)
+        self.setFixedSize(176, 268)
         self.setMouseTracking(True)
 
         outer = QVBoxLayout(self)
@@ -71,28 +70,30 @@ class AlbumCard(QFrame):
         outer.addWidget(artist)
 
         self.actions = QWidget()
+        self.actions.setFixedHeight(36)
         actions = QHBoxLayout(self.actions)
         actions.setContentsMargins(0, 3, 0, 0)
         actions.setSpacing(5)
-        play = QPushButton("▶ Play")
-        play.setObjectName("miniButton")
-        queue = QPushButton("+ Queue")
-        queue.setObjectName("miniButton")
+        self.play_button = QPushButton("▶ Play")
+        self.play_button.setObjectName("miniButton")
+        self.queue_button = QPushButton("+ Queue")
+        self.queue_button.setObjectName("miniButton")
         set_help(
-            play,
+            self.play_button,
             "Play album",
             "Starts this album from track one and keeps its disc and track order.",
         )
         set_help(
-            queue,
+            self.queue_button,
             "Queue album",
             "Adds the whole album after the music already in your queue.",
         )
-        play.clicked.connect(lambda: self.playRequested.emit(dict(self.album)))
-        queue.clicked.connect(lambda: self.queueRequested.emit(dict(self.album)))
-        actions.addWidget(play)
-        actions.addWidget(queue)
-        self.actions.hide()
+        self.play_button.clicked.connect(lambda: self.playRequested.emit(dict(self.album)))
+        self.queue_button.clicked.connect(lambda: self.queueRequested.emit(dict(self.album)))
+        actions.addWidget(self.play_button)
+        actions.addWidget(self.queue_button)
+        self.play_button.hide()
+        self.queue_button.hide()
         outer.addWidget(self.actions)
 
         self.setToolTip(
@@ -109,11 +110,13 @@ class AlbumCard(QFrame):
         )
 
     def enterEvent(self, event):
-        self.actions.show()
+        self.play_button.show()
+        self.queue_button.show()
         super().enterEvent(event)
 
     def leaveEvent(self, event):
-        self.actions.hide()
+        self.play_button.hide()
+        self.queue_button.hide()
         super().leaveEvent(event)
 
     def mousePressEvent(self, event):
