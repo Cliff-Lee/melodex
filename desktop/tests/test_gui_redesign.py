@@ -700,7 +700,7 @@ def test_fullscreen_lyrics_tracks_synced_position(monkeypatch, tmp_path):
     app.processEvents()
     assert widget._lyric_index == 1
     assert "Two" in widget._lyrics_fullscreen_browser.toPlainText()
-    assert "font-size:36px" in widget._lyrics_fullscreen_browser.toHtml()
+    assert "font-size:36px" in widget._synced_lyrics_html(1, full_screen=True)
 
     dialog = widget._lyrics_fullscreen_dialog
     if dialog is not None:
