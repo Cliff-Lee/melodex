@@ -1314,6 +1314,9 @@ def test_artist_releases_credits_are_compact_native_summaries(monkeypatch, tmp_p
     assert isinstance(widget.releases, QLabel)
     assert isinstance(widget.credits, QLabel)
     assert not isinstance(widget.artist_info, QTextBrowser)
+    assert "border:0" in widget.artist_info.styleSheet()
+    assert "border:0" in widget.releases.styleSheet()
+    assert "border:0" in widget.credits.styleSheet()
 
     artist_html = widget._artist_html({
         "name": "Example Artist",
