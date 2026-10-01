@@ -964,6 +964,7 @@ class MainWindow(QMainWindow):
         self.rich_now.accentChanged.connect(self.living_canvas.set_accent_color)
         self.rich_now.paletteChanged.connect(self.living_canvas.set_palette)
         self.rich_now.lyricsChanged.connect(self.living_canvas.set_lyrics)
+        self.rich_now.lyricsSeekRequested.connect(self.player.seek)
         self.rich_now.lyricsPluginRequested.connect(
             lambda: self._plugin_directory("lyrics")
         )
