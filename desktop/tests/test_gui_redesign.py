@@ -161,7 +161,8 @@ def test_artist_photo_lookup_walks_the_whole_missing_artist_list():
     assert len(batches[0]) == 1
     assert browser.artist_image_lookup_remaining() == 15
     assert browser.images_button.isEnabled() is False
-    assert browser.images_button.text().startswith("Finding photos")
+    assert "Artist 00" in browser.images_button.text()
+    assert browser.images_button.text().endswith("15 left")
 
     for expected_remaining in range(14, 0, -1):
         assert browser.continue_artist_image_lookup() is True
@@ -210,7 +211,8 @@ def test_album_artwork_lookup_walks_all_missing_albums_not_just_twelve():
     assert len(batches[0]) == 1
     assert browser.album_artwork_lookup_remaining() == 17
     assert browser.images_button.isEnabled() is False
-    assert browser.images_button.text().startswith("Finding artwork")
+    assert "Album 00" in browser.images_button.text()
+    assert browser.images_button.text().endswith("17 left")
 
     for expected_remaining in range(16, 0, -1):
         assert browser.continue_album_artwork_lookup() is True
