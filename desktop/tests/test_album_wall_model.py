@@ -140,3 +140,16 @@ def test_time_lens_orders_undated_after_dated():
     by_title = {album['title']: positions[album['key']] for album in wall['albums']}
     assert by_title['Old'][0] <= by_title['New'][0]
     assert by_title['Mystery'][0] > max(by_title['Old'][0], by_title['New'][0])
+
+
+def test_sound_layout_is_compact_for_medium_library():
+    catalog = [
+        _track(f'/music/{i}/01.mp3', f'Artist {i}', f'Album {i}', 'Track', 1, 2000 + i % 20)
+        for i in range(75)
+    ]
+    wall = build_album_wall(catalog)
+    positions = layout_album_positions(wall, 'sound')
+    xs = [x for x, _ in positions.values()]
+    ys = [y for _, y in positions.values()]
+    assert max(xs) - min(xs) < 2400
+    assert max(ys) - min(ys) < 1800
