@@ -572,15 +572,29 @@ class LibraryBrowser(QWidget):
         }[name]
         self.stack.setCurrentWidget(target)
         if name == "artists":
-            self.images_button.setText("Get artist photos")
             self.images_button.setObjectName("primaryButton")
         else:
-            self.images_button.setText("Find missing artwork")
             self.images_button.setObjectName("quietButton")
+        self._refresh_images_button_label()
         self.images_button.style().unpolish(self.images_button)
         self.images_button.style().polish(self.images_button)
         self.images_button.update()
         self._apply_filter()
+
+    def _refresh_images_button_label(self) -> None:
+        if self.current_view() != "artists":
+            self.images_button.setText("Find missing artwork")
+            self.images_button.setEnabled(True)
+            return
+        if self._artist_lookup_active:
+            remaining=self.artist_image_lookup_remaining()
+            self.images_button.setText(
+                f"Finding photos… {remaining} left" if remaining else "Finding photos…"
+            )
+            self.images_button.setEnabled(False)
+        else:
+            self.images_button.setText("Get artist photos")
+            self.images_button.setEnabled(True)
 
     def _apply_filter(self) -> None:
         if not self.catalog:
@@ -801,6 +815,7 @@ class LibraryBrowser(QWidget):
                         "track": track,
                     })
             self._artist_lookup_active = bool(self._artist_lookup_queue)
+            self._refresh_images_button_label()
             self._emit_next_artist_lookup_batch()
             return
 
@@ -827,6 +842,7 @@ class LibraryBrowser(QWidget):
         if not self._artist_lookup_active or not self._artist_lookup_queue:
             self._artist_lookup_active = False
             self._artist_lookup_inflight = 0
+            self._refresh_images_button_label()
             return False
         batch=self._artist_lookup_queue[:10]
         self._artist_lookup_queue=self._artist_lookup_queue[10:]
@@ -835,6 +851,7 @@ class LibraryBrowser(QWidget):
             key=str(row.get("key") or "")
             if key:
                 self._artist_art_requested.add(key)
+        self._refresh_images_button_label()
         self.artistImageRequested.emit(batch)
         return True
 
