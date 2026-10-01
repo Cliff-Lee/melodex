@@ -64,7 +64,7 @@ The lookup is layered:
 3. Wikidata portrait (P18);
 4. freely licensed Wikipedia lead image from a linked page (English preferred, with other Wikipedia languages as fallback);
 5. conservative Wikipedia artist-page search by name when no reliable link exists;
-6. installed artwork plugins that explicitly return artist/profile/portrait imagery;
+6. installed artwork plugins that explicitly return portrait/thumbnail imagery for an artist;
 7. conservative Wikimedia Commons artist search.
 
 If a representative track does not already contain an artist ID, Melodex can conservatively resolve the artist by name first. Single-word/common names require stronger music-context evidence before a Wikipedia page is accepted. Album covers, logos and ambiguous image matches are rejected rather than guessed.
