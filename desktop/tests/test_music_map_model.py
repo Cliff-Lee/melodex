@@ -151,3 +151,14 @@ def test_music_map_large_library_selection_is_deterministic():
     assert [node["ref"] for node in first["nodes"]] == [
         node["ref"] for node in second["nodes"]
     ]
+
+
+def test_music_map_projection_can_skip_edges():
+    profiles = [
+        _profile("t0", bpm=100, energy=0.3, centroid=900, onset=0.05, key_pc=0),
+        _profile("t1", bpm=120, energy=0.6, centroid=1800, onset=0.12, key_pc=4),
+        _profile("t2", bpm=140, energy=0.9, centroid=2800, onset=0.20, key_pc=8),
+    ]
+    result = build_music_map(profiles, neighbours=0)
+    assert len(result["nodes"]) == 3
+    assert result["edges"] == []
