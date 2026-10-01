@@ -631,16 +631,16 @@ class MainWindow(QMainWindow):
         explanation.setStyleSheet("color:#9fa9b8")
         hero_l.addWidget(explanation)
 
-        primary=QPushButton("▶  Play something")
-        primary.setObjectName("primaryButton")
-        primary.setMinimumHeight(48)
-        primary.clicked.connect(lambda:self._play_for_me("balanced",60,0.35))
+        self.home_primary_button=QPushButton("▶  Play something")
+        self.home_primary_button.setObjectName("primaryButton")
+        self.home_primary_button.setMinimumHeight(48)
+        self.home_primary_button.clicked.connect(self._home_primary_action)
         set_help(
-            primary,
+            self.home_primary_button,
             "Play something",
             "Builds a balanced one-hour session from your local library using your listening history and Flow when available.",
         )
-        hero_l.addWidget(primary)
+        hero_l.addWidget(self.home_primary_button)
 
         moods=QHBoxLayout()
         comfort=QPushButton("Comfort")
@@ -1413,7 +1413,28 @@ class MainWindow(QMainWindow):
             f"{count:,} local tracks · {src} music sources · {ext} plugin"
             f"{'s' if ext != 1 else ''} · {flow_text}"
         )
+        if hasattr(self,"home_primary_button"):
+            if count:
+                self.home_primary_button.setText("▶  Play something")
+                set_help(
+                    self.home_primary_button,
+                    "Play something",
+                    "Builds a balanced one-hour session from your local library using your listening history and Flow when available.",
+                )
+            else:
+                self.home_primary_button.setText("+  Add my music")
+                set_help(
+                    self.home_primary_button,
+                    "Add your music",
+                    "Choose a folder of music on this computer. Melodex indexes it locally and does not upload your audio.",
+                )
         self._refresh_home_continue()
+
+    def _home_primary_action(self) -> None:
+        if self.providers.local_catalog():
+            self._play_for_me("balanced",60,0.35)
+        else:
+            self._choose_music_folder()
 
     def _refresh_home_continue(self) -> None:
         if not hasattr(self,"home_continue_cover"):
