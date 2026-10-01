@@ -22,7 +22,7 @@ def rebuild(source: Path, destination: Path) -> None:
     provider = files["provider.py"].decode("utf-8")
 
     provider, version_count = re.subn(
-        r'VERSION\s*=\s*["\']0\\.1\\.2["\']',
+        r'VERSION\s*=\s*["\']0\.1\.2["\']',
         'VERSION="0.1.3"',
         provider,
         count=1,
