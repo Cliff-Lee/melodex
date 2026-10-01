@@ -154,6 +154,49 @@ class ActionCard(QFrame):
         super().mousePressEvent(event)
 
 
+class SourceCard(QFrame):
+    def __init__(
+        self,
+        name: str,
+        description: str,
+        status: str,
+        *,
+        kind: str = "",
+        parent=None,
+    ):
+        super().__init__(parent)
+        self.setObjectName("sourceCard")
+        outer = QHBoxLayout(self)
+        outer.setContentsMargins(13, 11, 13, 11)
+        outer.setSpacing(12)
+
+        badge = QLabel((str(name or "?").strip()[:1] or "?").upper())
+        badge.setObjectName("sourceBadge")
+        badge.setAlignment(Qt.AlignCenter)
+        badge.setFixedSize(42, 42)
+        outer.addWidget(badge)
+
+        text = QVBoxLayout()
+        text.setSpacing(2)
+        title = QLabel(str(name or "Unknown source"))
+        title.setObjectName("sourceTitle")
+        text.addWidget(title)
+        desc = QLabel(str(description or ""))
+        desc.setObjectName("sourceDescription")
+        desc.setWordWrap(True)
+        text.addWidget(desc)
+        outer.addLayout(text, 1)
+
+        if kind:
+            kind_label = QLabel(str(kind))
+            kind_label.setObjectName("sourceKind")
+            outer.addWidget(kind_label)
+
+        status_label = QLabel(str(status or ""))
+        status_label.setObjectName("statusPill")
+        outer.addWidget(status_label)
+
+
 class EmptyState(QFrame):
     actionRequested = Signal()
 
@@ -259,6 +302,7 @@ __all__ = [
     "CommandPaletteDialog",
     "CoverLabel",
     "EmptyState",
+    "SourceCard",
     "placeholder_cover",
     "set_help",
 ]
