@@ -39,6 +39,8 @@ No local collection yet? Use **Explore → Search everything** to search connect
 | Build a provider, plugin, or integration | [Developer Gateway](docs/DEVELOPERS.md) · [5-minute quickstart](docs/DEVELOPER_QUICKSTART.md) |
 | Find a specific technical detail | [Complete documentation index](docs/ALL_DOCUMENTATION.md) |
 
+Developers can check [Status, stability and trust](docs/developers/00_STATUS_AND_STABILITY.md) before building.
+
 This README follows the repository's current branch. For a released build, use the [download page](https://github.com/Cliff-Lee/melodex/releases/latest) and its matching [release notes](docs/releases/v0.7.2.md).
 
 ## The developer platform
