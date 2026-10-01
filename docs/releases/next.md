@@ -55,3 +55,15 @@ See [Releasing Melodex](../RELEASING.md) for the release process.
 - Local lyric discovery recognises common title and artist-title sidecar names and a `Lyrics/` subfolder.
 - The Lyrics tab adds **Add lyrics file…**, **Paste lyrics…** and **Find lyrics plugin…**.
 - The empty Lyrics state now explains that Core checks local/user lyrics and installed lyrics extensions but does not scrape commercial lyrics sites.
+
+
+### Sources, plugins and lyrics
+
+- Sources & plugins now opens as a user-facing ecosystem hub with summary cards for local music, included sources and installed enhancements.
+- Source/provider rows use distinctive pictogram tiles rather than generic operating-system icons.
+- Included sources use listener-friendly descriptions instead of protocol-oriented manifest wording.
+- The Plugin Centre uses the same visual language for artwork, lyrics, recommendations, context, metadata and music-source plugins.
+- The clean-install audit is explicit: 3 Core sources, 6 included provider packages, 0 preinstalled enrichment extensions, and 16 optional registry reference entries.
+- Lyrics now has a prominent **Find online** action using LRCLIB on demand.
+- LRCLIB results are conservatively matched by artist/title/duration, can include synchronized LRC timing, and are not permanently cached by Melodex.
+- The Lyrics tab keeps local files, pasted lyrics and installed lyrics extensions as first-class sources, and shows provenance/source state more clearly.
