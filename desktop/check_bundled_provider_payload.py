@@ -21,6 +21,32 @@ EXPECTED = {
     "ccMixter-0.1.3.mdxprovider": ("org.melodex.ccmixter", "0.1.3"),
 }
 
+# Keep these assembled so the release checker itself never contains the exact
+# legacy private-source names as plain text.
+BLOCKED_SOURCE_MARKERS = (
+    ("mp3" + "streams").casefold(),
+    ("music" + "mp3").casefold(),
+)
+
+
+def _assert_no_private_source_markers(
+    archive: zipfile.ZipFile,
+    package_name: str,
+) -> None:
+    for info in archive.infolist():
+        if info.is_dir() or info.file_size > 1_000_000:
+            continue
+        try:
+            text = archive.read(info).decode("utf-8", errors="ignore").casefold()
+        except Exception:
+            continue
+        compact = "".join(ch for ch in text if ch.isalnum())
+        for marker in BLOCKED_SOURCE_MARKERS:
+            if marker in compact:
+                raise ValueError(
+                    f"legacy private-source marker found in {package_name}:{info.filename}"
+                )
+
 
 def check_payload(root: Path) -> None:
     roots = [path for path in root.rglob("bundled_providers") if path.is_dir()]
@@ -67,6 +93,7 @@ def check_payload(root: Path) -> None:
                 if entrypoint not in archive.namelist():
                     raise ValueError("Python entrypoint is absent")
                 compile(archive.read(entrypoint), f"{filename}:{entrypoint}", "exec")
+                _assert_no_private_source_markers(archive, filename)
         except Exception as exc:
             raise SystemExit(f"Invalid bundled provider {filename}: {exc}") from exc
         if (
