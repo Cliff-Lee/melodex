@@ -1409,6 +1409,67 @@ class MainWindow(QMainWindow):
         self.music_map_options_panel.hide()
         l.addWidget(self.music_map_options_panel)
 
+        self.music_journey_quick_panel=QFrame()
+        self.music_journey_quick_panel.setObjectName("powerPanel")
+        quick=QHBoxLayout(self.music_journey_quick_panel)
+        quick.setContentsMargins(13,10,13,10)
+        quick.setSpacing(8)
+
+        quick_title=QLabel("Journey")
+        quick_title.setStyleSheet("font-size:15px;font-weight:700")
+        quick.addWidget(quick_title)
+
+        quick_start=QPushButton("1  Set start")
+        quick_start.clicked.connect(self._music_path_set_start)
+        quick_destination=QPushButton("2  Set destination")
+        quick_destination.clicked.connect(self._music_path_set_end)
+        quick.addWidget(quick_start)
+        quick.addWidget(quick_destination)
+
+        quick.addWidget(QLabel("3  Shape"))
+        self.music_journey_quick_preset=QComboBox()
+        self.music_journey_quick_preset.addItem(
+            "Calm → Darker → Forgotten → Energetic",
+            ["calm","dark","forgotten","energetic"],
+        )
+        self.music_journey_quick_preset.addItem(
+            "Calm → Rhythmic → Energetic",
+            ["calm","rhythmic","energetic"],
+        )
+        self.music_journey_quick_preset.addItem(
+            "Familiar → Forgotten → Bright",
+            ["familiar","forgotten","bright"],
+        )
+        self.music_journey_quick_preset.addItem(
+            "Surprising → Darker → Bright",
+            ["surprising","dark","bright"],
+        )
+        self.music_journey_quick_preset.addItem("Saved / custom shape", None)
+        quick.addWidget(self.music_journey_quick_preset,1)
+
+        quick_build=QPushButton("Build journey")
+        quick_build.setObjectName("primaryButton")
+        quick_build.clicked.connect(self._music_journey_quick_build)
+        quick_play=QPushButton("▶ Play")
+        quick_play.clicked.connect(self._music_path_play)
+        quick_queue=QPushButton("+ Queue")
+        quick_queue.clicked.connect(self._music_path_queue)
+        quick_more=QPushButton("More journey options…")
+        quick_more.clicked.connect(self._show_advanced_journey_options)
+        quick_done=QPushButton("Done")
+        quick_done.clicked.connect(self._hide_journey_mode)
+        quick.addWidget(quick_build)
+        quick.addWidget(quick_play)
+        quick.addWidget(quick_queue)
+        quick.addWidget(quick_more)
+        quick.addWidget(quick_done)
+
+        self.music_journey_quick_status=QLabel("Select a track, then set the start.")
+        self.music_journey_quick_status.setStyleSheet("color:#8fa4ba")
+        quick.addWidget(self.music_journey_quick_status,1)
+        self.music_journey_quick_panel.hide()
+        l.addWidget(self.music_journey_quick_panel)
+
         self.music_map_power_panel=QFrame()
         self.music_map_power_panel.setObjectName("powerPanel")
         power=QVBoxLayout(self.music_map_power_panel)
@@ -1471,6 +1532,9 @@ class MainWindow(QMainWindow):
         journey_box.setSpacing(7)
 
         journey_edit=QHBoxLayout()
+        back_simple=QPushButton("← Simple journey view")
+        back_simple.clicked.connect(self._show_simple_journey_mode)
+        journey_edit.addWidget(back_simple)
         self.music_journey_preset=QComboBox()
         self.music_journey_preset.addItem(
             "Calm → Darker → Forgotten → Energetic",
@@ -1600,6 +1664,8 @@ class MainWindow(QMainWindow):
         self.music_map_options_panel.setVisible(visible)
 
     def _toggle_music_map_tools(self) -> None:
+        if hasattr(self,"music_journey_quick_panel"):
+            self.music_journey_quick_panel.hide()
         visible=not self.music_map_power_panel.isVisible()
         self.music_map_power_panel.setVisible(visible)
         self.music_path_steps.setVisible(visible)
@@ -1735,13 +1801,48 @@ class MainWindow(QMainWindow):
 
     def _open_journey_designer(self) -> None:
         self.open_page("music_map")
+        self._show_simple_journey_mode()
+        self.statusBar().showMessage(
+            "Journey mode · choose a start, destination and shape, then Build journey",
+            5000,
+        )
+
+    def _show_simple_journey_mode(self) -> None:
+        self.music_journey_quick_panel.show()
+        self.music_map_options_panel.hide()
+        self.music_map_power_panel.hide()
+        self.music_map_journey_panel.hide()
+        self.music_path_steps.hide()
+        self._music_path_update_label()
+
+    def _hide_journey_mode(self) -> None:
+        self.music_journey_quick_panel.hide()
+        self.music_map_power_panel.hide()
+        self.music_map_journey_panel.hide()
+        self.music_path_steps.hide()
+
+    def _show_advanced_journey_options(self) -> None:
+        self.music_journey_quick_panel.hide()
         self.music_map_power_panel.show()
         self.music_map_journey_panel.show()
         self.music_path_steps.show()
-        self.statusBar().showMessage(
-            "Journey design ready · select a track for the start, another for the destination, then shape the route",
-            6000,
-        )
+
+    def _music_journey_quick_build(self) -> None:
+        raw=self.music_journey_quick_preset.currentData()
+        if isinstance(raw,list):
+            self.music_journey_stages_data=[
+                {"kind":"constraint","value":str(value)}
+                for value in raw
+                if str(value)
+            ]
+            self._music_journey_render_stages()
+        if not self.music_journey_stages_data:
+            self.statusBar().showMessage(
+                "Choose a journey shape first",
+                3000,
+            )
+            return
+        self._music_journey_build()
 
 
     def _build_playlists(self):
@@ -2115,6 +2216,8 @@ class MainWindow(QMainWindow):
         if name=="home": self._show_home()
         elif name=="library":
             self._refresh_library()
+            if hasattr(self,"library_browser"):
+                self.library_browser.set_view("albums")
             self._refresh_plugin_presence()
         elif name=="album_wall": self._refresh_album_wall()
         elif name=="music_map": self._refresh_music_map()
@@ -3229,7 +3332,8 @@ class MainWindow(QMainWindow):
             "payload":recipe,
         }
         self.open_page("music_map")
-        self.statusBar().showMessage("Refreshing Music Map before loading recipe…",3500)
+        self._show_simple_journey_mode()
+        self.statusBar().showMessage("Refreshing Music Map before loading journey…",3500)
 
     def _journey_recipe_import(self):
         filename,_=QFileDialog.getOpenFileName(
@@ -3324,6 +3428,12 @@ class MainWindow(QMainWindow):
         self.music_active_recipe_id=str(pending.get("id") or "")
         self.music_active_recipe=dict(recipe)
         self._music_journey_render_stages()
+        if hasattr(self,"music_journey_quick_preset"):
+            custom=self.music_journey_quick_preset.findText("Saved / custom shape")
+            if custom>=0:
+                self.music_journey_quick_preset.setCurrentIndex(custom)
+        if hasattr(self,"music_journey_quick_panel"):
+            self._show_simple_journey_mode()
         unresolved=[
             dict(stage)
             for stage in list(materialized.get("unresolved") or [])
@@ -4722,11 +4832,20 @@ class MainWindow(QMainWindow):
         return f"{artist} — {title}"
 
     def _music_path_update_label(self):
-        if not hasattr(self,"music_path_label"):return
-        self.music_path_label.setText(
-            f"Pathfinder · start {self._music_path_name(self.music_path_start_ref)}"
-            f"  →  destination {self._music_path_name(self.music_path_end_ref)}"
-        )
+        start=self._music_path_name(self.music_path_start_ref)
+        destination=self._music_path_name(self.music_path_end_ref)
+        if hasattr(self,"music_path_label"):
+            self.music_path_label.setText(
+                f"Pathfinder · start {start}  →  destination {destination}"
+            )
+        if hasattr(self,"music_journey_quick_status"):
+            if not self.music_path_start_ref:
+                text="Select a track, then set the start."
+            elif not self.music_path_end_ref:
+                text=f"Start: {start} · now choose a destination."
+            else:
+                text=f"{start}  →  {destination}"
+            self.music_journey_quick_status.setText(text)
 
     def _music_path_set_start(self):
         ref=self.music_map.selected_ref_value() if hasattr(self,"music_map") else ""
