@@ -56,7 +56,15 @@ from .plugin_onboarding import plugin_needs_setup
 from .plugin_health import health_badge, health_summary
 from .diagnostics import write_diagnostics
 from .library_browser import LibraryBrowser
-from .ux_components import ActionCard, CommandPaletteDialog, CoverLabel, EmptyState, SourceCard, set_help
+from .ux_components import (
+    ActionCard,
+    CommandPaletteDialog,
+    CoverLabel,
+    EmptyState,
+    FeaturePresenceBar,
+    SourceCard,
+    set_help,
+)
 
 
 class WorkerSignals(QObject):
@@ -632,6 +640,39 @@ class MainWindow(QMainWindow):
                 border:1px solid #253346;
                 border-radius:12px;
             }
+            QFrame#featurePresenceBar{
+                background:#101821;
+                border:1px solid #26384c;
+                border-radius:10px;
+            }
+            QFrame#featurePresenceBar[active="true"]{
+                background:#111f2c;
+                border-color:#315274;
+            }
+            QLabel#featurePresenceIcon{
+                color:#7fb7f1;
+                background:#172a3e;
+                border:1px solid #2f4e6c;
+                border-radius:7px;
+                font-size:12px;
+                font-weight:800;
+            }
+            QLabel#featurePresenceText{color:#c7d1de;font-size:11px}
+            QPushButton#featurePresenceAction{
+                background:transparent;
+                border:1px solid #30445b;
+                border-radius:8px;
+                padding:5px 8px;
+                color:#9ebfe4;
+                font-size:10px;
+                font-weight:650;
+            }
+            QPushButton#featurePresenceAction:hover{
+                background:#182536;
+                border-color:#45688e;
+                color:#e5f1ff;
+            }
+
             QLabel#pluginFeatureTitle{font-size:13px;font-weight:700}
             QLabel#pluginFeatureSubtitle{color:#7f8b9c;font-size:10px}
             QPushButton#featureChip{
@@ -767,6 +808,7 @@ class MainWindow(QMainWindow):
             }
         """)
         self._update_nav_state("home")
+        self._refresh_plugin_presence()
 
     def _update_play_button(self, playing: bool) -> None:
         if hasattr(self,"play_button"):
@@ -925,6 +967,9 @@ class MainWindow(QMainWindow):
         self.rich_now.lyricsPluginRequested.connect(
             lambda: self._plugin_directory("lyrics")
         )
+        self.rich_now.contextPluginRequested.connect(
+            lambda: self._plugin_directory("context")
+        )
         self.rich_now.onlineLyricsPreferenceChanged.connect(
             lambda enabled: self.state.set_bool("auto_online_lyrics", bool(enabled))
         )
@@ -1013,6 +1058,16 @@ class MainWindow(QMainWindow):
         intel_help.setStyleSheet("color:#aab0ba")
         l.addWidget(intel_help)
 
+        self.recommendation_plugin_presence=FeaturePresenceBar(
+            "Recommendation helpers",
+            baseline="Melodex local intelligence is active",
+            action_text="Add recommendation helper…",
+        )
+        self.recommendation_plugin_presence.actionRequested.connect(
+            lambda:self._plugin_directory("library_suggestions")
+        )
+        l.addWidget(self.recommendation_plugin_presence)
+
         intel_row=QHBoxLayout()
         similar=QPushButton("More like current")
         similar.clicked.connect(lambda:self._run_local_intelligence("similar"))
@@ -1061,6 +1116,17 @@ class MainWindow(QMainWindow):
         l=self._page_layout("discover","Discover","Search all connected music sources. Add a source in Sources if you want more places to search.")
         row=QHBoxLayout(); self.search_box=QLineEdit(); self.search_box.setPlaceholderText("Artist, track or album…"); self.search_source=QComboBox(); row.addWidget(self.search_box,1); row.addWidget(self.search_source); search=QPushButton("Search"); search.clicked.connect(self._search); row.addWidget(search); l.addLayout(row)
         self.search_box.returnPressed.connect(self._search)
+
+        self.search_plugin_presence=FeaturePresenceBar(
+            "Search sources",
+            baseline="Your local library is always searchable",
+            action_text="Add music source…",
+        )
+        self.search_plugin_presence.actionRequested.connect(
+            lambda:self._plugin_directory("search")
+        )
+        l.addWidget(self.search_plugin_presence)
+
         self.results=QListWidget(); self.results.itemDoubleClicked.connect(self._play_result); l.addWidget(self.results,1)
         row2=QHBoxLayout(); addq=QPushButton("Add selected to queue"); addq.clicked.connect(self._add_selected_to_queue); source_btn=QPushButton("Open source page"); source_btn.clicked.connect(self._open_selected_source); row2.addWidget(addq); row2.addWidget(source_btn); row2.addStretch(1); l.addLayout(row2)
 
@@ -1070,6 +1136,16 @@ class MainWindow(QMainWindow):
             "My Music",
             "Browse the collection you chose to keep on this device. Album artwork and musical identity come first; file details stay out of the way.",
         )
+        self.artwork_plugin_presence=FeaturePresenceBar(
+            "Artwork helpers",
+            baseline="Built-in artwork matching is active",
+            action_text="Add artwork helper…",
+        )
+        self.artwork_plugin_presence.actionRequested.connect(
+            lambda:self._plugin_directory("artwork")
+        )
+        l.addWidget(self.artwork_plugin_presence)
+
         self.library_browser=LibraryBrowser(self)
         self.library_browser.playAlbumRequested.connect(self._play_album_wall_album)
         self.library_browser.queueAlbumRequested.connect(self._queue_album_data)
@@ -1886,15 +1962,23 @@ class MainWindow(QMainWindow):
         self.stack.setCurrentWidget(self.pages[name])
         self._update_nav_state(name)
         if name=="home": self._show_home()
-        elif name=="library": self._refresh_library()
+        elif name=="library":
+            self._refresh_library()
+            self._refresh_plugin_presence()
         elif name=="album_wall": self._refresh_album_wall()
         elif name=="music_map": self._refresh_music_map()
         elif name=="sources": self._refresh_sources()
         elif name=="moments": self._refresh_moments()
         elif name=="journeys": self._refresh_journeys()
         elif name=="playlists": self._refresh_playlists()
-        elif name=="for_you": self._refresh_taste()
-        elif name=="discover": self._refresh_source_combo()
+        elif name=="for_you":
+            self._refresh_taste()
+            self._refresh_plugin_presence()
+        elif name=="discover":
+            self._refresh_source_combo()
+            self._refresh_plugin_presence()
+        elif name=="now_playing":
+            self._refresh_plugin_presence()
 
     def _update_nav_state(self, page: str) -> None:
         parent = {
@@ -3418,10 +3502,61 @@ class MainWindow(QMainWindow):
         if ok:
             self.providers.set_jamendo_client_id(value.strip()); self.statusBar().showMessage("Jamendo source updated",3000)
 
+    def _active_extension_names(self, *capabilities: str) -> list[str]:
+        wanted={str(value) for value in capabilities if str(value)}
+        names=[]
+        for row in self.providers.extensions():
+            if not bool(row.get("enabled",True)):
+                continue
+            config=dict(row.get("configuration_status") or {})
+            if config.get("declared") and not config.get("ready",True):
+                continue
+            caps={str(value) for value in list(row.get("capabilities") or []) if value}
+            if wanted and not (wanted & caps):
+                continue
+            name=str(row.get("name") or row.get("id") or "").strip()
+            if name:
+                names.append(name)
+        return names
+
+    def _searchable_source_names(self) -> list[str]:
+        names=[]
+        for pid in self.providers.provider_order():
+            provider=self.providers.providers.get(pid)
+            if provider is None or "search" not in list(provider.info.capabilities or []):
+                continue
+            if self._plugin_needs_setup_here(pid):
+                continue
+            name=str(provider.info.name or pid).replace(" (reference provider)","").strip()
+            if name:
+                names.append(name)
+        return names
+
+    def _refresh_plugin_presence(self) -> None:
+        if hasattr(self,"search_plugin_presence"):
+            self.search_plugin_presence.set_items(self._searchable_source_names())
+        if hasattr(self,"artwork_plugin_presence"):
+            self.artwork_plugin_presence.set_items(
+                self._active_extension_names("artwork")
+            )
+        if hasattr(self,"recommendation_plugin_presence"):
+            self.recommendation_plugin_presence.set_items(
+                self._active_extension_names("library_suggestions","recommendations")
+            )
+        if hasattr(self,"rich_now"):
+            self.rich_now.set_plugin_presence(
+                lyrics=self._active_extension_names("lyrics"),
+                context=self._active_extension_names("context","metadata","identity"),
+            )
+
+    def _refresh_sources_and_plugin_presence(self) -> None:
+        self._refresh_sources()
+        self._refresh_plugin_presence()
+
     def _plugin_directory(self, capability: str = ""):
         dialog=PluginDirectoryDialog(
             self.providers,
-            on_installed=self._refresh_sources,
+            on_installed=self._refresh_sources_and_plugin_presence,
             on_use=self._use_plugin_directory_entry,
             initial_capability=capability,
             parent=self,
