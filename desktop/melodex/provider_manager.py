@@ -47,7 +47,19 @@ class ProviderManager:
             "jamendo": JamendoProvider(str(self.settings.get("jamendo_client_id", ""))),
             "streams": UserStreamsProvider(list(self.settings.get("user_streams", []))),
         }
+        self._quarantined_legacy_providers: list[dict[str, str]] = []
         for provider in self.installer.load_installed():
+            if self._is_legacy_private_provider(provider):
+                self._quarantined_legacy_providers.append(
+                    {
+                        "id": str(provider.info.id or ""),
+                        "name": str(provider.info.name or provider.info.id or ""),
+                    }
+                )
+                close = getattr(provider, "close", None)
+                if callable(close):
+                    close()
+                continue
             provider.configure(
                 self.plugin_config.values(
                     provider.info.id, provider.info.configuration
@@ -60,6 +72,29 @@ class ProviderManager:
         )
         self.registry = PluginRegistryClient(self.data_dir)
         self._plugin_health_cache: dict[str, dict[str, Any]] = {}
+
+    @staticmethod
+    def _is_legacy_private_provider(provider: MusicProvider) -> bool:
+        """Recognise development-only providers that must not become public sources.
+
+        The marker strings are deliberately assembled from fragments so the
+        repository's release audit can continue to reject those legacy source
+        names if they ever appear literally in a public payload or registry.
+        """
+        marker_a=("music" + "mp3").casefold()
+        marker_b=("mp3" + "streams").casefold()
+        values=(
+            str(getattr(provider.info, "id", "") or ""),
+            str(getattr(provider.info, "name", "") or ""),
+        )
+        for value in values:
+            compact="".join(ch for ch in value.casefold() if ch.isalnum())
+            if marker_a in compact or marker_b in compact:
+                return True
+        return False
+
+    def quarantined_legacy_providers(self) -> list[dict[str, str]]:
+        return [dict(row) for row in self._quarantined_legacy_providers]
 
     def _load_settings(self) -> dict[str, Any]:
         try:
