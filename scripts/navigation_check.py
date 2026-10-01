@@ -21,7 +21,11 @@ def main() -> int:
     complete_index = read("docs/ALL_DOCUMENTATION.md")
     first_contribution = read("docs/FIRST_CONTRIBUTION.md")
     support = read("SUPPORT.md")
-    ui = read("desktop/melodex/main_window.py")
+    ui = (
+        read("desktop/melodex/main_window.py")
+        + "\n"
+        + read("desktop/melodex/library_browser.py")
+    )
 
     # One obvious docs front door from the project landing page.
     if '<a href="docs/README.md">Documentation</a>' not in root_readme:
