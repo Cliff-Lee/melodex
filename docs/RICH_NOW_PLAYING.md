@@ -37,7 +37,8 @@ The **Now playing** page provides:
 - a compact **Artist** summary with selected membership, related-project and link information;
 - a compact **Releases** summary showing up to six release groups with direct MusicBrainz links;
 - grouped recording/work **Credits** rather than a long raw relationship list;
-- a **Context** tab populated by `context.lookup` extensions;
+- a native **Context** tab that always shows useful recording/artist/relationship context when Melodex has it;
+- optional `context.lookup` extensions layered underneath Core for liner notes, community signals and extra relationships;
 - MusicBrainz identity links and metadata-match confidence.
 
 All enrichment is asynchronous; playback is not blocked by network metadata lookups.
