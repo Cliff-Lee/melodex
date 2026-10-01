@@ -124,3 +124,19 @@ def test_album_wall_collapses_common_multidisc_subfolders():
     album = wall["albums"][0]
     assert album["track_count"] == 2
     assert [t["title"] for t in album["tracks"]] == ["Disc One", "Disc Two"]
+
+
+def test_time_lens_orders_undated_after_dated():
+    catalog = [
+        _track('/dated1/01.mp3', 'A', 'Old', 'One', 1, 1980),
+        _track('/dated2/01.mp3', 'B', 'New', 'Two', 1, 2020),
+        {**_track('/undated/01.mp3', 'C', 'Mystery', 'Three', 1, 2000), 'year': 0},
+    ]
+    wall = build_album_wall(catalog)
+    for album in wall['albums']:
+        if album['title'] == 'Mystery':
+            album['year'] = 0
+    positions = layout_album_positions(wall, 'time')
+    by_title = {album['title']: positions[album['key']] for album in wall['albums']}
+    assert by_title['Old'][0] <= by_title['New'][0]
+    assert by_title['Mystery'][0] > max(by_title['Old'][0], by_title['New'][0])
