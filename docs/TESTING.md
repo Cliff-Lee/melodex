@@ -40,7 +40,7 @@ You do not need a huge collection. A fresh-user experience with only a few album
 - [Something broke → Bug report](https://github.com/Cliff-Lee/melodex/issues/new?template=bug_report.yml)
 - [Something should work differently → Feature request](https://github.com/Cliff-Lee/melodex/issues/new?template=feature_request.yml)
 - [General beta experience → Tester feedback](https://github.com/Cliff-Lee/melodex/issues/new?template=tester_feedback.yml)
-- Discussions are the best place for open-ended questions and ideas once enabled for the repository.
+- Discussions are the best place for open-ended questions and ideas.
 
 Screenshots are welcome when they help explain a UI problem. Please do not post copyrighted music files, passwords, API keys, tokens, private URLs, or other secrets.
 
