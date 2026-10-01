@@ -64,6 +64,7 @@ Save a **Moment** when you want to remember a particular point in a track. Momen
 
 ## More help
 
+- [Make Melodex yours](TINKERERS_GUIDE.md) for optional sources, plugins, routes, and integrations.
 - [5-minute visual tour](VISUAL_TOUR.md)
 - [Journeys](JOURNEY_LIBRARY.md)
 - [Music sources](SOURCES.md)

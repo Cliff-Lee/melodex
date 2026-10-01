@@ -51,6 +51,7 @@ Melodex stores track corrections locally and does not rewrite your audio files. 
 ## Read on
 
 - [User guide](USER_GUIDE.md)
+- [Tinkerer's guide](TINKERERS_GUIDE.md) — add features or more control when you want it.
 - [Album Wall](ALBUM_WALL.md)
 - [Music Map](MUSIC_MAP.md)
 - [Playlist interchange](PLAYLIST_INTERCHANGE.md)
