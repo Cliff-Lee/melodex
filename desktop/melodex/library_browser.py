@@ -362,6 +362,7 @@ class LibraryBrowser(QWidget):
         self._art_requested: set[str] = set()
         self._artist_art_requested: set[str] = set()
         self._artwork_batch_size = 4
+        self._last_artwork_kind = ""
         self._artist_lookup_queue: list[dict[str, Any]] = []
         self._artist_lookup_inflight = 0
         self._artist_lookup_inflight_rows: list[dict[str, Any]] = []
@@ -603,14 +604,26 @@ class LibraryBrowser(QWidget):
         self.catalog = [dict(item) for item in catalog if isinstance(item, dict)]
         self._art_requested.clear()
         self._artist_art_requested.clear()
+        self._last_artwork_kind = ""
         self._artist_lookup_queue.clear()
         self._artist_lookup_inflight = 0
+        self._artist_lookup_inflight_rows = []
         self._artist_lookup_active = False
+        self._artist_lookup_paused = False
+        self._artist_lookup_cancel_requested = False
         self._artist_lookup_current = ""
+        self._artist_lookup_failures = []
+        self._artist_lookup_stats = self._new_lookup_stats()
         self._album_lookup_queue.clear()
         self._album_lookup_inflight = 0
+        self._album_lookup_inflight_rows = []
         self._album_lookup_active = False
+        self._album_lookup_paused = False
+        self._album_lookup_cancel_requested = False
         self._album_lookup_current = ""
+        self._album_lookup_failures = []
+        self._album_lookup_stats = self._new_lookup_stats()
+        self.artwork_progress_panel.hide()
         if not self.catalog:
             self.albums = []
             self.artist_rows = []
@@ -689,6 +702,8 @@ class LibraryBrowser(QWidget):
     def artwork_lookup_snapshot(self) -> dict[str,Any]:
         kind=self._active_artwork_kind()
         if not kind:
+            kind=self._last_artwork_kind
+        if not kind:
             if self._artist_lookup_stats.get("total"):
                 kind="artists"
             elif self._album_lookup_stats.get("total"):
@@ -717,7 +732,7 @@ class LibraryBrowser(QWidget):
         return stats
 
     def _refresh_artwork_progress(self, *, kind: str = "") -> None:
-        kind=kind or self._active_artwork_kind()
+        kind=kind or self._active_artwork_kind() or self._last_artwork_kind
         if not kind:
             if self._artist_lookup_stats.get("total"):
                 kind="artists"
@@ -772,6 +787,8 @@ class LibraryBrowser(QWidget):
 
         if canceling and active:
             state="Canceling after current requests…"
+        elif canceling and not active:
+            state="Canceled"
         elif paused and active:
             state="Paused"
         elif active:
@@ -831,6 +848,7 @@ class LibraryBrowser(QWidget):
             self._artist_lookup_failures=[]
             self._artist_lookup_stats=self._new_lookup_stats(len(self._artist_lookup_queue))
             self._artist_lookup_active=bool(self._artist_lookup_queue)
+            self._last_artwork_kind="artists"
             self._artist_lookup_paused=False
             self._artist_lookup_cancel_requested=False
             self._emit_next_artist_lookup_batch()
@@ -839,6 +857,7 @@ class LibraryBrowser(QWidget):
             self._album_lookup_failures=[]
             self._album_lookup_stats=self._new_lookup_stats(len(self._album_lookup_queue))
             self._album_lookup_active=bool(self._album_lookup_queue)
+            self._last_artwork_kind="albums"
             self._album_lookup_paused=False
             self._album_lookup_cancel_requested=False
             self._emit_next_album_lookup_batch()
@@ -1176,9 +1195,8 @@ class LibraryBrowser(QWidget):
             self.artistImageCacheRequested.emit(batch)
 
     def _request_online_artwork(self) -> None:
-        # Keep metadata enrichment serial. Starting a second pass from another
-        # tab while one is active can overwhelm public metadata services and
-        # make both searches appear stalled.
+        # Keep one artwork job active at a time. Each job uses a small bounded
+        # batch; MusicBrainz itself remains rate-limited by the metadata service.
         if self._artist_lookup_active or self._album_lookup_active:
             self._refresh_images_button_label()
             return
@@ -1209,6 +1227,7 @@ class LibraryBrowser(QWidget):
                         "track": track,
                     })
             self._artist_lookup_active = bool(self._artist_lookup_queue)
+            self._last_artwork_kind = "artists"
             self._artist_lookup_stats = self._new_lookup_stats(len(self._artist_lookup_queue))
             self._refresh_images_button_label()
             self._refresh_artwork_progress(kind="artists")
@@ -1240,6 +1259,7 @@ class LibraryBrowser(QWidget):
                         ],
                     })
             self._album_lookup_active = bool(self._album_lookup_queue)
+            self._last_artwork_kind = "albums"
             self._album_lookup_stats = self._new_lookup_stats(len(self._album_lookup_queue))
             self._refresh_images_button_label()
             self._refresh_artwork_progress(kind="albums")
