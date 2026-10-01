@@ -777,10 +777,26 @@ class RichMetadataService:
     def _wikipedia_link(artist: dict[str, Any], entity: dict[str, Any]) -> tuple[str, str]:
         sitelinks=entity.get("sitelinks") if isinstance(entity,dict) else {}
         if isinstance(sitelinks,dict):
-            row=sitelinks.get("enwiki")
-            if isinstance(row,dict) and row.get("title"):
+            preferred=[
+                "enwiki","dewiki","frwiki","eswiki","itwiki","ptwiki",
+                "nlwiki","svwiki","nowiki","plwiki","ruwiki","jawiki",
+                "kowiki","zhwiki",
+            ]
+            ordered=preferred + sorted(
+                key
+                for key in sitelinks
+                if key.endswith("wiki") and key not in preferred
+            )
+            for key in ordered:
+                row=sitelinks.get(key)
+                if not isinstance(row,dict) or not row.get("title"):
+                    continue
+                lang=key[:-4]
+                if not re.fullmatch(r"[a-z0-9-]+",lang):
+                    continue
                 title=str(row.get("title") or "").strip()
-                return _WP_API, title
+                api=_WP_API if lang=="en" else f"https://{lang}.wikipedia.org/w/api.php"
+                return api,title
 
         for row in list(artist.get("links") or []):
             if not isinstance(row,dict):
