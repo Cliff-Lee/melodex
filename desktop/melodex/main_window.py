@@ -516,7 +516,25 @@ class MainWindow(QMainWindow):
                 border-bottom:1px solid #202733;
             }
             QListWidget::item:selected{background:#1e3552}
-            QListWidget#sourcesList::item{padding:14px}
+            QListWidget#sourcesList{
+                background:transparent;
+                border:0;
+                padding:0;
+            }
+            QListWidget#sourcesList::item{
+                background:transparent;
+                border:1px solid transparent;
+                border-radius:12px;
+                padding:4px;
+            }
+            QListWidget#sourcesList::item:hover{
+                background:#131c28;
+                border-color:#26384d;
+            }
+            QListWidget#sourcesList::item:selected{
+                background:#17263a;
+                border-color:#31547d;
+            }
             QFrame#actionCard{
                 background:#141b25;
                 border:1px solid #293544;
@@ -609,6 +627,23 @@ class MainWindow(QMainWindow):
                 border:1px solid #2a3a4d;
                 border-radius:14px;
             }
+            QFrame#sourceSummaryCard{
+                background:#0f1620;
+                border:1px solid #263547;
+                border-radius:11px;
+            }
+            QLabel#sourceSummaryIcon{
+                background:#18283c;
+                border:1px solid #2f4c6d;
+                border-radius:9px;
+                color:#7eb8ff;
+                font-size:16px;
+                font-weight:800;
+            }
+            QLabel#sourceSummaryValue{
+                color:#8f9bad;
+                font-size:11px;
+            }
             QLabel#overviewIcon{
                 background:#193354;
                 border:1px solid #2f5d8f;
@@ -618,8 +653,9 @@ class MainWindow(QMainWindow):
                 font-weight:700;
             }
             QFrame#sourceCard{
-                background:transparent;
-                border:0;
+                background:#101720;
+                border:1px solid #223045;
+                border-radius:10px;
             }
             QLabel#sourceBadge{
                 background:#1c2a3e;
@@ -856,7 +892,11 @@ class MainWindow(QMainWindow):
             "Stay with the music first. Artwork, lyrics and context are primary; visualisations are there when you want them.",
         )
         self.now_views = QTabWidget()
-        self.rich_now = RichNowPlayingWidget(self.metadata, self)
+        self.rich_now = RichNowPlayingWidget(
+            self.metadata,
+            self,
+            auto_online_lyrics=self.state.get_bool("auto_online_lyrics", False),
+        )
         self.living_canvas = LivingCanvasView(self, self.data_dir / "visualizers")
         self.rich_now.knowledgeChanged.connect(self._remember_now_playing_knowledge)
         self.rich_now.accentChanged.connect(self.living_canvas.set_accent_color)
@@ -864,6 +904,9 @@ class MainWindow(QMainWindow):
         self.rich_now.lyricsChanged.connect(self.living_canvas.set_lyrics)
         self.rich_now.lyricsPluginRequested.connect(
             lambda: self._plugin_directory("lyrics")
+        )
+        self.rich_now.onlineLyricsPreferenceChanged.connect(
+            lambda enabled: self.state.set_bool("auto_online_lyrics", bool(enabled))
         )
         self.living_canvas.seekRequested.connect(self.player.seek)
         self.living_canvas.modeDataRequested.connect(self._request_visual_mode_data)
@@ -1594,39 +1637,69 @@ class MainWindow(QMainWindow):
 
         overview=QFrame()
         overview.setObjectName("sourceOverview")
-        overview_l=QHBoxLayout(overview)
-        overview_l.setContentsMargins(16,14,16,14)
-        overview_l.setSpacing(16)
-        self.sources_overview_icon=QLabel("◉")
-        self.sources_overview_icon.setObjectName("overviewIcon")
-        self.sources_overview_icon.setAlignment(Qt.AlignCenter)
-        self.sources_overview_icon.setFixedSize(42,42)
-        overview_l.addWidget(self.sources_overview_icon)
-        overview_text=QVBoxLayout()
-        overview_text.setSpacing(2)
+        overview_l=QVBoxLayout(overview)
+        overview_l.setContentsMargins(18,16,18,16)
+        overview_l.setSpacing(12)
+
+        overview_head=QHBoxLayout()
         overview_title=QLabel("Your Melodex ecosystem")
-        overview_title.setStyleSheet("font-size:17px;font-weight:700")
-        overview_text.addWidget(overview_title)
-        self.sources_overview=QLabel()
-        self.sources_overview.setWordWrap(True)
-        self.sources_overview.setStyleSheet("color:#93a0b2")
-        overview_text.addWidget(self.sources_overview)
-        overview_l.addLayout(overview_text,1)
-        self.source_check_all=QPushButton("Check installed")
+        overview_title.setStyleSheet("font-size:18px;font-weight:720")
+        overview_head.addWidget(overview_title)
+        overview_head.addStretch(1)
+        self.source_check_all=QPushButton("Check connections")
         self.source_check_all.clicked.connect(self._test_all_plugins)
         set_help(
             self.source_check_all,
             "Check installed sources and plugins",
-            "Runs each installed provider or extension's bounded health check. This verifies connectivity/runtime health without changing your setup.",
+            "Runs bounded connection/runtime checks for installed plugins. It does not change your setup.",
         )
-        overview_l.addWidget(self.source_check_all)
+        overview_head.addWidget(self.source_check_all)
+        overview_l.addLayout(overview_head)
+
+        self.sources_overview=QLabel(
+            "Your own music works without plugins. Included sources and optional enhancements can add more places to listen, artwork, lyrics and discovery."
+        )
+        self.sources_overview.setWordWrap(True)
+        self.sources_overview.setStyleSheet("color:#93a0b2")
+        overview_l.addWidget(self.sources_overview)
+
+        summary=QHBoxLayout()
+        summary.setSpacing(10)
+        def summary_card(glyph: str, title: str):
+            card=QFrame()
+            card.setObjectName("sourceSummaryCard")
+            row=QHBoxLayout(card)
+            row.setContentsMargins(12,10,12,10)
+            row.setSpacing(9)
+            icon=QLabel(glyph)
+            icon.setObjectName("sourceSummaryIcon")
+            icon.setAlignment(Qt.AlignCenter)
+            icon.setFixedSize(34,34)
+            row.addWidget(icon)
+            col=QVBoxLayout()
+            col.setSpacing(0)
+            label=QLabel(title)
+            label.setStyleSheet("font-weight:700")
+            value=QLabel("—")
+            value.setObjectName("sourceSummaryValue")
+            col.addWidget(label)
+            col.addWidget(value)
+            row.addLayout(col,1)
+            summary.addWidget(card,1)
+            return value
+
+        self.source_summary_library=summary_card("♫","Your music")
+        self.source_summary_included=summary_card("＋","Included")
+        self.source_summary_enhancements=summary_card("✦","Enhancements")
+        overview_l.addLayout(summary)
         l.addWidget(overview)
 
         actions=QHBoxLayout()
         local=QPushButton("+ Add my music")
         local.setObjectName("primaryButton")
         local.clicked.connect(self._choose_music_folder)
-        directory=QPushButton("Browse optional plugins")
+        directory=QPushButton("Add features…")
+        directory.setObjectName("secondaryButton")
         directory.clicked.connect(self._plugin_directory)
         streams=QPushButton("My streams")
         streams.clicked.connect(self._user_streams_dialog)
@@ -1640,7 +1713,7 @@ class MainWindow(QMainWindow):
         )
         set_help(
             directory,
-            "Browse optional plugins",
+            "Add features",
             "Open the Plugin Centre to add optional music sources, recommendations, artwork, lyrics, metadata or context enhancements.",
         )
         set_help(
@@ -1662,6 +1735,7 @@ class MainWindow(QMainWindow):
 
         self.sources_list=QListWidget()
         self.sources_list.setObjectName("sourcesList")
+        self.sources_list.setSpacing(5)
         self.sources_list.itemSelectionChanged.connect(self._source_selection_changed)
         l.addWidget(self.sources_list,1)
 
@@ -1984,11 +2058,32 @@ class MainWindow(QMainWindow):
                     kind=section_kind
                     icon_key="provider"
 
+            friendly_descriptions={
+                "local":"Your own music on this computer. Nothing is uploaded.",
+                "streams":"Direct radio or audio links that you add yourself.",
+                "jamendo":"Optional connection to Jamendo's independent-music catalogue.",
+            }
+            lower_name=name.casefold()
+            if "internet archive" in lower_name:
+                description="Explore recordings, live music and spoken audio from Internet Archive."
+            elif "librivox" in lower_name:
+                description="Public-domain audiobooks read by volunteers."
+            elif "radio browser" in lower_name:
+                description="Search a worldwide community directory of internet radio stations."
+            elif "somafm" in lower_name:
+                description="Curated listener-supported internet radio from SomaFM."
+            elif "wikimedia" in lower_name:
+                description="Openly licensed and public-domain audio from Wikimedia Commons."
+            elif "ccmixter" in lower_name:
+                description="Creative Commons music, samples and remixes."
+            else:
+                description=friendly_descriptions.get(pid,str(p.info.description or ""))
+
             item=QListWidgetItem()
             item.setData(Qt.UserRole,pid)
             card=SourceCard(
                 name,
-                str(p.info.description or ""),
+                description,
                 status,
                 kind=kind,
                 icon_key=icon_key,
@@ -2030,7 +2125,21 @@ class MainWindow(QMainWindow):
                 origin="Registry" if method=="registry" else "Manual" if method=="manual" else "Installed"
                 add_provider(pid,origin=origin,section_kind="Plugin source")
 
+        if hasattr(self,"source_summary_library"):
+            local_count=len(self.providers.local_catalog())
+            self.source_summary_library.setText(
+                f"{local_count:,} track{'s' if local_count != 1 else ''}"
+            )
+            self.source_summary_included.setText(
+                f"{len(bundled)} source{'s' if len(bundled) != 1 else ''}"
+            )
+
         extensions=self.providers.extensions()
+        if hasattr(self,"source_summary_enhancements"):
+            self.source_summary_enhancements.setText(
+                f"{len(extensions)} installed" if extensions else "None installed"
+            )
+
         if extensions:
             heading("Installed enhancements")
             for extension in extensions:

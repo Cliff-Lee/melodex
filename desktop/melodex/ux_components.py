@@ -79,6 +79,47 @@ def placeholder_cover(title: str, key: str, size: int = 160) -> QPixmap:
     return pix
 
 
+def source_icon_spec(name: str = "", icon_key: str = "") -> tuple[str, str, str]:
+    """Return a compact recognisable glyph tile for sources/plugins."""
+    name_key=" ".join(str(name or "").casefold().split())
+    key=str(icon_key or "").casefold().strip()
+
+    specific=(
+        ("internet archive", ("IA", "#8e7af0", "#2d2750")),
+        ("librivox", ("LV", "#e08b48", "#4f311d")),
+        ("somafm", ("S", "#e36d94", "#502536")),
+        ("radio browser", ("◉", "#46bbb4", "#173f40")),
+        ("wikimedia", ("W", "#75a1e3", "#253b59")),
+        ("ccmixter", ("CC", "#87b85d", "#30471f")),
+        ("jamendo", ("J", "#ee8c48", "#59331d")),
+        ("openverse", ("O", "#8f7ce8", "#302a58")),
+        ("musicbrainz", ("MB", "#d47597", "#522b3a")),
+        ("listenbrainz", ("LB", "#e57360", "#572c25")),
+        ("last.fm", ("L", "#e45252", "#551f1f")),
+        ("cover art archive", ("CA", "#8fa2bf", "#303a4c")),
+        ("lyrics", ("“", "#bd7cda", "#442a50")),
+    )
+    for token,spec in specific:
+        if token in name_key:
+            return spec
+
+    generic={
+        "local": ("♫", "#49a6f2", "#183c5e"),
+        "stream": ("◉", "#4db8ae", "#173f3b"),
+        "radio": ("◉", "#4db8ae", "#173f3b"),
+        "provider": ("↗", "#6f9be2", "#263d61"),
+        "recommendation": ("✦", "#b47ae0", "#452d59"),
+        "artwork": ("▣", "#df8a54", "#58351f"),
+        "lyrics": ("“", "#bd7cda", "#442a50"),
+        "context": ("i", "#63b197", "#214638"),
+        "metadata": ("#", "#8fa0bc", "#313b4e"),
+        "identity": ("◎", "#7da3e0", "#2b3d60"),
+        "plugin": ("◇", "#91a0b5", "#313842"),
+        "built-in": ("⌂", "#91a0b5", "#303842"),
+    }
+    return generic.get(key, ("◇", "#91a0b5", "#313842"))
+
+
 class CoverLabel(QLabel):
     def __init__(self, size: int = 160, parent=None):
         super().__init__(parent)
@@ -156,21 +197,7 @@ class ActionCard(QFrame):
 
 
 class SourceCard(QFrame):
-    """Human-readable source/plugin row with a recognisable native icon."""
-
-    _ICON_MAP = {
-        "local": QStyle.SP_DriveHDIcon,
-        "stream": QStyle.SP_MediaPlay,
-        "provider": QStyle.SP_DriveNetIcon,
-        "radio": QStyle.SP_MediaVolume,
-        "recommendation": QStyle.SP_BrowserReload,
-        "artwork": QStyle.SP_FileDialogContentsView,
-        "lyrics": QStyle.SP_FileIcon,
-        "context": QStyle.SP_MessageBoxInformation,
-        "metadata": QStyle.SP_FileDialogDetailedView,
-        "plugin": QStyle.SP_CommandLink,
-        "built-in": QStyle.SP_ComputerIcon,
-    }
+    """Human-readable source/plugin row with a distinctive category tile."""
 
     def __init__(
         self,
@@ -193,14 +220,14 @@ class SourceCard(QFrame):
         badge = QLabel()
         badge.setObjectName("sourceBadge")
         badge.setAlignment(Qt.AlignCenter)
-        badge.setFixedSize(46, 46)
-        standard = self._ICON_MAP.get(str(icon_key or "").casefold(), QStyle.SP_CommandLink)
-        icon = self.style().standardIcon(standard)
-        pixmap = icon.pixmap(25, 25)
-        if not pixmap.isNull():
-            badge.setPixmap(pixmap)
-        else:
-            badge.setText((str(name or "?").strip()[:1] or "?").upper())
+        badge.setFixedSize(48, 48)
+        glyph,accent,background=source_icon_spec(name,icon_key)
+        badge.setText(glyph)
+        badge.setStyleSheet(
+            "font-weight:800;font-size:15px;"
+            f"color:{accent};background:{background};"
+            f"border:1px solid {accent};border-radius:12px;"
+        )
         outer.addWidget(badge)
 
         text = QVBoxLayout()
@@ -339,6 +366,7 @@ __all__ = [
     "CoverLabel",
     "EmptyState",
     "SourceCard",
+    "source_icon_spec",
     "placeholder_cover",
     "set_help",
 ]

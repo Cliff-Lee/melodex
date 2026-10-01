@@ -10,6 +10,7 @@ from PySide6.QtGui import QColor, QImage, QPixmap
 from PySide6.QtWidgets import (
     QFileDialog,
     QFrame,
+    QCheckBox,
     QHBoxLayout,
     QInputDialog,
     QLabel,
@@ -38,6 +39,7 @@ class RichNowPlayingWidget(QWidget):
     paletteChanged = Signal(object)
     lyricsChanged = Signal(object)
     lyricsPluginRequested = Signal()
+    onlineLyricsPreferenceChanged = Signal(bool)
 
     """Progressively enriched Now Playing view.
 
@@ -46,7 +48,13 @@ class RichNowPlayingWidget(QWidget):
     network enrichment never leaves the whole page looking unidentified.
     """
 
-    def __init__(self, metadata: RichMetadataService, parent=None):
+    def __init__(
+        self,
+        metadata: RichMetadataService,
+        parent=None,
+        *,
+        auto_online_lyrics: bool = False,
+    ):
         super().__init__(parent)
         self.metadata = metadata
         self._accent_color = QColor("#7eb4ff")
@@ -58,6 +66,8 @@ class RichNowPlayingWidget(QWidget):
         self._identity: dict[str, Any] = {}
         self._pending: set[str] = set()
         self._context_started = False
+        self._auto_online_lyrics = bool(auto_online_lyrics)
+        self._online_lyrics_attempted = False
         self._signals = _MetadataSignals(self)
         self._signals.stage.connect(self._stage_loaded)
         self._build()
@@ -91,12 +101,23 @@ class RichNowPlayingWidget(QWidget):
         lyrics_layout.setSpacing(8)
         lyrics_actions=QHBoxLayout()
         lyrics_actions.setSpacing(7)
-        self.import_lyrics_button=QPushButton("Add lyrics file…")
-        self.paste_lyrics_button=QPushButton("Paste lyrics…")
-        self.find_lyrics_plugin_button=QPushButton("Find lyrics plugin…")
+        self.online_lyrics_button=QPushButton("Find online")
+        self.online_lyrics_button.setObjectName("primaryButton")
+        self.import_lyrics_button=QPushButton("Add file…")
+        self.paste_lyrics_button=QPushButton("Paste…")
+        self.find_lyrics_plugin_button=QPushButton("More lyrics sources…")
+        self.auto_online_lyrics=QCheckBox("Auto-find online")
+        self.auto_online_lyrics.setChecked(self._auto_online_lyrics)
+        self.auto_online_lyrics.toggled.connect(self._online_lyrics_pref_changed)
+        self.online_lyrics_button.clicked.connect(self._find_lyrics_online)
         self.import_lyrics_button.clicked.connect(self._import_lyrics_file)
         self.paste_lyrics_button.clicked.connect(self._paste_lyrics)
         self.find_lyrics_plugin_button.clicked.connect(self.lyricsPluginRequested)
+        self.online_lyrics_button.setToolTip(
+            "<b>Find lyrics online</b><br>Ask LRCLIB for this track on demand. "
+            "Melodex does not bundle or permanently cache LRCLIB lyric text. "
+            "Lyrics remain the work of their respective rights holders."
+        )
         self.import_lyrics_button.setToolTip(
             "<b>Add lyrics file</b><br>Import an .lrc or .txt file for this track. "
             "Melodex copies it into its own cache; your audio file is not changed."
@@ -105,17 +126,24 @@ class RichNowPlayingWidget(QWidget):
             "<b>Paste lyrics</b><br>Store lyrics you already have for this track. "
             "Timestamped LRC text is recognised automatically."
         )
+        self.auto_online_lyrics.setToolTip(
+            "<b>Auto-find online</b><br>When local and installed-plugin lyrics are unavailable, "
+            "automatically make the same on-demand LRCLIB request. This preference can be turned off at any time."
+        )
         self.find_lyrics_plugin_button.setToolTip(
             "<b>Find lyrics plugin</b><br>Browse optional lyric extensions. "
             "Core Melodex does not scrape commercial lyric websites."
         )
+        lyrics_actions.addWidget(self.online_lyrics_button)
         lyrics_actions.addWidget(self.import_lyrics_button)
         lyrics_actions.addWidget(self.paste_lyrics_button)
         lyrics_actions.addWidget(self.find_lyrics_plugin_button)
         lyrics_actions.addStretch(1)
+        lyrics_actions.addWidget(self.auto_online_lyrics)
         lyrics_layout.addLayout(lyrics_actions)
 
         self.lyrics_source=QLabel("")
+        self.lyrics_source.setOpenExternalLinks(True)
         self.lyrics_source.setWordWrap(True)
         self.lyrics_source.setStyleSheet("color:#7f8b9b;font-size:11px")
         lyrics_layout.addWidget(self.lyrics_source)
@@ -140,7 +168,7 @@ class RichNowPlayingWidget(QWidget):
         self.lyrics.setHtml(
             "<div style='margin:20px'>"
             "<h3>Looking for lyrics…</h3>"
-            "<p style='color:#9097a2'>Melodex checks lyrics you added, common .lrc/.txt sidecars, "
+            "<p style='color:#9097a2'>Melodex first checks lyrics you added, common .lrc/.txt sidecars, "
             "embedded tags and any installed lyrics extension.</p>"
             "</div>"
         )
@@ -160,7 +188,11 @@ class RichNowPlayingWidget(QWidget):
         self._identity = {}
         self._pending = {"identity"}
         self._context_started = False
+        self._online_lyrics_attempted = False
         self.lyricsChanged.emit({})
+        if hasattr(self,"online_lyrics_button"):
+            self.online_lyrics_button.setEnabled(True)
+            self.online_lyrics_button.setText("Find online")
         self.title.setText(str(self.track.get("title") or "Unknown track"))
         self.artist.setText(str(self.track.get("artist") or "Unknown artist"))
         self.album.setText(str(self.track.get("album") or ""))
@@ -239,7 +271,14 @@ class RichNowPlayingWidget(QWidget):
             self._update_progress()
             return
 
-        if stage == "artwork":
+        if stage == "community lyrics":
+            lyrics=payload.get("lyrics") if isinstance(payload.get("lyrics"),dict) else {}
+            self.bundle["lyrics"]=dict(lyrics)
+            self._apply_lyrics(lyrics)
+            self.online_lyrics_button.setEnabled(True)
+            self.online_lyrics_button.setText("Find online")
+
+        elif stage == "artwork":
             artwork = payload.get("artwork") if isinstance(payload.get("artwork"), dict) else {}
             self.bundle["artwork"] = artwork
             self._apply_artwork(artwork)
@@ -335,6 +374,13 @@ class RichNowPlayingWidget(QWidget):
         date = str(identity.get("date") or "")
         self.album.setText(" · ".join(x for x in (album, date[:4] if date else "") if x))
         self._apply_lyrics(lyrics)
+        if (
+            not str(lyrics.get("text") or "").strip()
+            and not list(lyrics.get("synced") or [])
+            and self.auto_online_lyrics.isChecked()
+            and not self._online_lyrics_attempted
+        ):
+            self._find_lyrics_online()
         self._apply_musicbrainz_links(identity)
         self._refresh_info()
 
@@ -347,7 +393,15 @@ class RichNowPlayingWidget(QWidget):
             if isinstance(lyrics.get("provenance"),dict)
             else {}
         )
-        if self.synced:
+        instrumental=bool(lyrics.get("instrumental"))
+        if instrumental and not lyric_text and not self.synced:
+            self.lyrics.setHtml(
+                "<div style='margin:22px;max-width:620px'>"
+                "<h3>Instrumental track</h3>"
+                "<p style='color:#9097a2'>The lyric source identifies this recording as instrumental.</p>"
+                "</div>"
+            )
+        elif self.synced:
             self._lyric_index = -2
             self._render_synced(-1)
         elif lyric_text:
@@ -357,31 +411,69 @@ class RichNowPlayingWidget(QWidget):
             )
         else:
             self.lyrics.setHtml(
-                "<div style='margin:22px;max-width:620px'>"
-                "<h3>No lyrics found for this track</h3>"
-                "<p style='color:#9097a2'>Melodex checked user-added lyrics, local sidecars, "
+                "<div style='margin:22px;max-width:640px'>"
+                "<h3>No lyrics found locally</h3>"
+                "<p style='color:#9097a2'>Melodex checked your saved lyrics, local sidecars, "
                 "embedded tags and installed lyrics plugins.</p>"
-                "<p style='color:#9097a2'>You can add an <b>.lrc</b> or <b>.txt</b> file, "
-                "paste lyrics you already have, or install a lyrics plugin. "
-                "Melodex Core does not scrape commercial lyric sites.</p>"
+                "<p style='color:#9097a2'>Choose <b>Find online</b> to make an on-demand LRCLIB lookup, "
+                "or add your own .lrc/.txt lyrics.</p>"
                 "</div>"
             )
 
-        if lyric_text or self.synced:
-            source_label=lyric_source or "Lyrics available"
-            if provenance.get("source_url"):
-                source_label += " · sourced by installed plugin"
+        if lyric_text or self.synced or instrumental:
+            source_label=_escape(
+                lyric_source or ("Instrumental" if instrumental else "Lyrics available")
+            )
+            source_url=str(provenance.get("source_url") or "").strip()
+            if source_url:
+                source_label += f' · <a href="{_escape(source_url)}">source</a>'
+            if lyric_source.startswith("LRCLIB"):
+                source_label += " · on demand · not saved"
+            elif source_url:
+                source_label += " · installed plugin"
             if self.synced:
                 source_label += " · synchronized"
             self.lyrics_source.setText(source_label)
         else:
-            self.lyrics_source.setText("Lyrics unavailable · add locally or use an optional lyrics plugin")
+            self.lyrics_source.setText("No local/plugin lyrics · try Find online or add your own")
 
         self.lyricsChanged.emit({
             "text": lyric_text,
             "synced": [dict(row) for row in self.synced],
             "source": lyric_source,
         })
+
+    def _online_lyrics_pref_changed(self, enabled: bool) -> None:
+        self._auto_online_lyrics=bool(enabled)
+        self.onlineLyricsPreferenceChanged.emit(bool(enabled))
+        if (
+            enabled
+            and self.track
+            and not self._online_lyrics_attempted
+            and not str((self.bundle.get("lyrics") or {}).get("text") or "").strip()
+            and not list((self.bundle.get("lyrics") or {}).get("synced") or [])
+        ):
+            self._find_lyrics_online()
+
+    def _find_lyrics_online(self) -> None:
+        if not self.track or not track_key(self.track):
+            QMessageBox.information(self,"Lyrics","Play or select a track first.")
+            return
+        if "community lyrics" in self._pending:
+            return
+        self._online_lyrics_attempted=True
+        self.online_lyrics_button.setEnabled(False)
+        self.online_lyrics_button.setText("Looking…")
+        self.lyrics_source.setText(
+            "Looking up community lyrics on LRCLIB… this is an on-demand third-party request."
+        )
+        key=track_key(self.track)
+        request_track=dict(self.track)
+        self._run_stage(
+            key,
+            "community lyrics",
+            lambda: {"lyrics":self.metadata.community_lyrics(request_track),"errors":[]},
+        )
 
     def _import_lyrics_file(self) -> None:
         if not self.track or not track_key(self.track):

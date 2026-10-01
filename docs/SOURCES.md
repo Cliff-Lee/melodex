@@ -11,7 +11,7 @@ Melodex now presents sources by origin rather than as one technical list:
 
 The included providers are carried with the desktop app and installed automatically on first run unless you explicitly remove/disable one. Registry examples are optional and are not preinstalled.
 
-Use **Check installed** for a bounded live health check on the current computer/network. A package passing repository tests does not by itself prove its upstream service is currently reachable.
+Use **Check connections** for a bounded live health check on the current computer/network. A package passing repository tests does not by itself prove its upstream service is currently reachable.
 
 See [Plugin and source audit](PLUGIN_AUDIT.md) for the complete matrix.
 
@@ -50,7 +50,7 @@ Old private development adapters are **not** part of the public bundled-provider
 
 ## Plugin Centre on desktop
 
-Use **Sources & plugins → Browse optional plugins** to browse the registry.
+Use **Sources & plugins → Add features…** to browse the registry. The registry currently contains reference/example packages; none are installed automatically.
 
 The Plugin Centre shows the user-facing purpose, capabilities, permissions and installation state first. Compatibility, package verification, source repository and review metadata remain available under **Technical details**.
 
