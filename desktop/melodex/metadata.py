@@ -258,6 +258,35 @@ class RichMetadataService:
     def cached_artist_photo(self, artist: dict[str, Any]) -> dict[str, Any]:
         return self._cached_artwork_by_keys(self._artist_artwork_keys(artist))
 
+    def remember_artist_photo_file(
+        self,
+        artist: dict[str, Any],
+        source_path: str | Path,
+    ) -> dict[str, Any]:
+        source=Path(source_path).expanduser()
+        if not source.is_file():
+            return {}
+        try:
+            data=source.read_bytes()
+        except Exception:
+            return {}
+        suffix=source.suffix.lower()
+        if suffix not in {".jpg",".jpeg",".png",".webp"}:
+            suffix=".img"
+        target=self.art_cache / (
+            "artist-user-" + hashlib.sha256(data).hexdigest()[:24] + suffix
+        )
+        try:
+            if not target.exists():
+                target.write_bytes(data)
+        except Exception:
+            return {}
+        return self._remember_artwork_by_keys(
+            self._artist_artwork_keys(artist),
+            target,
+            source="User-selected artist photo",
+        )
+
 
     def _cached_json(self, key: str, max_age: float) -> Any | None:
         path = self._cache_path(key)
