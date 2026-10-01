@@ -3532,10 +3532,50 @@ class MainWindow(QMainWindow):
                 self._journey_live_stop("destination reached")
             else:
                 self._journey_live_update_label()
-        self.now_title.setText(str(t.get("title") or "Unknown track")); base=f"{t.get('artist','Unknown artist')}   ·   {t.get('album','')}   ·   {t.get('provider_id','')}"; src=str(t.get("source_page") or ""); attr=str(t.get("attribution") or ""); self.now_meta.setText(base + ((f"   ·   <a href=\"{src}\">{attr or 'Source'}</a>") if src else ""))
-        if hasattr(self,"rich_now"):self.rich_now.set_track(dict(t))
+        self.now_title.setText(str(t.get("title") or "Unknown track"))
+        artist=str(t.get("artist") or "Unknown artist")
+        album=str(t.get("album") or "")
+        provider=str(t.get("provider_id") or "")
+        pieces=[artist]
+        if album:
+            pieces.append(album)
+        if self.power_toggle.isChecked() and provider:
+            pieces.append(provider)
+        src=str(t.get("source_page") or "")
+        attr=str(t.get("attribution") or "")
+        base="   ·   ".join(pieces)
+        self.now_meta.setText(
+            base + ((f"   ·   <a href=\"{src}\">{attr or 'Source'}</a>") if src else "")
+        )
+        if hasattr(self,"player_cover"):
+            token=UserState.track_key(t)
+            self.player_cover.set_cover(
+                "",
+                title=album or str(t.get("title") or ""),
+                key=token,
+            )
+            self._run_async(
+                lambda:self.metadata.local_artwork(dict(t)),
+                lambda result:self._player_artwork_loaded(token,result),
+            )
+        if hasattr(self,"rich_now"):
+            self.rich_now.set_track(dict(t))
         if hasattr(self, "living_canvas"):
             self.living_canvas.refresh_context()
+        if self.current_page=="home":
+            self._refresh_home_continue()
+
+    def _player_artwork_loaded(self, token: str, result: object) -> None:
+        if not isinstance(result,dict):
+            return
+        current=dict(self.current_track or {})
+        if token!=UserState.track_key(current):
+            return
+        self.player_cover.set_cover(
+            str(result.get("path") or ""),
+            title=str(current.get("album") or current.get("title") or ""),
+            key=token,
+        )
 
     def _request_cached_visual_analysis(self, track: dict[str, Any]) -> None:
         local_path = str(track.get("local_path") or "").strip()
