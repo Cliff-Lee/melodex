@@ -2,6 +2,21 @@
 
 This document records the product-facing distinction between Melodex Core, sources included with the app, and optional registry plugins.
 
+## Audit summary for v0.7.1
+
+On a clean desktop install:
+
+| Layer | Count | Installed automatically? | Product meaning |
+| --- | ---: | --- | --- |
+| Core sources | 3 | Yes | Local files, user streams, optional Jamendo connector |
+| Included provider packages | 6 | Yes | Search/play sources carried with Melodex |
+| Enrichment extensions | 0 | No | Artwork, lyrics, metadata, context and identity extensions are optional |
+| Registry entries | 16 | No | All current registry entries are reference/example packages |
+
+The six included provider packages are repository-tested for package identity, manifest validity, install/restore behaviour and their fixture-backed provider contracts. **That is not the same as a live upstream-service guarantee.** The end-user page therefore exposes **Check connections** to perform bounded runtime checks on the current computer/network.
+
+The registry is currently a developer/reference ecosystem rather than a curated consumer app store: all 16 entries are marked `example`. The redesigned UI calls them optional/reference features rather than implying that every registry item is production-ready.
+
 ## What is available on a fresh install
 
 ### Built into Melodex Core
@@ -69,6 +84,8 @@ Core lyrics support is local-first:
 2. synchronized or plain sidecars near the audio file;
 3. embedded lyrics tags;
 4. installed `lyrics` capability extensions.
+
+v0.7.1 also adds an explicit **Find online** action backed by LRCLIB. This is user-initiated rather than automatic: Melodex sends the current track metadata to LRCLIB, displays a conservative match, and does not permanently cache LRCLIB lyric text. LRCLIB is a third-party community service; lyrics remain the work of their respective rights holders.
 
 Melodex does not scrape commercial lyric websites.
 
