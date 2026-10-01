@@ -13,9 +13,35 @@ On a clean desktop install:
 | Enrichment extensions | 0 | No | Artwork, lyrics, metadata, context and identity extensions are optional |
 | Registry entries | 16 | No | All current registry entries are reference/example packages |
 
-The six included provider packages are repository-tested for package identity, manifest validity, install/restore behaviour and their fixture-backed provider contracts. **That is not the same as a live upstream-service guarantee.** The end-user page therefore exposes **Check connections** to perform bounded runtime checks on the current computer/network.
+The six included provider packages are repository-tested for package identity, manifest validity, Python syntax, install/remove/restore behaviour and public-release payload safety. Separate fixture-backed tests exercise provider/extension examples in the Provider SDK. **Neither class of test is a live upstream-service guarantee.** The end-user page therefore exposes **Check connections** to perform bounded runtime checks on the current computer/network.
 
 The registry is currently a developer/reference ecosystem rather than a curated consumer app store: all 16 entries are marked `example`. The redesigned UI calls them optional/reference features rather than implying that every registry item is production-ready.
+
+## Audit disposition
+
+The current public-source set is intentionally conservative:
+
+| Source / layer | Disposition | Reason |
+| --- | --- | --- |
+| This computer | Keep in Core | Essential local-library source; no network dependency |
+| My streams | Keep in Core | User-controlled stream URLs rather than a third-party catalogue |
+| Jamendo reference source | Keep optional | Useful real API integration, but requires user setup/client ID |
+| Internet Archive Audio | Keep bundled | Broad openly accessible archive source; runtime availability remains upstream-dependent |
+| LibriVox | Keep bundled | Clear public-domain audiobook use case; runtime availability remains upstream-dependent |
+| Radio Browser | Keep bundled | Useful radio-directory source; mirror/network health must be checked at runtime |
+| SomaFM | Keep bundled | Useful curated-radio source; runtime availability remains upstream-dependent |
+| Wikimedia Commons Audio | Keep bundled | Open/public-domain audio source with explicit provenance |
+| ccMixter | Keep bundled, runtime-check | Useful Creative Commons source, but playback should be treated as unverified until the live connection/playback check succeeds on the current build |
+| Optional registry entries | Keep optional/reference | Useful ecosystem examples; not consumer preinstalls |
+| Legacy private development adapters | Remove/quarantine | Must never become part of the public payload or registry |
+
+A source is therefore not labelled "working" merely because its package compiles or installs. For this audit, three different evidence levels are used:
+
+1. **Package-safe** — expected package, manifest, entrypoint and release-payload checks pass.
+2. **Runtime-ready** — Melodex can launch/configure the installed source and its bounded health/capability check succeeds.
+3. **Live verified** — a real search/playback operation succeeds against the upstream service on the current machine/network.
+
+CI establishes the first level. The Sources & plugins health controls help establish the second. Manual/live use is still required for the third.
 
 ## What is available on a fresh install
 
@@ -42,7 +68,7 @@ The desktop app carries six audited provider packages and installs them automati
 | Wikimedia Commons Audio | 0.1.1 | Openly licensed/public-domain audio |
 | ccMixter | 0.1.3 | Creative Commons music |
 
-Bundled-package tests verify package identity/version, manifest structure, entrypoints and installation/restore behaviour. Live upstream availability is deliberately **not** inferred from fixture tests: use **Sources & plugins → Check installed** for a bounded health check on the current machine/network.
+Bundled-package tests verify package identity/version, manifest structure, entrypoints, archive safety and installation/restore behaviour. Live upstream availability is deliberately **not** inferred from repository or fixture tests: use **Sources & plugins → Check installed** for a bounded health check on the current machine/network, then perform a real search/playback test before calling a source live-verified.
 
 ### Optional registry plugins
 

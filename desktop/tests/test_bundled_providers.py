@@ -4,6 +4,7 @@ import json
 import zipfile
 from pathlib import Path
 
+from check_bundled_provider_payload import _assert_no_private_source_markers
 from melodex.bundled_sources import bundled_packages, bundled_provider_ids
 from melodex.provider_manager import ProviderManager
 
@@ -31,6 +32,12 @@ def test_every_bundled_provider_has_manifest_and_python_entrypoint():
         assert manifest.get("entrypoints", {}).get("python") == "provider.py"
         with zipfile.ZipFile(package) as archive:
             compile(archive.read("provider.py"), f"{package.name}:provider.py", "exec")
+
+
+def test_bundled_provider_archives_contain_no_private_source_markers():
+    for _pid, package, _manifest in bundled_packages():
+        with zipfile.ZipFile(package) as archive:
+            _assert_no_private_source_markers(archive, package.name)
 
 
 def _provider_package(
@@ -114,6 +121,7 @@ def test_legacy_private_development_provider_is_quarantined_and_rejected(tmp_pat
     manager = ProviderManager(data_dir)
     try:
         import pytest
+
         with pytest.raises(ValueError, match="legacy development provider"):
             manager.install_package(package)
         assert not (manager.installer.providers_dir / plugin_id).exists()
