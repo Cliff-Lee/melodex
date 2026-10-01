@@ -107,6 +107,8 @@ def test_redesigned_main_window_builds_with_goal_navigation(monkeypatch, tmp_pat
     assert hasattr(window.rich_now, "find_lyrics_plugin_button")
     assert hasattr(window.rich_now, "online_lyrics_button")
     assert window.rich_now.online_lyrics_button.text() == "Find online"
+    assert hasattr(window.rich_now, "auto_online_lyrics")
+    assert window.rich_now.auto_online_lyrics.isChecked() is False
     assert hasattr(window, "source_summary_library")
     assert hasattr(window, "source_summary_included")
     assert hasattr(window, "source_summary_enhancements")
