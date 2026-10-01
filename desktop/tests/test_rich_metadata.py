@@ -468,7 +468,7 @@ def test_imported_lrc_is_copied_and_remains_synchronized(tmp_path: Path):
 
 
 
-def test_community_lyrics_prefers_exact_lrclib_match_without_persisting(tmp_path: Path):
+def test_community_lyrics_prefers_exact_lrclib_match_and_persists_private_cache(tmp_path: Path):
     svc = RichMetadataService(tmp_path / "data")
 
     class Response:
@@ -505,7 +505,10 @@ def test_community_lyrics_prefers_exact_lrclib_match_without_persisting(tmp_path
     assert len(result["synced"]) == 2
     assert result["synced"][0]["time_ms"] == 1000
     assert calls[0][0].endswith("/api/get")
-    assert not list((tmp_path / "data" / "rich-metadata" / "lyrics").glob("*lrclib*"))
+    cache_files = list(
+        (tmp_path / "data" / "metadata-cache" / "json").glob("*.json")
+    )
+    assert cache_files
 
 
 def test_community_lyrics_search_rejects_wrong_artist(tmp_path: Path):
@@ -1009,3 +1012,79 @@ def test_legacy_remote_artwork_cache_is_revalidated_but_user_photo_survives(tmp_
     }
     assert svc.cached_artist_photo({"name": "Remote Artist"}) == {}
     assert svc.cached_artist_photo({"name": "User Artist"})["path"] == str(user)
+
+
+
+def test_community_lyrics_disk_cache_survives_new_metadata_service(tmp_path: Path):
+    data_dir = tmp_path / "data"
+    track = {
+        "artist": "Persistent Artist",
+        "title": "Persistent Song",
+        "album": "Persistent Album",
+        "duration": 199.0,
+    }
+
+    class Hit:
+        status_code = 200
+        def json(self):
+            return {
+                "id": 77,
+                "trackName": "Persistent Song",
+                "artistName": "Persistent Artist",
+                "albumName": "Persistent Album",
+                "duration": 199.0,
+                "plainLyrics": "Cached across app restarts",
+                "syncedLyrics": "[00:01.00]Cached across app restarts",
+                "instrumental": False,
+            }
+        def raise_for_status(self):
+            return None
+
+    first = RichMetadataService(data_dir)
+    first.session.get = lambda *args, **kwargs: Hit()
+    fetched = first.community_lyrics(track)
+    assert fetched["status"] == "found"
+
+    reopened = RichMetadataService(data_dir)
+    reopened.session.get = lambda *args, **kwargs: (_ for _ in ()).throw(
+        AssertionError("persistent lyric cache must not hit the network")
+    )
+    cached = reopened.cached_community_lyrics(track)
+    assert cached["text"] == "Cached across app restarts"
+    assert cached["cache"] == "disk"
+
+    identity = reopened.enrich_identity(track)
+    assert identity["lyrics"]["text"] == "Cached across app restarts"
+    assert identity["lyrics"]["cache"] in {"disk", "memory"}
+
+
+def test_artwork_cache_survives_year_metadata_change(tmp_path: Path):
+    data_dir = tmp_path / "data"
+    cover = data_dir / "metadata-cache" / "artwork" / "cover.jpg"
+    cover.parent.mkdir(parents=True)
+    cover.write_bytes(b"cover")
+
+    original = {
+        "artist": "Example Artist",
+        "album": "Example Album",
+        "title": "Track",
+        "year": 2001,
+    }
+    first = RichMetadataService(data_dir)
+    first.remember_artwork(
+        original,
+        cover,
+        source="Cover Art Archive",
+        match_method="musicbrainz_identity",
+        match_confidence=0.98,
+    )
+
+    reopened = RichMetadataService(data_dir)
+    result = reopened.local_artwork({
+        "artist": "Example Artist",
+        "album": "Example Album",
+        "title": "Track",
+        "year": "",
+    })
+    assert result["path"] == str(cover)
+    assert result["source"] == "Cover Art Archive"

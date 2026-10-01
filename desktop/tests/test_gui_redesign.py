@@ -473,8 +473,8 @@ def test_plugins_surface_where_their_features_are_used(monkeypatch, tmp_path):
 
     assert "Taste Helper" in window.recommendation_plugin_presence.label.text()
     assert not hasattr(window.rich_now, "lyrics_plugin_presence")
-    assert "Liner Notes" in window.rich_now.context_plugin_presence.label.text()
-    assert "Needs Setup" not in window.rich_now.context_plugin_presence.label.text()
+    assert not hasattr(window.rich_now, "context_plugin_presence")
+    assert window.rich_now._context_source_names == ["Liner Notes"]
 
     opened = []
     monkeypatch.setattr(window, "_plugin_directory", lambda capability="": opened.append(capability))
@@ -483,7 +483,7 @@ def test_plugins_surface_where_their_features_are_used(monkeypatch, tmp_path):
     window.artwork_plugin_presence.action.click()
     window.recommendation_plugin_presence.action.click()
     window.rich_now.manage_lyrics_sources_action.trigger()
-    window.rich_now.context_plugin_presence.action.click()
+    window.rich_now.context_sources_button.click()
 
     assert opened == [
         "search",
@@ -1180,3 +1180,209 @@ def test_plain_lyrics_html_uses_explicit_dark_theme_contrast():
     assert "color:#e5edf6" in rendered
     assert "font-size:21px" in rendered
     assert "Line one<br>Line two" in rendered
+
+
+
+def test_synced_lyrics_use_explicit_light_anchor_colours():
+    try:
+        from melodex.rich_now_playing import RichNowPlayingWidget
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Desktop runtime is unavailable: {exc}")
+
+    widget = object.__new__(RichNowPlayingWidget)
+    widget.synced = [
+        {"time_ms": 1000, "text": "One"},
+        {"time_ms": 2000, "text": "Two"},
+        {"time_ms": 3000, "text": "Three"},
+    ]
+    rendered = RichNowPlayingWidget._synced_lyrics_html(widget, 1)
+    assert "color:#ffffff" in rendered
+    assert "color:#d4deea" in rendered
+    assert "color:#98a7b8" in rendered
+    assert "color:inherit" not in rendered
+
+
+def test_now_playing_warms_cached_art_and_online_lyrics_before_network(monkeypatch, tmp_path):
+    try:
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+
+    window = main_window.MainWindow()
+    widget = window.rich_now
+    cover = tmp_path / "cached-cover.jpg"
+    cover.write_bytes(b"not-real-image")
+
+    monkeypatch.setattr(
+        widget.metadata,
+        "local_artwork",
+        lambda track: {
+            "path": str(cover),
+            "source": "Cover Art Archive",
+            "source_url": "",
+        },
+    )
+    monkeypatch.setattr(
+        widget.metadata,
+        "local_lyrics",
+        lambda track: {"text": "", "synced": [], "source": ""},
+    )
+    monkeypatch.setattr(
+        widget.metadata,
+        "cached_community_lyrics",
+        lambda track: {
+            "text": "Already cached",
+            "synced": [],
+            "source": "LRCLIB community lyrics",
+            "status": "found",
+            "cache": "disk",
+        },
+    )
+
+    started = []
+    monkeypatch.setattr(
+        widget.metadata,
+        "enrich_identity",
+        lambda track: started.append(dict(track)) or {
+            "track_key": "local:cached",
+            "track": dict(track),
+            "identity": {},
+            "lyrics": {},
+            "errors": [],
+        },
+    )
+    widget.set_track({
+        "provider_id": "local",
+        "track_id": "cached",
+        "artist": "Cached Artist",
+        "title": "Cached Song",
+        "album": "Cached Album",
+    })
+    app.processEvents()
+
+    assert widget._current_lyrics["text"] == "Already cached"
+    assert widget._active_lyrics_source == "online"
+    assert "Already cached" in widget.lyrics.toPlainText()
+    assert "reused" in widget.lyrics_source.text() or "LRCLIB" in widget.lyrics_source.text()
+
+    # The later identity result may carry the same persisted LRCLIB entry.
+    # It must not reclassify online lyrics as a local/editable source.
+    widget._apply_identity({
+        "identity": {},
+        "lyrics": {
+            "text": "Already cached",
+            "synced": [],
+            "source": "LRCLIB community lyrics",
+            "status": "found",
+            "cache": "disk",
+            "provenance": {
+                "source_extension_id": "core.lrclib-on-demand",
+            },
+        },
+    })
+    assert widget._active_lyrics_source == "online"
+    assert widget._local_lyrics == {}
+    assert widget._online_lyrics["text"] == "Already cached"
+
+    window.close()
+    app.processEvents()
+
+
+def test_artist_releases_credits_are_compact_native_summaries(monkeypatch, tmp_path):
+    try:
+        from PySide6.QtWidgets import QApplication, QLabel, QTextBrowser
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+
+    window = main_window.MainWindow()
+    widget = window.rich_now
+
+    assert isinstance(widget.artist_info, QLabel)
+    assert isinstance(widget.releases, QLabel)
+    assert isinstance(widget.credits, QLabel)
+    assert not isinstance(widget.artist_info, QTextBrowser)
+    assert "border:0" in widget.artist_info.styleSheet()
+    assert "border:0" in widget.releases.styleSheet()
+    assert "border:0" in widget.credits.styleSheet()
+
+    artist_html = widget._artist_html({
+        "name": "Example Artist",
+        "type": "Group",
+        "begin_area": "Newport",
+        "begin": "2000",
+        "genres": ["welsh", "hip hop"],
+    }, {"path": "/tmp/photo.jpg"})
+    assert "<img" not in artist_html.casefold()
+    assert "Example Artist" in artist_html
+    assert "Newport" in artist_html
+
+    release_html = widget._discography_html([
+        {"id": f"rg-{i}", "title": f"Album {i}", "year": 2000 + i, "primary_type": "Album"}
+        for i in range(10)
+    ])
+    assert "Showing 6 of 10" in release_html
+    assert "Album 6" not in release_html
+
+    credits_html = widget._credits_html([
+        {"role": "producer", "name": "A"},
+        {"role": "producer", "name": "B"},
+        {"role": "performer", "name": "C"},
+    ])
+    assert "A · B" in credits_html
+    assert credits_html.count("producer") == 1
+
+    window.close()
+    app.processEvents()
+
+
+def test_context_has_native_core_fallback_without_plugins(monkeypatch, tmp_path):
+    try:
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+
+    window = main_window.MainWindow()
+    widget = window.rich_now
+    widget.track = {
+        "artist": "Example Artist",
+        "title": "Example Song",
+        "album": "Example Album",
+        "year": 2003,
+    }
+    widget.bundle = {
+        "identity": {"album": "Example Album", "date": "2003-01-01"},
+        "artist": {
+            "disambiguation": "Welsh group",
+            "genres": ["welsh", "hip hop"],
+        },
+        "credits": [{"role": "producer", "name": "Example Producer"}],
+    }
+
+    rendered = widget._context_html([])
+    assert "This recording" in rendered
+    assert "Example Album" in rendered
+    assert "Artist context" in rendered
+    assert "Key relationships" in rendered
+    assert "Optional sources" in rendered
+
+    window.close()
+    app.processEvents()

@@ -40,6 +40,10 @@ Select the current track in the persistent player to open **Now Playing**. The *
 
 Synchronized lines follow playback; select a line to seek to that point in the track. Lyrics are optional. You can keep using the player without setting up an extension or AI service.
 
+Online LRCLIB results can be cached privately in Melodex's local metadata cache so returning to the same track is immediate. The cache does not rewrite your music files, and provider-supplied lyrics remain read-only.
+
+The **Artist**, **Releases**, **Credits**, and **Context** tabs are compact native summaries rather than separate plugin pages. Artist information does not repeat the portrait already shown in the Now Playing hero; Releases shows a concise selection with MusicBrainz links; Credits groups names by role; and Context always shows useful core track/artist/recording information even when an optional source is unavailable. Choose **Context → Sources…** to inspect or manage optional context extensions.
+
 The separate **Visuals** tab has optional music visualisations. They use cached analysis when it is available and do not analyse audio during playback.
 
 See [Now Playing](RICH_NOW_PLAYING.md) for more.

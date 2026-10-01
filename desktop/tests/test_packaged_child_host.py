@@ -10,6 +10,7 @@ from melodex.capabilities import ExternalExtension
 from melodex.child_host import CHILD_FLAG, maybe_run_child_from_argv, python_child_command
 from melodex.provider import ExternalProvider
 from melodex.instance_identity import instance_server_name
+from melodex.process_env import scrubbed_child_env
 
 
 def test_frozen_python_children_reenter_melodex_in_worker_mode(monkeypatch, tmp_path: Path):
@@ -137,3 +138,23 @@ def test_child_worker_restores_missing_standard_streams(monkeypatch):
     assert child_host.sys.stdin is streams[0]
     assert child_host.sys.stdout is streams[1]
     assert child_host.sys.stderr is streams[2]
+
+
+
+def test_child_environment_supplies_ca_bundle_when_parent_has_none(monkeypatch):
+    import melodex.process_env as process_env
+
+    class FakeCertifi:
+        @staticmethod
+        def where():
+            return "/tmp/melodex-test-ca.pem"
+
+    monkeypatch.setitem(sys.modules, "certifi", FakeCertifi())
+    env = scrubbed_child_env(
+        identifier_key="MELODEX_EXTENSION_ID",
+        identifier="org.example.context",
+        parent={"PATH": "/usr/bin"},
+    )
+
+    assert env["SSL_CERT_FILE"] == "/tmp/melodex-test-ca.pem"
+    assert env["MELODEX_EXTENSION_ID"] == "org.example.context"

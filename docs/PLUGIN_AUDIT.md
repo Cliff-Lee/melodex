@@ -138,7 +138,7 @@ Core lyrics support is local-first:
 
 v0.7.1 also adds an explicit **Find online** action backed by LRCLIB. By default it is user-initiated. Melodex now tries an exact metadata lookup first, then a cleaned exact lookup for common library noise such as remaster/version suffixes and featured-artist text, then a structured LRCLIB search. Search candidates are still accepted conservatively using artist/title similarity plus album and duration evidence when available.
 
-Third-party LRCLIB lyric text is **not persisted to disk**. Successful, instrumental and confident not-found outcomes may be kept in memory for the current Melodex session so replaying the same track does not immediately repeat a network request; **Try again** bypasses that temporary cache. Users can optionally enable **Auto-find online** in the Lyrics tab; that preference is stored locally and only runs when local/plugin lyrics are unavailable. LRCLIB is a third-party community service; lyrics remain the work of their respective rights holders.
+LRCLIB results are cached **privately on this device** so revisiting a track does not repeatedly contact the service. Successful lyric/instrumental results use a longer-lived local metadata cache, while confident misses use a short cache; **Refresh lyrics / Try again** can still make a fresh request. Cached provider lyrics are not written into the audio file and remain read-only in Melodex. Users can optionally enable **Auto-find online** in the Lyrics tab; that preference is stored locally and only runs when local/plugin lyrics are unavailable. LRCLIB is a third-party community service; lyrics remain the work of their respective rights holders.
 
 Online lookup states are deliberately distinct: **found**, **instrumental**, **no confident match**, **missing artist/title metadata**, and **service/network error**. This prevents a temporary connection problem from looking like a genuine “no lyrics exist” result.
 
@@ -164,7 +164,7 @@ The Lyrics tab now treats lyrics as an active listening surface rather than a st
 - **Full screen** opens a distraction-free large-type lyrics view that stays synchronized;
 - when both local/plugin and online lyrics exist, the user can explicitly switch sources;
 - **Edit saved…** is only enabled for local/personal lyrics and saves a Melodex-owned correction copy without rewriting the source audio file;
-- temporary LRCLIB/plugin text is not made editable through that action, preserving the non-persistent online-lyrics policy;
+- provider-supplied LRCLIB/plugin text remains read-only even when cached locally; editing creates or uses a Melodex-owned personal copy rather than modifying provider text;
 - an online miss/error never replaces valid local lyrics already on screen;
 - **Translate…** is optional and explicit: it uses the user's configured LLM only after a target language is chosen and the user confirms sending the currently displayed lyric text to that endpoint;
 - generated translations are temporary and are not stored by Melodex.
