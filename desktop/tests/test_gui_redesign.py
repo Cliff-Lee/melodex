@@ -473,8 +473,9 @@ def test_plugins_surface_where_their_features_are_used(monkeypatch, tmp_path):
 
     assert "Taste Helper" in window.recommendation_plugin_presence.label.text()
     assert not hasattr(window.rich_now, "lyrics_plugin_presence")
-    assert "Liner Notes" in window.rich_now.context_plugin_presence.label.text()
-    assert "Needs Setup" not in window.rich_now.context_plugin_presence.label.text()
+    assert not hasattr(window.rich_now, "context_plugin_presence")
+    assert window.rich_now._context_source_names == ["Liner Notes"]
+    assert "Needs Setup" not in window.rich_now.context_status.text()
 
     opened = []
     monkeypatch.setattr(window, "_plugin_directory", lambda capability="": opened.append(capability))
@@ -483,7 +484,7 @@ def test_plugins_surface_where_their_features_are_used(monkeypatch, tmp_path):
     window.artwork_plugin_presence.action.click()
     window.recommendation_plugin_presence.action.click()
     window.rich_now.manage_lyrics_sources_action.trigger()
-    window.rich_now.context_plugin_presence.action.click()
+    window.rich_now.context_sources_button.click()
 
     assert opened == [
         "search",
@@ -1402,6 +1403,113 @@ def test_artist_releases_credits_are_compact_native_summaries(monkeypatch, tmp_p
     assert "Commons" in widget.artist_photo_credit.text()
     assert "CC BY-SA 4.0" in widget.artist_photo_credit.text()
     assert "A very long photographer attribution" in widget.artist_photo_credit.toolTip()
+
+    window.close()
+    app.processEvents()
+
+
+
+def test_context_has_native_core_fallback_without_plugins(monkeypatch, tmp_path):
+    try:
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+
+    window = main_window.MainWindow()
+    widget = window.rich_now
+    widget.track = {
+        "artist": "Example Artist",
+        "title": "Example Song",
+        "album": "Example Album",
+        "year": 2003,
+    }
+    widget.bundle = {
+        "identity": {
+            "title": "Example Song",
+            "artist": "Example Artist",
+            "album": "Example Album",
+            "date": "2003-01-01",
+        },
+        "artist": {
+            "disambiguation": "Welsh group",
+            "begin_area": "Newport",
+            "genres": ["welsh", "hip hop"],
+        },
+        "credits": [
+            {"role": "producer", "name": "Example Producer"},
+            {"role": "producer", "name": "Example Producer"},
+            {"role": "performer", "name": "Example Performer"},
+        ],
+    }
+
+    rendered = widget._context_html([])
+    assert "This recording" in rendered
+    assert "Example Song" in rendered
+    assert "Example Album" in rendered
+    assert "Artist context" in rendered
+    assert "Newport" in rendered
+    assert "Key relationships" in rendered
+    assert rendered.count("Example Producer") == 1
+    assert "Optional sources" in rendered
+
+    assert not hasattr(widget, "context_plugin_presence")
+    assert widget.context_sources_button.text() == "Sources…"
+    assert widget.context_refresh_button.text() == "Refresh context"
+
+    window.close()
+    app.processEvents()
+
+
+def test_context_keeps_core_content_when_optional_source_fails(monkeypatch, tmp_path):
+    try:
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+        from melodex.metadata import track_key
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+
+    window = main_window.MainWindow()
+    widget = window.rich_now
+    widget.track = {
+        "provider_id": "local",
+        "track_id": "context-test",
+        "artist": "Example Artist",
+        "title": "Example Song",
+        "album": "Example Album",
+    }
+    widget.bundle = {
+        "identity": {
+            "artist": "Example Artist",
+            "title": "Example Song",
+            "album": "Example Album",
+        }
+    }
+    widget._identity = dict(widget.bundle["identity"])
+    widget._pending.add("context")
+    widget._stage_loaded(
+        track_key(widget.track),
+        "context",
+        {
+            "cards": [],
+            "errors": ["Context: temporary network failure"],
+        },
+    )
+
+    assert "This recording" in widget.context.toPlainText()
+    assert "Example Song" in widget.context.toPlainText()
+    assert "core information shown" in widget.context_status.text().casefold()
+    assert "optional source unavailable" in widget.context_status.text().casefold()
 
     window.close()
     app.processEvents()
