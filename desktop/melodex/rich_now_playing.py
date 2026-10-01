@@ -28,7 +28,6 @@ from PySide6.QtWidgets import (
 )
 
 from .metadata import RichMetadataService, track_key
-from .ux_components import FeaturePresenceBar
 
 
 class _MetadataSignals(QObject):
@@ -286,15 +285,37 @@ class RichNowPlayingWidget(QWidget):
         context_layout=QVBoxLayout(self.context_page)
         context_layout.setContentsMargins(0,8,0,0)
         context_layout.setSpacing(8)
-        self.context_plugin_presence=FeaturePresenceBar(
-            "Context helpers",
-            baseline="Melodex core metadata still works without plugins",
-            action_text="Add context plugin…",
+
+        self._context_source_names: list[str] = []
+        self.context_toolbar=QFrame()
+        self.context_toolbar.setObjectName("nativeContextToolbar")
+        self.context_toolbar.setStyleSheet(
+            "QFrame#nativeContextToolbar{background:#0f1822;border:1px solid #26394e;"
+            "border-radius:10px;}"
         )
-        self.context_plugin_presence.actionRequested.connect(self.contextPluginRequested)
-        context_layout.addWidget(self.context_plugin_presence)
+        context_bar=QHBoxLayout(self.context_toolbar)
+        context_bar.setContentsMargins(11,8,11,8)
+        context_bar.setSpacing(7)
+        self.context_status=QLabel(
+            "Melodex context · core metadata works without optional sources"
+        )
+        self.context_status.setWordWrap(True)
+        self.context_status.setStyleSheet("color:#9aabba;font-size:10px")
+        self.context_refresh_button=QPushButton("Refresh context")
+        self.context_refresh_button.clicked.connect(self._refresh_context_native)
+        self.context_sources_button=QPushButton("Sources…")
+        self.context_sources_button.clicked.connect(self.contextPluginRequested)
+        context_bar.addWidget(self.context_status,1)
+        context_bar.addWidget(self.context_refresh_button)
+        context_bar.addWidget(self.context_sources_button)
+        context_layout.addWidget(self.context_toolbar)
+
         self.context=QTextBrowser()
         self.context.setOpenExternalLinks(True)
+        self.context.setStyleSheet(
+            "QTextBrowser{background:#111a24;color:#dce5ef;border:1px solid #293c51;"
+            "border-radius:11px;padding:14px;}"
+        )
         context_layout.addWidget(self.context,1)
 
         self.tabs.addTab(self.lyrics_page, "Lyrics")
@@ -311,9 +332,19 @@ class RichNowPlayingWidget(QWidget):
         lyrics: list[str] | tuple[str, ...] = (),
         context: list[str] | tuple[str, ...] = (),
     ) -> None:
-        # Lyrics extensions participate automatically in the native lyrics
-        # pipeline; only Context retains a visible helper strip.
-        self.context_plugin_presence.set_items(list(context))
+        # Lyrics and Context extensions participate underneath native Melodex
+        # surfaces. Their names remain available through Sources & plugins.
+        self._context_source_names=list(context)
+        if self._context_source_names:
+            self.context_status.setText(
+                "Melodex context · optional sources: "
+                + ", ".join(self._context_source_names[:3])
+                + ("…" if len(self._context_source_names) > 3 else "")
+            )
+        else:
+            self.context_status.setText(
+                "Melodex context · core metadata works without optional sources"
+            )
 
     def _empty_tabs(self) -> None:
         self.lyrics_source.setText("Checking saved, embedded and installed lyric sources…")
@@ -327,7 +358,10 @@ class RichNowPlayingWidget(QWidget):
         self.artist_info.setText("<p style='color:#9097a2'>Artist information will load after MusicBrainz identifies the track.</p>")
         self.releases.setText("<p style='color:#9097a2'>Release history will load independently after the artist is identified.</p>")
         self.credits.setText("<p style='color:#9097a2'>Recording and work credits will load independently after the track is identified.</p>")
-        self.context.setHtml("<p style='color:#9097a2'>Context plugins can add liner notes, musical connections, community listening data and other sourced cards here.</p>")
+        self.context.setHtml(
+            "<p style='color:#9097a2'>Melodex is building context from this track, "
+            "its artist, release and recording relationships. Optional sources can add more.</p>"
+        )
         self.info.setHtml("<p style='color:#9097a2'>Identifying this track with MusicBrainz…</p>")
 
     # ---------------------------- staged loading
@@ -530,6 +564,25 @@ class RichNowPlayingWidget(QWidget):
             cards = [x for x in list(payload.get("cards") or []) if isinstance(x, dict)]
             self.bundle["context"] = cards
             self.context.setHtml(self._context_html(cards))
+            if errors and not cards:
+                self.context_status.setText(
+                    "Melodex context · core information shown · optional source unavailable"
+                )
+            elif cards:
+                self.context_status.setText(
+                    "Melodex context · "
+                    + str(len(cards))
+                    + " optional card"
+                    + ("" if len(cards)==1 else "s")
+                )
+            elif self._context_source_names:
+                self.context_status.setText(
+                    "Melodex context · core information shown · no optional cards returned"
+                )
+            else:
+                self.context_status.setText(
+                    "Melodex context · core information"
+                )
 
         elif stage == "discography":
             releases = [x for x in list(payload.get("discography") or []) if isinstance(x, dict)]
@@ -1397,56 +1450,147 @@ class RichNowPlayingWidget(QWidget):
             )
         return "".join(parts)
 
-    @staticmethod
-    def _context_html(cards: list[dict[str, Any]]) -> str:
-        if not cards:
-            return "<p style='color:#9097a2'>No context cards were returned. Install or enable context plugins to add musical connections, liner notes and community context.</p>"
+    def _context_html(self, cards: list[dict[str, Any]]) -> str:
         parts: list[str] = []
+        identity=self.bundle.get("identity") if isinstance(self.bundle.get("identity"),dict) else {}
+        artist=self.bundle.get("artist") if isinstance(self.bundle.get("artist"),dict) else {}
+        credits=[x for x in list(self.bundle.get("credits") or []) if isinstance(x,dict)]
+
+        title=str(identity.get("title") or self.track.get("title") or "").strip()
+        track_artist=str(identity.get("artist") or self.track.get("artist") or "").strip()
+        album=str(identity.get("album") or self.track.get("album") or "").strip()
+        year=str(identity.get("date") or self.track.get("year") or "")[:4]
+
+        recording_bits=[]
+        if title:
+            recording_bits.append(title)
+        if track_artist:
+            recording_bits.append(track_artist)
+        if album:
+            recording_bits.append(album)
+        if year:
+            recording_bits.append(year)
+        if recording_bits:
+            parts.append(
+                "<section><h2 style='margin:0 0 8px 0'>This recording</h2>"
+                "<p style='font-size:16px;color:#c8d3df;line-height:1.5'>"
+                +_escape(" · ".join(recording_bits))+"</p></section>"
+            )
+
+        genres=[str(x) for x in list(artist.get("genres") or []) if x]
+        dis=str(artist.get("disambiguation") or "").strip()
+        place=str(
+            artist.get("begin_area")
+            or artist.get("area")
+            or artist.get("country")
+            or ""
+        ).strip()
+        artist_bits=[]
+        if dis:
+            artist_bits.append(dis)
+        if place:
+            artist_bits.append("From "+place)
+        if genres:
+            artist_bits.append("Tags: "+", ".join(genres[:6]))
+        if artist_bits:
+            parts.append(
+                "<section><h2>Artist context</h2>"
+                "<p style='font-size:15px;line-height:1.5'>"
+                +_escape(" · ".join(artist_bits))+"</p></section>"
+            )
+
+        if credits:
+            key_rows=[]
+            seen=set()
+            for row in credits:
+                role=str(row.get("role") or "").strip()
+                name=str(row.get("name") or "").strip()
+                key=(role.casefold(),name.casefold())
+                if not role or not name or key in seen:
+                    continue
+                seen.add(key)
+                key_rows.append(f"<b>{_escape(role)}</b> — {_escape(name)}")
+                if len(key_rows)>=8:
+                    break
+            if key_rows:
+                parts.append(
+                    "<section><h2>Key relationships</h2>"
+                    "<p style='line-height:1.55'>"
+                    +"<br>".join(key_rows)+"</p></section>"
+                )
+
         for card in cards:
-            title = _escape(card.get("title") or "Context")
-            kind = str(card.get("kind") or "")
-            parts.append(f"<section><h2>{title}</h2>")
-            if kind == "text":
-                text = _escape(card.get("text") or "").replace("\n", "<br>")
+            title_html=_escape(card.get("title") or "Context")
+            kind=str(card.get("kind") or "")
+            parts.append(f"<section><h2>{title_html}</h2>")
+            if kind=="text":
+                text=_escape(card.get("text") or "").replace("\n","<br>")
                 parts.append(f"<p style='font-size:16px;line-height:1.55'>{text}</p>")
-            elif kind == "facts":
-                facts = [x for x in list(card.get("facts") or []) if isinstance(x, dict)]
+            elif kind=="facts":
+                facts=[x for x in list(card.get("facts") or []) if isinstance(x,dict)]
                 parts.append("<table cellspacing='7'>")
                 for fact in facts:
-                    label = _escape(fact.get("label") or "")
-                    value = _escape(fact.get("value") or "")
-                    url = _escape(fact.get("url") or "")
-                    rendered = f'<a href="{url}">{value}</a>' if url else value
+                    label=_escape(fact.get("label") or "")
+                    value=_escape(fact.get("value") or "")
+                    url=_escape(fact.get("url") or "")
+                    rendered=f'<a href="{url}">{value}</a>' if url else value
                     parts.append(f"<tr><td><b>{label}</b></td><td>{rendered}</td></tr>")
                 parts.append("</table>")
-            elif kind == "list":
-                items = [x for x in list(card.get("items") or []) if isinstance(x, dict)]
+            elif kind=="list":
+                items=[x for x in list(card.get("items") or []) if isinstance(x,dict)]
                 parts.append("<ul>")
-                for item in items:
-                    item_title = _escape(item.get("title") or "")
-                    url = _escape(item.get("url") or "")
-                    title_html = f'<a href="{url}">{item_title}</a>' if url else item_title
-                    relation = _escape(item.get("relation") or "")
-                    badge = _escape(item.get("badge") or "")
-                    subtitle = _escape(item.get("subtitle") or "")
-                    meta = " · ".join(x for x in (relation, badge, subtitle) if x)
+                for item in items[:12]:
+                    item_title=_escape(item.get("title") or "")
+                    url=_escape(item.get("url") or "")
+                    title_link=f'<a href="{url}">{item_title}</a>' if url else item_title
+                    relation=_escape(item.get("relation") or "")
+                    badge=_escape(item.get("badge") or "")
+                    subtitle=_escape(item.get("subtitle") or "")
+                    meta=" · ".join(x for x in (relation,badge,subtitle) if x)
                     parts.append(
-                        f"<li><b>{title_html}</b>"
-                        + (f"<br><span style='color:#9aa1aa'>{meta}</span>" if meta else "")
-                        + "</li>"
+                        f"<li><b>{title_link}</b>"
+                        +(f"<br><span style='color:#9aa1aa'>{meta}</span>" if meta else "")
+                        +"</li>"
                     )
                 parts.append("</ul>")
 
-            provenance = card.get("provenance") if isinstance(card.get("provenance"), dict) else {}
-            attribution = _escape(provenance.get("attribution") or provenance.get("source_extension_id") or "")
-            source_url = _escape(provenance.get("source_url") or "")
-            license_name = _escape(provenance.get("license") or "")
-            source = f'<a href="{source_url}">{attribution or "source"}</a>' if source_url else attribution
-            footer = " · ".join(x for x in (source, license_name) if x)
+            provenance=card.get("provenance") if isinstance(card.get("provenance"),dict) else {}
+            attribution=_escape(
+                provenance.get("attribution")
+                or provenance.get("source_extension_name")
+                or provenance.get("source_extension_id")
+                or ""
+            )
+            source_url=_escape(provenance.get("source_url") or "")
+            license_name=_escape(provenance.get("license") or "")
+            source=f'<a href="{source_url}">{attribution or "source"}</a>' if source_url else attribution
+            footer=" · ".join(x for x in (source,license_name) if x)
             if footer:
                 parts.append(f"<p style='color:#777f8a;font-size:11px'>Source: {footer}</p>")
-            parts.append("</section><hr>")
-        return "".join(parts)
+            parts.append("</section>")
+
+        if not parts:
+            return (
+                "<p style='color:#9097a2'>No additional context is available for this track yet. "
+                "Playback and core metadata are still available.</p>"
+            )
+
+        if not cards:
+            parts.append(
+                "<p style='color:#6f7d8c;font-size:11px'>Core context shown from Melodex and "
+                "MusicBrainz. Optional sources can add liner notes, community signals and "
+                "additional relationships when available.</p>"
+            )
+        return "<hr>".join(parts)
+
+    def _refresh_context_native(self) -> None:
+        if not self.track or not track_key(self.track):
+            return
+        if "context" in self._pending:
+            return
+        self._context_started=False
+        self.context_status.setText("Refreshing context…")
+        self._maybe_start_context(track_key(self.track))
 
     @staticmethod
     def _info_html(identity: dict[str, Any], artwork: dict[str, Any], artist_photo: dict[str, Any], errors: list[Any]) -> str:
