@@ -447,6 +447,7 @@ class ProviderManager:
             close=getattr(provider,"close",None)
             if callable(close):
                 close()
+            shutil.rmtree(folder,ignore_errors=True)
             raise ValueError(
                 "This legacy development provider is not supported by public Melodex builds."
             )
