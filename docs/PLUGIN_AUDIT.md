@@ -85,7 +85,11 @@ Core lyrics support is local-first:
 3. embedded lyrics tags;
 4. installed `lyrics` capability extensions.
 
-v0.7.1 also adds an explicit **Find online** action backed by LRCLIB. By default it is user-initiated: Melodex sends the current track metadata to LRCLIB, displays a conservative match, and does not permanently cache LRCLIB lyric text. Users can optionally enable **Auto-find online** in the Lyrics tab; that preference is stored locally and only runs when local/plugin lyrics are unavailable. LRCLIB is a third-party community service; lyrics remain the work of their respective rights holders.
+v0.7.1 also adds an explicit **Find online** action backed by LRCLIB. By default it is user-initiated. Melodex now tries an exact metadata lookup first, then a cleaned exact lookup for common library noise such as remaster/version suffixes and featured-artist text, then a structured LRCLIB search. Search candidates are still accepted conservatively using artist/title similarity plus album and duration evidence when available.
+
+Third-party LRCLIB lyric text is **not persisted to disk**. Successful, instrumental and confident not-found outcomes may be kept in memory for the current Melodex session so replaying the same track does not immediately repeat a network request; **Try again** bypasses that temporary cache. Users can optionally enable **Auto-find online** in the Lyrics tab; that preference is stored locally and only runs when local/plugin lyrics are unavailable. LRCLIB is a third-party community service; lyrics remain the work of their respective rights holders.
+
+Online lookup states are deliberately distinct: **found**, **instrumental**, **no confident match**, **missing artist/title metadata**, and **service/network error**. This prevents a temporary connection problem from looking like a genuine “no lyrics exist” result.
 
 Melodex does not scrape commercial lyric websites.
 
@@ -97,7 +101,7 @@ The Now Playing Lyrics tab therefore provides:
 - **Paste lyrics…** for lyrics the user already has;
 - automatic recognition of timestamped LRC text;
 - persistent local caching without rewriting the audio file;
-- **Find lyrics plugin…** to open the Plugin Centre filtered to Lyrics.
+- **Manage lyrics sources…** / **Add lyrics source…** to open the Plugin Centre filtered to Lyrics.
 
 A future licensed lyrics extension can plug into the existing `lyrics.lookup` contract without changing the player UI.
 

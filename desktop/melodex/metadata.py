@@ -24,7 +24,23 @@ _WP_API = "https://en.wikipedia.org/w/api.php"
 _LRCLIB_API = "https://lrclib.net/api"
 _USER_AGENT = "Melodex/0.1 (https://github.com/Cliff-Lee/melodex)"
 _LRC_RE = re.compile(r"\[(?P<m>\d{1,3}):(?P<s>\d{1,2})(?:[\.:](?P<f>\d{1,3}))?\]")
-_VERSION_WORDS = re.compile(r"\b(live|remix|acoustic|cover|karaoke|instrumental|demo|edit|remaster(?:ed)?)\b", re.I)
+_VERSION_WORDS = re.compile(r"\b(live|remix|acoustic|cover|karaoke|instrumental|demo|edit|remaster(?:ed)?|radio version|single version|album version|mix)\b", re.I)
+_FEATURE_SUFFIX = re.compile(r"\s+(?:feat(?:uring)?\.?|ft\.?)\s+.+$", re.I)
+_BRACKETED_VERSION = re.compile(
+    r"\s*[\(\[\{][^\)\]\}]*"
+    r"(?:live|remix|acoustic|cover|karaoke|instrumental|demo|edit|remaster(?:ed)?|"
+    r"radio version|single version|album version|mix|version)"
+    r"[^\)\]\}]*[\)\]\}]\s*$",
+    re.I,
+)
+_DASHED_VERSION = re.compile(
+    r"\s+[-–—]\s+.*"
+    r"(?:live|remix|acoustic|cover|karaoke|instrumental|demo|edit|remaster(?:ed)?|"
+    r"radio version|single version|album version|mix|version).*$",
+    re.I,
+)
+_LYRIC_SUCCESS_TTL = 6 * 60 * 60
+_LYRIC_MISS_TTL = 10 * 60
 
 
 def _norm(value: Any) -> str:
@@ -40,6 +56,46 @@ def _ratio(a: Any, b: Any) -> float:
     if aa == bb:
         return 1.0
     return SequenceMatcher(None, aa, bb).ratio()
+
+
+def _lyrics_clean_title(value: Any) -> str:
+    text=" ".join(str(value or "").split())
+    if not text:
+        return ""
+    previous=None
+    while text != previous:
+        previous=text
+        text=_BRACKETED_VERSION.sub("",text).strip()
+        text=_DASHED_VERSION.sub("",text).strip()
+    return text or " ".join(str(value or "").split())
+
+
+def _lyrics_clean_artist(value: Any) -> str:
+    text=" ".join(str(value or "").split())
+    if not text:
+        return ""
+    return _FEATURE_SUFFIX.sub("",text).strip() or text
+
+
+def _lyrics_version_words(value: Any) -> set[str]:
+    return {
+        str(match.group(0) or "").casefold().strip()
+        for match in _VERSION_WORDS.finditer(str(value or ""))
+        if str(match.group(0) or "").strip()
+    }
+
+
+def _lyrics_lookup_key(track: dict[str, Any]) -> str:
+    duration=float(track.get("duration") or 0)
+    bucket=round(duration) if duration > 0 else 0
+    return "|".join(
+        (
+            _norm(track.get("artist")),
+            _norm(track.get("title")),
+            _norm(track.get("album")),
+            str(bucket),
+        )
+    )
 
 
 def track_key(track: dict[str, Any]) -> str:
@@ -104,8 +160,8 @@ class MetadataIdentity:
 class RichMetadataService:
     """Local-first enrichment with a small MusicBrainz/Cover Art cache.
 
-    The service never fetches web lyrics. Lyrics come from user-owned files/tags;
-    online lyric services can be added later behind a separate provider interface.
+    Lyrics are local-first. User-initiated or explicitly enabled community lookup
+    is handled separately and third-party lyric text is not persisted to disk.
     """
 
     _mb_lock = threading.Lock()
@@ -126,6 +182,8 @@ class RichMetadataService:
         self._artwork_index = self._load_artwork_index()
         self._lyrics_index_lock = threading.Lock()
         self._lyrics_index = self._load_lyrics_index()
+        self._community_lyrics_cache: dict[str, tuple[float, dict[str, Any]]] = {}
+        self._community_lyrics_cache_lock = threading.Lock()
         self.session = session or requests.Session()
         self.capability_broker = capability_broker
         self.session.headers.update({"User-Agent": _USER_AGENT, "Accept": "application/json"})
@@ -610,24 +668,126 @@ class RichMetadataService:
             pass
         return {"text": "", "synced": [], "source": ""}
 
-    def community_lyrics(self, track: dict[str, Any]) -> dict[str, Any]:
-        """Fetch lyrics on demand from LRCLIB without persisting the lyric text.
+    def _community_lyrics_cached(self, key: str) -> dict[str, Any] | None:
+        now=time.monotonic()
+        with self._community_lyrics_cache_lock:
+            cached=self._community_lyrics_cache.get(key)
+            if not cached:
+                return None
+            expires,result=cached
+            if expires <= now:
+                self._community_lyrics_cache.pop(key,None)
+                return None
+            out=dict(result)
+            out["cache"]="memory"
+            return out
 
-        This is deliberately user-initiated. Melodex does not ship an LRCLIB
-        database and does not write third-party lyric text to its local cache.
+    def _cache_community_lyrics(
+        self,
+        key: str,
+        result: dict[str, Any],
+        *,
+        ttl: float,
+    ) -> dict[str, Any]:
+        payload=dict(result)
+        with self._community_lyrics_cache_lock:
+            self._community_lyrics_cache[key]=(time.monotonic()+max(1.0,float(ttl)),payload)
+        return dict(payload)
+
+    @staticmethod
+    def _lrclib_match_score(
+        track: dict[str, Any],
+        row: dict[str, Any],
+    ) -> tuple[float, dict[str, float]] | None:
+        title=str(track.get("title") or "")
+        artist=str(track.get("artist") or "")
+        album=str(track.get("album") or "")
+        duration=float(track.get("duration") or 0)
+
+        remote_title=str(row.get("trackName") or row.get("name") or "")
+        remote_artist=str(row.get("artistName") or "")
+        remote_album=str(row.get("albumName") or "")
+
+        title_raw=_ratio(title,remote_title)
+        title_clean=_ratio(_lyrics_clean_title(title),_lyrics_clean_title(remote_title))
+        artist_raw=_ratio(artist,remote_artist)
+        artist_clean=_ratio(_lyrics_clean_artist(artist),_lyrics_clean_artist(remote_artist))
+        title_score=max(title_raw,title_clean)
+        artist_score=max(artist_raw,artist_clean)
+
+        if title_score < 0.88 or artist_score < 0.80:
+            return None
+
+        score=title_score*0.58 + artist_score*0.34
+        album_score=0.0
+        if album and remote_album and _norm(remote_album) not in {"", "-"}:
+            album_score=_ratio(album,remote_album)
+            score += 0.04*album_score
+
+        duration_score=0.0
+        remote_duration=float(row.get("duration") or 0)
+        if duration > 0 and remote_duration > 0:
+            delta=abs(duration-remote_duration)
+            tolerance=max(12.0,duration*0.08)
+            if delta > tolerance:
+                return None
+            duration_score=max(0.0,1.0-delta/max(1.0,tolerance))
+            score += 0.04*duration_score
+
+        requested_versions=_lyrics_version_words(title)
+        remote_versions=_lyrics_version_words(remote_title)
+        if requested_versions and remote_versions and requested_versions.isdisjoint(remote_versions):
+            score -= 0.08
+        elif requested_versions and not remote_versions and duration_score <= 0.25:
+            score -= 0.04
+
+        return max(0.0,min(1.0,score)), {
+            "title":title_score,
+            "artist":artist_score,
+            "album":album_score,
+            "duration":duration_score,
+        }
+
+    def community_lyrics(
+        self,
+        track: dict[str, Any],
+        *,
+        force: bool = False,
+    ) -> dict[str, Any]:
+        """Fetch lyrics on demand from LRCLIB with conservative fallbacks.
+
+        Third-party lyric text is never persisted to disk. Successful,
+        instrumental and not-found results are cached in memory only so
+        replaying the same track does not immediately repeat the request.
         """
         track=dict(track or {})
         title=str(track.get("title") or "").strip()
         artist=str(track.get("artist") or "").strip()
         album=str(track.get("album") or "").strip()
         duration=float(track.get("duration") or 0)
+        key=_lyrics_lookup_key(track)
+
+        cached=None if force else self._community_lyrics_cached(key)
+        if cached is not None:
+            return cached
+        if force:
+            with self._community_lyrics_cache_lock:
+                self._community_lyrics_cache.pop(key,None)
+
         if not title or not artist or _norm(artist) in {"unknown artist","unknown"}:
             return {
                 "text":"","synced":[],"source":"LRCLIB","instrumental":False,
+                "status":"missing_metadata",
                 "error":"Artist and title are required for online lyric lookup.",
             }
 
-        def parse_row(row: dict[str, Any]) -> dict[str, Any]:
+        def parse_row(
+            row: dict[str, Any],
+            *,
+            method: str,
+            confidence: float = 1.0,
+            scores: dict[str,float] | None = None,
+        ) -> dict[str, Any]:
             instrumental=bool(row.get("instrumental"))
             synced_text=str(row.get("syncedLyrics") or "").strip()
             plain=str(row.get("plainLyrics") or "").strip()
@@ -636,11 +796,21 @@ class RichMetadataService:
             if not text and synced:
                 text="\n".join(x["text"] for x in synced if x.get("text"))
             item_id=str(row.get("id") or "")
+            status="instrumental" if instrumental and not text and not synced else "found"
             return {
                 "text":text,
                 "synced":synced,
                 "source":"LRCLIB community lyrics",
                 "instrumental":instrumental,
+                "status":status,
+                "match":{
+                    "method":method,
+                    "confidence":round(float(confidence),4),
+                    "scores":dict(scores or {}),
+                    "remote_title":str(row.get("trackName") or row.get("name") or ""),
+                    "remote_artist":str(row.get("artistName") or ""),
+                    "remote_album":str(row.get("albumName") or ""),
+                },
                 "provenance":{
                     "source_url":(
                         f"https://lrclib.net/api/get/{urllib.parse.quote(item_id)}"
@@ -653,32 +823,69 @@ class RichMetadataService:
                 "remote_id":item_id,
             }
 
-        params={"track_name":title,"artist_name":artist}
-        if album:
-            params["album_name"]=album
-        if duration > 0:
-            params["duration"]=f"{duration:.2f}"
-
-        try:
-            response=self.session.get(
-                _LRCLIB_API+"/get",
-                params=params,
-                timeout=10,
-                headers={"Accept":"application/json","User-Agent":_USER_AGENT},
-            )
-            if response.status_code == 200:
+        def exact(params: dict[str,str]) -> tuple[dict[str,Any] | None, str]:
+            try:
+                response=self.session.get(
+                    _LRCLIB_API+"/get",
+                    params=params,
+                    timeout=10,
+                    headers={"Accept":"application/json","User-Agent":_USER_AGENT},
+                )
+            except Exception as exc:
+                return None,str(exc)
+            if response.status_code == 404:
+                return None,""
+            try:
+                response.raise_for_status()
                 row=response.json()
-                if isinstance(row,dict):
-                    return parse_row(row)
-        except Exception:
-            pass
+            except Exception as exc:
+                return None,str(exc)
+            return (dict(row) if isinstance(row,dict) else None),""
 
-        # Exact metadata is often incomplete in personal libraries. Search is a
-        # fallback, but acceptance remains conservative to avoid wrong lyrics.
+        exact_params={"track_name":title,"artist_name":artist}
+        if album:
+            exact_params["album_name"]=album
+        if duration > 0:
+            exact_params["duration"]=f"{duration:.2f}"
+
+        row,error=exact(exact_params)
+        if row:
+            result=parse_row(row,method="exact")
+            return self._cache_community_lyrics(key,result,ttl=_LYRIC_SUCCESS_TTL)
+
+        cleaned_title=_lyrics_clean_title(title)
+        cleaned_artist=_lyrics_clean_artist(artist)
+        cleaned_params={"track_name":cleaned_title,"artist_name":cleaned_artist}
+        if duration > 0:
+            cleaned_params["duration"]=f"{duration:.2f}"
+
+        if cleaned_params != exact_params:
+            cleaned_row,cleaned_error=exact(cleaned_params)
+            error=error or cleaned_error
+            if cleaned_row:
+                match=self._lrclib_match_score(track,cleaned_row)
+                if match is not None:
+                    score,scores=match
+                    result=parse_row(
+                        cleaned_row,
+                        method="cleaned_exact",
+                        confidence=score,
+                        scores=scores,
+                    )
+                    return self._cache_community_lyrics(
+                        key,result,ttl=_LYRIC_SUCCESS_TTL
+                    )
+
+        search_params={
+            "track_name":cleaned_title or title,
+            "artist_name":cleaned_artist or artist,
+        }
+        if album:
+            search_params["album_name"]=album
         try:
             response=self.session.get(
                 _LRCLIB_API+"/search",
-                params={"q":f"{artist} {title}"},
+                params=search_params,
                 timeout=10,
                 headers={"Accept":"application/json","User-Agent":_USER_AGENT},
             )
@@ -687,36 +894,37 @@ class RichMetadataService:
         except Exception as exc:
             return {
                 "text":"","synced":[],"source":"LRCLIB","instrumental":False,
-                "error":str(exc),
+                "status":"error",
+                "error":str(exc or error),
             }
 
-        best: tuple[float,dict[str,Any]] | None=None
-        for row in list(rows or []):
-            if not isinstance(row,dict):
+        best: tuple[float,dict[str,Any],dict[str,float]] | None=None
+        for raw in list(rows or []):
+            if not isinstance(raw,dict):
                 continue
-            title_score=_ratio(title,row.get("trackName"))
-            artist_score=_ratio(artist,row.get("artistName"))
-            if title_score < 0.88 or artist_score < 0.82:
+            match=self._lrclib_match_score(track,raw)
+            if match is None:
                 continue
-            score=title_score*0.58 + artist_score*0.37
-            if album and row.get("albumName"):
-                score += 0.05*_ratio(album,row.get("albumName"))
-            remote_duration=float(row.get("duration") or 0)
-            if duration > 0 and remote_duration > 0:
-                delta=abs(duration-remote_duration)
-                if delta > max(12.0,duration*0.08):
-                    continue
-                score += 0.05*max(0.0,1.0-delta/12.0)
+            score,scores=match
             if best is None or score > best[0]:
-                best=(score,row)
+                best=(score,dict(raw),scores)
 
         if best is None:
-            return {
+            miss={
                 "text":"","synced":[],"source":"LRCLIB community lyrics",
                 "instrumental":False,
+                "status":"not_found",
                 "error":"",
             }
-        return parse_row(best[1])
+            return self._cache_community_lyrics(key,miss,ttl=_LYRIC_MISS_TTL)
+
+        result=parse_row(
+            best[1],
+            method="structured_search",
+            confidence=best[0],
+            scores=best[2],
+        )
+        return self._cache_community_lyrics(key,result,ttl=_LYRIC_SUCCESS_TTL)
 
     def _embedded_artwork(self, track: dict[str, Any]) -> Path | None:
         path_text = str(track.get("local_path") or "")

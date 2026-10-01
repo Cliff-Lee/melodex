@@ -572,3 +572,196 @@ def test_community_lyrics_can_report_instrumental(tmp_path: Path):
     })
     assert result["instrumental"] is True
     assert result["text"] == ""
+
+
+
+def test_community_lyrics_cleans_version_and_feature_metadata_for_fallback(tmp_path: Path):
+    svc = RichMetadataService(tmp_path / "data")
+    calls = []
+
+    class Miss:
+        status_code = 404
+        def json(self):
+            return {}
+        def raise_for_status(self):
+            return None
+
+    class Hit:
+        status_code = 200
+        def json(self):
+            return {
+                "id": 501,
+                "trackName": "Example Song",
+                "artistName": "Example Artist",
+                "albumName": "Example Album",
+                "duration": 201.0,
+                "plainLyrics": "Recovered lyric",
+                "syncedLyrics": None,
+                "instrumental": False,
+            }
+        def raise_for_status(self):
+            return None
+
+    responses = iter([Miss(), Hit()])
+
+    def fake_get(url, **kwargs):
+        calls.append((url, dict(kwargs.get("params") or {})))
+        return next(responses)
+
+    svc.session.get = fake_get
+    result = svc.community_lyrics({
+        "artist": "Example Artist feat. Guest",
+        "title": "Example Song (2011 Remaster)",
+        "album": "Example Album",
+        "duration": 201.0,
+    })
+
+    assert result["status"] == "found"
+    assert result["text"] == "Recovered lyric"
+    assert result["match"]["method"] == "cleaned_exact"
+    assert calls[0][1]["track_name"] == "Example Song (2011 Remaster)"
+    assert calls[1][1]["track_name"] == "Example Song"
+    assert calls[1][1]["artist_name"] == "Example Artist"
+    assert "album_name" not in calls[1][1]
+
+
+def test_community_lyrics_structured_search_scores_candidates_not_first_result(tmp_path: Path):
+    svc = RichMetadataService(tmp_path / "data")
+    calls = []
+
+    class Miss:
+        status_code = 404
+        def json(self):
+            return {}
+        def raise_for_status(self):
+            return None
+
+    class Search:
+        status_code = 200
+        def json(self):
+            return [
+                {
+                    "id": 9,
+                    "trackName": "Example Song",
+                    "artistName": "Another Artist",
+                    "albumName": "Example Album",
+                    "duration": 200.0,
+                    "plainLyrics": "Wrong lyric",
+                    "syncedLyrics": None,
+                    "instrumental": False,
+                },
+                {
+                    "id": 10,
+                    "trackName": "Example Song",
+                    "artistName": "Example Artist",
+                    "albumName": "Example Album",
+                    "duration": 200.5,
+                    "plainLyrics": "Right lyric",
+                    "syncedLyrics": None,
+                    "instrumental": False,
+                },
+            ]
+        def raise_for_status(self):
+            return None
+
+    responses = iter([Miss(), Miss(), Search()])
+
+    def fake_get(url, **kwargs):
+        calls.append((url, dict(kwargs.get("params") or {})))
+        return next(responses)
+
+    svc.session.get = fake_get
+    result = svc.community_lyrics({
+        "artist": "Example Artist",
+        "title": "Example Song",
+        "album": "Example Album",
+        "duration": 200.0,
+    })
+
+    assert result["text"] == "Right lyric"
+    assert result["remote_id"] == "10"
+    assert result["match"]["method"] == "structured_search"
+    search_url, search_params = calls[-1]
+    assert search_url.endswith("/api/search")
+    assert search_params["track_name"] == "Example Song"
+    assert search_params["artist_name"] == "Example Artist"
+    assert search_params["album_name"] == "Example Album"
+    assert "q" not in search_params
+
+
+def test_community_lyrics_reuses_session_result_and_force_refreshes(tmp_path: Path):
+    svc = RichMetadataService(tmp_path / "data")
+    count = {"requests": 0}
+
+    class Hit:
+        status_code = 200
+        def json(self):
+            return {
+                "id": 88,
+                "trackName": "Cached Song",
+                "artistName": "Cached Artist",
+                "albumName": "",
+                "duration": 180.0,
+                "plainLyrics": "One request is enough",
+                "syncedLyrics": None,
+                "instrumental": False,
+            }
+        def raise_for_status(self):
+            return None
+
+    def fake_get(*args, **kwargs):
+        count["requests"] += 1
+        return Hit()
+
+    svc.session.get = fake_get
+    track = {
+        "artist": "Cached Artist",
+        "title": "Cached Song",
+        "duration": 180.0,
+    }
+
+    first = svc.community_lyrics(track)
+    second = svc.community_lyrics(track)
+    refreshed = svc.community_lyrics(track, force=True)
+
+    assert first["status"] == "found"
+    assert "cache" not in first
+    assert second["cache"] == "memory"
+    assert refreshed["status"] == "found"
+    assert count["requests"] == 2
+
+
+def test_community_lyrics_short_caches_confident_not_found(tmp_path: Path):
+    svc = RichMetadataService(tmp_path / "data")
+    count = {"requests": 0}
+
+    class Miss:
+        status_code = 404
+        def json(self):
+            return {}
+        def raise_for_status(self):
+            return None
+
+    class EmptySearch:
+        status_code = 200
+        def json(self):
+            return []
+        def raise_for_status(self):
+            return None
+
+    responses = [Miss(), EmptySearch()]
+
+    def fake_get(*args, **kwargs):
+        count["requests"] += 1
+        return responses[min(count["requests"] - 1, len(responses) - 1)]
+
+    svc.session.get = fake_get
+    track = {"artist": "No Such Artist", "title": "No Such Song"}
+
+    first = svc.community_lyrics(track)
+    second = svc.community_lyrics(track)
+
+    assert first["status"] == "not_found"
+    assert second["status"] == "not_found"
+    assert second["cache"] == "memory"
+    assert count["requests"] == 2
