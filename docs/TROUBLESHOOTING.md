@@ -31,7 +31,13 @@ Check endpoint, model name and API key. For OpenWebUI in Docker, ensure the endp
 
 ## A third-party provider or extension is failing
 
-Open **Sources** and check whether the plugin shows **CONFIG NEEDED**, a disabled state, or an extension health error.
+Open **Sources & plugins** and check the current health state:
+
+- **SETUP NEEDED** means required configuration is incomplete.
+- **UNAVAILABLE** means Melodex reached a temporary timeout, network/DNS problem, or TLS/certificate problem. The plugin is still installed and does not need to be reinstalled.
+- **ERROR / NEEDS ATTENTION** means the extension or protocol itself failed and is worth investigating.
+
+Packaged Melodex now supplies child provider/extension processes with the same trusted CA bundle used by the app when the operating-system environment does not provide one. If an optional internet service is still unavailable, retry **Check connections** after confirming the network is working.
 
 For a support report, use:
 
