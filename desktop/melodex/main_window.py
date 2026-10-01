@@ -898,6 +898,7 @@ class MainWindow(QMainWindow):
         self.library_browser.albumWallRequested.connect(lambda:self.open_page("album_wall"))
         self.library_browser.momentsRequested.connect(lambda:self.open_page("moments"))
         self.library_browser.artworkRequested.connect(self._library_artwork_requested)
+        self.library_browser.onlineArtworkRequested.connect(self._library_online_artwork_requested)
         l.addWidget(self.library_browser,1)
 
 
@@ -1905,6 +1906,45 @@ class MainWindow(QMainWindow):
                     result[key]=str(info.get("path") or "")
             return result
         self._run_async(load,self.library_browser.set_artwork)
+
+    def _library_online_artwork_requested(self, requests: object) -> None:
+        rows=[dict(x) for x in list(requests or []) if isinstance(x,dict)]
+        if not rows:
+            return
+        self.statusBar().showMessage(
+            f"Looking online for artwork for {len(rows)} album{'s' if len(rows)!=1 else ''}…"
+        )
+
+        def load():
+            result={}
+            for row in rows:
+                key=str(row.get("key") or "")
+                track=dict(row.get("track") or {})
+                if not key or not track:
+                    continue
+                path=""
+                try:
+                    local=self.metadata.local_artwork(track)
+                    path=str(local.get("path") or "")
+                    if not path:
+                        identity=self.metadata.identify(track)
+                        artwork=self.metadata.artwork(track,identity)
+                        path=str(artwork.get("path") or "")
+                except Exception:
+                    path=""
+                result[key]=path
+            return result
+
+        def apply(result):
+            rows=dict(result or {})
+            self.library_browser.set_artwork(rows)
+            found=sum(1 for path in rows.values() if str(path or "").strip())
+            self.statusBar().showMessage(
+                f"Artwork lookup finished · {found} cover{'s' if found!=1 else ''} found",
+                5000,
+            )
+
+        self._run_async(load,apply)
 
     def _refresh_journeys(self):
         if not hasattr(self,"journey_recipes_list") or not hasattr(self,"journey_runs_list"):
