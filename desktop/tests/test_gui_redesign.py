@@ -1022,7 +1022,7 @@ def test_artwork_progress_panel_reports_found_no_match_and_failed_counts():
 
 def test_sources_first_run_orientation_is_dismissible_and_persistent(monkeypatch, tmp_path):
     try:
-        from PySide6.QtWidgets import QApplication
+        from PySide6.QtWidgets import QApplication, QLabel
         import melodex.main_window as main_window
     except ImportError as exc:
         import pytest
