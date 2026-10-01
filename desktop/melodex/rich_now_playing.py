@@ -44,6 +44,7 @@ class RichNowPlayingWidget(QWidget):
     paletteChanged = Signal(object)
     lyricsChanged = Signal(object)
     lyricsSeekRequested = Signal(int)
+    lyricsTranslationRequested = Signal(object)
     lyricsPluginRequested = Signal()
     contextPluginRequested = Signal()
     onlineLyricsPreferenceChanged = Signal(bool)
@@ -130,6 +131,8 @@ class RichNowPlayingWidget(QWidget):
         self.fullscreen_lyrics_button.setEnabled(False)
         self.edit_lyrics_button=QPushButton("Edit saved…")
         self.edit_lyrics_button.setEnabled(False)
+        self.translate_lyrics_button=QPushButton("Translate…")
+        self.translate_lyrics_button.setEnabled(False)
         self.import_lyrics_button=QPushButton("Add file…")
         self.paste_lyrics_button=QPushButton("Paste…")
         self.find_lyrics_plugin_button=QPushButton("Manage lyrics sources…")
@@ -141,6 +144,7 @@ class RichNowPlayingWidget(QWidget):
         )
         self.fullscreen_lyrics_button.clicked.connect(self._show_fullscreen_lyrics)
         self.edit_lyrics_button.clicked.connect(self._edit_saved_lyrics)
+        self.translate_lyrics_button.clicked.connect(self._request_lyrics_translation)
         self.import_lyrics_button.clicked.connect(self._import_lyrics_file)
         self.paste_lyrics_button.clicked.connect(self._paste_lyrics)
         self.find_lyrics_plugin_button.clicked.connect(self.lyricsPluginRequested)
@@ -157,6 +161,11 @@ class RichNowPlayingWidget(QWidget):
             "<b>Edit saved lyrics</b><br>Edit a personal/local lyrics copy. "
             "Melodex saves the correction in its own cache and does not rewrite the audio file. "
             "Temporary online lyrics are never persisted by this action."
+        )
+        self.translate_lyrics_button.setToolTip(
+            "<b>Translate lyrics</b><br>Explicitly send the currently displayed lyric text "
+            "to your configured LLM for a temporary translation. Nothing is sent automatically "
+            "and the translation is not saved."
         )
         self.import_lyrics_button.setToolTip(
             "<b>Add lyrics file</b><br>Import an .lrc or .txt file for this track. "
@@ -177,6 +186,7 @@ class RichNowPlayingWidget(QWidget):
         lyrics_actions.addWidget(self.online_lyrics_button)
         lyrics_actions.addWidget(self.fullscreen_lyrics_button)
         lyrics_actions.addWidget(self.edit_lyrics_button)
+        lyrics_actions.addWidget(self.translate_lyrics_button)
         lyrics_actions.addWidget(self.import_lyrics_button)
         lyrics_actions.addWidget(self.paste_lyrics_button)
         lyrics_actions.addWidget(self.find_lyrics_plugin_button)
@@ -582,6 +592,7 @@ class RichNowPlayingWidget(QWidget):
 
         self._refresh_lyrics_source_picker()
         self.edit_lyrics_button.setEnabled(self._current_lyrics_editable())
+        self.translate_lyrics_button.setEnabled(bool(lyric_text.strip()))
         self.fullscreen_lyrics_button.setEnabled(
             bool(lyric_text or self.synced or instrumental)
         )
@@ -674,6 +685,28 @@ class RichNowPlayingWidget(QWidget):
                 + str(row.get("text") or "")
             )
         return "\n".join(rows)
+
+    def _request_lyrics_translation(self) -> None:
+        text=str(self._current_lyrics.get("text") or "").strip()
+        if not text and self.synced:
+            text="\n".join(
+                str(row.get("text") or "")
+                for row in self.synced
+                if str(row.get("text") or "").strip()
+            ).strip()
+        if not text:
+            QMessageBox.information(
+                self,
+                "Translate lyrics",
+                "There is no lyric text to translate.",
+            )
+            return
+        self.lyricsTranslationRequested.emit({
+            "text":text,
+            "source":str(self._current_lyrics.get("source") or ""),
+            "artist":str(self.track.get("artist") or ""),
+            "title":str(self.track.get("title") or ""),
+        })
 
     def _edit_saved_lyrics(self) -> None:
         if not self._current_lyrics_editable():
