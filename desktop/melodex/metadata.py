@@ -285,22 +285,26 @@ class RichMetadataService:
         local_path = str(track.get("local_path") or "").strip()
         if local_path:
             folder = Path(local_path).expanduser().parent
-            try:
-                files = {
-                    item.name.casefold(): item
-                    for item in folder.iterdir()
-                    if item.is_file()
-                }
-                for name in (
-                    "cover.jpg", "cover.jpeg", "cover.png", "cover.webp",
-                    "folder.jpg", "folder.jpeg", "folder.png", "folder.webp",
-                    "front.jpg", "front.jpeg", "front.png", "front.webp",
-                ):
-                    path = files.get(name)
-                    if path is not None:
-                        return {"path": str(path), "source": "local cover file", "source_url": ""}
-            except Exception:
-                pass
+            folders = [folder]
+            if re.fullmatch(r"(?:cd|disc|disk)\s*[-_]?\s*\d+", folder.name, flags=re.I):
+                folders.append(folder.parent)
+            for candidate_folder in folders:
+                try:
+                    files = {
+                        item.name.casefold(): item
+                        for item in candidate_folder.iterdir()
+                        if item.is_file()
+                    }
+                    for name in (
+                        "cover.jpg", "cover.jpeg", "cover.png", "cover.webp",
+                        "folder.jpg", "folder.jpeg", "folder.png", "folder.webp",
+                        "front.jpg", "front.jpeg", "front.png", "front.webp",
+                    ):
+                        path = files.get(name)
+                        if path is not None:
+                            return {"path": str(path), "source": "local cover file", "source_url": ""}
+                except Exception:
+                    continue
 
         embedded = self._embedded_artwork(track)
         if embedded:
