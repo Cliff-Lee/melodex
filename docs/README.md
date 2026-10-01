@@ -18,6 +18,7 @@ Start here:
 
 Then use:
 
+- [Album Wall](ALBUM_WALL.md) for the spatial album browser;
 - [FAQ](FAQ.md) for common questions;
 - [Troubleshooting](TROUBLESHOOTING.md) when something is not working;
 - [Support](../SUPPORT.md) when you need to report a problem;
