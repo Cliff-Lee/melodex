@@ -20,19 +20,28 @@ def _identity(track: dict[str, Any]) -> tuple[str, str]:
     return "meta", "|".join(_norm(track.get(k)) for k in ("artist", "album", "title"))
 
 
+def _album_folder(track: dict[str, Any]) -> str:
+    local_path = str(track.get("local_path") or "").strip()
+    if not local_path:
+        return ""
+    try:
+        parent = Path(local_path).expanduser().resolve().parent
+    except Exception:
+        parent = Path(local_path).expanduser().parent
+    if re.fullmatch(r"(?:cd|disc|disk)\s*[-_]?\s*\d+", parent.name, flags=re.I):
+        parent = parent.parent
+    return _norm(str(parent))
+
+
 def _album_key(track: dict[str, Any]) -> str:
     album = _norm(track.get("album"))
-    album_artist = _norm(track.get("album_artist"))
     if album:
+        folder = _album_folder(track)
+        if folder:
+            return f"folder:{folder}|{album}"
+        album_artist = _norm(track.get("album_artist"))
         if album_artist:
             return f"album-artist:{album_artist}|{album}"
-        local_path = str(track.get("local_path") or "").strip()
-        if local_path:
-            try:
-                parent = str(Path(local_path).expanduser().resolve().parent)
-            except Exception:
-                parent = str(Path(local_path).expanduser().parent)
-            return f"folder:{_norm(parent)}|{album}"
         artist = _norm(track.get("artist") or "Unknown artist")
         return f"artist:{artist}|{album}"
     return "single:" + _norm(track.get("artist") or "Unknown artist") + "|" + _norm(
