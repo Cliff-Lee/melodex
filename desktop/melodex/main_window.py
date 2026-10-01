@@ -428,6 +428,7 @@ class MainWindow(QMainWindow):
                 font-weight:650;
             }
             QCheckBox#powerToggle{
+                background:transparent;
                 color:#9ca7b8;
                 padding:10px 7px;
             }
@@ -592,6 +593,60 @@ class MainWindow(QMainWindow):
                 border-radius:9px;
                 padding:5px 8px;
                 color:#bfd4eb;
+                font-size:11px;
+            }
+            QTabWidget::pane{
+                border:0;
+                background:transparent;
+            }
+            QTabBar::tab{
+                background:transparent;
+                color:#aeb7c5;
+                border:0;
+                border-radius:8px;
+                padding:8px 14px;
+                margin-right:4px;
+            }
+            QTabBar::tab:selected{
+                background:#1875e8;
+                color:white;
+            }
+            QScrollBar:vertical{
+                background:transparent;
+                width:10px;
+                margin:2px;
+            }
+            QScrollBar::handle:vertical{
+                background:#334154;
+                min-height:32px;
+                border-radius:5px;
+            }
+            QScrollBar::handle:vertical:hover{background:#43566f}
+            QScrollBar::add-line:vertical,QScrollBar::sub-line:vertical{
+                height:0;
+                background:transparent;
+            }
+            QScrollBar::add-page:vertical,QScrollBar::sub-page:vertical{
+                background:transparent;
+            }
+            QScrollBar:horizontal{
+                background:transparent;
+                height:10px;
+                margin:2px;
+            }
+            QScrollBar::handle:horizontal{
+                background:#334154;
+                min-width:32px;
+                border-radius:5px;
+            }
+            QScrollBar::add-line:horizontal,QScrollBar::sub-line:horizontal{
+                width:0;
+                background:transparent;
+            }
+            QStatusBar{
+                background:#0b0f15;
+                color:#7f8b9b;
+                border-top:1px solid #202733;
                 font-size:11px;
             }
             QToolTip{
