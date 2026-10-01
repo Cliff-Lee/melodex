@@ -76,6 +76,38 @@ Some registry examples deliberately overlap with Core/bundled functionality:
 
 The Plugin Centre calls out these overlaps so a normal user does not install duplicates just because they appear in the catalogue.
 
+## Artwork recovery audit
+
+Artwork recovery remains local-first and deliberately avoids general web-image scraping.
+
+### Album covers
+
+The recovery order is:
+
+1. artwork already supplied with the track, local sidecars, embedded art, or a current trusted cache entry;
+2. provider-supplied artwork;
+3. exact MusicBrainz release/release-group identity through Cover Art Archive;
+4. installed artwork extensions whose cover/thumbnail result clears the confidence floor;
+5. a conservative MusicBrainz release-group search using album, artist and year evidence, followed by Cover Art Archive only when the candidate clears the match threshold.
+
+Release-group recovery rejects incompatible **Live** and **Remix** variants unless the user's album metadata indicates that variant. Match method/confidence are stored with new remote cache associations.
+
+### Artist photos
+
+Artist-photo recovery prefers:
+
+1. a user-selected photo;
+2. Wikidata's explicit image claim;
+3. a free Wikipedia lead image;
+4. installed portrait/thumbnail artwork extensions above the confidence floor;
+5. a conservative Wikimedia Commons search.
+
+MusicBrainz aliases and sort-name variants are now used as fallback search names, improving coverage for stage names and punctuation variants without lowering the identity threshold.
+
+Legacy remote artwork cache associations created before the stricter matching policy are revalidated instead of being trusted indefinitely. User-selected artist photos remain authoritative.
+
+Downloaded remote artwork must return an actual `image/*` response with non-trivial image content; HTML/error responses are rejected rather than cached as artwork.
+
 ## Lyrics audit
 
 Core lyrics support is local-first:
