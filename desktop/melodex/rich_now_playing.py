@@ -330,7 +330,33 @@ class RichNowPlayingWidget(QWidget):
         duration_text = f"{int(duration)//60}:{int(duration)%60:02d}" if duration > 0 else ""
         self.facts.setText(" · ".join(x for x in (provider, duration_text) if x))
         self.progress.setText("Identifying track and checking capability extensions…")
-        self.links.clear(); self.art_source.clear(); self.artist_photo_credit.clear(); self._set_art(""); self._set_artist_photo(""); self._empty_tabs()
+        self.links.clear()
+        self.art_source.clear()
+        self.artist_photo_credit.clear()
+        self._set_artist_photo("")
+        self._empty_tabs()
+
+        # Revisit should feel instant: show already-known local/cached artwork
+        # and lyrics before any background identity/network enrichment starts.
+        initial_art=self.metadata.local_artwork(request_track)
+        if str(initial_art.get("path") or ""):
+            self._apply_artwork(initial_art)
+        else:
+            self._set_art("")
+
+        initial_lyrics=self.metadata.local_lyrics(request_track)
+        if not self._lyrics_has_content(initial_lyrics):
+            initial_lyrics=self.metadata.cached_community_lyrics(request_track)
+        if self._lyrics_has_content(initial_lyrics):
+            if str(initial_lyrics.get("source") or "").startswith("LRCLIB"):
+                self._online_lyrics=dict(initial_lyrics)
+                self._active_lyrics_source="online"
+            else:
+                self._local_lyrics=dict(initial_lyrics)
+                self._active_lyrics_source="local"
+            self.bundle["lyrics"]=dict(initial_lyrics)
+            self._apply_lyrics(initial_lyrics)
+
         key = track_key(request_track)
         if not key:
             self.progress.setText("Not enough metadata to identify this track")
@@ -533,8 +559,28 @@ class RichNowPlayingWidget(QWidget):
         lyrics = payload.get("lyrics") if isinstance(payload.get("lyrics"), dict) else {}
         self.bundle["identity"] = dict(identity)
         self.bundle["lyrics"] = dict(lyrics)
-        self._local_lyrics = dict(lyrics)
-        self._active_lyrics_source = "local" if self._lyrics_has_content(lyrics) else ""
+        if self._lyrics_has_content(lyrics):
+            source=str(lyrics.get("source") or "")
+            provenance=(
+                dict(lyrics.get("provenance") or {})
+                if isinstance(lyrics.get("provenance"),dict)
+                else {}
+            )
+            is_online=(
+                source.startswith("LRCLIB")
+                or str(provenance.get("source_extension_id") or "")
+                == "core.lrclib-on-demand"
+            )
+            if is_online:
+                self._online_lyrics=dict(lyrics)
+                self._local_lyrics={}
+                self._active_lyrics_source="online"
+            else:
+                self._local_lyrics=dict(lyrics)
+                self._active_lyrics_source="local"
+        else:
+            self._local_lyrics={}
+            self._active_lyrics_source=""
         if identity.get("title"):
             self.title.setText(str(identity.get("title")))
         if identity.get("artist"):
@@ -623,13 +669,15 @@ class RichNowPlayingWidget(QWidget):
             if source_url:
                 source_label += f' · <a href="{_escape(source_url)}">source</a>'
             if lyric_source.startswith("LRCLIB"):
-                source_label += " · on demand · not saved"
+                source_label += " · online · cached privately"
                 method=str(match.get("method") or "")
                 if method=="cleaned_exact":
                     source_label += " · matched after cleaning metadata"
                 elif method=="structured_search":
                     source_label += " · matched by search"
-                if lyrics.get("cache")=="memory":
+                if lyrics.get("cache")=="disk":
+                    source_label += " · reused locally"
+                elif lyrics.get("cache")=="memory":
                     source_label += " · reused this session"
             if self.synced:
                 source_label += " · synchronized"
@@ -833,7 +881,7 @@ class RichNowPlayingWidget(QWidget):
                 self,
                 "Edit lyrics",
                 "Only local or personal lyrics can be edited here. "
-                "Temporary online/plugin lyrics are not persisted by Melodex.",
+                "Provider lyrics remain read-only even when Melodex keeps a private local cache.",
             )
             return
         initial=self._lyrics_editor_text(self._current_lyrics)
