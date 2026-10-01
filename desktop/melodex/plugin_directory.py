@@ -126,12 +126,14 @@ class PluginDirectoryDialog(QDialog):
         provider_manager,
         on_installed: Callable[[], None] | None = None,
         on_use: Callable[[dict[str, Any]], None] | None = None,
+        initial_capability: str = "",
         parent=None,
     ):
         super().__init__(parent)
         self.manager = provider_manager
         self.on_installed = on_installed
         self.on_use = on_use
+        self.initial_capability = str(initial_capability or "")
         self.plugins: list[dict[str, Any]] = []
         self._signals: list[_Signals] = []
 
@@ -307,6 +309,11 @@ class PluginDirectoryDialog(QDialog):
         self.source_button.clicked.connect(self._open_source)
         self.review_button.clicked.connect(self._open_review)
         close_button.clicked.connect(self.accept)
+
+        if self.initial_capability:
+            index=self.capability.findData(self.initial_capability)
+            if index >= 0:
+                self.capability.setCurrentIndex(index)
 
         self.load_registry(force=False)
 
