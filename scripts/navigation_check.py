@@ -68,11 +68,11 @@ def main() -> int:
 
     # First-use instructions intentionally use the source-management route.
     canonical_first_use_labels = (
-        "Sources",
-        "Add local folder…",
-        "My music",
-        "Play for me",
-        "▶ Build this journey",
+        "Home",
+        "My Music",
+        "+ Add music",
+        "▶  Play something",
+        "Tune it…",
     )
     for label in canonical_first_use_labels:
         if f"**{label}**" not in start:
@@ -84,8 +84,8 @@ def main() -> int:
 
     # Advanced source labels documented elsewhere should remain exact too.
     for label in (
-        "Show power tools",
-        "Explore plugins…",
+        "Power tools",
+        "Explore plugins",
         "Install .mdxprovider…",
         "Install .mdxplugin…",
         "Provider Bridge…",
