@@ -58,7 +58,7 @@ flowchart LR
     G --> H[Cache + remember association]
 ```
 
-If an explicit online lookup finds a cover, leaving My Music and returning should **not** make it disappear.
+If an explicit online lookup finds a cover, leaving My Music and returning should **not** make it disappear. Large recovery jobs run in small bounded batches and show completed/total, found/no-match/failed counts plus Pause, Cancel and Retry failed controls.
 
 ## 4. Artists are visual too
 
@@ -67,10 +67,11 @@ Switch to **Artists**.
 Each card uses:
 
 1. a remembered artist photo when available;
-2. otherwise a representative album cover;
-3. otherwise a deterministic placeholder.
+2. otherwise a deterministic artist placeholder.
 
-Choose **Find artist photos** when you explicitly want Melodex to try online metadata sources.
+Album covers are deliberately not presented as artist portraits.
+
+Choose **Get artist photos** when you explicitly want Melodex to try identity-aware free/open metadata and artwork sources. You can also choose **Photo…** on a card when you want to provide a local image yourself.
 
 Double-click or choose **View** to move back into that artist's albums.
 

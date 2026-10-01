@@ -216,3 +216,23 @@ def test_external_provider_adds_exact_resolved_media_host(tmp_path: Path):
         "api.example",
         "cdn.other.example",
     ]
+
+
+def test_external_provider_uses_bounded_manifest_rpc_timeout(tmp_path: Path):
+    manifest = {
+        "id": "org.example.slow",
+        "name": "Slow upstream",
+        "version": "1",
+        "capabilities": ["search"],
+        "permissions": {"network_hosts": []},
+        "entrypoints": {"python": "provider.py"},
+        "rpc_timeout_seconds": 40,
+    }
+    provider = ExternalProvider(tmp_path, manifest)
+    assert provider.timeout == 40.0
+
+    too_large = ExternalProvider(tmp_path, {**manifest, "rpc_timeout_seconds": 999})
+    assert too_large.timeout == 60.0
+
+    invalid = ExternalProvider(tmp_path, {**manifest, "rpc_timeout_seconds": "nope"})
+    assert invalid.timeout == 12.0

@@ -24,7 +24,23 @@ _WP_API = "https://en.wikipedia.org/w/api.php"
 _LRCLIB_API = "https://lrclib.net/api"
 _USER_AGENT = "Melodex/0.1 (https://github.com/Cliff-Lee/melodex)"
 _LRC_RE = re.compile(r"\[(?P<m>\d{1,3}):(?P<s>\d{1,2})(?:[\.:](?P<f>\d{1,3}))?\]")
-_VERSION_WORDS = re.compile(r"\b(live|remix|acoustic|cover|karaoke|instrumental|demo|edit|remaster(?:ed)?)\b", re.I)
+_VERSION_WORDS = re.compile(r"\b(live|remix|acoustic|cover|karaoke|instrumental|demo|edit|remaster(?:ed)?|radio version|single version|album version|mix)\b", re.I)
+_FEATURE_SUFFIX = re.compile(r"\s+(?:feat(?:uring)?\.?|ft\.?)\s+.+$", re.I)
+_BRACKETED_VERSION = re.compile(
+    r"\s*[\(\[\{][^\)\]\}]*"
+    r"(?:live|remix|acoustic|cover|karaoke|instrumental|demo|edit|remaster(?:ed)?|"
+    r"radio version|single version|album version|mix|version)"
+    r"[^\)\]\}]*[\)\]\}]\s*$",
+    re.I,
+)
+_DASHED_VERSION = re.compile(
+    r"\s+[-–—]\s+.*"
+    r"(?:live|remix|acoustic|cover|karaoke|instrumental|demo|edit|remaster(?:ed)?|"
+    r"radio version|single version|album version|mix|version).*$",
+    re.I,
+)
+_LYRIC_SUCCESS_TTL = 6 * 60 * 60
+_LYRIC_MISS_TTL = 10 * 60
 
 
 def _norm(value: Any) -> str:
@@ -40,6 +56,46 @@ def _ratio(a: Any, b: Any) -> float:
     if aa == bb:
         return 1.0
     return SequenceMatcher(None, aa, bb).ratio()
+
+
+def _lyrics_clean_title(value: Any) -> str:
+    text=" ".join(str(value or "").split())
+    if not text:
+        return ""
+    previous=None
+    while text != previous:
+        previous=text
+        text=_BRACKETED_VERSION.sub("",text).strip()
+        text=_DASHED_VERSION.sub("",text).strip()
+    return text or " ".join(str(value or "").split())
+
+
+def _lyrics_clean_artist(value: Any) -> str:
+    text=" ".join(str(value or "").split())
+    if not text:
+        return ""
+    return _FEATURE_SUFFIX.sub("",text).strip() or text
+
+
+def _lyrics_version_words(value: Any) -> set[str]:
+    return {
+        str(match.group(0) or "").casefold().strip()
+        for match in _VERSION_WORDS.finditer(str(value or ""))
+        if str(match.group(0) or "").strip()
+    }
+
+
+def _lyrics_lookup_key(track: dict[str, Any]) -> str:
+    duration=float(track.get("duration") or 0)
+    bucket=round(duration) if duration > 0 else 0
+    return "|".join(
+        (
+            _norm(track.get("artist")),
+            _norm(track.get("title")),
+            _norm(track.get("album")),
+            str(bucket),
+        )
+    )
 
 
 def track_key(track: dict[str, Any]) -> str:
@@ -104,8 +160,8 @@ class MetadataIdentity:
 class RichMetadataService:
     """Local-first enrichment with a small MusicBrainz/Cover Art cache.
 
-    The service never fetches web lyrics. Lyrics come from user-owned files/tags;
-    online lyric services can be added later behind a separate provider interface.
+    Lyrics are local-first. User-initiated or explicitly enabled community lookup
+    is handled separately and third-party lyric text is not persisted to disk.
     """
 
     _mb_lock = threading.Lock()
@@ -126,6 +182,8 @@ class RichMetadataService:
         self._artwork_index = self._load_artwork_index()
         self._lyrics_index_lock = threading.Lock()
         self._lyrics_index = self._load_lyrics_index()
+        self._community_lyrics_cache: dict[str, tuple[float, dict[str, Any]]] = {}
+        self._community_lyrics_cache_lock = threading.Lock()
         self.session = session or requests.Session()
         self.capability_broker = capability_broker
         self.session.headers.update({"User-Agent": _USER_AGENT, "Accept": "application/json"})
@@ -357,7 +415,10 @@ class RichMetadataService:
                 continue
             path = Path(str(row.get("path") or "")).expanduser()
             if path.is_file():
-                return dict(row)
+                source=str(row.get("source") or "")
+                policy=int(row.get("match_policy") or 0)
+                if policy >= 2 or source == "User-selected artist photo":
+                    return dict(row)
         return {}
 
     def _remember_artwork_by_keys(
@@ -369,6 +430,8 @@ class RichMetadataService:
         source_url: str = "",
         attribution: str = "",
         license_name: str = "",
+        match_method: str = "",
+        match_confidence: float | None = None,
     ) -> dict[str, Any]:
         path_obj = Path(path).expanduser()
         if not path_obj.is_file():
@@ -379,6 +442,13 @@ class RichMetadataService:
             "source_url": str(source_url or ""),
             "attribution": str(attribution or ""),
             "license": str(license_name or ""),
+            "match_policy": 2,
+            "match_method": str(match_method or ""),
+            "match_confidence": (
+                None
+                if match_confidence is None
+                else round(max(0.0,min(1.0,float(match_confidence))),4)
+            ),
         }
         with self._artwork_index_lock:
             for key in keys:
@@ -396,6 +466,8 @@ class RichMetadataService:
         source_url: str = "",
         attribution: str = "",
         license_name: str = "",
+        match_method: str = "",
+        match_confidence: float | None = None,
     ) -> dict[str, Any]:
         return self._remember_artwork_by_keys(
             self._album_artwork_keys(track),
@@ -404,6 +476,8 @@ class RichMetadataService:
             source_url=source_url,
             attribution=attribution,
             license_name=license_name,
+            match_method=match_method,
+            match_confidence=match_confidence,
         )
 
     def cached_artist_photo(self, artist: dict[str, Any]) -> dict[str, Any]:
@@ -610,24 +684,126 @@ class RichMetadataService:
             pass
         return {"text": "", "synced": [], "source": ""}
 
-    def community_lyrics(self, track: dict[str, Any]) -> dict[str, Any]:
-        """Fetch lyrics on demand from LRCLIB without persisting the lyric text.
+    def _community_lyrics_cached(self, key: str) -> dict[str, Any] | None:
+        now=time.monotonic()
+        with self._community_lyrics_cache_lock:
+            cached=self._community_lyrics_cache.get(key)
+            if not cached:
+                return None
+            expires,result=cached
+            if expires <= now:
+                self._community_lyrics_cache.pop(key,None)
+                return None
+            out=dict(result)
+            out["cache"]="memory"
+            return out
 
-        This is deliberately user-initiated. Melodex does not ship an LRCLIB
-        database and does not write third-party lyric text to its local cache.
+    def _cache_community_lyrics(
+        self,
+        key: str,
+        result: dict[str, Any],
+        *,
+        ttl: float,
+    ) -> dict[str, Any]:
+        payload=dict(result)
+        with self._community_lyrics_cache_lock:
+            self._community_lyrics_cache[key]=(time.monotonic()+max(1.0,float(ttl)),payload)
+        return dict(payload)
+
+    @staticmethod
+    def _lrclib_match_score(
+        track: dict[str, Any],
+        row: dict[str, Any],
+    ) -> tuple[float, dict[str, float]] | None:
+        title=str(track.get("title") or "")
+        artist=str(track.get("artist") or "")
+        album=str(track.get("album") or "")
+        duration=float(track.get("duration") or 0)
+
+        remote_title=str(row.get("trackName") or row.get("name") or "")
+        remote_artist=str(row.get("artistName") or "")
+        remote_album=str(row.get("albumName") or "")
+
+        title_raw=_ratio(title,remote_title)
+        title_clean=_ratio(_lyrics_clean_title(title),_lyrics_clean_title(remote_title))
+        artist_raw=_ratio(artist,remote_artist)
+        artist_clean=_ratio(_lyrics_clean_artist(artist),_lyrics_clean_artist(remote_artist))
+        title_score=max(title_raw,title_clean)
+        artist_score=max(artist_raw,artist_clean)
+
+        if title_score < 0.88 or artist_score < 0.80:
+            return None
+
+        score=title_score*0.58 + artist_score*0.34
+        album_score=0.0
+        if album and remote_album and _norm(remote_album) not in {"", "-"}:
+            album_score=_ratio(album,remote_album)
+            score += 0.04*album_score
+
+        duration_score=0.0
+        remote_duration=float(row.get("duration") or 0)
+        if duration > 0 and remote_duration > 0:
+            delta=abs(duration-remote_duration)
+            tolerance=max(12.0,duration*0.08)
+            if delta > tolerance:
+                return None
+            duration_score=max(0.0,1.0-delta/max(1.0,tolerance))
+            score += 0.04*duration_score
+
+        requested_versions=_lyrics_version_words(title)
+        remote_versions=_lyrics_version_words(remote_title)
+        if requested_versions and remote_versions and requested_versions.isdisjoint(remote_versions):
+            score -= 0.08
+        elif requested_versions and not remote_versions and duration_score <= 0.25:
+            score -= 0.04
+
+        return max(0.0,min(1.0,score)), {
+            "title":title_score,
+            "artist":artist_score,
+            "album":album_score,
+            "duration":duration_score,
+        }
+
+    def community_lyrics(
+        self,
+        track: dict[str, Any],
+        *,
+        force: bool = False,
+    ) -> dict[str, Any]:
+        """Fetch lyrics on demand from LRCLIB with conservative fallbacks.
+
+        Third-party lyric text is never persisted to disk. Successful,
+        instrumental and not-found results are cached in memory only so
+        replaying the same track does not immediately repeat the request.
         """
         track=dict(track or {})
         title=str(track.get("title") or "").strip()
         artist=str(track.get("artist") or "").strip()
         album=str(track.get("album") or "").strip()
         duration=float(track.get("duration") or 0)
+        key=_lyrics_lookup_key(track)
+
+        cached=None if force else self._community_lyrics_cached(key)
+        if cached is not None:
+            return cached
+        if force:
+            with self._community_lyrics_cache_lock:
+                self._community_lyrics_cache.pop(key,None)
+
         if not title or not artist or _norm(artist) in {"unknown artist","unknown"}:
             return {
                 "text":"","synced":[],"source":"LRCLIB","instrumental":False,
+                "status":"missing_metadata",
                 "error":"Artist and title are required for online lyric lookup.",
             }
 
-        def parse_row(row: dict[str, Any]) -> dict[str, Any]:
+        def parse_row(
+            row: dict[str, Any],
+            *,
+            method: str,
+            confidence: float = 1.0,
+            scores: dict[str,float] | None = None,
+        ) -> dict[str, Any]:
             instrumental=bool(row.get("instrumental"))
             synced_text=str(row.get("syncedLyrics") or "").strip()
             plain=str(row.get("plainLyrics") or "").strip()
@@ -636,11 +812,21 @@ class RichMetadataService:
             if not text and synced:
                 text="\n".join(x["text"] for x in synced if x.get("text"))
             item_id=str(row.get("id") or "")
+            status="instrumental" if instrumental and not text and not synced else "found"
             return {
                 "text":text,
                 "synced":synced,
                 "source":"LRCLIB community lyrics",
                 "instrumental":instrumental,
+                "status":status,
+                "match":{
+                    "method":method,
+                    "confidence":round(float(confidence),4),
+                    "scores":dict(scores or {}),
+                    "remote_title":str(row.get("trackName") or row.get("name") or ""),
+                    "remote_artist":str(row.get("artistName") or ""),
+                    "remote_album":str(row.get("albumName") or ""),
+                },
                 "provenance":{
                     "source_url":(
                         f"https://lrclib.net/api/get/{urllib.parse.quote(item_id)}"
@@ -653,32 +839,69 @@ class RichMetadataService:
                 "remote_id":item_id,
             }
 
-        params={"track_name":title,"artist_name":artist}
-        if album:
-            params["album_name"]=album
-        if duration > 0:
-            params["duration"]=f"{duration:.2f}"
-
-        try:
-            response=self.session.get(
-                _LRCLIB_API+"/get",
-                params=params,
-                timeout=10,
-                headers={"Accept":"application/json","User-Agent":_USER_AGENT},
-            )
-            if response.status_code == 200:
+        def exact(params: dict[str,str]) -> tuple[dict[str,Any] | None, str]:
+            try:
+                response=self.session.get(
+                    _LRCLIB_API+"/get",
+                    params=params,
+                    timeout=10,
+                    headers={"Accept":"application/json","User-Agent":_USER_AGENT},
+                )
+            except Exception as exc:
+                return None,str(exc)
+            if response.status_code == 404:
+                return None,""
+            try:
+                response.raise_for_status()
                 row=response.json()
-                if isinstance(row,dict):
-                    return parse_row(row)
-        except Exception:
-            pass
+            except Exception as exc:
+                return None,str(exc)
+            return (dict(row) if isinstance(row,dict) else None),""
 
-        # Exact metadata is often incomplete in personal libraries. Search is a
-        # fallback, but acceptance remains conservative to avoid wrong lyrics.
+        exact_params={"track_name":title,"artist_name":artist}
+        if album:
+            exact_params["album_name"]=album
+        if duration > 0:
+            exact_params["duration"]=f"{duration:.2f}"
+
+        row,error=exact(exact_params)
+        if row:
+            result=parse_row(row,method="exact")
+            return self._cache_community_lyrics(key,result,ttl=_LYRIC_SUCCESS_TTL)
+
+        cleaned_title=_lyrics_clean_title(title)
+        cleaned_artist=_lyrics_clean_artist(artist)
+        cleaned_params={"track_name":cleaned_title,"artist_name":cleaned_artist}
+        if duration > 0:
+            cleaned_params["duration"]=f"{duration:.2f}"
+
+        if cleaned_params != exact_params:
+            cleaned_row,cleaned_error=exact(cleaned_params)
+            error=error or cleaned_error
+            if cleaned_row:
+                match=self._lrclib_match_score(track,cleaned_row)
+                if match is not None:
+                    score,scores=match
+                    result=parse_row(
+                        cleaned_row,
+                        method="cleaned_exact",
+                        confidence=score,
+                        scores=scores,
+                    )
+                    return self._cache_community_lyrics(
+                        key,result,ttl=_LYRIC_SUCCESS_TTL
+                    )
+
+        search_params={
+            "track_name":cleaned_title or title,
+            "artist_name":cleaned_artist or artist,
+        }
+        if album:
+            search_params["album_name"]=album
         try:
             response=self.session.get(
                 _LRCLIB_API+"/search",
-                params={"q":f"{artist} {title}"},
+                params=search_params,
                 timeout=10,
                 headers={"Accept":"application/json","User-Agent":_USER_AGENT},
             )
@@ -687,36 +910,37 @@ class RichMetadataService:
         except Exception as exc:
             return {
                 "text":"","synced":[],"source":"LRCLIB","instrumental":False,
-                "error":str(exc),
+                "status":"error",
+                "error":str(exc or error),
             }
 
-        best: tuple[float,dict[str,Any]] | None=None
-        for row in list(rows or []):
-            if not isinstance(row,dict):
+        best: tuple[float,dict[str,Any],dict[str,float]] | None=None
+        for raw in list(rows or []):
+            if not isinstance(raw,dict):
                 continue
-            title_score=_ratio(title,row.get("trackName"))
-            artist_score=_ratio(artist,row.get("artistName"))
-            if title_score < 0.88 or artist_score < 0.82:
+            match=self._lrclib_match_score(track,raw)
+            if match is None:
                 continue
-            score=title_score*0.58 + artist_score*0.37
-            if album and row.get("albumName"):
-                score += 0.05*_ratio(album,row.get("albumName"))
-            remote_duration=float(row.get("duration") or 0)
-            if duration > 0 and remote_duration > 0:
-                delta=abs(duration-remote_duration)
-                if delta > max(12.0,duration*0.08):
-                    continue
-                score += 0.05*max(0.0,1.0-delta/12.0)
+            score,scores=match
             if best is None or score > best[0]:
-                best=(score,row)
+                best=(score,dict(raw),scores)
 
         if best is None:
-            return {
+            miss={
                 "text":"","synced":[],"source":"LRCLIB community lyrics",
                 "instrumental":False,
+                "status":"not_found",
                 "error":"",
             }
-        return parse_row(best[1])
+            return self._cache_community_lyrics(key,miss,ttl=_LYRIC_MISS_TTL)
+
+        result=parse_row(
+            best[1],
+            method="structured_search",
+            confidence=best[0],
+            scores=best[2],
+        )
+        return self._cache_community_lyrics(key,result,ttl=_LYRIC_SUCCESS_TTL)
 
     def _embedded_artwork(self, track: dict[str, Any]) -> Path | None:
         path_text = str(track.get("local_path") or "")
@@ -807,9 +1031,17 @@ class RichMetadataService:
             response = self.session.get(url, timeout=15, headers={"Accept": "image/*", "User-Agent": _USER_AGENT})
             response.raise_for_status()
             ctype = str(response.headers.get("Content-Type") or "").casefold()
-            ext = ".png" if "png" in ctype else ".webp" if "webp" in ctype else ".jpg"
+            content=bytes(response.content or b"")
+            if not ctype.startswith("image/") or len(content) < 128:
+                return None
+            ext = (
+                ".png" if "png" in ctype
+                else ".webp" if "webp" in ctype
+                else ".gif" if "gif" in ctype
+                else ".jpg"
+            )
             out = self.art_cache / f"web-{key}{ext}"
-            out.write_bytes(response.content)
+            out.write_bytes(content)
             return out
         except Exception:
             return None
@@ -925,6 +1157,12 @@ class RichMetadataService:
         area = data.get("area") if isinstance(data.get("area"), dict) else {}
         begin_area = data.get("begin-area") if isinstance(data.get("begin-area"), dict) else {}
         life = data.get("life-span") if isinstance(data.get("life-span"), dict) else {}
+        aliases=[
+            str(x.get("name") or "").strip()
+            for x in list(data.get("aliases") or [])
+            if isinstance(x,dict) and str(x.get("name") or "").strip()
+        ]
+        aliases=list(dict.fromkeys(aliases))[:16]
         genres = [str(x.get("name") or "") for x in list(data.get("genres") or []) if isinstance(x, dict) and x.get("name")]
         if not genres:
             genres = [str(x.get("name") or "") for x in list(data.get("tags") or []) if isinstance(x, dict) and x.get("name")][:8]
@@ -951,7 +1189,8 @@ class RichMetadataService:
             "country": str(data.get("country") or ""), "area": str(area.get("name") or ""),
             "begin_area": str(begin_area.get("name") or ""), "begin": str(life.get("begin") or ""),
             "end": str(life.get("end") or ""), "ended": bool(life.get("ended")),
-            "disambiguation": str(data.get("disambiguation") or ""), "genres": genres[:10],
+            "disambiguation": str(data.get("disambiguation") or ""), "aliases": aliases,
+            "genres": genres[:10],
             "members": members[:30], "related": related[:20], "links": links[:20],
             "wikidata_qid": self._extract_wikidata_qid({"links": links}),
         }
@@ -1005,6 +1244,141 @@ class RichMetadataService:
         thumbs = image.get("thumbnails") if isinstance(image.get("thumbnails"), dict) else {}
         url = str(thumbs.get("500") or thumbs.get("1200") or thumbs.get("250") or image.get("image") or "")
         return url, str(image.get("comment") or "")
+
+    @staticmethod
+    def _artist_search_names(artist: dict[str, Any]) -> list[str]:
+        names=[]
+        raw_aliases=artist.get("aliases")
+        aliases=(
+            list(raw_aliases)
+            if isinstance(raw_aliases,(list,tuple))
+            else []
+        )
+        for raw in (
+            artist.get("name"),
+            artist.get("artist"),
+            artist.get("sort_name"),
+            *aliases,
+        ):
+            if isinstance(raw,dict):
+                raw=raw.get("name")
+            name=" ".join(str(raw or "").split())
+            if not name:
+                continue
+            if "," in name and not any(ch in name for ch in ("&","+")):
+                parts=[part.strip() for part in name.split(",",1)]
+                if len(parts)==2 and all(parts):
+                    names.append(parts[1]+" "+parts[0])
+            names.append(name)
+        return list(dict.fromkeys(names))[:6]
+
+    @staticmethod
+    def _credited_artist_name(row: dict[str, Any]) -> str:
+        credit=list(row.get("artist-credit") or [])
+        return "".join(
+            str(item.get("name") or "") + str(item.get("joinphrase") or "")
+            for item in credit
+            if isinstance(item,dict)
+        ).strip()
+
+    def _release_group_artwork_candidate(
+        self,
+        track: dict[str, Any],
+        identity: MetadataIdentity,
+    ) -> dict[str, Any]:
+        album=str(track.get("album") or identity.album or "").strip()
+        artist=str(
+            track.get("album_artist")
+            or track.get("artist")
+            or identity.artist
+            or ""
+        ).strip()
+        artist_known=_norm(artist) not in {
+            "","unknown","unknown artist","various artists"
+        }
+        if not album:
+            return {}
+
+        terms=[f'releasegroup:"{album}"']
+        if identity.artist_mbid:
+            terms.append(f'arid:{identity.artist_mbid}')
+        elif artist_known:
+            terms.append(f'artist:"{artist}"')
+        query=" AND ".join(terms)
+
+        try:
+            data=self._mb_json(
+                "release-group/",
+                {"query":query,"fmt":"json","limit":8},
+                21 * 86400,
+            )
+        except Exception:
+            return {}
+
+        requested_year=str(track.get("year") or "")[:4]
+        best: tuple[float,dict[str,Any],dict[str,float]] | None=None
+        for row in list(data.get("release-groups") or []):
+            if not isinstance(row,dict):
+                continue
+            title_score=_ratio(album,row.get("title"))
+            if title_score < 0.88:
+                continue
+
+            credited=self._credited_artist_name(row)
+            artist_score=_ratio(artist,credited) if artist_known and credited else (
+                1.0 if identity.artist_mbid else 0.75
+            )
+            if artist_known and artist_score < 0.80:
+                continue
+
+            score=0.72*title_score + 0.23*artist_score
+            candidate_year=str(row.get("first-release-date") or "")[:4]
+            year_score=0.0
+            if requested_year and candidate_year:
+                if requested_year==candidate_year:
+                    year_score=1.0
+                    score+=0.05
+                else:
+                    try:
+                        delta=abs(int(requested_year)-int(candidate_year))
+                    except Exception:
+                        delta=99
+                    if delta > 2:
+                        score-=0.05
+
+            primary=_norm(row.get("primary-type"))
+            secondary={
+                _norm(value)
+                for value in list(row.get("secondary-types") or [])
+                if value
+            }
+            album_flags=_lyrics_version_words(album)
+            if "live" in secondary and "live" not in album_flags:
+                continue
+            if "remix" in secondary and "remix" not in album_flags:
+                continue
+            if primary in {"broadcast","other"}:
+                score-=0.05
+
+            evidence={
+                "title":title_score,
+                "artist":artist_score,
+                "year":year_score,
+            }
+            if best is None or score > best[0]:
+                best=(score,row,evidence)
+
+        if best is None or best[0] < 0.84:
+            return {}
+        row=best[1]
+        return {
+            "release_group_mbid":str(row.get("id") or ""),
+            "title":str(row.get("title") or ""),
+            "artist":self._credited_artist_name(row),
+            "score":round(best[0],4),
+            "evidence":best[2],
+            "first_release_date":str(row.get("first-release-date") or ""),
+        }
 
     @staticmethod
     def _extract_wikidata_qid(artist: dict[str, Any]) -> str:
@@ -1169,6 +1543,7 @@ class RichMetadataService:
         artist: dict[str, Any],
     ) -> tuple[str, str]:
         """Find a likely English Wikipedia artist page without blind guessing."""
+        search_names=self._artist_search_names(artist)
         artist_name=str(artist.get("name") or artist.get("artist") or "").strip()
         tokens=[x for x in _norm(artist_name).split() if x]
         if not artist_name or not tokens:
@@ -1183,51 +1558,66 @@ class RichMetadataService:
         disambiguation=str(artist.get("disambiguation") or "").strip()
         if disambiguation:
             hints.append(disambiguation)
-        query=" ".join([f'"{artist_name}"', *(hints or ["music"])])
 
-        params={
-            "action":"query",
-            "format":"json",
-            "formatversion":"2",
-            "list":"search",
-            "srlimit":"8",
-            "srsearch":query,
-        }
-        url=_WP_API+"?"+urllib.parse.urlencode(params)
-        data=self._remote_json(
-            f"wikipedia-artist-search:{artist_name.casefold()}:{'|'.join(hints).casefold()}",
-            url,
-            45 * 86400,
-        )
-        rows=((data.get("query") or {}).get("search") if isinstance(data,dict) else None) or []
         music_hints={
             "musician","singer","band","rapper","producer","composer","dj",
             "musical","electronic","rock","hip hop","jazz","folk","ambient",
         }
-
         best: tuple[float,str] | None=None
-        for row in rows:
-            if not isinstance(row,dict):
-                continue
-            title=str(row.get("title") or "").strip()
-            if not title:
-                continue
-            base=re.sub(r"\s*\([^)]*\)\s*$","",title).strip()
-            title_score=max(_ratio(artist_name,title),_ratio(artist_name,base))
-            snippet=_norm(self._plain_extmetadata(row.get("snippet") or ""))
-            has_music_hint=any(hint in snippet for hint in music_hints)
-            exact=_norm(base)==_norm(artist_name)
-
-            # Multi-word exact titles can pass with a weaker snippet. Common or
-            # single-word stage names must look explicitly musical.
-            if len(tokens)==1 and not has_music_hint:
-                continue
-            if not exact and (title_score < 0.90 or not has_music_hint):
-                continue
-
-            score=title_score + (0.25 if exact else 0.0) + (0.15 if has_music_hint else 0.0)
-            if best is None or score > best[0]:
-                best=(score,title)
+        for search_name in search_names[:4]:
+            query=" ".join([f'"{search_name}"', *(hints or ["music"])])
+            params={
+                "action":"query",
+                "format":"json",
+                "formatversion":"2",
+                "list":"search",
+                "srlimit":"8",
+                "srsearch":query,
+            }
+            url=_WP_API+"?"+urllib.parse.urlencode(params)
+            data=self._remote_json(
+                "wikipedia-artist-search:"
+                + artist_name.casefold()
+                + ":"
+                + search_name.casefold()
+                + ":"
+                + "|".join(hints).casefold(),
+                url,
+                45 * 86400,
+            )
+            rows=((data.get("query") or {}).get("search") if isinstance(data,dict) else None) or []
+            for row in rows:
+                if not isinstance(row,dict):
+                    continue
+                title=str(row.get("title") or "").strip()
+                if not title:
+                    continue
+                base=re.sub(r"\s*\([^)]*\)\s*$","",title).strip()
+                title_score=max(
+                    _ratio(search_name,title),
+                    _ratio(search_name,base),
+                    _ratio(artist_name,title),
+                    _ratio(artist_name,base),
+                )
+                snippet=_norm(self._plain_extmetadata(row.get("snippet") or ""))
+                has_music_hint=any(hint in snippet for hint in music_hints)
+                exact=(
+                    _norm(base)==_norm(search_name)
+                    or _norm(base)==_norm(artist_name)
+                )
+                search_tokens=[x for x in _norm(search_name).split() if x]
+                if len(search_tokens)==1 and not has_music_hint:
+                    continue
+                if not exact and (title_score < 0.88 or not has_music_hint):
+                    continue
+                score=(
+                    title_score
+                    + (0.25 if exact else 0.0)
+                    + (0.15 if has_music_hint else 0.0)
+                    + (0.04 if _norm(search_name)!=_norm(artist_name) else 0.0)
+                )
+                if best is None or score > best[0]:
+                    best=(score,title)
         return (_WP_API,best[1]) if best else ("","")
 
     def _wikipedia_page_image(
@@ -1270,72 +1660,83 @@ class RichMetadataService:
             return image_name,page_url
         return "", ""
 
-    def _commons_artist_image(self, artist_name: str) -> tuple[str, str]:
-        """Last-resort free-image search with conservative matching.
-
-        This deliberately avoids general web image search. Candidates must
-        contain the artist name and look music-related, and album/logo artwork
-        is rejected.
-        """
+    def _commons_artist_image(
+        self,
+        artist_name: str,
+        aliases: list[str] | tuple[str,...] = (),
+    ) -> tuple[str, str]:
+        """Last-resort free-image search with conservative matching."""
         artist_name=str(artist_name or "").strip()
-        tokens=[x for x in _norm(artist_name).split() if len(x)>1]
-        if not artist_name or not tokens:
+        search_names=list(dict.fromkeys(
+            name
+            for name in [artist_name,*[str(x or "").strip() for x in aliases]]
+            if name
+        ))[:4]
+        if not artist_name:
             return "", ""
 
-        params={
-            "action":"query",
-            "format":"json",
-            "formatversion":"2",
-            "list":"search",
-            "srnamespace":"6",
-            "srlimit":"12",
-            "srsearch":f'"{artist_name}" musician singer band performer',
-        }
-        response=self.session.get(
-            _WM_API,
-            params=params,
-            timeout=15,
-            headers={"Accept":"application/json","User-Agent":_USER_AGENT},
-        )
-        response.raise_for_status()
-        payload=response.json()
-        rows=((payload.get("query") or {}).get("search") if isinstance(payload,dict) else None) or []
         music_hints={
             "musician","singer","band","rapper","producer","composer",
             "performer","concert","festival","dj","music",
         }
         best: tuple[float,str,str] | None=None
-        for row in rows:
-            if not isinstance(row,dict):
+        for search_name in search_names:
+            tokens=[x for x in _norm(search_name).split() if len(x)>1]
+            if not tokens:
                 continue
-            title=str(row.get("title") or "")
-            image_name=title.split(":",1)[1] if ":" in title else title
-            if not self._artist_photo_filename_ok(image_name):
-                continue
-            snippet=self._plain_extmetadata(row.get("snippet") or "")
-            haystack=_norm(image_name+" "+snippet)
-            if not all(token in haystack for token in tokens):
-                continue
-            words=set(haystack.split())
-            has_music_hint=bool(words & music_hints)
-            # Single-word stage names such as Bonobo are especially ambiguous.
-            if len(tokens)==1 and not has_music_hint:
-                continue
-            filename_norm=_norm(Path(image_name).stem)
-            score=_ratio(artist_name,filename_norm)
-            if has_music_hint:
-                score+=0.25
-            if _norm(artist_name) in filename_norm:
-                score+=0.25
-            if score < 0.70:
-                continue
-            description_url=(
-                "https://commons.wikimedia.org/wiki/File:"
-                + urllib.parse.quote(image_name.replace(" ","_"))
+            params={
+                "action":"query",
+                "format":"json",
+                "formatversion":"2",
+                "list":"search",
+                "srnamespace":"6",
+                "srlimit":"12",
+                "srsearch":f'"{search_name}" musician singer band performer',
+            }
+            response=self.session.get(
+                _WM_API,
+                params=params,
+                timeout=15,
+                headers={"Accept":"application/json","User-Agent":_USER_AGENT},
             )
-            candidate=(score,image_name,description_url)
-            if best is None or candidate[0] > best[0]:
-                best=candidate
+            response.raise_for_status()
+            payload=response.json()
+            rows=((payload.get("query") or {}).get("search") if isinstance(payload,dict) else None) or []
+            for row in rows:
+                if not isinstance(row,dict):
+                    continue
+                title=str(row.get("title") or "")
+                image_name=title.split(":",1)[1] if ":" in title else title
+                if not self._artist_photo_filename_ok(image_name):
+                    continue
+                snippet=self._plain_extmetadata(row.get("snippet") or "")
+                haystack=_norm(image_name+" "+snippet)
+                if not all(token in haystack for token in tokens):
+                    continue
+                words=set(haystack.split())
+                has_music_hint=bool(words & music_hints)
+                if len(tokens)==1 and not has_music_hint:
+                    continue
+                filename_norm=_norm(Path(image_name).stem)
+                score=max(
+                    _ratio(search_name,filename_norm),
+                    _ratio(artist_name,filename_norm),
+                )
+                if has_music_hint:
+                    score+=0.25
+                if _norm(search_name) in filename_norm:
+                    score+=0.25
+                if _norm(search_name)!=_norm(artist_name):
+                    score+=0.04
+                if score < 0.70:
+                    continue
+                description_url=(
+                    "https://commons.wikimedia.org/wiki/File:"
+                    + urllib.parse.quote(image_name.replace(" ","_"))
+                )
+                candidate=(score,image_name,description_url)
+                if best is None or candidate[0] > best[0]:
+                    best=candidate
         return (best[1],best[2]) if best else ("","")
 
     def _artist_photo_from_commons(
@@ -1497,14 +1898,24 @@ class RichMetadataService:
                     role=_norm(asset.get("role"))
                     if role and role not in {"portrait","thumbnail"}:
                         continue
-                    downloaded=self._download_artwork(url)
-                    if not downloaded:
-                        continue
                     provenance=(
                         dict(asset.get("provenance") or {})
                         if isinstance(asset.get("provenance"),dict)
                         else {}
                     )
+                    try:
+                        confidence=float(
+                            provenance.get("confidence")
+                            or asset.get("confidence")
+                            or 1.0
+                        )
+                    except Exception:
+                        confidence=1.0
+                    if confidence < 0.70:
+                        continue
+                    downloaded=self._download_artwork(url)
+                    if not downloaded:
+                        continue
                     extension_id=str(
                         provenance.get("source_extension_id")
                         or asset.get("_extension_id")
@@ -1535,7 +1946,10 @@ class RichMetadataService:
         # 4. Last resort: search Wikimedia Commons itself. Matching is
         # deliberately conservative to avoid showing the wrong person/band.
         try:
-            image_name,_description_url=self._commons_artist_image(artist_name)
+            image_name,_description_url=self._commons_artist_image(
+                artist_name,
+                self._artist_search_names(working)[1:],
+            )
         except Exception:
             image_name=""
         if image_name:
@@ -1606,47 +2020,115 @@ class RichMetadataService:
         local = self.local_artwork(track)
         if str(local.get("path") or ""):
             return local
+
         supplied = str(track.get("artwork") or track.get("artwork_url") or "")
         if supplied:
             downloaded = self._download_artwork(supplied)
             if downloaded:
-                result={"path": str(downloaded), "source": str(track.get("provider_id") or "provider") + " artwork", "source_url": supplied}
-                self.remember_artwork(track, downloaded, source=result["source"], source_url=supplied)
+                result={
+                    "path":str(downloaded),
+                    "source":str(track.get("provider_id") or "provider")+" artwork",
+                    "source_url":supplied,
+                    "match":{"method":"provider_supplied","confidence":1.0},
+                }
+                self.remember_artwork(
+                    track,
+                    downloaded,
+                    source=result["source"],
+                    source_url=supplied,
+                    match_method="provider_supplied",
+                    match_confidence=1.0,
+                )
                 return result
 
-        broker = self.capability_broker
+        # MusicBrainz identity + Cover Art Archive is the strongest remote
+        # album-cover association. Prefer it before optional plugins.
+        for kind,mbid in (
+            ("release-group",identity.release_group_mbid),
+            ("release",identity.release_mbid),
+        ):
+            if not mbid:
+                continue
+            try:
+                data=self._caa_json(f"{kind}/{mbid}")
+                url,comment=self._front_image(data)
+                if url:
+                    downloaded=self._download_artwork(url)
+                    if downloaded:
+                        result={
+                            "path":str(downloaded),
+                            "source":"Cover Art Archive",
+                            "source_url":url,
+                            "comment":comment,
+                            "match":{
+                                "method":"musicbrainz_identity",
+                                "confidence":max(0.0,min(1.0,float(identity.score or 1.0))),
+                            },
+                        }
+                        self.remember_artwork(
+                            track,
+                            downloaded,
+                            source="Cover Art Archive",
+                            source_url=url,
+                            match_method="musicbrainz_identity",
+                            match_confidence=max(0.0,min(1.0,float(identity.score or 1.0))),
+                        )
+                        return result
+            except Exception:
+                continue
+
+        broker=self.capability_broker
         if broker is not None:
             try:
-                subject = broker.entity_ref(track, identity.as_dict())
-                result = broker.lookup_artwork(
+                subject=broker.entity_ref(track,identity.as_dict())
+                lookup=broker.lookup_artwork(
                     subject,
-                    roles=["cover", "thumbnail", "other"],
+                    roles=["cover","thumbnail"],
                     max_results=8,
                 )
-                for asset in list(result.get("assets") or []):
-                    if not isinstance(asset, dict):
+                for asset in list(lookup.get("assets") or []):
+                    if not isinstance(asset,dict):
                         continue
-                    url = str(asset.get("url") or "")
-                    downloaded = self._download_artwork(url)
-                    if not downloaded:
+                    url=str(asset.get("url") or "").strip()
+                    if not url:
                         continue
-                    provenance = (
+                    role=_norm(asset.get("role"))
+                    provenance=(
                         dict(asset.get("provenance") or {})
-                        if isinstance(asset.get("provenance"), dict)
+                        if isinstance(asset.get("provenance"),dict)
                         else {}
                     )
-                    extension_id = str(
+                    try:
+                        confidence=float(
+                            provenance.get("confidence")
+                            or asset.get("confidence")
+                            or 1.0
+                        )
+                    except Exception:
+                        confidence=1.0
+                    if role and role not in {"cover","thumbnail"}:
+                        continue
+                    if confidence < 0.70:
+                        continue
+                    downloaded=self._download_artwork(url)
+                    if not downloaded:
+                        continue
+                    extension_id=str(
                         provenance.get("source_extension_id")
                         or asset.get("_extension_id")
                         or "extension"
                     )
-                    result = {
-                        "path": str(downloaded),
-                        "source": extension_id,
-                        "source_url": str(provenance.get("source_url") or url),
-                        "attribution": str(provenance.get("attribution") or ""),
-                        "license": str(provenance.get("license") or ""),
-                        "provenance": provenance,
+                    result={
+                        "path":str(downloaded),
+                        "source":extension_id,
+                        "source_url":str(provenance.get("source_url") or url),
+                        "attribution":str(provenance.get("attribution") or ""),
+                        "license":str(provenance.get("license") or ""),
+                        "provenance":provenance,
+                        "match":{
+                            "method":"artwork_plugin",
+                            "confidence":round(max(0.0,min(1.0,confidence)),4),
+                        },
                     }
                     self.remember_artwork(
                         track,
@@ -1655,31 +2137,51 @@ class RichMetadataService:
                         source_url=result["source_url"],
                         attribution=result["attribution"],
                         license_name=result["license"],
+                        match_method="artwork_plugin",
+                        match_confidence=confidence,
                     )
                     return result
             except Exception:
                 pass
 
-        for kind, mbid in (("release-group", identity.release_group_mbid), ("release", identity.release_mbid)):
-            if not mbid:
-                continue
+        # Last album-cover fallback: search MusicBrainz release groups by
+        # album + artist, then use Cover Art Archive only if the match clears
+        # the conservative confidence threshold.
+        candidate=self._release_group_artwork_candidate(track,identity)
+        candidate_mbid=str(candidate.get("release_group_mbid") or "")
+        if candidate_mbid and candidate_mbid != identity.release_group_mbid:
             try:
-                data = self._caa_json(f"{kind}/{mbid}")
-                url, comment = self._front_image(data)
+                data=self._caa_json(f"release-group/{candidate_mbid}")
+                url,comment=self._front_image(data)
                 if url:
-                    downloaded = self._download_artwork(url)
+                    downloaded=self._download_artwork(url)
                     if downloaded:
-                        result={"path": str(downloaded), "source": "Cover Art Archive", "source_url": url, "comment": comment}
+                        result={
+                            "path":str(downloaded),
+                            "source":"Cover Art Archive",
+                            "source_url":url,
+                            "comment":comment,
+                            "match":{
+                                "method":"release_group_search",
+                                "confidence":candidate.get("score"),
+                                "evidence":candidate.get("evidence"),
+                                "matched_album":candidate.get("title"),
+                                "matched_artist":candidate.get("artist"),
+                            },
+                        }
                         self.remember_artwork(
                             track,
                             downloaded,
                             source="Cover Art Archive",
                             source_url=url,
+                            match_method="release_group_search",
+                            match_confidence=float(candidate.get("score") or 0.0),
                         )
                         return result
             except Exception:
-                continue
-        return {"path": "", "source": "", "source_url": ""}
+                pass
+
+        return {"path":"","source":"","source_url":""}
 
     @staticmethod
     def identity_from_dict(data: dict[str, Any]) -> MetadataIdentity:

@@ -29,6 +29,7 @@ jobs:
       - run: python scripts/ecosystem_check.py
       - run: python scripts/version_check.py
       - run: python scripts/release_check.py
+      - run: python scripts/release_readiness.py
       - name: Provider SDK tests
         run: |
           pip install -e provider-sdk

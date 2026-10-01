@@ -4,6 +4,7 @@ import json
 import threading
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -56,7 +57,15 @@ from .plugin_onboarding import plugin_needs_setup
 from .plugin_health import health_badge, health_summary
 from .diagnostics import write_diagnostics
 from .library_browser import LibraryBrowser
-from .ux_components import ActionCard, CommandPaletteDialog, CoverLabel, EmptyState, SourceCard, set_help
+from .ux_components import (
+    ActionCard,
+    CommandPaletteDialog,
+    CoverLabel,
+    EmptyState,
+    FeaturePresenceBar,
+    SourceCard,
+    set_help,
+)
 
 
 class WorkerSignals(QObject):
@@ -70,6 +79,11 @@ class _VisualAnalysisSignals(QObject):
 
 class _VisualContextSignals(QObject):
     ready = Signal(int, str, object)
+
+
+def _escape_html(value: Any) -> str:
+    import html
+    return html.escape(str(value or ""))
 
 
 def _track_text(t: dict[str, Any]) -> str:
@@ -627,6 +641,107 @@ class MainWindow(QMainWindow):
                 border:1px solid #2a3a4d;
                 border-radius:14px;
             }
+            QFrame#sourceFirstRun{
+                background:#102033;
+                border:1px solid #345a82;
+                border-radius:12px;
+            }
+            QLabel#sourceFirstRunTitle{
+                font-size:16px;
+                font-weight:740;
+                color:#e8f2ff;
+            }
+            QLabel#sourceFirstRunBody{
+                color:#aebed1;
+                font-size:11px;
+            }
+
+            QFrame#pluginFeaturePicker{
+                background:#101720;
+                border:1px solid #253346;
+                border-radius:12px;
+            }
+            QFrame#featurePresenceBar{
+                background:#101821;
+                border:1px solid #26384c;
+                border-radius:10px;
+            }
+            QFrame#artworkProgressPanel{
+                background:#101821;
+                border:1px solid #2a3d53;
+                border-radius:11px;
+            }
+            QLabel#artworkProgressTitle{
+                font-size:12px;
+                font-weight:720;
+                color:#d8e6f6;
+            }
+            QLabel#artworkProgressSummary{
+                font-size:10px;
+                color:#93a7bd;
+            }
+            QLabel#artworkProgressDetail{
+                font-size:10px;
+                color:#8492a3;
+            }
+            QProgressBar{
+                min-height:14px;
+                max-height:14px;
+                border:1px solid #2b3a4c;
+                border-radius:7px;
+                background:#0c121a;
+                text-align:center;
+                color:#d6e5f5;
+                font-size:9px;
+            }
+            QProgressBar::chunk{
+                border-radius:6px;
+                background:#365f8d;
+            }
+
+            QFrame#featurePresenceBar[active="true"]{
+                background:#111f2c;
+                border-color:#315274;
+            }
+            QLabel#featurePresenceIcon{
+                color:#7fb7f1;
+                background:#172a3e;
+                border:1px solid #2f4e6c;
+                border-radius:7px;
+                font-size:12px;
+                font-weight:800;
+            }
+            QLabel#featurePresenceText{color:#c7d1de;font-size:11px}
+            QPushButton#featurePresenceAction{
+                background:transparent;
+                border:1px solid #30445b;
+                border-radius:8px;
+                padding:5px 8px;
+                color:#9ebfe4;
+                font-size:10px;
+                font-weight:650;
+            }
+            QPushButton#featurePresenceAction:hover{
+                background:#182536;
+                border-color:#45688e;
+                color:#e5f1ff;
+            }
+
+            QLabel#pluginFeatureTitle{font-size:13px;font-weight:700}
+            QLabel#pluginFeatureSubtitle{color:#7f8b9c;font-size:10px}
+            QPushButton#featureChip{
+                background:#151f2c;
+                border:1px solid #2d4057;
+                border-radius:9px;
+                padding:7px 10px;
+                color:#b9cce2;
+                font-weight:650;
+            }
+            QPushButton#featureChip:hover{
+                background:#1b2b3e;
+                border-color:#42658c;
+                color:#e5f0ff;
+            }
             QFrame#sourceSummaryCard{
                 background:#0f1620;
                 border:1px solid #263547;
@@ -747,6 +862,7 @@ class MainWindow(QMainWindow):
             }
         """)
         self._update_nav_state("home")
+        self._refresh_plugin_presence()
 
     def _update_play_button(self, playing: bool) -> None:
         if hasattr(self,"play_button"):
@@ -902,8 +1018,13 @@ class MainWindow(QMainWindow):
         self.rich_now.accentChanged.connect(self.living_canvas.set_accent_color)
         self.rich_now.paletteChanged.connect(self.living_canvas.set_palette)
         self.rich_now.lyricsChanged.connect(self.living_canvas.set_lyrics)
+        self.rich_now.lyricsSeekRequested.connect(self.player.seek)
+        self.rich_now.lyricsTranslationRequested.connect(self._translate_lyrics)
         self.rich_now.lyricsPluginRequested.connect(
             lambda: self._plugin_directory("lyrics")
+        )
+        self.rich_now.contextPluginRequested.connect(
+            lambda: self._plugin_directory("context")
         )
         self.rich_now.onlineLyricsPreferenceChanged.connect(
             lambda enabled: self.state.set_bool("auto_online_lyrics", bool(enabled))
@@ -993,6 +1114,16 @@ class MainWindow(QMainWindow):
         intel_help.setStyleSheet("color:#aab0ba")
         l.addWidget(intel_help)
 
+        self.recommendation_plugin_presence=FeaturePresenceBar(
+            "Recommendation helpers",
+            baseline="Melodex local intelligence is active",
+            action_text="Add recommendation helper…",
+        )
+        self.recommendation_plugin_presence.actionRequested.connect(
+            lambda:self._plugin_directory("library_suggestions")
+        )
+        l.addWidget(self.recommendation_plugin_presence)
+
         intel_row=QHBoxLayout()
         similar=QPushButton("More like current")
         similar.clicked.connect(lambda:self._run_local_intelligence("similar"))
@@ -1041,6 +1172,17 @@ class MainWindow(QMainWindow):
         l=self._page_layout("discover","Discover","Search all connected music sources. Add a source in Sources if you want more places to search.")
         row=QHBoxLayout(); self.search_box=QLineEdit(); self.search_box.setPlaceholderText("Artist, track or album…"); self.search_source=QComboBox(); row.addWidget(self.search_box,1); row.addWidget(self.search_source); search=QPushButton("Search"); search.clicked.connect(self._search); row.addWidget(search); l.addLayout(row)
         self.search_box.returnPressed.connect(self._search)
+
+        self.search_plugin_presence=FeaturePresenceBar(
+            "Search sources",
+            baseline="Your local library is always searchable",
+            action_text="Add music source…",
+        )
+        self.search_plugin_presence.actionRequested.connect(
+            lambda:self._plugin_directory("search")
+        )
+        l.addWidget(self.search_plugin_presence)
+
         self.results=QListWidget(); self.results.itemDoubleClicked.connect(self._play_result); l.addWidget(self.results,1)
         row2=QHBoxLayout(); addq=QPushButton("Add selected to queue"); addq.clicked.connect(self._add_selected_to_queue); source_btn=QPushButton("Open source page"); source_btn.clicked.connect(self._open_selected_source); row2.addWidget(addq); row2.addWidget(source_btn); row2.addStretch(1); l.addLayout(row2)
 
@@ -1050,6 +1192,16 @@ class MainWindow(QMainWindow):
             "My Music",
             "Browse the collection you chose to keep on this device. Album artwork and musical identity come first; file details stay out of the way.",
         )
+        self.artwork_plugin_presence=FeaturePresenceBar(
+            "Artwork helpers",
+            baseline="Built-in artwork matching is active",
+            action_text="Add artwork helper…",
+        )
+        self.artwork_plugin_presence.actionRequested.connect(
+            lambda:self._plugin_directory("artwork")
+        )
+        l.addWidget(self.artwork_plugin_presence)
+
         self.library_browser=LibraryBrowser(self)
         self.library_browser.playAlbumRequested.connect(self._play_album_wall_album)
         self.library_browser.queueAlbumRequested.connect(self._queue_album_data)
@@ -1628,12 +1780,52 @@ class MainWindow(QMainWindow):
         self.chat=QTextEdit(); self.chat.setReadOnly(True); l.addWidget(self.chat,1)
         row=QHBoxLayout(); self.ask_box=QLineEdit(); self.ask_box.setPlaceholderText("e.g. Keep this mood but make the next hour stranger"); self.ask_box.returnPressed.connect(self._ask); ask=QPushButton("Ask"); ask.clicked.connect(self._ask); cfg=QPushButton("Connect LLM…"); cfg.clicked.connect(self._llm_settings_dialog); row.addWidget(self.ask_box,1); row.addWidget(ask); row.addWidget(cfg); l.addLayout(row)
 
+    def _dismiss_sources_intro(self) -> None:
+        self.state.set_bool("sources_intro_seen",True)
+        if hasattr(self,"source_welcome"):
+            self.source_welcome.hide()
+
     def _build_sources(self):
         l=self._page_layout(
             "sources",
             "Sources & plugins",
             "See what Melodex includes, what you have connected, and which optional enhancements are installed. Technical details stay under Power tools.",
         )
+
+        self.source_welcome=QFrame()
+        self.source_welcome.setObjectName("sourceFirstRun")
+        welcome_l=QHBoxLayout(self.source_welcome)
+        welcome_l.setContentsMargins(16,13,16,13)
+        welcome_l.setSpacing(12)
+
+        welcome_text=QVBoxLayout()
+        welcome_text.setSpacing(3)
+        welcome_title=QLabel("You are already ready to listen")
+        welcome_title.setObjectName("sourceFirstRunTitle")
+        welcome_body=QLabel(
+            "Your own library and the sources included with Melodex work without extra setup. "
+            "Plugins are optional: add them only when you want more music, artwork, lyrics, "
+            "recommendations or context."
+        )
+        welcome_body.setObjectName("sourceFirstRunBody")
+        welcome_body.setWordWrap(True)
+        welcome_text.addWidget(welcome_title)
+        welcome_text.addWidget(welcome_body)
+        welcome_l.addLayout(welcome_text,1)
+
+        welcome_plugins=QPushButton("Browse optional features")
+        welcome_plugins.setObjectName("secondaryButton")
+        welcome_plugins.clicked.connect(self._plugin_directory)
+        welcome_done=QPushButton("Got it")
+        welcome_done.setObjectName("quietButton")
+        welcome_done.clicked.connect(self._dismiss_sources_intro)
+        welcome_l.addWidget(welcome_plugins)
+        welcome_l.addWidget(welcome_done)
+
+        self.source_welcome.setVisible(
+            not self.state.get_bool("sources_intro_seen",False)
+        )
+        l.addWidget(self.source_welcome)
 
         overview=QFrame()
         overview.setObjectName("sourceOverview")
@@ -1732,6 +1924,40 @@ class MainWindow(QMainWindow):
         actions.addStretch(1)
         actions.addWidget(self.source_primary_button)
         l.addLayout(actions)
+
+        feature_picker=QFrame()
+        feature_picker.setObjectName("pluginFeaturePicker")
+        feature_l=QHBoxLayout(feature_picker)
+        feature_l.setContentsMargins(14,10,14,10)
+        feature_l.setSpacing(8)
+        feature_text=QVBoxLayout()
+        feature_text.setSpacing(1)
+        feature_title=QLabel("What would you like to add?")
+        feature_title.setObjectName("pluginFeatureTitle")
+        feature_subtitle=QLabel(
+            "Jump straight to plugins for a particular job."
+        )
+        feature_subtitle.setObjectName("pluginFeatureSubtitle")
+        feature_text.addWidget(feature_title)
+        feature_text.addWidget(feature_subtitle)
+        feature_l.addLayout(feature_text,1)
+
+        self.source_feature_buttons={}
+        for label,capability in (
+            ("More music","search"),
+            ("Lyrics","lyrics"),
+            ("Artwork","artwork"),
+            ("Recommendations","recommendations"),
+            ("Context","context"),
+        ):
+            button=QPushButton(label)
+            button.setObjectName("featureChip")
+            button.clicked.connect(
+                lambda _checked=False, value=capability:self._plugin_directory(value)
+            )
+            self.source_feature_buttons[capability]=button
+            feature_l.addWidget(button)
+        l.addWidget(feature_picker)
 
         self.sources_list=QListWidget()
         self.sources_list.setObjectName("sourcesList")
@@ -1832,15 +2058,23 @@ class MainWindow(QMainWindow):
         self.stack.setCurrentWidget(self.pages[name])
         self._update_nav_state(name)
         if name=="home": self._show_home()
-        elif name=="library": self._refresh_library()
+        elif name=="library":
+            self._refresh_library()
+            self._refresh_plugin_presence()
         elif name=="album_wall": self._refresh_album_wall()
         elif name=="music_map": self._refresh_music_map()
         elif name=="sources": self._refresh_sources()
         elif name=="moments": self._refresh_moments()
         elif name=="journeys": self._refresh_journeys()
         elif name=="playlists": self._refresh_playlists()
-        elif name=="for_you": self._refresh_taste()
-        elif name=="discover": self._refresh_source_combo()
+        elif name=="for_you":
+            self._refresh_taste()
+            self._refresh_plugin_presence()
+        elif name=="discover":
+            self._refresh_source_combo()
+            self._refresh_plugin_presence()
+        elif name=="now_playing":
+            self._refresh_plugin_presence()
 
     def _update_nav_state(self, page: str) -> None:
         parent = {
@@ -2602,22 +2836,16 @@ class MainWindow(QMainWindow):
         rows=[dict(x) for x in list(requests or []) if isinstance(x,dict)]
         if not rows:
             return
-        row=rows[0]
-        track=dict(row.get("track") or {})
-        album_name=str(track.get("album") or "album").strip() or "album"
-        artist_name=str(track.get("artist") or "").strip()
-        label=f"{artist_name} · {album_name}" if artist_name else album_name
+
         self.statusBar().showMessage(
-            f"Finding album artwork · {label}"
+            f"Finding album artwork · {len(rows)} at a time"
         )
 
-        def load():
-            result={}
+        def lookup_one(row: dict[str,Any]) -> dict[str,Any]:
             key=str(row.get("key") or "")
+            track=dict(row.get("track") or {})
             if not key or not track:
-                return result
-            path=""
-            artwork_info={}
+                return {"key":key,"path":"","status":"error","error":"Missing album lookup data"}
             try:
                 local=self.metadata.local_artwork(track)
                 path=str(local.get("path") or "")
@@ -2627,53 +2855,80 @@ class MainWindow(QMainWindow):
                     artwork_info=self.metadata.artwork(track,identity)
                     path=str(artwork_info.get("path") or "")
                 if path:
+                    match_info=(
+                        dict(artwork_info.get("match") or {})
+                        if isinstance(artwork_info.get("match"),dict)
+                        else {}
+                    )
                     for sibling in list(row.get("tracks") or []):
-                        if isinstance(sibling,dict):
-                            self.metadata.remember_artwork(
-                                sibling,
-                                path,
-                                source=str(artwork_info.get("source") or ""),
-                                source_url=str(artwork_info.get("source_url") or ""),
-                                attribution=str(artwork_info.get("attribution") or ""),
-                                license_name=str(
-                                    artwork_info.get("license_name")
-                                    or artwork_info.get("license")
-                                    or ""
-                                ),
-                            )
-            except Exception:
-                path=""
-            result[key]=path
-            return result
+                        if not isinstance(sibling,dict):
+                            continue
+                        self.metadata.remember_artwork(
+                            sibling,
+                            path,
+                            source=str(artwork_info.get("source") or ""),
+                            source_url=str(artwork_info.get("source_url") or ""),
+                            attribution=str(artwork_info.get("attribution") or ""),
+                            license_name=str(
+                                artwork_info.get("license_name")
+                                or artwork_info.get("license")
+                                or ""
+                            ),
+                            match_method=str(match_info.get("method") or ""),
+                            match_confidence=(
+                                float(match_info.get("confidence"))
+                                if match_info.get("confidence") is not None
+                                else None
+                            ),
+                        )
+                    return {
+                        "key":key,
+                        "path":path,
+                        "status":"found",
+                        "source":str(artwork_info.get("source") or ""),
+                    }
+                return {"key":key,"path":"","status":"no_match","error":""}
+            except Exception as exc:
+                return {"key":key,"path":"","status":"error","error":str(exc)}
 
-        def continue_lookup(found: int = 0):
-            more=self.library_browser.continue_album_artwork_lookup()
-            if more:
-                remaining=self.library_browser.album_artwork_lookup_remaining()
-                self.statusBar().showMessage(
-                    f"Album artwork · {'found' if found else 'no match'} · "
-                    f"continuing through {remaining} remaining…"
-                )
-            else:
-                self.statusBar().showMessage(
-                    "Album artwork lookup complete",
-                    6000,
-                )
+        def load():
+            workers=max(1,min(4,len(rows)))
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                return list(pool.map(lookup_one,rows))
 
         def apply(result):
-            result_rows=dict(result or {})
-            self.library_browser.set_artwork(result_rows)
-            found=sum(1 for path in result_rows.values() if str(path or "").strip())
-            continue_lookup(found)
+            outcomes=[dict(x) for x in list(result or []) if isinstance(x,dict)]
+            self.library_browser.set_artwork({
+                str(row.get("key") or ""):str(row.get("path") or "")
+                for row in outcomes
+                if str(row.get("path") or "")
+            })
+            self.library_browser.finish_album_artwork_lookup_batch(outcomes)
+            snapshot=self.library_browser.artwork_lookup_snapshot()
+            self.statusBar().showMessage(
+                "Album artwork · "
+                f"{snapshot.get('completed',0)}/{snapshot.get('total',0)} · "
+                f"found {snapshot.get('found',0)} · "
+                f"no match {snapshot.get('skipped',0)} · "
+                f"failed {snapshot.get('failed',0)}",
+                5000 if not snapshot.get("active") else 0,
+            )
 
         def failed(error):
-            # Do not leave the progress control permanently disabled because
-            # one provider/request failed. Move on to the next album.
+            outcomes=[
+                {
+                    "key":str(row.get("key") or ""),
+                    "path":"",
+                    "status":"error",
+                    "error":str(error),
+                }
+                for row in rows
+            ]
+            self.library_browser.finish_album_artwork_lookup_batch(outcomes)
             self.statusBar().showMessage(
-                f"Artwork lookup skipped one album after an error · {error}",
-                4500,
+                f"Album artwork batch failed · {error}",
+                5000,
             )
-            continue_lookup(0)
 
         self._run_async(load,apply,failed)
 
@@ -2730,76 +2985,82 @@ class MainWindow(QMainWindow):
         rows=[dict(x) for x in list(requests or []) if isinstance(x,dict)]
         if not rows:
             return
-        row=rows[0]
-        artist_label=str(row.get("artist") or "artist").strip() or "artist"
+
         self.statusBar().showMessage(
-            f"Finding artist photo · {artist_label}"
+            f"Finding artist photos · {len(rows)} at a time"
         )
 
-        def load():
-            result={}
-            for row in rows:
-                key=str(row.get("key") or "")
-                artist_name=str(row.get("artist") or "")
-                track=dict(row.get("track") or {})
-                if not key or not artist_name or not track:
-                    continue
-                path=""
-                try:
-                    cached=self.metadata.cached_artist_photo({"name":artist_name})
-                    path=str(cached.get("path") or "")
-                    if not path:
-                        artist_mbid=str(
-                            track.get("musicbrainz_artist_id")
-                            or track.get("artist_mbid")
-                            or ""
-                        ).strip()
-                        if artist_mbid:
-                            info=self.metadata.artist_info(artist_mbid)
-                        else:
-                            # Artist portrait enrichment does not need a
-                            # recording-level MusicBrainz lookup. Resolve the
-                            # artist directly; this is faster and avoids a
-                            # needless failure point for oddly tagged tracks.
-                            info=self.metadata.resolve_artist(artist_name)
-                        if info:
-                            if not info.get("name"):
-                                info["name"]=artist_name
-                            photo=self.metadata.artist_photo(info)
-                            path=str(photo.get("path") or "")
-                except Exception:
-                    path=""
-                result[key]=path
-            return result
+        def lookup_one(row: dict[str,Any]) -> dict[str,Any]:
+            key=str(row.get("key") or "")
+            artist_name=str(row.get("artist") or "")
+            track=dict(row.get("track") or {})
+            if not key or not artist_name or not track:
+                return {"key":key,"path":"","status":"error","error":"Missing artist lookup data"}
+            try:
+                cached=self.metadata.cached_artist_photo({"name":artist_name})
+                path=str(cached.get("path") or "")
+                if not path:
+                    artist_mbid=str(
+                        track.get("musicbrainz_artist_id")
+                        or track.get("artist_mbid")
+                        or ""
+                    ).strip()
+                    if artist_mbid:
+                        info=self.metadata.artist_info(artist_mbid)
+                    else:
+                        info=self.metadata.resolve_artist(artist_name)
+                    if info:
+                        if not info.get("name"):
+                            info["name"]=artist_name
+                        photo=self.metadata.artist_photo(info)
+                        path=str(photo.get("path") or "")
+                return {
+                    "key":key,
+                    "path":path,
+                    "status":"found" if path else "no_match",
+                    "error":"",
+                }
+            except Exception as exc:
+                return {"key":key,"path":"","status":"error","error":str(exc)}
 
-        def continue_lookup(found: int = 0):
-            more=self.library_browser.continue_artist_image_lookup()
-            if more:
-                remaining=self.library_browser.artist_image_lookup_remaining()
-                self.statusBar().showMessage(
-                    f"Artist photos · {'found' if found else 'no match'} · "
-                    f"continuing through {remaining} remaining…"
-                )
-            else:
-                self.statusBar().showMessage(
-                    "Artist photo lookup complete",
-                    6000,
-                )
+        def load():
+            workers=max(1,min(4,len(rows)))
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                return list(pool.map(lookup_one,rows))
 
         def apply(result):
-            result_rows=dict(result or {})
-            self.library_browser.set_artist_images(result_rows)
-            found=sum(1 for path in result_rows.values() if str(path or "").strip())
-            continue_lookup(found)
+            outcomes=[dict(x) for x in list(result or []) if isinstance(x,dict)]
+            self.library_browser.set_artist_images({
+                str(row.get("key") or ""):str(row.get("path") or "")
+                for row in outcomes
+                if str(row.get("path") or "")
+            })
+            self.library_browser.finish_artist_image_lookup_batch(outcomes)
+            snapshot=self.library_browser.artwork_lookup_snapshot()
+            self.statusBar().showMessage(
+                "Artist photos · "
+                f"{snapshot.get('completed',0)}/{snapshot.get('total',0)} · "
+                f"found {snapshot.get('found',0)} · "
+                f"no match {snapshot.get('skipped',0)} · "
+                f"failed {snapshot.get('failed',0)}",
+                5000 if not snapshot.get("active") else 0,
+            )
 
         def failed(error):
-            # A single failed HTTP/plugin lookup must not strand the whole
-            # library pass at the same remaining count.
+            outcomes=[
+                {
+                    "key":str(row.get("key") or ""),
+                    "path":"",
+                    "status":"error",
+                    "error":str(error),
+                }
+                for row in rows
+            ]
+            self.library_browser.finish_artist_image_lookup_batch(outcomes)
             self.statusBar().showMessage(
-                f"Artist photo lookup skipped one artist after an error · {error}",
-                4500,
+                f"Artist photo batch failed · {error}",
+                5000,
             )
-            continue_lookup(0)
 
         self._run_async(load,apply,failed)
 
@@ -3364,10 +3625,61 @@ class MainWindow(QMainWindow):
         if ok:
             self.providers.set_jamendo_client_id(value.strip()); self.statusBar().showMessage("Jamendo source updated",3000)
 
+    def _active_extension_names(self, *capabilities: str) -> list[str]:
+        wanted={str(value) for value in capabilities if str(value)}
+        names=[]
+        for row in self.providers.extensions():
+            if not bool(row.get("enabled",True)):
+                continue
+            config=dict(row.get("configuration_status") or {})
+            if config.get("declared") and not config.get("ready",True):
+                continue
+            caps={str(value) for value in list(row.get("capabilities") or []) if value}
+            if wanted and not (wanted & caps):
+                continue
+            name=str(row.get("name") or row.get("id") or "").strip()
+            if name:
+                names.append(name)
+        return names
+
+    def _searchable_source_names(self) -> list[str]:
+        names=[]
+        for pid in self.providers.provider_order():
+            provider=self.providers.providers.get(pid)
+            if provider is None or "search" not in list(provider.info.capabilities or []):
+                continue
+            if self._plugin_needs_setup_here(pid):
+                continue
+            name=str(provider.info.name or pid).replace(" (reference provider)","").strip()
+            if name:
+                names.append(name)
+        return names
+
+    def _refresh_plugin_presence(self) -> None:
+        if hasattr(self,"search_plugin_presence"):
+            self.search_plugin_presence.set_items(self._searchable_source_names())
+        if hasattr(self,"artwork_plugin_presence"):
+            self.artwork_plugin_presence.set_items(
+                self._active_extension_names("artwork")
+            )
+        if hasattr(self,"recommendation_plugin_presence"):
+            self.recommendation_plugin_presence.set_items(
+                self._active_extension_names("library_suggestions","recommendations")
+            )
+        if hasattr(self,"rich_now"):
+            self.rich_now.set_plugin_presence(
+                lyrics=self._active_extension_names("lyrics"),
+                context=self._active_extension_names("context","metadata","identity"),
+            )
+
+    def _refresh_sources_and_plugin_presence(self) -> None:
+        self._refresh_sources()
+        self._refresh_plugin_presence()
+
     def _plugin_directory(self, capability: str = ""):
         dialog=PluginDirectoryDialog(
             self.providers,
-            on_installed=self._refresh_sources,
+            on_installed=self._refresh_sources_and_plugin_presence,
             on_use=self._use_plugin_directory_entry,
             initial_capability=capability,
             parent=self,
@@ -5377,6 +5689,94 @@ class MainWindow(QMainWindow):
             endpoint=self.state.get_text("llm_endpoint",LLMClient.default_endpoint(self.state.get_text("llm_provider","openwebui"))),
             model=self.state.get_text("llm_model",""), api_key=self.state.get_text("llm_api_key","")
         )
+
+    def _translate_lyrics(self, payload: dict[str,Any]) -> None:
+        payload=dict(payload or {})
+        text=str(payload.get("text") or "").strip()
+        if not text:
+            return
+
+        settings=self._llm_settings()
+        if not str(settings.model or "").strip():
+            answer=QMessageBox.question(
+                self,
+                "Connect an LLM",
+                "Lyrics translation uses your optional configured LLM. "
+                "No model is configured yet. Open LLM settings now?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.Yes,
+            )
+            if answer != QMessageBox.Yes:
+                return
+            self._llm_settings_dialog()
+            settings=self._llm_settings()
+            if not str(settings.model or "").strip():
+                return
+
+        target,ok=QInputDialog.getText(
+            self,
+            "Translate lyrics",
+            "Translate into:",
+            text=self.state.get_text("lyrics_translation_language","English"),
+        )
+        target=str(target or "").strip()
+        if not ok or not target:
+            return
+
+        endpoint=str(settings.endpoint or LLMClient.default_endpoint(settings.provider))
+        answer=QMessageBox.question(
+            self,
+            "Send lyrics for translation?",
+            "This sends the currently displayed lyric text to your configured LLM "
+            f"endpoint for this one request:\n\n{endpoint}\n\n"
+            "The translation is shown temporarily in Melodex and is not saved.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if answer != QMessageBox.Yes:
+            return
+
+        self.state.set_text("lyrics_translation_language",target)
+        artist=str(payload.get("artist") or "")
+        title=str(payload.get("title") or "")
+        prompt=(
+            f"Translate the following song lyrics into {target}. "
+            "Preserve the original line breaks and stanza structure. "
+            "Return only the translation, with no commentary, analysis, title or quotation marks."
+            f"\n\nTrack: {artist} — {title}\n\n{text}"
+        )
+        self.statusBar().showMessage(f"Translating lyrics into {target}…")
+        self._run_async(
+            lambda:self.llm.complete(settings,prompt,{},[]),
+            lambda result:self._show_lyrics_translation(target,str(result or "")),
+        )
+
+    def _show_lyrics_translation(self, language: str, text: str) -> None:
+        dialog=QDialog(self)
+        dialog.setWindowTitle(f"Lyrics translation · {language}")
+        dialog.resize(760,720)
+        layout=QVBoxLayout(dialog)
+        layout.setContentsMargins(22,20,22,18)
+        layout.setSpacing(10)
+
+        note=QLabel(
+            f"<b>Temporary translation · {_escape_html(language)}</b><br>"
+            "<span style='color:#8f9bad'>Generated by your configured LLM. "
+            "This translation is not saved by Melodex.</span>"
+        )
+        note.setWordWrap(True)
+        layout.addWidget(note)
+
+        browser=QTextEdit()
+        browser.setReadOnly(True)
+        browser.setPlainText(str(text or "").strip())
+        layout.addWidget(browser,1)
+
+        buttons=QDialogButtonBox(QDialogButtonBox.Close)
+        buttons.rejected.connect(dialog.accept)
+        layout.addWidget(buttons)
+        self.statusBar().showMessage(f"Lyrics translated into {language}",4000)
+        dialog.exec()
 
     def _llm_settings_dialog(self):
         d=QDialog(self); d.setWindowTitle("Connect an LLM"); f=QFormLayout(d)

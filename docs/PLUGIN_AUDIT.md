@@ -13,7 +13,7 @@ On a clean desktop install:
 | Enrichment extensions | 0 | No | Artwork, lyrics, metadata, context and identity extensions are optional |
 | Registry entries | 16 | No | All current registry entries are reference/example packages |
 
-The six included provider packages are repository-tested for package identity, manifest validity, install/restore behaviour and their fixture-backed provider contracts. **That is not the same as a live upstream-service guarantee.** The end-user page therefore exposes **Check connections** to perform bounded runtime checks on the current computer/network.
+The six included provider packages are repository-tested for package identity, manifest validity, install/restore behaviour and their fixture-backed provider contracts. A separate **manual live-provider smoke workflow** can also perform real search → resolve → media-byte checks against the current upstream services without making ordinary CI depend on external availability. The six bundled providers passed that live verification during the v0.7.1 development cycle. The end-user page still exposes **Check connections** for bounded checks on the current computer/network.
 
 The registry is currently a developer/reference ecosystem rather than a curated consumer app store: all 16 entries are marked `example`. The redesigned UI calls them optional/reference features rather than implying that every registry item is production-ready.
 
@@ -36,13 +36,15 @@ The desktop app carries six audited provider packages and installs them automati
 | Included source | Package version | Main role |
 | --- | ---: | --- |
 | Internet Archive Audio | 0.1.0 | Search/play openly accessible archive audio |
-| LibriVox | 0.1.2 | Public-domain audiobooks |
+| LibriVox | 0.1.4 | Public-domain audiobooks |
 | Radio Browser | 0.1.2 | Internet radio directory |
 | SomaFM | 0.1.1 | Curated internet radio |
 | Wikimedia Commons Audio | 0.1.1 | Openly licensed/public-domain audio |
 | ccMixter | 0.1.3 | Creative Commons music |
 
-Bundled-package tests verify package identity/version, manifest structure, entrypoints and installation/restore behaviour. Live upstream availability is deliberately **not** inferred from fixture tests: use **Sources & plugins → Check installed** for a bounded health check on the current machine/network.
+Bundled-package tests verify package identity/version, manifest structure, entrypoints and installation/restore behaviour. The manual live smoke test goes further by probing real media bytes; it remains non-blocking because public services can be temporarily unavailable. Use **Sources & plugins → Check connections** for a bounded health check on the current machine/network.
+
+LibriVox 0.1.4 searches the official LibriVox collection hosted by Internet Archive and resolves public-domain audiobook media there. This avoids interactive search pressure on the volunteer-hosted LibriVox API while preserving LibriVox as the content/source identity. Its checked-in source is rebuilt deterministically into the bundled package.
 
 ### Optional registry plugins
 
@@ -76,6 +78,55 @@ Some registry examples deliberately overlap with Core/bundled functionality:
 
 The Plugin Centre calls out these overlaps so a normal user does not install duplicates just because they appear in the catalogue.
 
+## Artwork recovery audit
+
+Artwork recovery remains local-first and deliberately avoids general web-image scraping.
+
+### Album covers
+
+The recovery order is:
+
+1. artwork already supplied with the track, local sidecars, embedded art, or a current trusted cache entry;
+2. provider-supplied artwork;
+3. exact MusicBrainz release/release-group identity through Cover Art Archive;
+4. installed artwork extensions whose cover/thumbnail result clears the confidence floor;
+5. a conservative MusicBrainz release-group search using album, artist and year evidence, followed by Cover Art Archive only when the candidate clears the match threshold.
+
+Release-group recovery rejects incompatible **Live** and **Remix** variants unless the user's album metadata indicates that variant. Match method/confidence are stored with new remote cache associations.
+
+### Artist photos
+
+Artist-photo recovery prefers:
+
+1. a user-selected photo;
+2. Wikidata's explicit image claim;
+3. a free Wikipedia lead image;
+4. installed portrait/thumbnail artwork extensions above the confidence floor;
+5. a conservative Wikimedia Commons search.
+
+MusicBrainz aliases and sort-name variants are now used as fallback search names, improving coverage for stage names and punctuation variants without lowering the identity threshold.
+
+Legacy remote artwork cache associations created before the stricter matching policy are revalidated instead of being trusted indefinitely. User-selected artist photos remain authoritative.
+
+Downloaded remote artwork must return an actual `image/*` response with non-trivial image content; HTML/error responses are rejected rather than cached as artwork.
+
+### Artwork batch experience
+
+Explicit missing-artwork recovery now runs as a bounded background job rather than one serial lookup at a time.
+
+- up to **4** album or artist lookups are processed concurrently;
+- MusicBrainz requests still obey the metadata service's existing rate limiter;
+- the progress panel shows `completed / total` plus **Found / No match / Failed** counts;
+- **Pause** lets the current in-flight requests finish, then stops launching new work;
+- **Resume** continues the remaining queue;
+- **Cancel** finishes only the requests already in flight and discards the rest of the current queue;
+- **Retry failed** reruns only genuine failed requests, not conservative “no confident match” outcomes;
+- changing tabs does not lose the active job or its progress;
+- rescanning/replacing the library clears stale batch state;
+- successful artwork is applied incrementally as each bounded batch finishes, keeping the interface responsive for large libraries.
+
+The concurrency limit is deliberately small: the goal is to make hundreds or thousands of missing-image checks practical without flooding volunteer/public metadata services.
+
 ## Lyrics audit
 
 Core lyrics support is local-first:
@@ -85,7 +136,11 @@ Core lyrics support is local-first:
 3. embedded lyrics tags;
 4. installed `lyrics` capability extensions.
 
-v0.7.1 also adds an explicit **Find online** action backed by LRCLIB. By default it is user-initiated: Melodex sends the current track metadata to LRCLIB, displays a conservative match, and does not permanently cache LRCLIB lyric text. Users can optionally enable **Auto-find online** in the Lyrics tab; that preference is stored locally and only runs when local/plugin lyrics are unavailable. LRCLIB is a third-party community service; lyrics remain the work of their respective rights holders.
+v0.7.1 also adds an explicit **Find online** action backed by LRCLIB. By default it is user-initiated. Melodex now tries an exact metadata lookup first, then a cleaned exact lookup for common library noise such as remaster/version suffixes and featured-artist text, then a structured LRCLIB search. Search candidates are still accepted conservatively using artist/title similarity plus album and duration evidence when available.
+
+Third-party LRCLIB lyric text is **not persisted to disk**. Successful, instrumental and confident not-found outcomes may be kept in memory for the current Melodex session so replaying the same track does not immediately repeat a network request; **Try again** bypasses that temporary cache. Users can optionally enable **Auto-find online** in the Lyrics tab; that preference is stored locally and only runs when local/plugin lyrics are unavailable. LRCLIB is a third-party community service; lyrics remain the work of their respective rights holders.
+
+Online lookup states are deliberately distinct: **found**, **instrumental**, **no confident match**, **missing artist/title metadata**, and **service/network error**. This prevents a temporary connection problem from looking like a genuine “no lyrics exist” result.
 
 Melodex does not scrape commercial lyric websites.
 
@@ -97,9 +152,23 @@ The Now Playing Lyrics tab therefore provides:
 - **Paste lyrics…** for lyrics the user already has;
 - automatic recognition of timestamped LRC text;
 - persistent local caching without rewriting the audio file;
-- **Find lyrics plugin…** to open the Plugin Centre filtered to Lyrics.
+- **Manage lyrics sources…** / **Add lyrics source…** to open the Plugin Centre filtered to Lyrics.
 
 A future licensed lyrics extension can plug into the existing `lyrics.lookup` contract without changing the player UI.
+
+### Lyrics experience
+
+The Lyrics tab now treats lyrics as an active listening surface rather than a static text box:
+
+- synchronized LRC lines highlight with playback and can be clicked to seek;
+- **Full screen** opens a distraction-free large-type lyrics view that stays synchronized;
+- when both local/plugin and online lyrics exist, the user can explicitly switch sources;
+- **Edit saved…** is only enabled for local/personal lyrics and saves a Melodex-owned correction copy without rewriting the source audio file;
+- temporary LRCLIB/plugin text is not made editable through that action, preserving the non-persistent online-lyrics policy;
+- an online miss/error never replaces valid local lyrics already on screen;
+- **Translate…** is optional and explicit: it uses the user's configured LLM only after a target language is chosen and the user confirms sending the currently displayed lyric text to that endpoint;
+- generated translations are temporary and are not stored by Melodex.
+
 
 ## Status vocabulary
 

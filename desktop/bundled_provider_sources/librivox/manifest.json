@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "id": "org.melodex.librivox",
+  "name": "LibriVox",
+  "version": "0.1.4",
+  "publisher": "Melodex",
+  "protocol_version": "1.0",
+  "description": "Public-domain LibriVox audiobooks indexed through the Internet Archive LibriVox collection. Search titles, authors or subjects and play hosted MP3 recordings.",
+  "homepage": "https://librivox.org/",
+  "capabilities": [
+    "search",
+    "track",
+    "playback"
+  ],
+  "permissions": {
+    "network_hosts": [
+      "archive.org",
+      "www.archive.org",
+      "*.us.archive.org"
+    ],
+    "offline_downloads": false,
+    "local_files": false,
+    "browser_auth": false,
+    "lan_discovery": false
+  },
+  "entrypoints": {
+    "python": "provider.py"
+  },
+  "rpc_timeout_seconds": 30
+}

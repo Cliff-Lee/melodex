@@ -10,6 +10,13 @@ on:
         description: Optional exact commit SHA to build for a release
         required: false
         type: string
+  pull_request:
+    paths:
+      - 'desktop/**'
+      - 'provider-sdk/**'
+      - 'VERSION'
+      - 'scripts/version_check.py'
+      - '.github/workflows/desktop.yml'
   push:
     branches: [main]
     tags: ['v*']

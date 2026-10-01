@@ -196,6 +196,76 @@ class ActionCard(QFrame):
         super().mousePressEvent(event)
 
 
+class FeaturePresenceBar(QFrame):
+    """Small in-context summary showing what powers a feature and where to add more."""
+
+    actionRequested = Signal()
+
+    def __init__(
+        self,
+        title: str,
+        *,
+        baseline: str = "Built into Melodex",
+        action_text: str = "Add more…",
+        parent=None,
+    ):
+        super().__init__(parent)
+        self.setObjectName("featurePresenceBar")
+        self._title_text=str(title or "Feature")
+        self._baseline=str(baseline or "Built into Melodex")
+
+        row=QHBoxLayout(self)
+        row.setContentsMargins(11,8,11,8)
+        row.setSpacing(9)
+
+        glyph=QLabel("✦")
+        glyph.setObjectName("featurePresenceIcon")
+        glyph.setAlignment(Qt.AlignCenter)
+        glyph.setFixedSize(26,26)
+        row.addWidget(glyph)
+
+        self.label=QLabel()
+        self.label.setObjectName("featurePresenceText")
+        self.label.setWordWrap(True)
+        row.addWidget(self.label,1)
+
+        self.action=QPushButton(str(action_text or "Add more…"))
+        self.action.setObjectName("featurePresenceAction")
+        self.action.clicked.connect(self.actionRequested)
+        row.addWidget(self.action)
+
+        self.set_items([])
+
+    def set_items(self, names: list[str] | tuple[str, ...]) -> None:
+        cleaned=[]
+        seen=set()
+        for raw in names or []:
+            name=" ".join(str(raw or "").split())
+            key=name.casefold()
+            if not name or key in seen:
+                continue
+            seen.add(key)
+            cleaned.append(name)
+
+        if cleaned:
+            shown=" · ".join(cleaned[:3])
+            if len(cleaned) > 3:
+                shown+=f" · +{len(cleaned)-3} more"
+            self.label.setText(
+                f"<b>{self._title_text}</b>  <span style='color:#8fa7c3'>Active: {shown}</span>"
+            )
+            self.setProperty("active",True)
+        else:
+            self.label.setText(
+                f"<b>{self._title_text}</b>  <span style='color:#7f8b9c'>{self._baseline}</span>"
+            )
+            self.setProperty("active",False)
+
+        self.style().unpolish(self)
+        self.style().polish(self)
+        self.update()
+
+
 class SourceCard(QFrame):
     """Human-readable source/plugin row with a distinctive category tile."""
 
