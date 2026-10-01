@@ -833,7 +833,7 @@ class RichMetadataService:
         disambiguation=str(artist.get("disambiguation") or "").strip()
         if disambiguation:
             hints.append(disambiguation)
-        query=" ".join([f'"{artist_name}"', *(hints or ["musician band singer producer"])])
+        query=" ".join([f'"{artist_name}"', *(hints or ["music"])])
 
         params={
             "action":"query",
