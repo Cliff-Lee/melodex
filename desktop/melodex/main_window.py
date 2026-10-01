@@ -604,6 +604,19 @@ class MainWindow(QMainWindow):
                 border:1px solid #2b3747;
                 border-radius:12px;
             }
+            QFrame#sourceOverview{
+                background:#121b26;
+                border:1px solid #2a3a4d;
+                border-radius:14px;
+            }
+            QLabel#overviewIcon{
+                background:#193354;
+                border:1px solid #2f5d8f;
+                border-radius:12px;
+                color:#d8eaff;
+                font-size:21px;
+                font-weight:700;
+            }
             QFrame#sourceCard{
                 background:transparent;
                 border:0;
@@ -617,6 +630,15 @@ class MainWindow(QMainWindow):
                 font-weight:750;
             }
             QLabel#sourceTitle{font-size:15px;font-weight:700}
+            QLabel#originPill{
+                background:#17202c;
+                border:1px solid #2a394b;
+                border-radius:7px;
+                padding:2px 6px;
+                color:#8fa7c3;
+                font-size:9px;
+                font-weight:650;
+            }
             QLabel#sourceDescription{color:#8f9bad}
             QLabel#sourceKind{color:#7d899b;font-size:11px}
             QLabel#statusPill{
