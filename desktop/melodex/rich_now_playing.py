@@ -246,7 +246,8 @@ class RichNowPlayingWidget(QWidget):
         self.lyrics.anchorClicked.connect(self._lyrics_anchor_clicked)
         self.lyrics.setStyleSheet(
             "QTextBrowser#nativeLyricsView{background:#111a24;color:#dfe8f3;"
-            "border:1px solid #293c51;border-radius:11px;padding:18px;}"
+            "border:1px solid #293c51;border-radius:11px;padding:18px;"
+            "selection-background-color:#284b70;selection-color:#ffffff;}"
         )
         lyrics_layout.addWidget(self.lyrics,1)
 
@@ -947,7 +948,8 @@ class RichNowPlayingWidget(QWidget):
         browser.setOpenLinks(False)
         browser.anchorClicked.connect(self._lyrics_anchor_clicked)
         browser.setStyleSheet(
-            "QTextBrowser{background:#0d1118;color:#e5edf6;border:0;padding:28px;}"
+            "QTextBrowser{background:#0d1118;color:#e5edf6;border:0;padding:28px;"
+            "selection-background-color:#284b70;selection-color:#ffffff;}"
         )
         layout.addWidget(browser,1)
 
@@ -1381,18 +1383,21 @@ class RichNowPlayingWidget(QWidget):
             line=_escape(row.get("text")) or "&nbsp;"
             stamp=max(0,int(row.get("time_ms") or 0))
             if i==current:
+                colour="#ffffff"
                 style=(
-                    f"font-size:{active}px;font-weight:750;color:#ffffff;"
+                    f"font-size:{active}px;font-weight:750;color:{colour};"
                     f"margin:{margin}px 0"
                 )
             elif current>=0 and abs(i-current)<=2:
-                style="color:#c8d3df;margin:7px 0"
+                colour="#c8d3df"
+                style=f"color:{colour};margin:7px 0"
             else:
-                style="color:#8290a1;margin:6px 0"
+                colour="#8290a1"
+                style=f"color:{colour};margin:6px 0"
             parts.append(
                 f"<a name='line-{i}'></a>"
                 f"<div style='{style}'>"
-                f"<a href='seek:{stamp}' style='color:inherit;text-decoration:none'>{line}</a>"
+                f"<a href='seek:{stamp}' style='color:{colour};text-decoration:none'>{line}</a>"
                 "</div>"
             )
         parts.append("</div>")

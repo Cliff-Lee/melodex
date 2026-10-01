@@ -1180,3 +1180,53 @@ def test_plain_lyrics_html_uses_explicit_dark_theme_contrast():
     assert "color:#e5edf6" in rendered
     assert "font-size:21px" in rendered
     assert "Line one<br>Line two" in rendered
+
+
+
+def test_synced_lyrics_links_use_explicit_readable_colours():
+    try:
+        from melodex.rich_now_playing import RichNowPlayingWidget
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Desktop runtime is unavailable: {exc}")
+
+    widget = object.__new__(RichNowPlayingWidget)
+    widget.synced = [
+        {"time_ms": 0, "text": "Previous line"},
+        {"time_ms": 1000, "text": "Current line"},
+        {"time_ms": 2000, "text": "Next line"},
+        {"time_ms": 3000, "text": "Distant line"},
+    ]
+
+    rendered = RichNowPlayingWidget._synced_lyrics_html(widget, 1)
+
+    assert "color:inherit" not in rendered
+    assert "href='seek:1000' style='color:#ffffff;text-decoration:none'" in rendered
+    assert "href='seek:0' style='color:#c8d3df;text-decoration:none'" in rendered
+    assert "href='seek:2000' style='color:#c8d3df;text-decoration:none'" in rendered
+    assert "href='seek:3000' style='color:#8290a1;text-decoration:none'" in rendered
+
+
+def test_fullscreen_synced_lyrics_keep_explicit_light_link_colours():
+    try:
+        from melodex.rich_now_playing import RichNowPlayingWidget
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Desktop runtime is unavailable: {exc}")
+
+    widget = object.__new__(RichNowPlayingWidget)
+    widget.synced = [
+        {"time_ms": 0, "text": "Line one"},
+        {"time_ms": 1000, "text": "Line two"},
+    ]
+
+    rendered = RichNowPlayingWidget._synced_lyrics_html(
+        widget,
+        0,
+        full_screen=True,
+    )
+
+    assert "color:inherit" not in rendered
+    assert "font-size:38px" in rendered
+    assert "href='seek:0' style='color:#ffffff;text-decoration:none'" in rendered
+    assert "href='seek:1000' style='color:#c8d3df;text-decoration:none'" in rendered
