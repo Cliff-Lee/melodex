@@ -138,6 +138,145 @@ class RichMetadataService:
         return self.json_cache / f"{self._hash(key)}.json"
 
 
+    def _load_lyrics_index(self) -> dict[str, dict[str, Any]]:
+        try:
+            raw=json.loads(self.lyrics_index_path.read_text("utf-8"))
+            if not isinstance(raw,dict):
+                return {}
+            return {
+                str(key):dict(value)
+                for key,value in raw.items()
+                if isinstance(value,dict)
+            }
+        except Exception:
+            return {}
+
+    def _save_lyrics_index(self) -> None:
+        self.cache_dir.mkdir(parents=True,exist_ok=True)
+        temp=self.lyrics_index_path.with_suffix(".tmp")
+        temp.write_text(
+            json.dumps(self._lyrics_index,ensure_ascii=False,indent=2),
+            "utf-8",
+        )
+        temp.replace(self.lyrics_index_path)
+
+    @staticmethod
+    def _lyrics_keys(track: dict[str, Any]) -> list[str]:
+        artist=_norm(track.get("artist"))
+        title=_norm(track.get("title"))
+        album=_norm(track.get("album"))
+        provider=str(track.get("provider_id") or "").strip()
+        track_id=str(track.get("track_id") or "").strip()
+        keys=[]
+        if artist and title:
+            keys.append(f"artist-title:{artist}|{title}")
+            if album:
+                keys.append(f"artist-title-album:{artist}|{title}|{album}")
+        if provider and track_id:
+            keys.append(f"provider-track:{provider}|{track_id}")
+        return list(dict.fromkeys(keys))
+
+    def cached_lyrics(self, track: dict[str, Any]) -> dict[str, Any]:
+        for key in self._lyrics_keys(track):
+            row=self._lyrics_index.get(key)
+            if not isinstance(row,dict):
+                continue
+            path=Path(str(row.get("path") or "")).expanduser()
+            if not path.is_file():
+                continue
+            try:
+                text=path.read_text("utf-8-sig",errors="replace")
+            except Exception:
+                continue
+            synced=parse_lrc(text) if path.suffix.casefold()==".lrc" else []
+            plain=(
+                "\n".join(item["text"] for item in synced if item.get("text"))
+                if synced else text.strip()
+            )
+            return {
+                "text":plain,
+                "synced":synced,
+                "source":str(row.get("source") or "Melodex lyrics"),
+                "path":str(path),
+                "user_added":True,
+            }
+        return {"text":"","synced":[],"source":""}
+
+    def _remember_lyrics_path(
+        self,
+        track: dict[str, Any],
+        path: Path,
+        *,
+        source: str,
+    ) -> dict[str, Any]:
+        if not path.is_file():
+            return {}
+        row={
+            "path":str(path),
+            "source":str(source or "User-added lyrics"),
+        }
+        keys=self._lyrics_keys(track)
+        if not keys:
+            return {}
+        with self._lyrics_index_lock:
+            for key in keys:
+                self._lyrics_index[key]=dict(row)
+            self._save_lyrics_index()
+        return self.cached_lyrics(track)
+
+    def remember_lyrics_text(
+        self,
+        track: dict[str, Any],
+        text: str,
+        *,
+        source: str = "Pasted lyrics",
+    ) -> dict[str, Any]:
+        text=str(text or "").strip()
+        if not text:
+            return {}
+        synced=parse_lrc(text)
+        suffix=".lrc" if synced else ".txt"
+        key=self._hash("|".join(self._lyrics_keys(track))+"|"+text)[:24]
+        target=self.lyrics_cache / f"user-{key}{suffix}"
+        target.write_text(text+"\n","utf-8")
+        return self._remember_lyrics_path(track,target,source=source)
+
+    def remember_lyrics_file(
+        self,
+        track: dict[str, Any],
+        source_path: str | Path,
+    ) -> dict[str, Any]:
+        source_path=Path(source_path).expanduser()
+        if not source_path.is_file() or source_path.suffix.casefold() not in {".lrc",".txt"}:
+            return {}
+        try:
+            text=source_path.read_text("utf-8-sig",errors="replace")
+        except Exception:
+            return {}
+        if not text.strip():
+            return {}
+        suffix=source_path.suffix.casefold()
+        key=self._hash("|".join(self._lyrics_keys(track))+"|"+text)[:24]
+        target=self.lyrics_cache / f"imported-{key}{suffix}"
+        target.write_text(text,"utf-8")
+        return self._remember_lyrics_path(
+            track,
+            target,
+            source=f"Imported {source_path.name}",
+        )
+
+    def clear_cached_lyrics(self, track: dict[str, Any]) -> bool:
+        changed=False
+        with self._lyrics_index_lock:
+            for key in self._lyrics_keys(track):
+                if key in self._lyrics_index:
+                    self._lyrics_index.pop(key,None)
+                    changed=True
+            if changed:
+                self._save_lyrics_index()
+        return changed
+
+
     def _load_artwork_index(self) -> dict[str, dict[str, Any]]:
         try:
             raw = json.loads(self.artwork_index_path.read_text("utf-8"))
