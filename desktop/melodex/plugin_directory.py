@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QMessageBox,
     QPushButton,
+    QStackedWidget,
     QTextBrowser,
     QStyle,
     QVBoxLayout,
@@ -35,6 +36,32 @@ from PySide6.QtWidgets import (
 class _Signals(QObject):
     done = Signal(object)
     error = Signal(str)
+
+
+def plugin_where_used(entry: dict[str, Any]) -> str:
+    kind=str(entry.get("kind") or "")
+    capabilities={str(x) for x in list(entry.get("capabilities") or []) if x}
+    if kind=="provider" or {"search","playback"} & capabilities:
+        return "Explore → Search everything"
+    if "library_suggestions" in capabilities or "recommendations" in capabilities:
+        return "For You"
+    if "artwork" in capabilities:
+        return "My Music → artwork tools"
+    if "lyrics" in capabilities:
+        return "Now Playing → Lyrics"
+    if {"context","metadata","identity"} & capabilities:
+        return "Now Playing"
+    return "Used automatically when needed"
+
+
+def _is_duplicate_reference(plugin_id: str) -> bool:
+    return plugin_id in {
+        "org.melodex.example.radio-browser",
+        "org.melodex.example.librivox",
+        "org.melodex.example.musicbrainz",
+        "org.melodex.example.cover-art-archive",
+        "org.melodex.example.wikimedia-commons",
+    }
 
 
 class PluginDirectoryCard(QFrame):
@@ -50,10 +77,11 @@ class PluginDirectoryCard(QFrame):
     ):
         super().__init__(parent)
         self.setObjectName("pluginDirectoryCard")
+        self.setProperty("installed",bool(installed))
         self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
         row=QHBoxLayout(self)
-        row.setContentsMargins(12,10,12,10)
-        row.setSpacing(11)
+        row.setContentsMargins(13,12,13,12)
+        row.setSpacing(12)
 
         capabilities=[str(x) for x in list(entry.get("capabilities") or []) if x]
         capability=capabilities[0] if capabilities else ""
@@ -71,7 +99,7 @@ class PluginDirectoryCard(QFrame):
         icon_label=QLabel()
         icon_label.setObjectName("pluginDirectoryIcon")
         icon_label.setAlignment(Qt.AlignCenter)
-        icon_label.setFixedSize(46,46)
+        icon_label.setFixedSize(50,50)
         glyph,accent,background=source_icon_spec(
             str(entry.get("name") or entry.get("id") or ""),
             icon_key,
@@ -123,9 +151,19 @@ class PluginDirectoryCard(QFrame):
                 "offline":"offline",
                 "recommendations":"recommendations",
             }.get(value,value.replace("_"," ")))
-        meta=QLabel(" · ".join(human_caps))
-        meta.setObjectName("pluginDirectoryMeta")
-        text.addWidget(meta)
+
+        meta_row=QHBoxLayout()
+        meta_row.setSpacing(6)
+        for label in human_caps[:3]:
+            cap=QLabel(label)
+            cap.setObjectName("pluginCapabilityChip")
+            meta_row.addWidget(cap)
+        meta_row.addStretch(1)
+        text.addLayout(meta_row)
+
+        usage=QLabel("↳  "+plugin_where_used(entry))
+        usage.setObjectName("pluginDirectoryUsage")
+        text.addWidget(usage)
         row.addLayout(text,1)
 
         state_text=str(badge or ("Installed" if installed else "Optional"))
@@ -193,14 +231,42 @@ class PluginDirectoryDialog(QDialog):
         hero_l.addLayout(hero_text,1)
         layout.addWidget(hero)
 
+        self.view = QComboBox(self)
+        self.view.addItem("Browse all", "all")
+        self.view.addItem("Installed", "installed")
+        self.view.addItem("Available", "available")
+        self.view.addItem("Needs setup", "setup")
+        self.view.addItem("Updates", "updates")
+        self.view.hide()
+
+        view_bar=QFrame()
+        view_bar.setObjectName("pluginViewBar")
+        view_l=QHBoxLayout(view_bar)
+        view_l.setContentsMargins(8,7,8,7)
+        view_l.setSpacing(6)
+        self.view_buttons={}
+        for label,value in (
+            ("All","all"),
+            ("Installed","installed"),
+            ("Available","available"),
+            ("Needs setup","setup"),
+            ("Updates","updates"),
+        ):
+            button=QPushButton(label)
+            button.setObjectName("pluginViewChip")
+            button.setCheckable(True)
+            button.setProperty("view",value)
+            button.clicked.connect(
+                lambda _checked=False, selected=value:self._select_view(selected)
+            )
+            self.view_buttons[value]=button
+            view_l.addWidget(button)
+        view_l.addStretch(1)
+        layout.addWidget(view_bar)
+
         filters = QHBoxLayout()
         self.search = QLineEdit()
         self.search.setPlaceholderText("Search plugins or features…")
-        self.view = QComboBox()
-        self.view.addItem("Browse all", "all")
-        self.view.addItem("Installed", "installed")
-        self.view.addItem("Needs setup", "setup")
-        self.view.addItem("Updates", "updates")
         self.kind = QComboBox()
         self.kind.addItem("Everything", "all")
         self.kind.addItem("Music sources", "provider")
@@ -221,7 +287,6 @@ class PluginDirectoryDialog(QDialog):
             self.capability.addItem(label, value)
         self.refresh_button = QPushButton("Refresh")
         filters.addWidget(self.search, 1)
-        filters.addWidget(self.view)
         filters.addWidget(self.kind)
         filters.addWidget(self.capability)
         filters.addWidget(self.refresh_button)
@@ -234,11 +299,45 @@ class PluginDirectoryDialog(QDialog):
 
         body = QHBoxLayout()
         body.setSpacing(14)
+        self.list_stack=QStackedWidget()
+        self.list_stack.setMinimumWidth(520)
+
         self.rows = QListWidget()
         self.rows.setObjectName("pluginDirectoryList")
-        self.rows.setMinimumWidth(500)
-        self.rows.setSpacing(5)
-        body.addWidget(self.rows, 3)
+        self.rows.setSpacing(6)
+        self.list_stack.addWidget(self.rows)
+
+        self.empty_state=QFrame()
+        self.empty_state.setObjectName("pluginDirectoryEmpty")
+        empty_l=QVBoxLayout(self.empty_state)
+        empty_l.setContentsMargins(32,40,32,40)
+        empty_l.setSpacing(9)
+        empty_l.addStretch(1)
+        self.empty_icon=QLabel("◇")
+        self.empty_icon.setObjectName("pluginDirectoryEmptyIcon")
+        self.empty_icon.setAlignment(Qt.AlignCenter)
+        empty_l.addWidget(self.empty_icon)
+        self.empty_title=QLabel("No plugins here")
+        self.empty_title.setObjectName("pluginDirectoryEmptyTitle")
+        self.empty_title.setAlignment(Qt.AlignCenter)
+        empty_l.addWidget(self.empty_title)
+        self.empty_body=QLabel("Try a different view or clear your filters.")
+        self.empty_body.setObjectName("pluginDirectoryEmptyBody")
+        self.empty_body.setWordWrap(True)
+        self.empty_body.setAlignment(Qt.AlignCenter)
+        empty_l.addWidget(self.empty_body)
+        empty_actions=QHBoxLayout()
+        empty_actions.addStretch(1)
+        self.empty_reset=QPushButton("Clear filters")
+        self.empty_reset.setObjectName("secondaryButton")
+        self.empty_reset.clicked.connect(self._clear_filters)
+        empty_actions.addWidget(self.empty_reset)
+        empty_actions.addStretch(1)
+        empty_l.addLayout(empty_actions)
+        empty_l.addStretch(1)
+        self.list_stack.addWidget(self.empty_state)
+
+        body.addWidget(self.list_stack, 3)
 
         detail_panel=QFrame()
         detail_panel.setObjectName("pluginDetailPanel")
@@ -302,6 +401,19 @@ class PluginDirectoryDialog(QDialog):
             QFrame#pluginCentreHero{
                 background:#121b26;border:1px solid #2b3c50;border-radius:14px;
             }
+            QFrame#pluginViewBar{
+                background:#0f1620;border:1px solid #253244;border-radius:12px;
+            }
+            QPushButton#pluginViewChip{
+                background:transparent;border:1px solid transparent;border-radius:9px;
+                padding:7px 11px;color:#8996a8;font-weight:650;
+            }
+            QPushButton#pluginViewChip:hover{
+                background:#151f2d;color:#c6d7eb;border-color:#2b3e55;
+            }
+            QPushButton#pluginViewChip:checked{
+                background:#1a314c;color:#e8f2ff;border-color:#3c6692;
+            }
             QLabel#pluginCentreHeroIcon{
                 background:#193354;border:1px solid #2f5d8f;border-radius:12px;
             }
@@ -314,13 +426,22 @@ class PluginDirectoryDialog(QDialog):
             QListWidget#pluginDirectoryList::item:selected{
                 background:#18263a;border:1px solid #31547d;border-radius:10px;
             }
-            QFrame#pluginDirectoryCard{background:transparent;border:0}
+            QFrame#pluginDirectoryCard{
+                background:#101720;border:1px solid #202d3e;border-radius:11px;
+            }
+            QFrame#pluginDirectoryCard[installed="true"]{
+                background:#111c28;border-color:#2b4968;
+            }
             QLabel#pluginDirectoryIcon{
                 background:#19283b;border:1px solid #304c6c;border-radius:11px;
             }
             QLabel#pluginDirectoryTitle{font-size:14px;font-weight:700}
             QLabel#pluginDirectoryDescription{color:#8f9bad;font-size:11px}
-            QLabel#pluginDirectoryMeta{color:#6fa8ed;font-size:10px}
+            QLabel#pluginCapabilityChip{
+                color:#8fb9eb;background:#16273a;border:1px solid #29445f;
+                border-radius:6px;padding:2px 5px;font-size:9px;
+            }
+            QLabel#pluginDirectoryUsage{color:#75859a;font-size:10px}
             QLabel#pluginDirectoryType{
                 color:#9aacbf;background:#17202c;border:1px solid #2a394b;
                 border-radius:6px;padding:2px 5px;font-size:9px;
@@ -352,6 +473,14 @@ class PluginDirectoryDialog(QDialog):
             QPushButton#dangerQuietButton:hover{
                 background:#2d1b20;border-color:#71404a;
             }
+            QFrame#pluginDirectoryEmpty{
+                background:#0f151e;border:1px dashed #334154;border-radius:12px;
+            }
+            QLabel#pluginDirectoryEmptyIcon{
+                color:#6784a6;font-size:34px;font-weight:700;
+            }
+            QLabel#pluginDirectoryEmptyTitle{font-size:18px;font-weight:720}
+            QLabel#pluginDirectoryEmptyBody{color:#8d99aa;font-size:12px}
             QFrame#pluginDetailPanel{
                 background:#101720;border:1px solid #273548;border-radius:12px;
             }
@@ -382,6 +511,7 @@ class PluginDirectoryDialog(QDialog):
             if index >= 0:
                 self.capability.setCurrentIndex(index)
 
+        self._sync_view_buttons()
         self.load_registry(force=False)
 
     def _run_async(self, fn, done) -> None:
@@ -457,6 +587,76 @@ class PluginDirectoryDialog(QDialog):
         value = item.data(Qt.UserRole) if item else None
         return dict(value or {}) if isinstance(value, dict) else {}
 
+    def _select_view(self, value: str) -> None:
+        index=self.view.findData(str(value or "all"))
+        if index >= 0:
+            self.view.setCurrentIndex(index)
+        self._sync_view_buttons()
+
+    def _sync_view_buttons(self) -> None:
+        current=str(self.view.currentData() or "all")
+        for value,button in self.view_buttons.items():
+            button.setChecked(value==current)
+
+    def _view_counts(self, plugins: list[dict[str, Any]]) -> dict[str, int]:
+        counts={"all":len(plugins),"installed":0,"available":0,"setup":0,"updates":0}
+        for entry in plugins:
+            installed=self._is_installed(entry)
+            if installed:
+                counts["installed"]+=1
+                plugin_id=str(entry.get("id") or "")
+                config_info=plugin_configuration_info(self.manager,plugin_id)
+                if configuration_state(config_info)=="setup_needed":
+                    counts["setup"]+=1
+                if self._update_available(entry):
+                    counts["updates"]+=1
+            elif not _is_duplicate_reference(str(entry.get("id") or "")):
+                counts["available"]+=1
+        return counts
+
+    def _update_view_buttons(self, counts: dict[str, int]) -> None:
+        labels={
+            "all":"All",
+            "installed":"Installed",
+            "available":"Available",
+            "setup":"Needs setup",
+            "updates":"Updates",
+        }
+        for value,button in self.view_buttons.items():
+            button.setText(f"{labels[value]}  {int(counts.get(value,0))}")
+        self._sync_view_buttons()
+
+    def _clear_filters(self) -> None:
+        self.search.clear()
+        self.kind.setCurrentIndex(0)
+        self.capability.setCurrentIndex(0)
+        self._select_view("all")
+
+    def _show_empty_state(self, view: str) -> None:
+        searching=bool(self.search.text().strip())
+        if searching:
+            title="No matches"
+            body=f'Nothing matches “{self.search.text().strip()}” with these filters.'
+        elif view=="installed":
+            title="No optional plugins installed"
+            body="Melodex still works normally. Browse Available when you want to add something."
+        elif view=="available":
+            title="Nothing available here"
+            body="Try another feature filter or Browse all."
+        elif view=="setup":
+            title="Nothing needs setup"
+            body="Installed plugins that require configuration will appear here."
+        elif view=="updates":
+            title="Everything is up to date"
+            body="No installed registry plugins currently have an update available."
+        else:
+            title="No matching plugins"
+            body="Try clearing a filter or choosing a different feature."
+        self.empty_title.setText(title)
+        self.empty_body.setText(body)
+        self.empty_reset.setText("Browse all" if view!="all" and not searching else "Clear filters")
+        self.list_stack.setCurrentWidget(self.empty_state)
+
     def load_registry(self, force: bool = False) -> None:
         self.status.setText("Refreshing registry…" if force else "Loading registry…")
         self.rows.clear()
@@ -506,6 +706,8 @@ class PluginDirectoryDialog(QDialog):
             str(self.capability.currentData() or "all"),
         )
         providers, extensions = self._installed_ids()
+        counts=self._view_counts(plugins)
+        self._update_view_buttons(counts)
         view=str(self.view.currentData() or "all")
         filtered=[]
         for entry in plugins:
@@ -516,12 +718,28 @@ class PluginDirectoryDialog(QDialog):
             update=self._update_available(entry) if installed else False
             if view=="installed" and not installed:
                 continue
+            if view=="available" and (
+                installed or _is_duplicate_reference(plugin_id)
+            ):
+                continue
             if view=="setup" and not (installed and state=="setup_needed"):
                 continue
             if view=="updates" and not update:
                 continue
             filtered.append(entry)
-        plugins=filtered
+
+        def sort_key(entry):
+            installed=self._is_installed(entry)
+            plugin_id=str(entry.get("id") or "")
+            status=str(entry.get("status") or "").casefold()
+            return (
+                0 if installed else 1,
+                1 if _is_duplicate_reference(plugin_id) else 0,
+                1 if status=="example" else 0,
+                str(entry.get("name") or plugin_id).casefold(),
+            )
+
+        plugins=sorted(filtered,key=sort_key)
         for entry in plugins:
             plugin_id = str(entry.get("id") or "")
             installed = plugin_id in (
@@ -536,13 +754,7 @@ class PluginDirectoryDialog(QDialog):
             config_state = configuration_state(config_info)
             health = self.manager.plugin_health(plugin_id) if installed else {}
             health_state = health_badge(health) if installed else ""
-            duplicate_reference=plugin_id in {
-                "org.melodex.example.radio-browser",
-                "org.melodex.example.librivox",
-                "org.melodex.example.musicbrainz",
-                "org.melodex.example.cover-art-archive",
-                "org.melodex.example.wikimedia-commons",
-            }
+            duplicate_reference=_is_duplicate_reference(plugin_id)
             badge = (
                 "Update · setup"
                 if update_available and config_state == "setup_needed"
@@ -567,15 +779,17 @@ class PluginDirectoryDialog(QDialog):
             self.rows.addItem(item)
             self.rows.setItemWidget(item,card)
         if self.rows.count():
+            self.list_stack.setCurrentWidget(self.rows)
             self.rows.setCurrentRow(0)
             view_label=str(self.view.currentText() or "Browse all")
             self.status.setText(
                 f"{self.rows.count()} plugin{'s' if self.rows.count()!=1 else ''} shown · {view_label}"
             )
         else:
+            self._show_empty_state(view)
             self.details.setHtml(
-                "<h3>No matching plugins</h3>"
-                "<p style='color:#8f9bad'>Try clearing a filter or searching for a different feature.</p>"
+                "<h3>Nothing selected</h3>"
+                "<p style='color:#8f9bad'>Adjust the filters on the left to browse plugins.</p>"
             )
             self.tech_details.clear()
             self.install_button.setEnabled(False)
@@ -599,19 +813,7 @@ class PluginDirectoryDialog(QDialog):
 
     @staticmethod
     def _where_used(entry: dict[str, Any]) -> str:
-        kind=str(entry.get("kind") or "")
-        capabilities={str(x) for x in list(entry.get("capabilities") or []) if x}
-        if kind=="provider" or {"search","playback"} & capabilities:
-            return "Explore → Search everything"
-        if "library_suggestions" in capabilities or "recommendations" in capabilities:
-            return "For You"
-        if "artwork" in capabilities:
-            return "My Music → artwork tools"
-        if "lyrics" in capabilities:
-            return "Now Playing → Lyrics"
-        if {"context","metadata","identity"} & capabilities:
-            return "Now Playing"
-        return "Melodex uses it automatically when its capability is needed"
+        return plugin_where_used(entry)
 
     def _show_details(self) -> None:
         entry = self._selected()
@@ -622,6 +824,8 @@ class PluginDirectoryDialog(QDialog):
             self.use_button.setEnabled(False)
             self.configure_button.setEnabled(False)
             self.test_button.setEnabled(False)
+            self.toggle_button.setEnabled(False)
+            self.remove_button.setEnabled(False)
             self.source_button.setEnabled(False)
             self.review_button.setEnabled(False)
             return
