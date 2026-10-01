@@ -867,38 +867,128 @@ class MainWindow(QMainWindow):
     def _build_album_wall(self):
         l=self._page_layout(
             "album_wall",
-            "Album wall",
-            "Explore your collection spatially. Sound keeps related records near each other; switch lenses for familiarity, time, or a stable A–Z shelf.",
+            "Album Wall",
+            "Browse your collection as a visual place. Drag to explore, scroll to zoom, and change the lens when you want a different way of seeing the same music.",
         )
+
         actions=QHBoxLayout()
-        refresh=QPushButton("Refresh wall"); refresh.clicked.connect(self._refresh_album_wall)
-        analyse=QPushButton("Analyse my library"); analyse.clicked.connect(self._analyse_library_for_album_wall)
-        play=QPushButton("Play album"); play.clicked.connect(self._play_album_wall_selected)
-        queue=QPushButton("Queue album"); queue.clicked.connect(self._queue_album_wall_selected)
-        actions.addWidget(refresh); actions.addWidget(analyse); actions.addWidget(play); actions.addWidget(queue); actions.addStretch(1)
+        improve=QPushButton("Improve sonic layout")
+        improve.clicked.connect(self._analyse_library_for_album_wall)
+        self.album_wall_play_button=QPushButton("▶ Play selected")
+        self.album_wall_play_button.clicked.connect(self._play_album_wall_selected)
+        self.album_wall_play_button.setEnabled(False)
+        self.album_wall_queue_button=QPushButton("+ Queue selected")
+        self.album_wall_queue_button.clicked.connect(self._queue_album_wall_selected)
+        self.album_wall_queue_button.setEnabled(False)
+        set_help(
+            improve,
+            "Improve sonic layout",
+            "Analyses tempo, dynamics and other sonic characteristics on this computer so the Sound lens can place related albums near each other. Audio is not uploaded.",
+        )
+        set_help(
+            self.album_wall_play_button,
+            "Play selected album",
+            "Starts the selected album from track one in disc and track order.",
+        )
+        set_help(
+            self.album_wall_queue_button,
+            "Queue selected album",
+            "Adds every track from the selected album after the music already in your queue.",
+        )
+        actions.addWidget(improve)
+        actions.addStretch(1)
+        actions.addWidget(self.album_wall_play_button)
+        actions.addWidget(self.album_wall_queue_button)
         l.addLayout(actions)
+
+        self.album_wall_power_panel=QFrame()
+        self.album_wall_power_panel.setObjectName("powerPanel")
+        power=QHBoxLayout(self.album_wall_power_panel)
+        power.setContentsMargins(12,8,12,8)
+        refresh=QPushButton("Rebuild wall")
+        refresh.clicked.connect(self._refresh_album_wall)
+        raw_analyse=QPushButton("Run library analysis")
+        raw_analyse.clicked.connect(self._analyse_library_for_album_wall)
+        power.addWidget(QLabel("Power tools"))
+        power.addWidget(refresh)
+        power.addWidget(raw_analyse)
+        power.addStretch(1)
+        self.album_wall_power_panel.setVisible(self.power_toggle.isChecked())
+        l.addWidget(self.album_wall_power_panel)
+
         self.album_wall=AlbumWallWidget(self)
+        self.album_wall.albumSelected.connect(self._album_wall_selection_changed)
         self.album_wall.albumActivated.connect(self._play_album_wall_album)
         self.album_wall.artworkRequested.connect(self._album_wall_artwork_requested)
         self.album_wall.onlineArtworkRequested.connect(self._album_wall_online_artwork_requested)
         l.addWidget(self.album_wall,1)
 
+    def _album_wall_selection_changed(self, album: object) -> None:
+        enabled=isinstance(album,dict) and bool(album)
+        self.album_wall_play_button.setEnabled(enabled)
+        self.album_wall_queue_button.setEnabled(enabled)
+
+
     def _build_music_map(self):
         l=self._page_layout(
             "music_map",
-            "Music map",
-            "Explore your library as both a sonic landscape and a knowledge graph. Keep the dots fixed, switch Connections, or ask Pathfinder to build an explainable listening route between two tracks."
+            "Music Map",
+            "Explore relationships between tracks. Select something on the map first; route-planning and technical controls appear only when you ask for them.",
         )
-        actions=QHBoxLayout()
-        refresh=QPushButton("Refresh map"); refresh.clicked.connect(self._refresh_music_map)
-        analyse=QPushButton("Analyse my library"); analyse.clicked.connect(self._analyse_library_for_map)
-        enrich_selected=QPushButton("Enrich selected"); enrich_selected.clicked.connect(self._enrich_selected_map_knowledge)
-        enrich_map=QPushButton("Enrich map (+8)"); enrich_map.clicked.connect(self._enrich_map_knowledge_batch)
-        play=QPushButton("Play selected"); play.clicked.connect(self._play_music_map_selected)
-        queue=QPushButton("Add selected to queue"); queue.clicked.connect(self._queue_music_map_selected)
-        journey=QPushButton("Start Mind journey here"); journey.clicked.connect(self._journey_from_music_map)
-        actions.addWidget(refresh); actions.addWidget(analyse); actions.addWidget(enrich_selected); actions.addWidget(enrich_map); actions.addWidget(play); actions.addWidget(queue); actions.addWidget(journey); actions.addStretch(1)
-        l.addLayout(actions)
+
+        simple=QHBoxLayout()
+        improve=QPushButton("Improve map")
+        improve.clicked.connect(self._analyse_library_for_map)
+        play=QPushButton("▶ Play selected")
+        play.clicked.connect(self._play_music_map_selected)
+        queue=QPushButton("+ Queue selected")
+        queue.clicked.connect(self._queue_music_map_selected)
+        plan=QPushButton("Plan a route…")
+        plan.clicked.connect(self._toggle_music_map_tools)
+        set_help(
+            improve,
+            "Improve map",
+            "Analyses your local tracks on this computer so sonic relationships can be placed more accurately.",
+        )
+        set_help(
+            plan,
+            "Plan a route",
+            "Reveal start, destination and journey-shaping controls. You can hide them again when you only want to browse.",
+        )
+        simple.addWidget(improve)
+        simple.addStretch(1)
+        simple.addWidget(play)
+        simple.addWidget(queue)
+        simple.addWidget(plan)
+        l.addLayout(simple)
+
+        self.music_map_power_panel=QFrame()
+        self.music_map_power_panel.setObjectName("powerPanel")
+        power=QVBoxLayout(self.music_map_power_panel)
+        power.setContentsMargins(13,11,13,11)
+        power.setSpacing(8)
+
+        top=QHBoxLayout()
+        power_title=QLabel("Route & map tools")
+        power_title.setStyleSheet("font-size:15px;font-weight:700")
+        refresh=QPushButton("Refresh map")
+        refresh.clicked.connect(self._refresh_music_map)
+        enrich_selected=QPushButton("Find selected details")
+        enrich_selected.clicked.connect(self._enrich_selected_map_knowledge)
+        enrich_map=QPushButton("Find map details (+8)")
+        enrich_map.clicked.connect(self._enrich_map_knowledge_batch)
+        journey=QPushButton("Start listening here")
+        journey.clicked.connect(self._journey_from_music_map)
+        close_tools=QPushButton("Hide tools")
+        close_tools.clicked.connect(lambda:self.music_map_power_panel.hide())
+        top.addWidget(power_title)
+        top.addStretch(1)
+        top.addWidget(refresh)
+        top.addWidget(enrich_selected)
+        top.addWidget(enrich_map)
+        top.addWidget(journey)
+        top.addWidget(close_tools)
+        power.addLayout(top)
 
         path_row=QHBoxLayout()
         self.music_path_mode=QComboBox()
@@ -908,20 +998,30 @@ class MainWindow(QMainWindow):
         self.music_path_mode.currentIndexChanged.connect(
             lambda *_:self._journey_recipe_mark_modified()
         )
-        set_start=QPushButton("Set start"); set_start.clicked.connect(self._music_path_set_start)
-        set_end=QPushButton("Set destination"); set_end.clicked.connect(self._music_path_set_end)
-        find_path=QPushButton("Find path"); find_path.clicked.connect(self._music_path_find)
-        play_path=QPushButton("Play route"); play_path.clicked.connect(self._music_path_play)
-        queue_path=QPushButton("Queue route"); queue_path.clicked.connect(self._music_path_queue)
-        clear_path=QPushButton("Clear path"); clear_path.clicked.connect(self._music_path_clear)
-        self.music_path_label=QLabel("Pathfinder · start —  →  destination —")
+        set_start=QPushButton("Use selected as start")
+        set_start.clicked.connect(self._music_path_set_start)
+        set_end=QPushButton("Use selected as destination")
+        set_end.clicked.connect(self._music_path_set_end)
+        find_path=QPushButton("Find route")
+        find_path.clicked.connect(self._music_path_find)
+        play_path=QPushButton("▶ Play route")
+        play_path.clicked.connect(self._music_path_play)
+        queue_path=QPushButton("+ Queue route")
+        queue_path.clicked.connect(self._music_path_queue)
+        clear_path=QPushButton("Clear")
+        clear_path.clicked.connect(self._music_path_clear)
+        self.music_path_label=QLabel("Start —  →  Destination —")
         self.music_path_label.setStyleSheet("color:#aab0ba")
-        path_row.addWidget(QLabel("Pathfinder"))
+        path_row.addWidget(QLabel("Route"))
         path_row.addWidget(self.music_path_mode)
-        path_row.addWidget(set_start); path_row.addWidget(set_end); path_row.addWidget(find_path)
-        path_row.addWidget(play_path); path_row.addWidget(queue_path); path_row.addWidget(clear_path)
+        path_row.addWidget(set_start)
+        path_row.addWidget(set_end)
+        path_row.addWidget(find_path)
+        path_row.addWidget(play_path)
+        path_row.addWidget(queue_path)
+        path_row.addWidget(clear_path)
         path_row.addWidget(self.music_path_label,1)
-        l.addLayout(path_row)
+        power.addLayout(path_row)
 
         journey_edit=QHBoxLayout()
         self.music_journey_preset=QComboBox()
@@ -941,15 +1041,20 @@ class MainWindow(QMainWindow):
             "Surprising → Darker → Bright",
             ["surprising","dark","bright"],
         )
-        load_preset=QPushButton("Load preset"); load_preset.clicked.connect(self._music_journey_load_preset)
+        load_preset=QPushButton("Load shape")
+        load_preset.clicked.connect(self._music_journey_load_preset)
         self.music_journey_constraint=QComboBox()
         for key in ("calm","dark","forgotten","energetic","bright","rhythmic","familiar","surprising"):
             self.music_journey_constraint.addItem(STAGE_LABELS[key],key)
-        add_constraint=QPushButton("Add constraint"); add_constraint.clicked.connect(self._music_journey_add_constraint)
-        add_track=QPushButton("Add selected track"); add_track.clicked.connect(self._music_journey_add_track)
-        remove_stage=QPushButton("Remove stage"); remove_stage.clicked.connect(self._music_journey_remove_stage)
-        clear_stages=QPushButton("Clear stages"); clear_stages.clicked.connect(self._music_journey_clear_stages)
-        journey_edit.addWidget(QLabel("Journey Designer"))
+        add_constraint=QPushButton("Add direction")
+        add_constraint.clicked.connect(self._music_journey_add_constraint)
+        add_track=QPushButton("Add selected track")
+        add_track.clicked.connect(self._music_journey_add_track)
+        remove_stage=QPushButton("Remove")
+        remove_stage.clicked.connect(self._music_journey_remove_stage)
+        clear_stages=QPushButton("Clear shape")
+        clear_stages.clicked.connect(self._music_journey_clear_stages)
+        journey_edit.addWidget(QLabel("Shape journey"))
         journey_edit.addWidget(self.music_journey_preset,1)
         journey_edit.addWidget(load_preset)
         journey_edit.addWidget(self.music_journey_constraint)
@@ -957,26 +1062,29 @@ class MainWindow(QMainWindow):
         journey_edit.addWidget(add_track)
         journey_edit.addWidget(remove_stage)
         journey_edit.addWidget(clear_stages)
-        l.addLayout(journey_edit)
+        power.addLayout(journey_edit)
 
         journey_actions=QHBoxLayout()
-        build_journey=QPushButton("Build journey"); build_journey.clicked.connect(self._music_journey_build)
-        play_journey=QPushButton("Play journey"); play_journey.clicked.connect(self._music_path_play)
-        queue_journey=QPushButton("Queue journey"); queue_journey.clicked.connect(self._music_path_queue)
-        journey_help=QLabel("Uses the Pathfinder start/destination and routing mode.")
+        build_journey=QPushButton("Build journey")
+        build_journey.clicked.connect(self._music_journey_build)
+        play_journey=QPushButton("▶ Play")
+        play_journey.clicked.connect(self._music_path_play)
+        queue_journey=QPushButton("+ Queue")
+        queue_journey.clicked.connect(self._music_path_queue)
+        journey_help=QLabel("Start and destination come from the route above.")
         journey_help.setStyleSheet("color:#aab0ba")
         journey_actions.addWidget(build_journey)
         journey_actions.addWidget(play_journey)
         journey_actions.addWidget(queue_journey)
         journey_actions.addWidget(journey_help,1)
-        l.addLayout(journey_actions)
+        power.addLayout(journey_actions)
 
         self.music_journey_stages=QListWidget()
-        self.music_journey_stages.setMaximumHeight(96)
+        self.music_journey_stages.setMaximumHeight(92)
         self.music_journey_stages.addItem(
-            "Journey stages use the Pathfinder start/destination. Load a preset or add constraints/track waypoints."
+            "Choose a shape or add directions after setting a start and destination."
         )
-        l.addWidget(self.music_journey_stages)
+        power.addWidget(self.music_journey_stages)
 
         live_row=QHBoxLayout()
         self.music_live_steering=QComboBox()
@@ -992,16 +1100,23 @@ class MainWindow(QMainWindow):
             ("rediscover","Rediscover next"),
         ):
             self.music_live_steering.addItem(label,key)
-        play_live=QPushButton("Play live journey"); play_live.clicked.connect(self._journey_live_start)
-        apply_steer=QPushButton("Apply steer"); apply_steer.clicked.connect(self._journey_live_apply_steer)
-        avoid_artist=QPushButton("Avoid current artist"); avoid_artist.clicked.connect(self._journey_live_avoid_current_artist)
-        skip_replan=QPushButton("Skip + replan"); skip_replan.clicked.connect(self.player.next)
-        replan=QPushButton("Replan remaining"); replan.clicked.connect(lambda:self._journey_live_replan("",reason="manual replan"))
-        restore=QPushButton("Restore designed route"); restore.clicked.connect(self._journey_live_restore)
-        stop_live=QPushButton("Stop live"); stop_live.clicked.connect(self._journey_live_stop)
-        self.music_live_label=QLabel("Journey Live · inactive")
+        play_live=QPushButton("Play live journey")
+        play_live.clicked.connect(self._journey_live_start)
+        apply_steer=QPushButton("Apply steer")
+        apply_steer.clicked.connect(self._journey_live_apply_steer)
+        avoid_artist=QPushButton("Avoid current artist")
+        avoid_artist.clicked.connect(self._journey_live_avoid_current_artist)
+        skip_replan=QPushButton("Skip + replan")
+        skip_replan.clicked.connect(self.player.next)
+        replan=QPushButton("Replan")
+        replan.clicked.connect(lambda:self._journey_live_replan("",reason="manual replan"))
+        restore=QPushButton("Restore design")
+        restore.clicked.connect(self._journey_live_restore)
+        stop_live=QPushButton("Stop live")
+        stop_live.clicked.connect(self._journey_live_stop)
+        self.music_live_label=QLabel("Live journey inactive")
         self.music_live_label.setStyleSheet("color:#aab0ba")
-        live_row.addWidget(QLabel("Journey Live"))
+        live_row.addWidget(QLabel("While listening"))
         live_row.addWidget(play_live)
         live_row.addWidget(self.music_live_steering)
         live_row.addWidget(apply_steer)
@@ -1011,15 +1126,31 @@ class MainWindow(QMainWindow):
         live_row.addWidget(restore)
         live_row.addWidget(stop_live)
         live_row.addWidget(self.music_live_label,1)
-        l.addLayout(live_row)
+        power.addLayout(live_row)
+
+        self.music_map_power_panel.setVisible(self.power_toggle.isChecked())
+        l.addWidget(self.music_map_power_panel)
 
         self.music_map=MusicMapWidget(self)
         self.music_map.trackActivated.connect(self._play_music_map_track)
         l.addWidget(self.music_map,1)
+
         self.music_path_steps=QListWidget()
-        self.music_path_steps.setMaximumHeight(132)
-        self.music_path_steps.addItem("Pathfinder explanations will appear here.")
+        self.music_path_steps.setMaximumHeight(116)
+        self.music_path_steps.addItem("Route explanations will appear here after you plan one.")
+        self.music_path_steps.setVisible(self.power_toggle.isChecked())
         l.addWidget(self.music_path_steps)
+
+    def _toggle_music_map_tools(self) -> None:
+        visible=not self.music_map_power_panel.isVisible()
+        self.music_map_power_panel.setVisible(visible)
+        self.music_path_steps.setVisible(visible)
+        if visible:
+            self.statusBar().showMessage(
+                "Route tools revealed · select a track, set start and destination, then Find route",
+                5000,
+            )
+
 
     def _build_journeys(self):
         l=self._page_layout(
