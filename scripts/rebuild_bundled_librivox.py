@@ -6,6 +6,7 @@ import zipfile
 from pathlib import Path
 
 
+# Rebuild from the known-good public 0.1.2 bundle; never hand-edit ZIP bytes.
 def rebuild(source: Path, destination: Path) -> None:
     with zipfile.ZipFile(source, "r") as zin:
         files = {name: zin.read(name) for name in zin.namelist() if not name.endswith("/")}
