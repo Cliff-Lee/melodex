@@ -325,6 +325,7 @@ class LibraryBrowser(QWidget):
     artworkRequested = Signal(object)
     onlineArtworkRequested = Signal(object)
     artistImageRequested = Signal(object)
+    artistImageCacheRequested = Signal(object)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -529,6 +530,7 @@ class LibraryBrowser(QWidget):
         self._apply_filter()
         self.set_view(self.current_view())
         self._request_artwork()
+        self._request_cached_artist_images()
 
     def current_view(self) -> str:
         for key, button in self.view_buttons.items():
@@ -750,6 +752,17 @@ class LibraryBrowser(QWidget):
         if batch:
             self.artworkRequested.emit(batch)
 
+    def _request_cached_artist_images(self) -> None:
+        batch=[]
+        for artist in self.artist_rows:
+            key=str(artist.get("key") or "")
+            track=dict(artist.get("representative_track") or {})
+            name=str(artist.get("name") or "")
+            if key and track and name and _norm(name)!="unknown artist":
+                batch.append({"key":key,"artist":name,"track":track})
+        if batch:
+            self.artistImageCacheRequested.emit(batch)
+
     def _request_online_artwork(self) -> None:
         if self.current_view() == "artists":
             batch = []
@@ -826,9 +839,12 @@ class LibraryBrowser(QWidget):
 
     def set_artist_images(self, mapping: dict[str, str]) -> None:
         for key, path in dict(mapping or {}).items():
-            card = self.artist_cards.get(str(key))
+            key=str(key)
+            card = self.artist_cards.get(key)
             if card is not None and path:
                 card.set_image(str(path), artist_photo=True)
+            elif not path:
+                self._artist_art_requested.discard(key)
 
 
 __all__ = ["AlbumCard", "ArtistCard", "TrackRow", "LibraryBrowser"]
