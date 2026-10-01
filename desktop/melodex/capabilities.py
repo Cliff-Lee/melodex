@@ -427,8 +427,28 @@ class ExternalExtension:
     @staticmethod
     def _diagnostic_error(exc: Exception) -> str:
         text = str(exc).casefold()
-        if "timed out" in text:
+        if "timed out" in text or "timeout" in text:
             return "timeout"
+        if (
+            "certificate_verify_failed" in text
+            or "certificate verify failed" in text
+            or "ssl: certificate" in text
+        ):
+            return "tls_error"
+        if any(
+            token in text
+            for token in (
+                "urlopen error",
+                "name or service not known",
+                "temporary failure in name resolution",
+                "nodename nor servname",
+                "connection refused",
+                "connection reset",
+                "remote end closed",
+                "network is unreachable",
+            )
+        ):
+            return "network_error"
         if "non-json" in text:
             return "protocol_error"
         if "stopped" in text or "broken pipe" in text:
