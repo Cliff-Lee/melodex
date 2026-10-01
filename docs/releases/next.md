@@ -28,3 +28,12 @@ This file tracks changes intended for **v0.7.3**.
 - Releases show the first six release groups with direct MusicBrainz links instead of an exhaustive scrolling timeline.
 - Credits are grouped by role and duplicate names are collapsed.
 - Artist-photo attribution is shortened beneath the portrait, with the full attribution retained in a tooltip.
+
+## K4 — Native Context
+
+- Context is now a native Melodex surface rather than a plugin-owned empty state.
+- Core recording, artist and relationship information is shown even when no context extension is installed.
+- Optional context cards are layered underneath Core instead of replacing it.
+- A temporary plugin/network failure leaves Core context visible and is reported as an optional-source problem.
+- Context source management moves to a compact **Sources…** action.
+- **Refresh context** retries optional enrichment without disturbing playback or the rest of Now Playing.

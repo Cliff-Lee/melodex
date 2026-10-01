@@ -40,6 +40,8 @@ Select the current track in the persistent player to open **Now Playing**. The *
 
 Synchronized lines follow playback; select a line to seek to that point in the track. Lyrics are optional. You can keep using the player without setting up an extension or AI service.
 
+The **Context** tab is also part of Melodex itself. It combines what Melodex already knows about the current recording, artist and key relationships. Optional context sources can add liner notes or community information, but a missing or unavailable plugin does not make the whole tab empty. Use **Sources…** to manage optional helpers and **Refresh context** to try them again.
+
 The separate **Visuals** tab has optional music visualisations. They use cached analysis when it is available and do not analyse audio during playback.
 
 See [Now Playing](RICH_NOW_PLAYING.md) for more.
