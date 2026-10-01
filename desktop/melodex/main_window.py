@@ -2031,11 +2031,32 @@ class MainWindow(QMainWindow):
                     kind=section_kind
                     icon_key="provider"
 
+            friendly_descriptions={
+                "local":"Your own music on this computer. Nothing is uploaded.",
+                "streams":"Direct radio or audio links that you add yourself.",
+                "jamendo":"Optional connection to Jamendo's independent-music catalogue.",
+            }
+            lower_name=name.casefold()
+            if "internet archive" in lower_name:
+                description="Explore recordings, live music and spoken audio from Internet Archive."
+            elif "librivox" in lower_name:
+                description="Public-domain audiobooks read by volunteers."
+            elif "radio browser" in lower_name:
+                description="Search a worldwide community directory of internet radio stations."
+            elif "somafm" in lower_name:
+                description="Curated listener-supported internet radio from SomaFM."
+            elif "wikimedia" in lower_name:
+                description="Openly licensed and public-domain audio from Wikimedia Commons."
+            elif "ccmixter" in lower_name:
+                description="Creative Commons music, samples and remixes."
+            else:
+                description=friendly_descriptions.get(pid,str(p.info.description or ""))
+
             item=QListWidgetItem()
             item.setData(Qt.UserRole,pid)
             card=SourceCard(
                 name,
-                str(p.info.description or ""),
+                description,
                 status,
                 kind=kind,
                 icon_key=icon_key,
