@@ -1,0 +1,103 @@
+name: Beta tester feedback
+description: Tell us what felt good, confusing or missing while trying Melodex
+title: "[Tester feedback]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for trying Melodex. You do not need to be technical. First impressions, confusion and rough edges are extremely useful.
+
+        Please do not post passwords, API keys, tokens, private URLs or copyrighted music files.
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - macOS Apple Silicon
+        - macOS Intel
+        - Windows
+        - Linux
+        - Android
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Melodex version
+      placeholder: "e.g. v0.7.2"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: library_size
+    attributes:
+      label: Approximate local library size
+      options:
+        - No local library
+        - Under 500 tracks
+        - 500–5,000 tracks
+        - 5,000–25,000 tracks
+        - 25,000–100,000 tracks
+        - More than 100,000 tracks
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: tried
+    attributes:
+      label: What did you try?
+      description: A short list is enough.
+      placeholder: "Added a folder, played an album, tried Flow, opened Album Wall…"
+    validations:
+      required: true
+
+  - type: textarea
+    id: good
+    attributes:
+      label: What worked well?
+      description: What felt clear, useful or enjoyable?
+
+  - type: textarea
+    id: confusing
+    attributes:
+      label: What was confusing or awkward?
+      description: Tell us where you hesitated, got lost, or expected something different.
+    validations:
+      required: true
+
+  - type: textarea
+    id: missing
+    attributes:
+      label: What would make you more likely to keep using Melodex?
+      description: One missing feature or improvement is enough.
+
+  - type: dropdown
+    id: return
+    attributes:
+      label: Would you use Melodex again in its current state?
+      options:
+        - Yes
+        - Probably
+        - Maybe
+        - Probably not
+        - No
+    validations:
+      required: true
+
+  - type: textarea
+    id: anything_else
+    attributes:
+      label: Anything else?
+      description: Screenshots are welcome if they help explain the experience.
+
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy check
+      options:
+        - label: I have removed passwords, API keys, tokens and other private information.
+          required: true
