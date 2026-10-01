@@ -1064,46 +1064,125 @@ class MainWindow(QMainWindow):
     def _build_sources(self):
         l=self._page_layout(
             "sources",
-            "Music sources",
-            "Connect Melodex to your music. Built-in sources stay simple; "
-            "provider tools are available when you need them.",
+            "Sources & plugins",
+            "Choose where Melodex can find music. Everyday controls stay simple; provider internals appear only when you enable Power tools.",
         )
-        self.sources_list=QListWidget(); self.sources_list.setObjectName("sourcesList"); l.addWidget(self.sources_list,1)
 
-        row=QHBoxLayout()
-        local=QPushButton("Add local folder…"); local.clicked.connect(self._choose_music_folder)
-        jam=QPushButton("Jamendo settings…"); jam.clicked.connect(self._jamendo_settings)
-        streams=QPushButton("User Streams…"); streams.clicked.connect(self._user_streams_dialog)
-        directory=QPushButton("Explore plugins…"); directory.clicked.connect(self._plugin_directory)
-        test_plugin=QPushButton("Test selected"); test_plugin.clicked.connect(self._test_selected_plugin)
-        row.addWidget(local); row.addWidget(jam); row.addWidget(streams); row.addWidget(directory); row.addWidget(test_plugin)
-        row.addStretch(1); l.addLayout(row)
+        actions=QHBoxLayout()
+        local=QPushButton("+ Add my music")
+        local.setObjectName("primaryButton")
+        local.clicked.connect(self._choose_music_folder)
+        directory=QPushButton("Explore plugins")
+        directory.clicked.connect(self._plugin_directory)
+        streams=QPushButton("My streams")
+        streams.clicked.connect(self._user_streams_dialog)
+        self.source_primary_button=QPushButton("Set up selected")
+        self.source_primary_button.clicked.connect(self._source_primary_action)
+        self.source_primary_button.setEnabled(False)
+        set_help(
+            local,
+            "Add local music",
+            "Choose a folder of music on this computer. Your files stay local.",
+        )
+        set_help(
+            directory,
+            "Explore plugins",
+            "Browse optional providers and extensions that add new music sources or capabilities.",
+        )
+        set_help(
+            streams,
+            "My streams",
+            "Add direct radio or stream URLs that you already know and trust.",
+        )
+        set_help(
+            self.source_primary_button,
+            "Set up selected source",
+            "Opens the most useful action for the selected source, such as configuration or testing.",
+        )
+        actions.addWidget(local)
+        actions.addWidget(directory)
+        actions.addWidget(streams)
+        actions.addStretch(1)
+        actions.addWidget(self.source_primary_button)
+        l.addLayout(actions)
 
-        self.source_power_panel = QWidget()
-        power=QVBoxLayout(self.source_power_panel); power.setContentsMargins(0,4,0,0); power.setSpacing(8)
+        self.sources_list=QListWidget()
+        self.sources_list.setObjectName("sourcesList")
+        self.sources_list.itemSelectionChanged.connect(self._source_selection_changed)
+        l.addWidget(self.sources_list,1)
+
+        self.source_hint=QLabel(
+            "Select a source to see what you can do with it. Technical controls are hidden unless Power tools is enabled."
+        )
+        self.source_hint.setWordWrap(True)
+        self.source_hint.setStyleSheet("color:#8793a4")
+        l.addWidget(self.source_hint)
+
+        self.source_power_panel = QFrame()
+        self.source_power_panel.setObjectName("powerPanel")
+        power=QVBoxLayout(self.source_power_panel)
+        power.setContentsMargins(14,12,14,12)
+        power.setSpacing(8)
+
+        title=QLabel("Power tools")
+        title.setStyleSheet("font-size:15px;font-weight:700")
+        power.addWidget(title)
+
         provider_row=QHBoxLayout()
-        inst=QPushButton("Install .mdxprovider…"); inst.clicked.connect(self._install_provider)
-        ext=QPushButton("Install .mdxplugin…"); ext.clicked.connect(self._install_extension)
-        bridge=QPushButton("Provider Bridge…"); bridge.clicked.connect(self._bridge_dialog)
-        diagnostics=QPushButton("Export diagnostics…"); diagnostics.clicked.connect(self._export_diagnostics)
-        provider_row.addWidget(inst); provider_row.addWidget(ext); provider_row.addWidget(bridge); provider_row.addWidget(diagnostics); provider_row.addStretch(1)
+        jam=QPushButton("Jamendo settings…")
+        jam.clicked.connect(self._jamendo_settings)
+        inst=QPushButton("Install .mdxprovider…")
+        inst.clicked.connect(self._install_provider)
+        ext=QPushButton("Install .mdxplugin…")
+        ext.clicked.connect(self._install_extension)
+        bridge=QPushButton("Provider Bridge…")
+        bridge.clicked.connect(self._bridge_dialog)
+        diagnostics=QPushButton("Export diagnostics…")
+        diagnostics.clicked.connect(self._export_diagnostics)
+        provider_row.addWidget(jam)
+        provider_row.addWidget(inst)
+        provider_row.addWidget(ext)
+        provider_row.addWidget(bridge)
+        provider_row.addWidget(diagnostics)
+        provider_row.addStretch(1)
         power.addLayout(provider_row)
+
         priority=QHBoxLayout()
-        up=QPushButton("Prefer source ↑"); down=QPushButton("Prefer source ↓")
-        configure=QPushButton("Configure selected…"); configure.clicked.connect(self._configure_selected_plugin)
-        toggle_ext=QPushButton("Enable / disable extension"); toggle_ext.clicked.connect(self._toggle_extension)
-        remove_ext=QPushButton("Remove extension"); remove_ext.clicked.connect(self._remove_extension)
-        up.clicked.connect(lambda:self._move_source(-1)); down.clicked.connect(lambda:self._move_source(1))
-        priority.addWidget(up); priority.addWidget(down); priority.addWidget(configure); priority.addWidget(toggle_ext); priority.addStretch(1); power.addLayout(priority)
+        up=QPushButton("Prefer source ↑")
+        down=QPushButton("Prefer source ↓")
+        configure=QPushButton("Configure selected…")
+        configure.clicked.connect(self._configure_selected_plugin)
+        toggle_ext=QPushButton("Enable / disable extension")
+        toggle_ext.clicked.connect(self._toggle_extension)
+        remove_ext=QPushButton("Remove extension")
+        remove_ext.clicked.connect(self._remove_extension)
+        test_plugin=QPushButton("Test selected")
+        test_plugin.clicked.connect(self._test_selected_plugin)
+        up.clicked.connect(lambda:self._move_source(-1))
+        down.clicked.connect(lambda:self._move_source(1))
+        priority.addWidget(up)
+        priority.addWidget(down)
+        priority.addWidget(configure)
+        priority.addWidget(test_plugin)
+        priority.addWidget(toggle_ext)
+        priority.addStretch(1)
+        power.addLayout(priority)
+
         provider_actions=QHBoxLayout()
-        remove_provider=QPushButton("Remove selected provider"); remove_provider.clicked.connect(self._remove_provider)
-        restore_bundled=QPushButton("Restore bundled sources"); restore_bundled.clicked.connect(self._restore_bundled_sources)
-        provider_actions.addWidget(remove_provider); provider_actions.addWidget(remove_ext); provider_actions.addWidget(restore_bundled); provider_actions.addStretch(1)
+        remove_provider=QPushButton("Remove selected provider")
+        remove_provider.clicked.connect(self._remove_provider)
+        restore_bundled=QPushButton("Restore bundled sources")
+        restore_bundled.clicked.connect(self._restore_bundled_sources)
+        provider_actions.addWidget(remove_provider)
+        provider_actions.addWidget(remove_ext)
+        provider_actions.addWidget(restore_bundled)
+        provider_actions.addStretch(1)
         power.addLayout(provider_actions)
+
         self.source_power_panel.setVisible(self.power_toggle.isChecked())
         l.addWidget(self.source_power_panel)
 
-    # ------------------------------- navigation/data
+
     def changeEvent(self, event):
         super().changeEvent(event)
         if event.type() == QEvent.WindowStateChange and hasattr(self, "living_canvas"):
@@ -1257,75 +1336,132 @@ class MainWindow(QMainWindow):
         self.sources_list.clear()
         for pid in self.providers.provider_order():
             p=self.providers.providers[pid]
-            name = p.info.name.replace(" (reference provider)", "")
-            if pid == "local":
-                count = len(self.providers.local_catalog())
-                status = f"{count:,} TRACKS" if count else "ADD MUSIC"
-                kind = "BUILT-IN"
-            elif pid == "jamendo":
-                configured = bool(str(self.providers.settings.get("jamendo_client_id", "")).strip())
-                status = "READY" if configured else "SETUP NEEDED"
-                kind = "REFERENCE"
-            elif pid == "streams":
-                count = len(self.providers.user_streams())
-                status = f"{count} STREAM" if count == 1 else f"{count} STREAMS"
-                kind = "BUILT-IN"
+            name=p.info.name.replace(" (reference provider)","")
+            if pid=="local":
+                count=len(self.providers.local_catalog())
+                status=f"{count:,} tracks" if count else "Add music"
+                kind="On this device"
+            elif pid=="jamendo":
+                configured=bool(str(self.providers.settings.get("jamendo_client_id","")).strip())
+                status="Ready" if configured else "Setup needed"
+                kind="Online source"
+            elif pid=="streams":
+                count=len(self.providers.user_streams())
+                status=f"{count} stream" if count==1 else f"{count} streams"
+                kind="Your links"
             else:
-                installation = self.providers.installation_record(pid)
-                status = (
-                    "REGISTRY VERIFIED"
-                    if installation.get("registry_verified")
-                    else "MANUAL"
-                    if installation.get("method") == "manual"
-                    else "BUNDLED"
-                    if installation.get("method") == "bundled"
-                    else "INSTALLED"
-                )
+                installation=self.providers.installation_record(pid)
+                verified=bool(installation.get("registry_verified"))
+                status="Installed"
                 if p.info.configuration:
-                    config_status = self.providers.plugin_config.status(
-                        pid, p.info.configuration
-                    )
-                    if not config_status.get("ready", True):
-                        status += " · SETUP NEEDED"
-                health = self.providers.plugin_health(pid)
-                if health.get("status") not in {"setup_required"}:
-                    status += f" · {health_badge(health)}"
-                kind = "PROVIDER"
-            item=QListWidgetItem(
-                f"{name}    ·    {kind}    ·    {status}\n{p.info.description}"
-            )
+                    config_status=self.providers.plugin_config.status(pid,p.info.configuration)
+                    if not config_status.get("ready",True):
+                        status="Setup needed"
+                health=self.providers.plugin_health(pid)
+                if health.get("status") in {"error","stopped","unhealthy"}:
+                    status="Needs attention"
+                elif verified and status=="Installed":
+                    status="Ready"
+                kind="Plugin source"
+
+            item=QListWidgetItem()
             item.setData(Qt.UserRole,pid)
+            card=SourceCard(
+                name,
+                str(p.info.description or ""),
+                status,
+                kind=kind,
+            )
+            item.setSizeHint(card.sizeHint())
             self.sources_list.addItem(item)
-        extensions = self.providers.extensions()
+            self.sources_list.setItemWidget(item,card)
+
+        extensions=self.providers.extensions()
         if extensions:
-            heading = QListWidgetItem("CAPABILITY EXTENSIONS")
+            heading=QListWidgetItem("PLUGINS THAT EXTEND MELODEX")
             heading.setFlags(heading.flags() & ~Qt.ItemIsSelectable)
             self.sources_list.addItem(heading)
             for extension in extensions:
-                capabilities = ", ".join(extension.get("capabilities") or []) or "no capabilities"
-                enabled_status = "ENABLED" if extension.get("enabled", True) else "DISABLED"
-                installation = self.providers.installation_record(
-                    str(extension.get("id") or "")
+                extension_id=str(extension.get("id") or "")
+                enabled=bool(extension.get("enabled",True))
+                config_status=dict(extension.get("configuration_status") or {})
+                if not enabled:
+                    status="Disabled"
+                elif config_status.get("declared") and not config_status.get("ready",True):
+                    status="Setup needed"
+                else:
+                    health=self.providers.plugin_health(extension_id)
+                    status="Needs attention" if health.get("status") in {"error","stopped","unhealthy"} else "Ready"
+                capabilities=", ".join(extension.get("capabilities") or []) or "Adds extra Melodex capabilities"
+                description=str(extension.get("description") or capabilities)
+                item=QListWidgetItem()
+                item.setData(Qt.UserRole,"extension:"+extension_id)
+                card=SourceCard(
+                    str(extension.get("name") or extension_id),
+                    description,
+                    status,
+                    kind="Extension",
                 )
-                trust_status = (
-                    "REGISTRY VERIFIED"
-                    if installation.get("registry_verified")
-                    else "MANUAL"
-                    if installation.get("method") == "manual"
-                    else "INSTALLED"
-                )
-                config_status = dict(extension.get("configuration_status") or {})
-                if config_status.get("declared") and not config_status.get("ready", True):
-                    trust_status += " · SETUP NEEDED"
-                health = self.providers.plugin_health(str(extension.get("id") or ""))
-                health_text = health_badge(health)
-                item = QListWidgetItem(
-                    f"{extension.get('name') or extension.get('id')}    ·    EXTENSION    ·    {enabled_status}    ·    {trust_status}    ·    {health_text}\n"
-                    f"{capabilities} · {extension.get('description') or ''}"
-                )
-                item.setData(Qt.UserRole, "extension:" + str(extension.get("id") or ""))
+                item.setSizeHint(card.sizeHint())
                 self.sources_list.addItem(item)
+                self.sources_list.setItemWidget(item,card)
+
         self._refresh_source_combo()
+        self._source_selection_changed()
+
+    def _source_selection_changed(self) -> None:
+        item=self.sources_list.currentItem() if hasattr(self,"sources_list") else None
+        key=str(item.data(Qt.UserRole) or "") if item else ""
+        enabled=bool(key)
+        if hasattr(self,"source_primary_button"):
+            self.source_primary_button.setEnabled(enabled)
+        if not hasattr(self,"source_hint"):
+            return
+        if not key:
+            self.source_hint.setText(
+                "Select a source to see what you can do with it. Technical controls are hidden unless Power tools is enabled."
+            )
+            return
+        if key=="local":
+            self.source_hint.setText(
+                "This computer · your files stay on this device. Add another folder or rescan from My Music."
+            )
+        elif key=="jamendo":
+            self.source_hint.setText(
+                "Jamendo · an optional online source. Setup requires its API credentials."
+            )
+        elif key=="streams":
+            self.source_hint.setText(
+                "My streams · direct radio or audio URLs that you add yourself."
+            )
+        elif key.startswith("extension:"):
+            self.source_hint.setText(
+                "This plugin extends Melodex rather than supplying ordinary tracks. Use Set up selected if it needs configuration."
+            )
+        else:
+            self.source_hint.setText(
+                "Plugin source · Melodex can search or play through this provider according to the permissions it declares."
+            )
+
+    def _source_primary_action(self) -> None:
+        item=self.sources_list.currentItem() if hasattr(self,"sources_list") else None
+        key=str(item.data(Qt.UserRole) or "") if item else ""
+        if not key:
+            return
+        if key=="local":
+            self._choose_music_folder()
+        elif key=="jamendo":
+            self._jamendo_settings()
+        elif key=="streams":
+            self._user_streams_dialog()
+        elif key.startswith("extension:"):
+            self._configure_selected_plugin()
+        else:
+            provider=self.providers.providers.get(key)
+            if provider is not None and provider.info.configuration:
+                self._configure_selected_plugin()
+            else:
+                self._test_selected_plugin()
 
     def _move_source(self, delta):
         item=self.sources_list.currentItem()
