@@ -310,6 +310,7 @@ class MainWindow(QMainWindow):
         self.album_wall=AlbumWallWidget(self)
         self.album_wall.albumActivated.connect(self._play_album_wall_album)
         self.album_wall.artworkRequested.connect(self._album_wall_artwork_requested)
+        self.album_wall.onlineArtworkRequested.connect(self._album_wall_online_artwork_requested)
         l.addWidget(self.album_wall,1)
 
     def _build_music_map(self):
@@ -1851,6 +1852,33 @@ class MainWindow(QMainWindow):
                 info=self.metadata.local_artwork(track)
                 result[key]=str(info.get("path") or "")
             return result
+        self._run_async(load,self.album_wall.set_artwork)
+
+    def _album_wall_online_artwork_requested(self,requests):
+        rows=[dict(x) for x in list(requests or []) if isinstance(x,dict)]
+        if not rows:
+            return
+
+        def load():
+            result={}
+            for row in rows:
+                key=str(row.get("key") or "")
+                track=dict(row.get("track") or {})
+                if not key or not track:
+                    continue
+                path=""
+                try:
+                    local=self.metadata.local_artwork(track)
+                    path=str(local.get("path") or "")
+                    if not path:
+                        identity=self.metadata.identify(track)
+                        artwork=self.metadata.artwork(track,identity)
+                        path=str(artwork.get("path") or "")
+                except Exception:
+                    path=""
+                result[key]=path
+            return result
+
         self._run_async(load,self.album_wall.set_artwork)
 
     def _build_music_map_payload(self):
