@@ -1272,6 +1272,25 @@ def test_now_playing_warms_cached_art_and_online_lyrics_before_network(monkeypat
     assert "Already cached" in widget.lyrics.toPlainText()
     assert "reused" in widget.lyrics_source.text() or "LRCLIB" in widget.lyrics_source.text()
 
+    # The later identity result may carry the same persisted LRCLIB entry.
+    # It must not reclassify online lyrics as a local/editable source.
+    widget._apply_identity({
+        "identity": {},
+        "lyrics": {
+            "text": "Already cached",
+            "synced": [],
+            "source": "LRCLIB community lyrics",
+            "status": "found",
+            "cache": "disk",
+            "provenance": {
+                "source_extension_id": "core.lrclib-on-demand",
+            },
+        },
+    })
+    assert widget._active_lyrics_source == "online"
+    assert widget._local_lyrics == {}
+    assert widget._online_lyrics["text"] == "Already cached"
+
     window.close()
     app.processEvents()
 
