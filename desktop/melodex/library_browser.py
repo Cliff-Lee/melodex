@@ -41,6 +41,7 @@ class AlbumCard(QFrame):
         self.setCursor(Qt.PointingHandCursor)
         self.setFixedSize(176, 268)
         self.setMouseTracking(True)
+        self.has_real_cover = False
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(7, 7, 7, 9)
@@ -103,6 +104,7 @@ class AlbumCard(QFrame):
         )
 
     def set_cover(self, path: str) -> None:
+        self.has_real_cover = bool(str(path or "").strip())
         self.cover.set_cover(
             path,
             title=str(self.album.get("title") or ""),
@@ -141,6 +143,7 @@ class LibraryBrowser(QWidget):
     albumWallRequested = Signal()
     momentsRequested = Signal()
     artworkRequested = Signal(object)
+    onlineArtworkRequested = Signal(object)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -191,6 +194,9 @@ class LibraryBrowser(QWidget):
         moments = QPushButton("Moments")
         moments.setObjectName("quietButton")
         moments.clicked.connect(self.momentsRequested)
+        covers = QPushButton("Find missing artwork")
+        covers.setObjectName("quietButton")
+        covers.clicked.connect(self._request_online_artwork)
         set_help(
             add,
             "Add music",
@@ -211,10 +217,16 @@ class LibraryBrowser(QWidget):
             "Moments",
             "Open the exact positions inside songs that you previously chose to remember.",
         )
+        set_help(
+            covers,
+            "Find missing artwork",
+            "Looks online for cover art for a small batch of albums that still have placeholders. Melodex uses its configured metadata services and caches any artwork it finds.",
+        )
         actions.addWidget(add)
         actions.addWidget(rescan)
         actions.addWidget(wall)
         actions.addWidget(moments)
+        actions.addWidget(covers)
         actions.addStretch(1)
         outer.addLayout(actions)
 
@@ -442,6 +454,22 @@ class LibraryBrowser(QWidget):
             batch.append({"key": key, "track": track})
         if batch:
             self.artworkRequested.emit(batch)
+
+    def _request_online_artwork(self) -> None:
+        batch = []
+        albums = self._visible_albums if self._visible_albums else self.albums
+        for album in albums:
+            key = str(album.get("key") or "")
+            card = self.cards.get(key)
+            if not key or card is None or card.has_real_cover:
+                continue
+            track = dict(album.get("representative_track") or {})
+            if track:
+                batch.append({"key": key, "track": track})
+            if len(batch) >= 12:
+                break
+        if batch:
+            self.onlineArtworkRequested.emit(batch)
 
     def set_artwork(self, mapping: dict[str, str]) -> None:
         for key, path in dict(mapping or {}).items():
