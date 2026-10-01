@@ -114,8 +114,11 @@ class RichMetadataService:
         self.cache_dir = self.data_dir / "metadata-cache"
         self.json_cache = self.cache_dir / "json"
         self.art_cache = self.cache_dir / "artwork"
+        self.artwork_index_path = self.cache_dir / "artwork-index.json"
         self.json_cache.mkdir(parents=True, exist_ok=True)
         self.art_cache.mkdir(parents=True, exist_ok=True)
+        self._artwork_index_lock = threading.Lock()
+        self._artwork_index = self._load_artwork_index()
         self.session = session or requests.Session()
         self.capability_broker = capability_broker
         self.session.headers.update({"User-Agent": _USER_AGENT, "Accept": "application/json"})
@@ -127,6 +130,133 @@ class RichMetadataService:
 
     def _cache_path(self, key: str) -> Path:
         return self.json_cache / f"{self._hash(key)}.json"
+
+
+    def _load_artwork_index(self) -> dict[str, dict[str, Any]]:
+        try:
+            raw = json.loads(self.artwork_index_path.read_text("utf-8"))
+            if not isinstance(raw, dict):
+                return {}
+            return {
+                str(key): dict(value)
+                for key, value in raw.items()
+                if isinstance(value, dict)
+            }
+        except Exception:
+            return {}
+
+    def _save_artwork_index(self) -> None:
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        temp = self.artwork_index_path.with_suffix(".tmp")
+        temp.write_text(
+            json.dumps(self._artwork_index, ensure_ascii=False, indent=2),
+            "utf-8",
+        )
+        temp.replace(self.artwork_index_path)
+
+    @staticmethod
+    def _album_artwork_keys(track: dict[str, Any]) -> list[str]:
+        album = _norm(track.get("album"))
+        artist = _norm(track.get("artist"))
+        album_artist = _norm(track.get("album_artist"))
+        year = str(track.get("year") or "")
+        local_path = str(track.get("local_path") or "").strip()
+        keys: list[str] = []
+        if local_path:
+            folder = Path(local_path).expanduser().parent
+            if re.fullmatch(r"(?:cd|disc|disk)\s*[-_]?\s*\d+", folder.name, flags=re.I):
+                folder = folder.parent
+            try:
+                folder = folder.resolve()
+            except Exception:
+                pass
+            keys.append("folder:" + _norm(str(folder)))
+        if album and album_artist:
+            keys.append(f"album-artist:{album_artist}|{album}|{year}")
+        if album and artist and artist not in {"unknown artist", "various artists"}:
+            keys.append(f"artist-album:{artist}|{album}|{year}")
+        if album and year:
+            keys.append(f"album-year:{album}|{year}")
+        if album:
+            keys.append(f"album:{album}")
+        key = track_key(track)
+        if key:
+            keys.append("track:" + key)
+        return list(dict.fromkeys(key for key in keys if key))
+
+    @staticmethod
+    def _artist_artwork_keys(artist: dict[str, Any]) -> list[str]:
+        keys: list[str] = []
+        qid = str(artist.get("wikidata_qid") or "").strip()
+        mbid = str(artist.get("mbid") or artist.get("artist_mbid") or "").strip()
+        name = _norm(artist.get("name") or artist.get("artist"))
+        if qid:
+            keys.append("artist-qid:" + qid)
+        if mbid:
+            keys.append("artist-mbid:" + mbid)
+        if name:
+            keys.append("artist-name:" + name)
+        return keys
+
+    def _cached_artwork_by_keys(self, keys: list[str]) -> dict[str, Any]:
+        for key in keys:
+            row = self._artwork_index.get(str(key))
+            if not isinstance(row, dict):
+                continue
+            path = Path(str(row.get("path") or "")).expanduser()
+            if path.is_file():
+                return dict(row)
+        return {}
+
+    def _remember_artwork_by_keys(
+        self,
+        keys: list[str],
+        path: str | Path,
+        *,
+        source: str = "",
+        source_url: str = "",
+        attribution: str = "",
+        license_name: str = "",
+    ) -> dict[str, Any]:
+        path_obj = Path(path).expanduser()
+        if not path_obj.is_file():
+            return {}
+        row = {
+            "path": str(path_obj),
+            "source": str(source or ""),
+            "source_url": str(source_url or ""),
+            "attribution": str(attribution or ""),
+            "license": str(license_name or ""),
+        }
+        with self._artwork_index_lock:
+            for key in keys:
+                if key:
+                    self._artwork_index[str(key)] = dict(row)
+            self._save_artwork_index()
+        return dict(row)
+
+    def remember_artwork(
+        self,
+        track: dict[str, Any],
+        path: str | Path,
+        *,
+        source: str = "",
+        source_url: str = "",
+        attribution: str = "",
+        license_name: str = "",
+    ) -> dict[str, Any]:
+        return self._remember_artwork_by_keys(
+            self._album_artwork_keys(track),
+            path,
+            source=source,
+            source_url=source_url,
+            attribution=attribution,
+            license_name=license_name,
+        )
+
+    def cached_artist_photo(self, artist: dict[str, Any]) -> dict[str, Any]:
+        return self._cached_artwork_by_keys(self._artist_artwork_keys(artist))
+
 
     def _cached_json(self, key: str, max_age: float) -> Any | None:
         path = self._cache_path(key)
@@ -309,6 +439,10 @@ class RichMetadataService:
         embedded = self._embedded_artwork(track)
         if embedded:
             return {"path": str(embedded), "source": "embedded artwork", "source_url": ""}
+
+        remembered = self._cached_artwork_by_keys(self._album_artwork_keys(track))
+        if remembered:
+            return remembered
         return {"path": "", "source": "", "source_url": ""}
 
     def _download_artwork(self, url: str) -> Path | None:
@@ -575,6 +709,20 @@ class RichMetadataService:
         return " / ".join(dict.fromkeys(x for x in parts if x))
 
     def artist_photo(self, artist: dict[str, Any]) -> dict[str, Any]:
+        remembered = self.cached_artist_photo(artist)
+        if remembered:
+            return {
+                **remembered,
+                "wikidata_qid": str(artist.get("wikidata_qid") or ""),
+                "filename": "",
+                "creator": "",
+                "credit": "",
+                "license_name": str(remembered.get("license") or ""),
+                "license_url": "",
+                "description_url": str(remembered.get("source_url") or ""),
+                "attribution_required": "",
+                "copyrighted": "",
+            }
         qid = self._extract_wikidata_qid(artist)
         empty = {
             "path": "", "source": "", "source_url": "", "attribution": "",
@@ -601,7 +749,7 @@ class RichMetadataService:
         commons = self._commons_file_info(image_name)
         image_url = str(commons.get("image_url") or "") or f"{_WM_FILE_PATH}/{urllib.parse.quote(image_name.replace(' ', '_'))}"
         downloaded = self._download_artwork(image_url)
-        return {
+        result = {
             **empty,
             "path": str(downloaded or ""),
             "source": "Wikimedia Commons",
@@ -617,6 +765,17 @@ class RichMetadataService:
             "attribution_required": str(commons.get("attribution_required") or ""),
             "copyrighted": str(commons.get("copyrighted") or ""),
         }
+        if downloaded:
+            keys=self._artist_artwork_keys({**artist, "wikidata_qid": qid})
+            self._remember_artwork_by_keys(
+                keys,
+                downloaded,
+                source="Wikimedia Commons",
+                source_url=str(commons.get("description_url") or image_url),
+                attribution=str(result.get("attribution") or ""),
+                license_name=str(result.get("license_name") or ""),
+            )
+        return result
 
     def discography(self, artist_mbid: str, limit: int = 18) -> list[dict[str, Any]]:
         """Return release metadata quickly; artwork is hydrated in a later stage.
@@ -674,14 +833,16 @@ class RichMetadataService:
         return out
 
     def artwork(self, track: dict[str, Any], identity: MetadataIdentity) -> dict[str, Any]:
-        embedded = self._embedded_artwork(track)
-        if embedded:
-            return {"path": str(embedded), "source": "embedded artwork", "source_url": ""}
+        local = self.local_artwork(track)
+        if str(local.get("path") or ""):
+            return local
         supplied = str(track.get("artwork") or track.get("artwork_url") or "")
         if supplied:
             downloaded = self._download_artwork(supplied)
             if downloaded:
-                return {"path": str(downloaded), "source": str(track.get("provider_id") or "provider") + " artwork", "source_url": supplied}
+                result={"path": str(downloaded), "source": str(track.get("provider_id") or "provider") + " artwork", "source_url": supplied}
+                self.remember_artwork(track, downloaded, source=result["source"], source_url=supplied)
+                return result
 
         broker = self.capability_broker
         if broker is not None:
@@ -709,7 +870,7 @@ class RichMetadataService:
                         or asset.get("_extension_id")
                         or "extension"
                     )
-                    return {
+                    result = {
                         "path": str(downloaded),
                         "source": extension_id,
                         "source_url": str(provenance.get("source_url") or url),
@@ -717,6 +878,15 @@ class RichMetadataService:
                         "license": str(provenance.get("license") or ""),
                         "provenance": provenance,
                     }
+                    self.remember_artwork(
+                        track,
+                        downloaded,
+                        source=extension_id,
+                        source_url=result["source_url"],
+                        attribution=result["attribution"],
+                        license_name=result["license"],
+                    )
+                    return result
             except Exception:
                 pass
 
@@ -729,7 +899,14 @@ class RichMetadataService:
                 if url:
                     downloaded = self._download_artwork(url)
                     if downloaded:
-                        return {"path": str(downloaded), "source": "Cover Art Archive", "source_url": url, "comment": comment}
+                        result={"path": str(downloaded), "source": "Cover Art Archive", "source_url": url, "comment": comment}
+                        self.remember_artwork(
+                            track,
+                            downloaded,
+                            source="Cover Art Archive",
+                            source_url=url,
+                        )
+                        return result
             except Exception:
                 continue
         return {"path": "", "source": "", "source_url": ""}
