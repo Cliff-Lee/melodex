@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
 )
 
 from .metadata import RichMetadataService, track_key
+from .ux_components import FeaturePresenceBar
 
 
 class _MetadataSignals(QObject):
@@ -39,6 +40,7 @@ class RichNowPlayingWidget(QWidget):
     paletteChanged = Signal(object)
     lyricsChanged = Signal(object)
     lyricsPluginRequested = Signal()
+    contextPluginRequested = Signal()
     onlineLyricsPreferenceChanged = Signal(bool)
 
     """Progressively enriched Now Playing view.
@@ -99,13 +101,22 @@ class RichNowPlayingWidget(QWidget):
         lyrics_layout=QVBoxLayout(self.lyrics_page)
         lyrics_layout.setContentsMargins(0,8,0,0)
         lyrics_layout.setSpacing(8)
+
+        self.lyrics_plugin_presence=FeaturePresenceBar(
+            "Lyrics helpers",
+            baseline="Local files, embedded tags and on-demand LRCLIB are already available",
+            action_text="Add lyrics source…",
+        )
+        self.lyrics_plugin_presence.actionRequested.connect(self.lyricsPluginRequested)
+        lyrics_layout.addWidget(self.lyrics_plugin_presence)
+
         lyrics_actions=QHBoxLayout()
         lyrics_actions.setSpacing(7)
         self.online_lyrics_button=QPushButton("Find online")
         self.online_lyrics_button.setObjectName("primaryButton")
         self.import_lyrics_button=QPushButton("Add file…")
         self.paste_lyrics_button=QPushButton("Paste…")
-        self.find_lyrics_plugin_button=QPushButton("More lyrics sources…")
+        self.find_lyrics_plugin_button=QPushButton("Manage lyrics sources…")
         self.auto_online_lyrics=QCheckBox("Auto-find online")
         self.auto_online_lyrics.setChecked(self._auto_online_lyrics)
         self.auto_online_lyrics.toggled.connect(self._online_lyrics_pref_changed)
@@ -152,16 +163,41 @@ class RichNowPlayingWidget(QWidget):
         self.lyrics.setOpenExternalLinks(True)
         lyrics_layout.addWidget(self.lyrics,1)
 
-        self.artist_info = QTextBrowser(); self.releases = QTextBrowser(); self.credits = QTextBrowser(); self.context = QTextBrowser(); self.info = QTextBrowser()
-        for browser in (self.artist_info, self.releases, self.credits, self.context, self.info):
+        self.artist_info = QTextBrowser(); self.releases = QTextBrowser(); self.credits = QTextBrowser(); self.info = QTextBrowser()
+        for browser in (self.artist_info, self.releases, self.credits, self.info):
             browser.setOpenExternalLinks(True)
+
+        self.context_page=QWidget()
+        context_layout=QVBoxLayout(self.context_page)
+        context_layout.setContentsMargins(0,8,0,0)
+        context_layout.setSpacing(8)
+        self.context_plugin_presence=FeaturePresenceBar(
+            "Context helpers",
+            baseline="Melodex core metadata still works without plugins",
+            action_text="Add context plugin…",
+        )
+        self.context_plugin_presence.actionRequested.connect(self.contextPluginRequested)
+        context_layout.addWidget(self.context_plugin_presence)
+        self.context=QTextBrowser()
+        self.context.setOpenExternalLinks(True)
+        context_layout.addWidget(self.context,1)
+
         self.tabs.addTab(self.lyrics_page, "Lyrics")
         self.tabs.addTab(self.artist_info, "Artist")
         self.tabs.addTab(self.releases, "Releases")
         self.tabs.addTab(self.credits, "Credits")
-        self.tabs.addTab(self.context, "Context")
+        self.tabs.addTab(self.context_page, "Context")
         self.tabs.addTab(self.info, "Info")
         self._empty_tabs()
+
+    def set_plugin_presence(
+        self,
+        *,
+        lyrics: list[str] | tuple[str, ...] = (),
+        context: list[str] | tuple[str, ...] = (),
+    ) -> None:
+        self.lyrics_plugin_presence.set_items(list(lyrics))
+        self.context_plugin_presence.set_items(list(context))
 
     def _empty_tabs(self) -> None:
         self.lyrics_source.setText("Checking local files, embedded tags and installed lyric plugins…")
