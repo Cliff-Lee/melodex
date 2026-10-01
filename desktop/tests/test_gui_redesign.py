@@ -158,16 +158,68 @@ def test_artist_photo_lookup_walks_the_whole_missing_artist_list():
 
     browser._request_online_artwork()
     assert len(batches) == 1
-    assert len(batches[0]) == 10
+    assert len(batches[0]) == 1
+    assert browser.artist_image_lookup_remaining() == 15
     assert browser.images_button.isEnabled() is False
     assert browser.images_button.text().startswith("Finding photos")
 
-    assert browser.continue_artist_image_lookup() is True
-    assert len(batches) == 2
-    assert len(batches[1]) == 5
+    for expected_remaining in range(14, 0, -1):
+        assert browser.continue_artist_image_lookup() is True
+        assert len(batches[-1]) == 1
+        assert browser.artist_image_lookup_remaining() == expected_remaining
 
     assert browser.continue_artist_image_lookup() is False
+    assert len(batches) == 15
     assert browser.images_button.isEnabled() is True
     assert browser.images_button.text() == "Get artist photos"
+    browser.deleteLater()
+    app.processEvents()
+
+
+def test_album_artwork_lookup_walks_all_missing_albums_not_just_twelve():
+    try:
+        from PySide6.QtWidgets import QApplication
+        from melodex.library_browser import LibraryBrowser
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    browser = LibraryBrowser()
+    tracks = [
+        _track(
+            f"/albums/{index:02d}.mp3",
+            f"Artist {index:02d}",
+            f"Album {index:02d}",
+            f"Track {index:02d}",
+            1,
+            1990 + index,
+        )
+        for index in range(17)
+    ]
+    browser.set_catalog(tracks)
+    browser.set_view("albums")
+
+    batches = []
+    browser.onlineArtworkRequested.connect(
+        lambda rows: batches.append([dict(row) for row in rows])
+    )
+
+    browser._request_online_artwork()
+    assert len(batches) == 1
+    assert len(batches[0]) == 1
+    assert browser.album_artwork_lookup_remaining() == 17
+    assert browser.images_button.isEnabled() is False
+    assert browser.images_button.text().startswith("Finding artwork")
+
+    for expected_remaining in range(16, 0, -1):
+        assert browser.continue_album_artwork_lookup() is True
+        assert len(batches[-1]) == 1
+        assert browser.album_artwork_lookup_remaining() == expected_remaining
+
+    assert browser.continue_album_artwork_lookup() is False
+    assert len(batches) == 17
+    assert browser.images_button.isEnabled() is True
+    assert browser.images_button.text() == "Find missing artwork"
     browser.deleteLater()
     app.processEvents()
