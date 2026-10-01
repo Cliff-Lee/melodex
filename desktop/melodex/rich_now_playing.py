@@ -120,7 +120,9 @@ class RichNowPlayingWidget(QWidget):
         self.auto_online_lyrics=QCheckBox("Auto-find online")
         self.auto_online_lyrics.setChecked(self._auto_online_lyrics)
         self.auto_online_lyrics.toggled.connect(self._online_lyrics_pref_changed)
-        self.online_lyrics_button.clicked.connect(self._find_lyrics_online)
+        self.online_lyrics_button.clicked.connect(
+            lambda: self._find_lyrics_online(force=True)
+        )
         self.import_lyrics_button.clicked.connect(self._import_lyrics_file)
         self.paste_lyrics_button.clicked.connect(self._paste_lyrics)
         self.find_lyrics_plugin_button.clicked.connect(self.lyricsPluginRequested)
@@ -312,7 +314,14 @@ class RichNowPlayingWidget(QWidget):
             self.bundle["lyrics"]=dict(lyrics)
             self._apply_lyrics(lyrics)
             self.online_lyrics_button.setEnabled(True)
-            self.online_lyrics_button.setText("Find online")
+            status=str(lyrics.get("status") or "")
+            self.online_lyrics_button.setText(
+                "Try again"
+                if status in {"not_found","error","missing_metadata"}
+                else "Refresh online"
+                if status in {"found","instrumental"}
+                else "Find online"
+            )
 
         elif stage == "artwork":
             artwork = payload.get("artwork") if isinstance(payload.get("artwork"), dict) else {}
@@ -416,7 +425,7 @@ class RichNowPlayingWidget(QWidget):
             and self.auto_online_lyrics.isChecked()
             and not self._online_lyrics_attempted
         ):
-            self._find_lyrics_online()
+            self._find_lyrics_online(force=False)
         self._apply_musicbrainz_links(identity)
         self._refresh_info()
 
@@ -430,6 +439,9 @@ class RichNowPlayingWidget(QWidget):
             else {}
         )
         instrumental=bool(lyrics.get("instrumental"))
+        status=str(lyrics.get("status") or "")
+        error=str(lyrics.get("error") or "").strip()
+        match=dict(lyrics.get("match") or {}) if isinstance(lyrics.get("match"),dict) else {}
         if instrumental and not lyric_text and not self.synced:
             self.lyrics.setHtml(
                 "<div style='margin:22px;max-width:620px'>"
@@ -444,6 +456,33 @@ class RichNowPlayingWidget(QWidget):
             self.lyrics.setHtml(
                 f"<div style='font-size:18px;line-height:1.65;margin:8px 4px'>"
                 f"{'<br>'.join(_escape(lyric_text).splitlines())}</div>"
+            )
+        elif status=="not_found":
+            self.lyrics.setHtml(
+                "<div style='margin:22px;max-width:640px'>"
+                "<h3>No confident online match</h3>"
+                "<p style='color:#9097a2'>LRCLIB was checked, but Melodex did not find a result "
+                "close enough to the current artist, title and duration.</p>"
+                "<p style='color:#9097a2'>You can <b>Try again</b>, fix the track metadata, "
+                "or add your own .lrc/.txt lyrics.</p>"
+                "</div>"
+            )
+        elif status=="missing_metadata":
+            self.lyrics.setHtml(
+                "<div style='margin:22px;max-width:640px'>"
+                "<h3>Artist and title needed</h3>"
+                "<p style='color:#9097a2'>Online lyrics need usable artist and track-title metadata. "
+                "Edit this track's metadata, then try again.</p>"
+                "</div>"
+            )
+        elif status=="error":
+            self.lyrics.setHtml(
+                "<div style='margin:22px;max-width:640px'>"
+                "<h3>Lyrics lookup could not connect</h3>"
+                "<p style='color:#9097a2'>The online lyrics service did not complete this request. "
+                "Your local music and saved lyrics are unaffected.</p>"
+                "<p style='color:#9097a2'>Choose <b>Try again</b> when you want to retry.</p>"
+                "</div>"
             )
         else:
             self.lyrics.setHtml(
@@ -465,11 +504,27 @@ class RichNowPlayingWidget(QWidget):
                 source_label += f' · <a href="{_escape(source_url)}">source</a>'
             if lyric_source.startswith("LRCLIB"):
                 source_label += " · on demand · not saved"
+                method=str(match.get("method") or "")
+                if method=="cleaned_exact":
+                    source_label += " · matched after cleaning metadata"
+                elif method=="structured_search":
+                    source_label += " · matched by search"
+                if lyrics.get("cache")=="memory":
+                    source_label += " · reused this session"
             elif source_url:
                 source_label += " · installed plugin"
             if self.synced:
                 source_label += " · synchronized"
             self.lyrics_source.setText(source_label)
+        elif status=="not_found":
+            self.lyrics_source.setText("LRCLIB checked · no confident match")
+        elif status=="missing_metadata":
+            self.lyrics_source.setText("Online lookup needs artist + title metadata")
+        elif status=="error":
+            self.lyrics_source.setText(
+                "Online lyrics unavailable right now"
+                + (f" · {error[:120]}" if error else "")
+            )
         else:
             self.lyrics_source.setText("No local/plugin lyrics · try Find online or add your own")
 
@@ -489,9 +544,9 @@ class RichNowPlayingWidget(QWidget):
             and not str((self.bundle.get("lyrics") or {}).get("text") or "").strip()
             and not list((self.bundle.get("lyrics") or {}).get("synced") or [])
         ):
-            self._find_lyrics_online()
+            self._find_lyrics_online(force=False)
 
-    def _find_lyrics_online(self) -> None:
+    def _find_lyrics_online(self, *, force: bool = True) -> None:
         if not self.track or not track_key(self.track):
             QMessageBox.information(self,"Lyrics","Play or select a track first.")
             return
@@ -508,7 +563,10 @@ class RichNowPlayingWidget(QWidget):
         self._run_stage(
             key,
             "community lyrics",
-            lambda: {"lyrics":self.metadata.community_lyrics(request_track),"errors":[]},
+            lambda: {
+                "lyrics":self.metadata.community_lyrics(request_track,force=force),
+                "errors":[],
+            },
         )
 
     def _import_lyrics_file(self) -> None:
