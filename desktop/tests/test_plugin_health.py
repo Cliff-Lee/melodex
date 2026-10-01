@@ -100,6 +100,8 @@ for line in sys.stdin:
     title = (subject.get("hints") or {}).get("title")
     if title == "Fail":
         payload = {"jsonrpc":"2.0","id":req["id"],"error":{"code":-32000,"message":"token=super-secret"}}
+    elif title == "NetworkFail":
+        payload = {"jsonrpc":"2.0","id":req["id"],"error":{"code":-32000,"message":"<urlopen error [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed>"}}
     else:
         payload = {"jsonrpc":"2.0","id":req["id"],"result":{
             "schema_version":"0.1",
@@ -371,3 +373,38 @@ def test_active_health_ready_plus_recent_runtime_failure_is_degraded(tmp_path: P
         assert result["reason"] == "call_error"
     finally:
         manager.close()
+
+
+
+def test_extension_network_failure_is_unavailable_not_broken(tmp_path: Path):
+    manager = ProviderManager(tmp_path / "data")
+    try:
+        package = _extension_package(tmp_path / "network-health.mdxplugin")
+        info = manager.install_extension(package)
+
+        result = manager.capabilities.enrich_metadata(
+            {"entity_type": "track", "hints": {"title": "NetworkFail"}}
+        )
+        assert result["errors"]
+
+        health = manager.plugin_health(info.id)
+        assert health["status"] == "unavailable"
+        assert health["reason"] == "tls_error"
+        assert "temporarily unavailable" in health["message"].casefold()
+        assert health_badge(health) == "UNAVAILABLE"
+    finally:
+        manager.close()
+
+
+def test_extension_network_error_diagnostic_is_transient():
+    from melodex.capabilities import ExternalExtension
+
+    assert ExternalExtension._diagnostic_error(
+        RuntimeError("temporary failure in name resolution")
+    ) == "network_error"
+    assert ExternalExtension._diagnostic_error(
+        RuntimeError("request timed out")
+    ) == "timeout"
+    assert ExternalExtension._diagnostic_error(
+        RuntimeError("malformed response")
+    ) == "call_error"
