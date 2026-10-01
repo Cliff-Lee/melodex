@@ -87,9 +87,14 @@ class ExternalProvider(MusicProvider):
         self._lock = threading.RLock()
         self._seq = 0
         self._proc: subprocess.Popen[str] | None = None
-        self.timeout = float(timeout)
         self._stdout: queue.Queue[str | None] = queue.Queue()
         self._stderr: deque[str] = deque(maxlen=30)
+        configured_timeout = self.manifest.get("rpc_timeout_seconds", timeout)
+        try:
+            configured_timeout = float(configured_timeout)
+        except (TypeError, ValueError):
+            configured_timeout = float(timeout)
+        self.timeout = max(3.0, min(60.0, configured_timeout))
         self._config: dict[str, Any] = {}
 
     @property
