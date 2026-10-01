@@ -757,26 +757,124 @@ class MainWindow(QMainWindow):
 
 
     def _build_for_you(self):
-        l=self._page_layout("for_you","Play for me","Melodex uses only local listening history and audio analysis unless you explicitly connect an LLM.")
-        row=QHBoxLayout(); self.mode=QComboBox(); self.mode.addItems(["balanced","comfort","rediscover","explore"]); self.minutes=QComboBox(); self.minutes.addItems(["30","60","90","120"]); self.adventure=QSlider(Qt.Horizontal); self.adventure.setRange(0,100); self.adventure.setValue(35)
-        row.addWidget(QLabel("Mode")); row.addWidget(self.mode); row.addWidget(QLabel("Minutes")); row.addWidget(self.minutes); row.addWidget(QLabel("Familiar")); row.addWidget(self.adventure,1); row.addWidget(QLabel("Surprising")); l.addLayout(row)
-        go=QPushButton("▶ Build this journey"); go.clicked.connect(lambda:self._play_for_me(self.mode.currentText(),int(self.minutes.currentText()),self.adventure.value()/100)); l.addWidget(go)
-        self.taste_label=QLabel(); self.taste_label.setWordWrap(True); l.addWidget(self.taste_label)
+        l=self._page_layout(
+            "for_you",
+            "Tune your listening",
+            "These controls are optional. Start simple, then adjust how long the session lasts and how far Melodex should move from familiar music.",
+        )
 
-        intel_title=QLabel("Local intelligence plugins"); intel_title.setStyleSheet("font-size:18px;font-weight:650;margin-top:10px"); l.addWidget(intel_title)
-        intel_help=QLabel("Private, local suggestions from your own library. A detour keeps one Flow feature and changes two others; Melodex does not send file paths or database rows."); intel_help.setWordWrap(True); intel_help.setStyleSheet("color:#aab0ba"); l.addWidget(intel_help)
+        row=QHBoxLayout()
+        self.mode=QComboBox()
+        self.mode.addItem("Balanced","balanced")
+        self.mode.addItem("Comfort","comfort")
+        self.mode.addItem("Rediscover","rediscover")
+        self.mode.addItem("Explore","explore")
+        self.minutes=QComboBox()
+        self.minutes.addItems(["30","60","90","120"])
+        self.adventure=QSlider(Qt.Horizontal)
+        self.adventure.setRange(0,100)
+        self.adventure.setValue(35)
+
+        set_help(
+            self.mode,
+            "Listening style",
+            "Balanced mixes familiarity and discovery. Comfort stays close to known preferences. Rediscover favours neglected music. Explore moves further away.",
+        )
+        set_help(
+            self.minutes,
+            "Session length",
+            "Choose approximately how long Melodex should plan for.",
+        )
+        set_help(
+            self.adventure,
+            "Familiar to adventurous",
+            "Move left to stay close to music Melodex already knows you respond well to; move right to allow more unexpected choices.",
+        )
+
+        row.addWidget(QLabel("Style"))
+        row.addWidget(self.mode)
+        row.addWidget(QLabel("Minutes"))
+        row.addWidget(self.minutes)
+        row.addWidget(QLabel("Familiar"))
+        row.addWidget(self.adventure,1)
+        row.addWidget(QLabel("Adventurous"))
+        l.addLayout(row)
+
+        go=QPushButton("▶ Build this session")
+        go.setObjectName("primaryButton")
+        go.clicked.connect(
+            lambda:self._play_for_me(
+                str(self.mode.currentData() or "balanced"),
+                int(self.minutes.currentText()),
+                self.adventure.value()/100,
+            )
+        )
+        set_help(
+            go,
+            "Build this session",
+            "Creates a queue from your local library using these preferences. The exact tracks can still change as you listen.",
+        )
+        l.addWidget(go)
+
+        self.taste_label=QLabel()
+        self.taste_label.setWordWrap(True)
+        self.taste_label.setStyleSheet("color:#8490a1")
+        l.addWidget(self.taste_label)
+
+        intel_title=QLabel("More ways to explore")
+        intel_title.setStyleSheet("font-size:18px;font-weight:650;margin-top:10px")
+        l.addWidget(intel_title)
+
+        intel_help=QLabel(
+            "These suggestions use your own library and listening history. Audio analysis stays on this computer."
+        )
+        intel_help.setWordWrap(True)
+        intel_help.setStyleSheet("color:#aab0ba")
+        l.addWidget(intel_help)
+
         intel_row=QHBoxLayout()
-        similar=QPushButton("More like current"); similar.clicked.connect(lambda:self._run_local_intelligence("similar"))
-        rediscover=QPushButton("Forgotten favourites"); rediscover.clicked.connect(lambda:self._run_local_intelligence("rediscover"))
-        bridge=QPushButton("Bridge current → next"); bridge.clicked.connect(lambda:self._run_local_intelligence("bridge"))
-        detour=QPushButton("Find a detour"); detour.clicked.connect(lambda:self._run_local_intelligence("detour"))
-        analyse=QPushButton("Analyse my library"); analyse.clicked.connect(self._analyse_library_for_intelligence)
-        intel_row.addWidget(similar); intel_row.addWidget(rediscover); intel_row.addWidget(bridge); intel_row.addWidget(detour); intel_row.addWidget(analyse); intel_row.addStretch(1); l.addLayout(intel_row)
-        self.intelligence_results=QListWidget(); self.intelligence_results.itemDoubleClicked.connect(self._play_intelligence_result); l.addWidget(self.intelligence_results,1)
+        similar=QPushButton("More like current")
+        similar.clicked.connect(lambda:self._run_local_intelligence("similar"))
+        rediscover=QPushButton("Forgotten favourites")
+        rediscover.clicked.connect(lambda:self._run_local_intelligence("rediscover"))
+        bridge=QPushButton("Bridge current → next")
+        bridge.clicked.connect(lambda:self._run_local_intelligence("bridge"))
+        detour=QPushButton("Find a detour")
+        detour.clicked.connect(lambda:self._run_local_intelligence("detour"))
+        analyse=QPushButton("Improve suggestions")
+        analyse.clicked.connect(self._analyse_library_for_intelligence)
+
+        set_help(similar,"More like current","Find music in your local library that is sonically near the track playing now.")
+        set_help(rediscover,"Forgotten favourites","Look for music you once played or kept but have not heard recently.")
+        set_help(bridge,"Bridge current to next","Find music that can make the transition between the current track and the next queued track feel more natural.")
+        set_help(detour,"Find a detour","Keep part of the current musical character while deliberately changing other qualities.")
+        set_help(
+            analyse,
+            "Improve suggestions",
+            "Analyse sonic features locally so similarity, detours and map placement can become more accurate. Your audio is not uploaded.",
+        )
+
+        intel_row.addWidget(similar)
+        intel_row.addWidget(rediscover)
+        intel_row.addWidget(bridge)
+        intel_row.addWidget(detour)
+        intel_row.addWidget(analyse)
+        intel_row.addStretch(1)
+        l.addLayout(intel_row)
+
+        self.intelligence_results=QListWidget()
+        self.intelligence_results.itemDoubleClicked.connect(self._play_intelligence_result)
+        l.addWidget(self.intelligence_results,1)
+
         intel_actions=QHBoxLayout()
-        play_pick=QPushButton("Play selected"); play_pick.clicked.connect(self._play_selected_intelligence)
-        queue_pick=QPushButton("Add selected to queue"); queue_pick.clicked.connect(self._queue_selected_intelligence)
-        intel_actions.addWidget(play_pick); intel_actions.addWidget(queue_pick); intel_actions.addStretch(1); l.addLayout(intel_actions)
+        play_pick=QPushButton("▶ Play selected")
+        play_pick.clicked.connect(self._play_selected_intelligence)
+        queue_pick=QPushButton("+ Queue selected")
+        queue_pick.clicked.connect(self._queue_selected_intelligence)
+        intel_actions.addWidget(play_pick)
+        intel_actions.addWidget(queue_pick)
+        intel_actions.addStretch(1)
+        l.addLayout(intel_actions)
 
     def _build_discover(self):
         l=self._page_layout("discover","Discover","Search all connected music sources. Add a source in Sources if you want more places to search.")
