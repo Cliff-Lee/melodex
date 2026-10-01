@@ -204,6 +204,11 @@ class RichNowPlayingWidget(QWidget):
         self.paste_lyrics_button.hide()
         self.find_lyrics_plugin_button=QPushButton("Manage lyric sources…")
         self.find_lyrics_plugin_button.hide()
+        self.edit_lyrics_button.clicked.connect(self._edit_saved_lyrics)
+        self.import_lyrics_button.clicked.connect(self._import_lyrics_file)
+        self.paste_lyrics_button.clicked.connect(self._paste_lyrics)
+        self.find_lyrics_plugin_button.clicked.connect(self.lyricsPluginRequested)
+
         self.auto_online_lyrics=QCheckBox("Auto-find online")
         self.auto_online_lyrics.setChecked(self._auto_online_lyrics)
         self.auto_online_lyrics.hide()
