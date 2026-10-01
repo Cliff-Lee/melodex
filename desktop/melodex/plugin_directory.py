@@ -423,9 +423,17 @@ class PluginDirectoryDialog(QDialog):
                 if result.get("source") == "cache"
                 else "Melodex registry"
             )
+            reference_count=sum(
+                1 for item in self.plugins
+                if str(item.get("status") or "").casefold()=="example"
+            )
             self.status.setText(
-                f"Loaded {len(self.plugins)} entries from {origin}. "
-                "Installable packages are SHA-256 verified."
+                f"{len(self.plugins)} optional entries from {origin}"
+                + (
+                    f" · {reference_count} reference/example"
+                    if reference_count else ""
+                )
+                + ". Included Melodex sources are already installed; package downloads are SHA-256 verified."
             )
         self._apply_filter()
 
@@ -452,6 +460,13 @@ class PluginDirectoryDialog(QDialog):
             config_state = configuration_state(config_info)
             health = self.manager.plugin_health(plugin_id) if installed else {}
             health_state = health_badge(health) if installed else ""
+            duplicate_reference=plugin_id in {
+                "org.melodex.example.radio-browser",
+                "org.melodex.example.librivox",
+                "org.melodex.example.musicbrainz",
+                "org.melodex.example.cover-art-archive",
+                "org.melodex.example.wikimedia-commons",
+            }
             badge = (
                 "Update · setup"
                 if update_available and config_state == "setup_needed"
@@ -463,6 +478,10 @@ class PluginDirectoryDialog(QDialog):
                 if installed and health_state
                 else "Installed"
                 if installed
+                else "Already included"
+                if duplicate_reference
+                else "Reference"
+                if str(entry.get("status") or "").casefold()=="example"
                 else "Optional"
             )
             item = QListWidgetItem()
