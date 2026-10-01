@@ -12,7 +12,7 @@ from .plugin_onboarding import (
     configuration_summary,
     plugin_configuration_info,
 )
-from .plugin_health import health_badge, health_summary
+from .plugin_health import health_summary, health_user_presentation
 from .ux_components import source_icon_spec
 
 from PySide6.QtWidgets import (
@@ -73,6 +73,7 @@ class PluginDirectoryCard(QFrame):
         badge: str,
         *,
         installed: bool = False,
+        semantic: str = "",
         parent=None,
     ):
         super().__init__(parent)
@@ -170,15 +171,18 @@ class PluginDirectoryCard(QFrame):
         state=QLabel(state_text)
         state.setObjectName("pluginDirectoryState")
         lowered=state_text.casefold()
-        semantic=(
-            "attention" if any(token in lowered for token in ("setup", "attention", "error", "unavailable"))
+        inferred_semantic=(
+            "attention" if any(token in lowered for token in ("setup", "attention", "error"))
+            else "unavailable" if "unavailable" in lowered
             else "update" if "update" in lowered
             else "ready" if "ready" in lowered
+            else "disabled" if "disabled" in lowered
+            else "neutral" if "not checked" in lowered
             else "reference" if any(token in lowered for token in ("reference", "included"))
             else "installed" if installed
             else "optional"
         )
-        state.setProperty("state",semantic)
+        state.setProperty("state",str(semantic or inferred_semantic))
         row.addWidget(state)
 
 
@@ -454,6 +458,15 @@ class PluginDirectoryDialog(QDialog):
             }
             QLabel#pluginDirectoryState[state="attention"]{
                 color:#f0c783;background:#3a2a16;border:1px solid #6e5126;
+            }
+            QLabel#pluginDirectoryState[state="unavailable"]{
+                color:#b7c6d9;background:#1c2733;border:1px solid #3c4e62;
+            }
+            QLabel#pluginDirectoryState[state="neutral"]{
+                color:#9da9b8;background:#18212b;border:1px solid #303e4d;
+            }
+            QLabel#pluginDirectoryState[state="disabled"]{
+                color:#8b95a2;background:#171b20;border:1px solid #30363d;
             }
             QLabel#pluginDirectoryState[state="update"]{
                 color:#9dcbff;background:#173354;border:1px solid #315c88;
@@ -753,28 +766,31 @@ class PluginDirectoryDialog(QDialog):
             )
             config_state = configuration_state(config_info)
             health = self.manager.plugin_health(plugin_id) if installed else {}
-            health_state = health_badge(health) if installed else ""
+            health_view = health_user_presentation(health) if installed else {}
             duplicate_reference=_is_duplicate_reference(plugin_id)
-            badge = (
-                "Update · setup"
-                if update_available and config_state == "setup_needed"
-                else "Update available"
-                if update_available
-                else "Setup needed"
-                if installed and config_state == "setup_needed"
-                else health_state.title()
-                if installed and health_state
-                else "Installed"
-                if installed
-                else "Already included"
-                if duplicate_reference
-                else "Reference"
-                if str(entry.get("status") or "").casefold()=="example"
-                else "Optional"
-            )
+            if update_available and config_state == "setup_needed":
+                badge, semantic = "Update · setup", "attention"
+            elif update_available:
+                badge, semantic = "Update available", "update"
+            elif installed and config_state == "setup_needed":
+                badge, semantic = "Setup needed", "attention"
+            elif installed:
+                badge = str(health_view.get("badge") or "Installed")
+                semantic = str(health_view.get("semantic") or "installed")
+            elif duplicate_reference:
+                badge, semantic = "Already included", "reference"
+            elif str(entry.get("status") or "").casefold()=="example":
+                badge, semantic = "Reference", "reference"
+            else:
+                badge, semantic = "Optional", "optional"
             item = QListWidgetItem()
             item.setData(Qt.UserRole, entry)
-            card=PluginDirectoryCard(entry,badge,installed=installed)
+            card=PluginDirectoryCard(
+                entry,
+                badge,
+                installed=installed,
+                semantic=semantic,
+            )
             item.setSizeHint(card.sizeHint())
             self.rows.addItem(item)
             self.rows.setItemWidget(item,card)
@@ -864,6 +880,7 @@ class PluginDirectoryDialog(QDialog):
         config_text = configuration_summary(config_info) if installed else "Not installed"
         health = self.manager.plugin_health(plugin_id) if installed else {}
         health_text = health_summary(health) if installed else "Not installed"
+        health_view = health_user_presentation(health) if installed else {}
         compatible, compatibility_reason = self.manager.registry.compatibility(entry)
         sha256 = str(distribution.get("sha256") or "")
 
@@ -943,6 +960,19 @@ class PluginDirectoryDialog(QDialog):
             "tool":"Local intelligence",
         }.get(kind,kind.title() or "Plugin")
         capabilities=", ".join(capability_labels) or "No user-facing capabilities listed"
+        connection_html=""
+        if installed:
+            connection_title=html.escape(str(health_view.get("title") or "Connection"))
+            connection_guidance=html.escape(
+                str(health_view.get("guidance") or "Connection status is not available yet.")
+            )
+            connection_badge=html.escape(str(health_view.get("badge") or "Not checked"))
+            connection_html=(
+                "<h3>Connection</h3>"
+                f"<p><b>{connection_badge}</b><br>"
+                f"<span style='color:#a9b5c4'>{connection_title}</span></p>"
+                f"<p>{connection_guidance}</p>"
+            )
         main_html=(
             f"<h2 style='margin-bottom:2px'>{html.escape(str(entry.get('name') or plugin_id))}</h2>"
             f"<p style='color:#6fa8ed;margin-top:0'>{html.escape(kind_name)} · "
@@ -950,6 +980,7 @@ class PluginDirectoryDialog(QDialog):
             f"<p>{html.escape(str(entry.get('description') or ''))}</p>"
             f"{duplicate_note}"
             f"<p>{state}</p>"
+            f"{connection_html}"
             f"<h3>What it can do</h3>"
             f"<p>{html.escape(capabilities)}</p>"
             f"<h3>Where you'll use it</h3>"
@@ -1034,6 +1065,11 @@ class PluginDirectoryDialog(QDialog):
             bool(installed and list(config_info.get("fields") or []))
         )
         self.test_button.setEnabled(bool(installed))
+        self.test_button.setText(
+            str(health_view.get("action") or "Check connection")
+            if installed
+            else "Check connection"
+        )
         extension=self._extension_record(plugin_id) if installed and kind!="provider" else {}
         if extension:
             enabled=bool(extension.get("enabled",True))
@@ -1177,8 +1213,15 @@ class PluginDirectoryDialog(QDialog):
     def _health_tested(self, entry: dict[str, Any], result: Any) -> None:
         result = dict(result or {})
         self._apply_filter()
+        view=health_user_presentation(result)
         self.status.setText(
-            f"{entry.get('name') or entry.get('id')}: {health_summary(result)}"
+            f"{entry.get('name') or entry.get('id')}: "
+            f"{view.get('badge') or health_summary(result)}"
+            + (
+                f" — {view.get('title')}"
+                if view.get("title")
+                else ""
+            )
         )
 
     def _toggle_selected(self) -> None:
