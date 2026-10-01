@@ -135,40 +135,59 @@ class PluginDirectoryDialog(QDialog):
         self.plugins: list[dict[str, Any]] = []
         self._signals: list[_Signals] = []
 
-        self.setWindowTitle("Melodex Plugin Directory")
-        self.resize(920, 660)
+        self.setWindowTitle("Melodex Plugin Centre")
+        self.resize(1080, 720)
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(18,18,18,16)
+        layout.setSpacing(12)
 
+        hero=QFrame()
+        hero.setObjectName("pluginCentreHero")
+        hero_l=QHBoxLayout(hero)
+        hero_l.setContentsMargins(16,14,16,14)
+        hero_l.setSpacing(12)
+        hero_icon=QLabel()
+        hero_icon.setObjectName("pluginCentreHeroIcon")
+        hero_icon.setAlignment(Qt.AlignCenter)
+        hero_icon.setFixedSize(46,46)
+        hero_icon.setPixmap(self.style().standardIcon(QStyle.SP_CommandLink).pixmap(27,27))
+        hero_l.addWidget(hero_icon)
+        hero_text=QVBoxLayout()
+        hero_text.setSpacing(2)
+        hero_title=QLabel("Add capabilities, not clutter")
+        hero_title.setStyleSheet("font-size:18px;font-weight:720")
+        hero_text.addWidget(hero_title)
         intro = QLabel(
-            "Browse providers and capability extensions from the Melodex registry. "
-            "Review source, permissions and verification details before installing."
+            "Music sources find things to play. Enhancements add artwork, lyrics, metadata, context or smarter local recommendations. "
+            "Nothing here is required for ordinary local playback."
         )
         intro.setWordWrap(True)
-        layout.addWidget(intro)
+        intro.setStyleSheet("color:#9da8b8")
+        hero_text.addWidget(intro)
+        hero_l.addLayout(hero_text,1)
+        layout.addWidget(hero)
 
         filters = QHBoxLayout()
         self.search = QLineEdit()
-        self.search.setPlaceholderText("Search plugins, capabilities or publishers…")
+        self.search.setPlaceholderText("Search optional plugins…")
         self.kind = QComboBox()
-        self.kind.addItem("All types", "all")
-        self.kind.addItem("Music providers", "provider")
-        self.kind.addItem("Enrichment", "enrichment")
-        self.kind.addItem("Local tools", "tool")
+        self.kind.addItem("Everything", "all")
+        self.kind.addItem("Music sources", "provider")
+        self.kind.addItem("Enhancements", "enrichment")
+        self.kind.addItem("Local intelligence", "tool")
         self.capability = QComboBox()
-        self.capability.addItem("All capabilities", "all")
-        for value in (
-            "search",
-            "playback",
-            "offline",
-            "recommendations",
-            "identity",
-            "metadata",
-            "artwork",
-            "lyrics",
-            "context",
-            "library_suggestions",
+        self.capability.addItem("Any feature", "all")
+        for label,value in (
+            ("Search & playback","search"),
+            ("Recommendations","recommendations"),
+            ("Track matching","identity"),
+            ("Metadata","metadata"),
+            ("Artwork","artwork"),
+            ("Lyrics","lyrics"),
+            ("Context","context"),
+            ("Local suggestions","library_suggestions"),
         ):
-            self.capability.addItem(value, value)
+            self.capability.addItem(label, value)
         self.refresh_button = QPushButton("Refresh")
         filters.addWidget(self.search, 1)
         filters.addWidget(self.kind)
@@ -176,27 +195,51 @@ class PluginDirectoryDialog(QDialog):
         filters.addWidget(self.refresh_button)
         layout.addLayout(filters)
 
-        self.status = QLabel("Loading registry…")
+        self.status = QLabel("Loading plugin catalogue…")
         self.status.setWordWrap(True)
-        self.status.setStyleSheet("color:#aab0ba")
+        self.status.setStyleSheet("color:#8996a8")
         layout.addWidget(self.status)
 
         body = QHBoxLayout()
+        body.setSpacing(14)
         self.rows = QListWidget()
-        self.rows.setMinimumWidth(410)
-        self.details = QTextEdit()
-        self.details.setReadOnly(True)
-        body.addWidget(self.rows, 1)
-        body.addWidget(self.details, 1)
+        self.rows.setObjectName("pluginDirectoryList")
+        self.rows.setMinimumWidth(500)
+        self.rows.setSpacing(5)
+        body.addWidget(self.rows, 3)
+
+        detail_panel=QFrame()
+        detail_panel.setObjectName("pluginDetailPanel")
+        detail_l=QVBoxLayout(detail_panel)
+        detail_l.setContentsMargins(16,15,16,15)
+        detail_l.setSpacing(9)
+        self.details = QTextBrowser()
+        self.details.setObjectName("pluginDetails")
+        self.details.setOpenExternalLinks(True)
+        detail_l.addWidget(self.details,1)
+
+        self.tech_button=QPushButton("Technical details")
+        self.tech_button.setCheckable(True)
+        self.tech_button.setObjectName("quietButton")
+        detail_l.addWidget(self.tech_button)
+        self.tech_details=QTextBrowser()
+        self.tech_details.setObjectName("pluginTechnicalDetails")
+        self.tech_details.setOpenExternalLinks(True)
+        self.tech_details.setMaximumHeight(210)
+        self.tech_details.hide()
+        detail_l.addWidget(self.tech_details)
+        self.tech_button.toggled.connect(self.tech_details.setVisible)
+        body.addWidget(detail_panel,2)
         layout.addLayout(body, 1)
 
         actions = QHBoxLayout()
         self.install_button = QPushButton("Install")
-        self.use_button = QPushButton("Use")
+        self.install_button.setObjectName("primaryButton")
+        self.use_button = QPushButton("Use plugin")
         self.configure_button = QPushButton("Configure…")
-        self.test_button = QPushButton("Test plugin")
-        self.source_button = QPushButton("View source")
-        self.review_button = QPushButton("View review")
+        self.test_button = QPushButton("Check connection")
+        self.source_button = QPushButton("Source code")
+        self.review_button = QPushButton("Review record")
         close_button = QPushButton("Close")
         self.install_button.setEnabled(False)
         self.use_button.setEnabled(False)
@@ -208,11 +251,49 @@ class PluginDirectoryDialog(QDialog):
         actions.addWidget(self.use_button)
         actions.addWidget(self.configure_button)
         actions.addWidget(self.test_button)
+        actions.addStretch(1)
         actions.addWidget(self.source_button)
         actions.addWidget(self.review_button)
-        actions.addStretch(1)
         actions.addWidget(close_button)
         layout.addLayout(actions)
+
+        self.setStyleSheet(
+            self.styleSheet()
+            + """
+            QFrame#pluginCentreHero{
+                background:#121b26;border:1px solid #2b3c50;border-radius:14px;
+            }
+            QLabel#pluginCentreHeroIcon{
+                background:#193354;border:1px solid #2f5d8f;border-radius:12px;
+            }
+            QListWidget#pluginDirectoryList{
+                background:#0e141d;border:1px solid #263344;border-radius:12px;padding:6px;
+            }
+            QListWidget#pluginDirectoryList::item{
+                background:transparent;border:0;padding:0;
+            }
+            QListWidget#pluginDirectoryList::item:selected{
+                background:#18263a;border:1px solid #31547d;border-radius:10px;
+            }
+            QFrame#pluginDirectoryCard{background:transparent;border:0}
+            QLabel#pluginDirectoryIcon{
+                background:#19283b;border:1px solid #304c6c;border-radius:11px;
+            }
+            QLabel#pluginDirectoryTitle{font-size:14px;font-weight:700}
+            QLabel#pluginDirectoryDescription{color:#8f9bad;font-size:11px}
+            QLabel#pluginDirectoryMeta{color:#6fa8ed;font-size:10px}
+            QLabel#pluginDirectoryType{
+                color:#9aacbf;background:#17202c;border:1px solid #2a394b;
+                border-radius:6px;padding:2px 5px;font-size:9px;
+            }
+            QFrame#pluginDetailPanel{
+                background:#101720;border:1px solid #273548;border-radius:12px;
+            }
+            QTextBrowser#pluginDetails,QTextBrowser#pluginTechnicalDetails{
+                background:transparent;border:0;color:#e6e9ee;
+            }
+            """
+        )
 
         self.rows.currentItemChanged.connect(lambda *_: self._show_details())
         self.search.textChanged.connect(lambda *_: self._apply_filter())
