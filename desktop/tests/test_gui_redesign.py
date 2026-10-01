@@ -106,7 +106,7 @@ def test_redesigned_main_window_builds_with_goal_navigation(monkeypatch, tmp_pat
     assert hasattr(window.rich_now, "paste_lyrics_button")
     assert hasattr(window.rich_now, "find_lyrics_plugin_button")
     assert hasattr(window.rich_now, "online_lyrics_button")
-    assert window.rich_now.online_lyrics_button.text() == "Find online"
+    assert window.rich_now.online_lyrics_button.text() == "Refresh lyrics"
     assert hasattr(window.rich_now, "auto_online_lyrics")
     assert window.rich_now.auto_online_lyrics.isChecked() is False
     assert hasattr(window, "source_summary_library")
@@ -472,7 +472,7 @@ def test_plugins_surface_where_their_features_are_used(monkeypatch, tmp_path):
     assert bool(window.artwork_plugin_presence.property("active"))
 
     assert "Taste Helper" in window.recommendation_plugin_presence.label.text()
-    assert "Lyric Helper" in window.rich_now.lyrics_plugin_presence.label.text()
+    assert not hasattr(window.rich_now, "lyrics_plugin_presence")
     assert "Liner Notes" in window.rich_now.context_plugin_presence.label.text()
     assert "Needs Setup" not in window.rich_now.context_plugin_presence.label.text()
 
@@ -482,7 +482,7 @@ def test_plugins_surface_where_their_features_are_used(monkeypatch, tmp_path):
     window.search_plugin_presence.action.click()
     window.artwork_plugin_presence.action.click()
     window.recommendation_plugin_presence.action.click()
-    window.rich_now.lyrics_plugin_presence.action.click()
+    window.rich_now.manage_lyrics_sources_action.trigger()
     window.rich_now.context_plugin_presence.action.click()
 
     assert opened == [
@@ -598,7 +598,7 @@ def test_lyrics_lookup_outcomes_are_distinct_in_now_playing(monkeypatch, tmp_pat
         },
     )
     assert "Instrumental track" in widget.lyrics.toPlainText()
-    assert widget.online_lyrics_button.text() == "Refresh online"
+    assert widget.online_lyrics_button.text() == "Refresh lyrics"
 
     window.close()
     app.processEvents()
@@ -722,7 +722,7 @@ def test_fullscreen_lyrics_tracks_synced_position(monkeypatch, tmp_path):
     app.processEvents()
     assert widget._lyric_index == 1
     assert "Two" in widget._lyrics_fullscreen_browser.toPlainText()
-    assert "font-size:36px" in widget._synced_lyrics_html(1, full_screen=True)
+    assert "font-size:38px" in widget._synced_lyrics_html(1, full_screen=True)
 
     dialog = widget._lyrics_fullscreen_dialog
     if dialog is not None:
@@ -1056,3 +1056,127 @@ def test_sources_first_run_orientation_is_dismissible_and_persistent(monkeypatch
     assert second.source_welcome.isHidden()
     second.close()
     app.processEvents()
+
+
+
+def test_native_lyrics_toolbar_hides_plugin_management_chrome(monkeypatch, tmp_path):
+    try:
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+
+    window = main_window.MainWindow()
+    widget = window.rich_now
+
+    assert not hasattr(widget, "lyrics_plugin_presence")
+    assert widget.online_lyrics_button.text() == "Refresh lyrics"
+    assert widget.fullscreen_lyrics_button.text() == "Full screen"
+    assert widget.translate_lyrics_button.text() == "Translate"
+    assert widget.more_lyrics_button.text() == "More"
+    assert widget.find_lyrics_plugin_button.isHidden()
+    assert widget.import_lyrics_button.isHidden()
+    assert widget.paste_lyrics_button.isHidden()
+    assert widget.auto_online_lyrics.isHidden()
+
+    menu_labels = [
+        action.text()
+        for action in widget.lyrics_more_menu.actions()
+        if action.text()
+    ]
+    assert menu_labels == [
+        "Edit saved lyrics…",
+        "Add lyrics file…",
+        "Paste lyrics…",
+        "Auto-find online",
+        "Manage lyric sources…",
+    ]
+
+    window.close()
+    app.processEvents()
+
+
+def test_refresh_lyrics_checks_native_and_installed_sources_before_online(monkeypatch, tmp_path):
+    try:
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+        from melodex.metadata import track_key
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+
+    window = main_window.MainWindow()
+    widget = window.rich_now
+    widget.track = {
+        "artist": "Example Artist",
+        "title": "Example Song",
+        "provider_id": "local",
+        "track_id": "example-song",
+    }
+
+    payload = {
+        "track_key": track_key(widget.track),
+        "track": dict(widget.track),
+        "identity": {
+            "artist": "Example Artist",
+            "title": "Example Song",
+        },
+        "lyrics": {
+            "text": "Lyrics supplied by an installed source",
+            "synced": [],
+            "source": "Public Domain Lyrics Example",
+            "provenance": {
+                "source_extension_id": "org.example.lyrics",
+                "source_extension_name": "Public Domain Lyrics Example",
+            },
+        },
+        "errors": [],
+    }
+    monkeypatch.setattr(widget.metadata, "enrich_identity", lambda track: payload)
+
+    online_calls = []
+    monkeypatch.setattr(
+        widget,
+        "_find_lyrics_online",
+        lambda force=True: online_calls.append(force),
+    )
+
+    def run_immediately(key, name, fn):
+        widget._pending.add(name)
+        widget._stage_loaded(key, name, fn())
+
+    monkeypatch.setattr(widget, "_run_stage", run_immediately)
+    widget._refresh_lyrics_native()
+    app.processEvents()
+
+    assert online_calls == []
+    assert widget._current_lyrics["source"] == "Public Domain Lyrics Example"
+    assert "Lyrics supplied by an installed source" in widget.lyrics.toPlainText()
+    assert widget.lyrics_source_picker.count() == 1
+    assert widget.lyrics_source_picker.currentText() == "Public Domain Lyrics Example"
+    assert widget.online_lyrics_button.text() == "Refresh lyrics"
+
+    window.close()
+    app.processEvents()
+
+
+def test_plain_lyrics_html_uses_explicit_dark_theme_contrast():
+    try:
+        from melodex.rich_now_playing import RichNowPlayingWidget
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Desktop runtime is unavailable: {exc}")
+
+    rendered = RichNowPlayingWidget._plain_lyrics_html("Line one\nLine two")
+    assert "color:#e5edf6" in rendered
+    assert "font-size:21px" in rendered
+    assert "Line one<br>Line two" in rendered
