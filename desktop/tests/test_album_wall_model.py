@@ -88,3 +88,39 @@ def test_album_wall_groups_mixed_artists_by_local_album_folder():
     compilation = next(a for a in wall["albums"] if a["track_count"] == 2)
     assert compilation["artist"] == "Various Artists"
     assert [t["title"] for t in compilation["tracks"]] == ["One", "Two"]
+
+
+
+def test_album_wall_keeps_separate_local_editions_of_same_album():
+    catalog = [
+        {
+            **_track("/library/original/01.mp3", "Artist", "Same Album", "One", 1, 1999),
+            "album_artist": "Artist",
+        },
+        {
+            **_track("/library/remaster/01.mp3", "Artist", "Same Album", "One", 1, 2009),
+            "album_artist": "Artist",
+        },
+    ]
+    wall = build_album_wall(catalog)
+    assert wall["album_count"] == 2
+
+
+def test_album_wall_collapses_common_multidisc_subfolders():
+    catalog = [
+        {
+            **_track("/library/Box Set/CD1/01.mp3", "Artist", "Box Set", "Disc One", 1, 2010),
+            "album_artist": "Artist",
+            "disc_number": 1,
+        },
+        {
+            **_track("/library/Box Set/Disc 2/01.mp3", "Artist", "Box Set", "Disc Two", 1, 2010),
+            "album_artist": "Artist",
+            "disc_number": 2,
+        },
+    ]
+    wall = build_album_wall(catalog)
+    assert wall["album_count"] == 1
+    album = wall["albums"][0]
+    assert album["track_count"] == 2
+    assert [t["title"] for t in album["tracks"]] == ["Disc One", "Disc Two"]
