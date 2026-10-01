@@ -562,7 +562,7 @@ def test_lyrics_lookup_outcomes_are_distinct_in_now_playing(monkeypatch, tmp_pat
             }
         },
     )
-    assert "No confident online match" in widget.lyrics.toPlainText()
+    assert "No confident lyric match" in widget.lyrics.toPlainText()
     assert widget.online_lyrics_button.text() == "Try again"
     assert "no confident match" in widget.lyrics_source.text().casefold()
 
