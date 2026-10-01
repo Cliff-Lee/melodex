@@ -842,7 +842,7 @@ class LibraryBrowser(QWidget):
     def _retry_failed_artwork(self) -> None:
         if self._artist_lookup_active or self._album_lookup_active:
             return
-        view=self.current_view()
+        view=self._last_artwork_kind or self.current_view()
         if view=="artists" and self._artist_lookup_failures:
             self._artist_lookup_queue=[dict(row) for row in self._artist_lookup_failures]
             self._artist_lookup_failures=[]
