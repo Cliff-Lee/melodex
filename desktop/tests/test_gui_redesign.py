@@ -252,7 +252,7 @@ def test_artwork_progress_labels_are_compact():
 
 def test_source_card_uses_icon_and_origin_badge():
     try:
-        from PySide6.QtWidgets import QApplication
+        from PySide6.QtWidgets import QApplication, QLabel
         from melodex.ux_components import SourceCard
     except ImportError as exc:
         import pytest
@@ -267,9 +267,8 @@ def test_source_card_uses_icon_and_origin_badge():
         icon_key="lyrics",
         origin="Registry",
     )
-    labels = card.findChildren(type(card).mro()[1]) if False else []
-    # Object names are the stable UX contract; pixmap rendering is platform-specific.
-    assert card.findChild(__import__("PySide6.QtWidgets", fromlist=["QLabel"]).QLabel, "sourceBadge") is not None
-    assert card.findChild(__import__("PySide6.QtWidgets", fromlist=["QLabel"]).QLabel, "originPill") is not None
+    # Object names are the stable UX contract; native icon rendering differs by OS.
+    assert card.findChild(QLabel, "sourceBadge") is not None
+    assert card.findChild(QLabel, "originPill") is not None
     card.deleteLater()
     app.processEvents()
