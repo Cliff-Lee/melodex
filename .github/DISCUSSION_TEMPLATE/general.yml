@@ -1,0 +1,35 @@
+title: "[General] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this space for open-ended Melodex conversation: listening experiences, questions, comparisons, workflows, UX observations and community ideas.
+
+        If something is clearly broken, please use the Bug report issue form so it can be tracked.
+
+  - type: textarea
+    id: topic
+    attributes:
+      label: What would you like to discuss?
+      description: Tell us what you tried, noticed or want to explore.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Listening / playback
+        - Library management
+        - Flow / discovery
+        - Album Wall / Music Map / Journeys
+        - Playlists
+        - Sources / plugins
+        - UI / UX
+        - AI integrations
+        - Development / contribution
+        - Community
+        - Other
+    validations:
+      required: true
