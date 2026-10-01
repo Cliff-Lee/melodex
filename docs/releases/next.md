@@ -37,3 +37,11 @@ This file tracks changes intended for **v0.7.3**.
 - A temporary plugin/network failure leaves Core context visible and is reported as an optional-source problem.
 - Context source management moves to a compact **Sources…** action.
 - **Refresh context** retries optional enrichment without disturbing playback or the rest of Now Playing.
+
+## K5 — Plugin health and packaged TLS
+
+- Packaged Python provider/extension workers inherit Melodex's trusted certifi CA bundle when the parent environment has no explicit CA path.
+- Existing user/system `SSL_CERT_FILE` settings remain authoritative and are not overwritten.
+- TLS certificate failures, DNS/network failures and timeouts are classified as temporary **Unavailable** states rather than broken-plugin errors.
+- Explicit extension health checks use the same transient-failure classification as normal capability calls.
+- Plugin Centre health messaging now distinguishes temporary upstream availability from genuine extension/protocol failures.
