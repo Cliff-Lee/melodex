@@ -3352,6 +3352,81 @@ class MainWindow(QMainWindow):
             return value.split(":",1)[1]
         return value if value not in {"local", "jamendo", "streams"} else ""
 
+    def _test_all_plugins(self):
+        plugin_ids=[
+            pid for pid in self.providers.provider_order()
+            if pid not in {"local","jamendo","streams"}
+        ]
+        plugin_ids.extend(
+            str(row.get("id") or "")
+            for row in self.providers.extensions()
+            if str(row.get("id") or "")
+        )
+        plugin_ids=list(dict.fromkeys(plugin_ids))
+        if not plugin_ids:
+            self.statusBar().showMessage("No installed plugins to check",3000)
+            return
+
+        self.source_check_all.setEnabled(False)
+        self.source_check_all.setText(f"Checking 0/{len(plugin_ids)}…")
+        self.statusBar().showMessage(
+            f"Checking {len(plugin_ids)} installed source/plugin connections…"
+        )
+
+        def work():
+            results=[]
+            total=len(plugin_ids)
+            for index,plugin_id in enumerate(plugin_ids,1):
+                try:
+                    result=dict(self.providers.test_plugin_health(plugin_id,timeout=6.0) or {})
+                except Exception as exc:
+                    result={
+                        "plugin_id":plugin_id,
+                        "name":plugin_id,
+                        "status":"error",
+                        "message":str(exc),
+                    }
+                result["_index"]=index
+                result["_total"]=total
+                results.append(result)
+            return results
+
+        def done(results):
+            rows=[dict(x) for x in list(results or []) if isinstance(x,dict)]
+            self.source_check_all.setEnabled(True)
+            self.source_check_all.setText("Check installed")
+            self._refresh_sources()
+            ready=sum(
+                1 for row in rows
+                if str(row.get("status") or "") in {"ready","ok"}
+            )
+            setup=sum(
+                1 for row in rows
+                if str(row.get("status") or "")=="setup_required"
+            )
+            attention=len(rows)-ready-setup
+            bits=[f"{ready} ready"]
+            if setup:
+                bits.append(f"{setup} need setup")
+            if attention:
+                bits.append(f"{attention} need attention or are unavailable")
+            summary=" · ".join(bits)
+            self.statusBar().showMessage("Plugin check complete · "+summary,7000)
+            QMessageBox.information(
+                self,
+                "Installed plugin check",
+                "Checked the installed optional sources and enhancements.\n\n"
+                + summary
+                + "\n\nSelect any item marked Not tested/Needs attention for its individual details.",
+            )
+
+        def failed(error):
+            self.source_check_all.setEnabled(True)
+            self.source_check_all.setText("Check installed")
+            self.statusBar().showMessage(f"Plugin check stopped: {error}",5000)
+
+        self._run_async(work,done,failed)
+
     def _test_selected_plugin(self):
         plugin_id=self._selected_plugin_id()
         if not plugin_id:
