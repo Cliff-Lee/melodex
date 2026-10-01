@@ -9,6 +9,17 @@ Sources & plugins
 → Browse optional plugins
 ```
 
+## Consumer-facing presentation
+
+The Plugin Centre and Sources & plugins page now share a visual language:
+
+- distinctive pictogram tiles by source/capability;
+- clear Installed / Included / Optional / Setup needed state;
+- plain-language descriptions before technical metadata;
+- direct **Use**, **Search**, **Set up** and **Check connection** actions.
+
+The current public registry is still a reference ecosystem: all current registry entries are marked `example`. The UI does not imply that these are all production-grade consumer services.
+
 ## What the Plugin Centre shows
 
 Each entry can expose:
