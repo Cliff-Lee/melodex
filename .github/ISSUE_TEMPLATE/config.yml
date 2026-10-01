@@ -15,3 +15,7 @@ contact_links:
   - name: Troubleshooting
     url: https://github.com/Cliff-Lee/melodex/blob/main/docs/TROUBLESHOOTING.md
     about: Common setup and playback problems.
+
+  - name: Community discussions
+    url: https://github.com/Cliff-Lee/melodex/discussions
+    about: Ask questions, share early ideas and talk with other Melodex users.
