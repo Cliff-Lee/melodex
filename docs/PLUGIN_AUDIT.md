@@ -105,6 +105,20 @@ The Now Playing Lyrics tab therefore provides:
 
 A future licensed lyrics extension can plug into the existing `lyrics.lookup` contract without changing the player UI.
 
+### Lyrics experience
+
+The Lyrics tab now treats lyrics as an active listening surface rather than a static text box:
+
+- synchronized LRC lines highlight with playback and can be clicked to seek;
+- **Full screen** opens a distraction-free large-type lyrics view that stays synchronized;
+- when both local/plugin and online lyrics exist, the user can explicitly switch sources;
+- **Edit saved…** is only enabled for local/personal lyrics and saves a Melodex-owned correction copy without rewriting the source audio file;
+- temporary LRCLIB/plugin text is not made editable through that action, preserving the non-persistent online-lyrics policy;
+- an online miss/error never replaces valid local lyrics already on screen;
+- **Translate…** is optional and explicit: it uses the user's configured LLM only after a target language is chosen and the user confirms sending the currently displayed lyric text to that endpoint;
+- generated translations are temporary and are not stored by Melodex.
+
+
 ## Status vocabulary
 
 The GUI separates package presence from runtime confidence:
