@@ -1135,7 +1135,7 @@ class RichMetadataService:
                 )
                 lookup=broker.lookup_artwork(
                     subject,
-                    roles=["portrait","artist","profile","thumbnail"],
+                    roles=["portrait","thumbnail"],
                     max_results=8,
                 )
                 for asset in list(lookup.get("assets") or []):
@@ -1145,7 +1145,7 @@ class RichMetadataService:
                     if not url:
                         continue
                     role=_norm(asset.get("role"))
-                    if role and role not in {"portrait","artist","profile","thumbnail"}:
+                    if role and role not in {"portrait","thumbnail"}:
                         continue
                     downloaded=self._download_artwork(url)
                     if not downloaded:
