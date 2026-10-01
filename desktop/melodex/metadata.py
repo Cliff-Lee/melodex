@@ -1248,11 +1248,17 @@ class RichMetadataService:
     @staticmethod
     def _artist_search_names(artist: dict[str, Any]) -> list[str]:
         names=[]
+        raw_aliases=artist.get("aliases")
+        aliases=(
+            list(raw_aliases)
+            if isinstance(raw_aliases,(list,tuple))
+            else []
+        )
         for raw in (
             artist.get("name"),
             artist.get("artist"),
             artist.get("sort_name"),
-            *list(artist.get("aliases") or []),
+            *aliases,
         ):
             if isinstance(raw,dict):
                 raw=raw.get("name")
