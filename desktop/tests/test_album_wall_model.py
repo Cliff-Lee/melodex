@@ -75,3 +75,16 @@ def test_album_wall_layout_has_no_tile_collisions_across_lenses():
         positions = layout_album_positions(wall, lens)
         assert len(positions) == 140
         assert len(set(positions.values())) == 140
+
+
+def test_album_wall_groups_mixed_artists_by_local_album_folder():
+    catalog = [
+        _track("/compilation/01.mp3", "Artist A", "Shared Album", "One", 1, 2005),
+        _track("/compilation/02.mp3", "Artist B", "Shared Album", "Two", 2, 2005),
+        _track("/other/01.mp3", "Artist C", "Shared Album", "Three", 1, 2005),
+    ]
+    wall = build_album_wall(catalog)
+    assert wall["album_count"] == 2
+    compilation = next(a for a in wall["albums"] if a["track_count"] == 2)
+    assert compilation["artist"] == "Various Artists"
+    assert [t["title"] for t in compilation["tracks"]] == ["One", "Two"]
