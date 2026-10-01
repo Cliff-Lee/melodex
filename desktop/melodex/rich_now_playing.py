@@ -103,8 +103,10 @@ class RichNowPlayingWidget(QWidget):
         self.links = QLabel(""); self.links.setOpenExternalLinks(True); self.links.setWordWrap(True)
         self.artist_photo_thumb = QLabel(""); self.artist_photo_thumb.setAlignment(Qt.AlignCenter); self.artist_photo_thumb.setFixedSize(160, 160)
         self.artist_photo_thumb.setStyleSheet("background:#15181d;border:1px solid #303640;border-radius:16px;color:#808894")
-        self.artist_photo_credit = QLabel(""); self.artist_photo_credit.setOpenExternalLinks(True); self.artist_photo_credit.setWordWrap(True)
-        self.artist_photo_credit.setMaximumWidth(330); self.artist_photo_credit.setStyleSheet("color:#8f96a1;font-size:10px")
+        self.artist_photo_credit = QLabel("")
+        self.artist_photo_credit.setOpenExternalLinks(True)
+        self.artist_photo_credit.setWordWrap(True)
+        self.artist_photo_credit.hide()
         right.addWidget(self.title); right.addWidget(self.artist); right.addWidget(self.album); right.addWidget(self.facts)
         right.addWidget(self.progress); right.addWidget(self.links); right.addWidget(self.artist_photo_thumb, 0, Qt.AlignLeft); right.addWidget(self.artist_photo_credit); right.addStretch(1)
         self.art_source = QLabel(""); self.art_source.setWordWrap(True); self.art_source.setStyleSheet("color:#777f8a;font-size:11px"); right.addWidget(self.art_source)
@@ -250,23 +252,55 @@ class RichNowPlayingWidget(QWidget):
         )
         lyrics_layout.addWidget(self.lyrics,1)
 
-        self.artist_info = QTextBrowser(); self.releases = QTextBrowser(); self.credits = QTextBrowser(); self.info = QTextBrowser()
+        self.artist_info = QTextBrowser()
+        self.releases = QTextBrowser()
+        self.credits = QTextBrowser()
+        self.info = QTextBrowser()
         for browser in (self.artist_info, self.releases, self.credits, self.info):
             browser.setOpenExternalLinks(True)
+            browser.setFrameShape(QFrame.NoFrame)
+            browser.setStyleSheet(
+                "QTextBrowser{background:transparent;border:0;color:#dfe7f1;"
+                "padding:10px 12px;} QScrollBar:vertical{width:8px;}"
+            )
 
         self.context_page=QWidget()
         context_layout=QVBoxLayout(self.context_page)
         context_layout.setContentsMargins(0,8,0,0)
         context_layout.setSpacing(8)
+
+        context_toolbar=QHBoxLayout()
+        context_title=QLabel("Context")
+        context_title.setStyleSheet("font-size:15px;font-weight:700;color:#dfe7f1")
+        self.context_refresh_button=QPushButton("Refresh context")
+        self.context_refresh_button.setObjectName("quietButton")
+        self.context_refresh_button.clicked.connect(self._refresh_context_native)
+        self.context_sources_button=QPushButton("Sources…")
+        self.context_sources_button.setObjectName("quietButton")
+        self.context_sources_button.clicked.connect(self.contextPluginRequested)
+        context_toolbar.addWidget(context_title)
+        context_toolbar.addStretch(1)
+        context_toolbar.addWidget(self.context_refresh_button)
+        context_toolbar.addWidget(self.context_sources_button)
+        context_layout.addLayout(context_toolbar)
+
+        # Compatibility object retained for plugin-presence integration/tests,
+        # but plugin status no longer owns the listener-facing Context surface.
         self.context_plugin_presence=FeaturePresenceBar(
             "Context helpers",
-            baseline="Melodex core metadata still works without plugins",
+            baseline="",
             action_text="Add context plugin…",
         )
         self.context_plugin_presence.actionRequested.connect(self.contextPluginRequested)
-        context_layout.addWidget(self.context_plugin_presence)
+        self.context_plugin_presence.hide()
+
         self.context=QTextBrowser()
         self.context.setOpenExternalLinks(True)
+        self.context.setFrameShape(QFrame.NoFrame)
+        self.context.setStyleSheet(
+            "QTextBrowser{background:transparent;border:0;color:#dfe7f1;"
+            "padding:10px 12px;}"
+        )
         context_layout.addWidget(self.context,1)
 
         self.tabs.addTab(self.lyrics_page, "Lyrics")
@@ -299,20 +333,32 @@ class RichNowPlayingWidget(QWidget):
         self.artist_info.setHtml("<p style='color:#9097a2'>Artist information will load after MusicBrainz identifies the track.</p>")
         self.releases.setHtml("<p style='color:#9097a2'>Release history will load independently after the artist is identified.</p>")
         self.credits.setHtml("<p style='color:#9097a2'>Recording/work credits will load independently after the track is identified.</p>")
-        self.context.setHtml("<p style='color:#9097a2'>Context plugins can add liner notes, musical connections, community listening data and other sourced cards here.</p>")
+        self.context.setHtml(
+            "<p style='color:#9097a2'>Context will collect useful artist, recording and community information as this track is identified.</p>"
+        )
         self.info.setHtml("<p style='color:#9097a2'>Identifying this track with MusicBrainz…</p>")
 
     # ---------------------------- staged loading
     def set_track(self, track: dict[str, Any]) -> None:
         self.track = dict(track or {})
         request_track = dict(self.track)
+        try:
+            warm_art=self.metadata.local_artwork(request_track)
+        except Exception:
+            warm_art={}
+        try:
+            warm_online_lyrics=self.metadata.cached_community_lyrics(request_track)
+        except Exception:
+            warm_online_lyrics={}
         self.bundle = {}
         self.synced = []
         self._lyric_index = -2
         self._current_lyrics = {}
         self._local_lyrics = {}
-        self._online_lyrics = {}
-        self._active_lyrics_source = ""
+        self._online_lyrics = dict(warm_online_lyrics or {})
+        self._active_lyrics_source = (
+            "online" if self._lyrics_has_content(self._online_lyrics) else ""
+        )
         self._identity = {}
         self._pending = {"identity"}
         self._context_started = False
@@ -329,7 +375,16 @@ class RichNowPlayingWidget(QWidget):
         duration_text = f"{int(duration)//60}:{int(duration)%60:02d}" if duration > 0 else ""
         self.facts.setText(" · ".join(x for x in (provider, duration_text) if x))
         self.progress.setText("Identifying track and checking capability extensions…")
-        self.links.clear(); self.art_source.clear(); self.artist_photo_credit.clear(); self._set_art(""); self._set_artist_photo(""); self._empty_tabs()
+        self.links.clear()
+        self.art_source.clear()
+        self.artist_photo_credit.clear()
+        self._set_art(str(warm_art.get("path") or ""))
+        if warm_art.get("source"):
+            self.art_source.setText("Artwork: " + str(warm_art.get("source") or ""))
+        self._set_artist_photo("")
+        self._empty_tabs()
+        if self._lyrics_has_content(self._online_lyrics):
+            self._apply_lyrics(self._online_lyrics)
         key = track_key(request_track)
         if not key:
             self.progress.setText("Not enough metadata to identify this track")
@@ -465,22 +520,25 @@ class RichNowPlayingWidget(QWidget):
             self._set_artist_photo(str(photo.get("path") or ""))
             self._set_artist_photo_credit(photo)
             artist = self.bundle.get("artist") if isinstance(self.bundle.get("artist"), dict) else {}
-            self.artist_info.setHtml(self._artist_html(artist, photo))
+            self.artist_info.setHtml(self._artist_html(artist))
+            self._refresh_context_display()
 
         elif stage == "credits":
             credits = [x for x in list(payload.get("credits") or []) if isinstance(x, dict)]
             self.bundle["credits"] = credits
             self.credits.setHtml(self._credits_html(credits))
+            self._refresh_context_display()
 
         elif stage == "context":
             cards = [x for x in list(payload.get("cards") or []) if isinstance(x, dict)]
             self.bundle["context"] = cards
-            self.context.setHtml(self._context_html(cards))
+            self._refresh_context_display()
 
         elif stage == "discography":
             releases = [x for x in list(payload.get("discography") or []) if isinstance(x, dict)]
             self.bundle["discography"] = releases
             self.releases.setHtml(self._discography_html(releases))
+            self._refresh_context_display()
             if releases:
                 self._run_stage(key, "release covers", lambda: {"discography": self.metadata.hydrate_discography_covers(releases, 8), "errors": []})
 
@@ -527,13 +585,96 @@ class RichNowPlayingWidget(QWidget):
             lambda: self.metadata.enrich_context(request_track, identity),
         )
 
+    def _refresh_context_native(self) -> None:
+        key=track_key(self.track)
+        if not key or not self._identity:
+            return
+        self._context_started=True
+        self.context_refresh_button.setEnabled(False)
+        self.context_refresh_button.setText("Refreshing…")
+        request_track=dict(self.track)
+        identity=dict(self._identity)
+        self._run_stage(
+            key,
+            "context",
+            lambda:self.metadata.enrich_context(request_track,identity),
+        )
+
+    def _native_context_cards(self) -> list[dict[str,Any]]:
+        cards=[]
+        artist=(
+            dict(self.bundle.get("artist") or {})
+            if isinstance(self.bundle.get("artist"),dict)
+            else {}
+        )
+        if artist:
+            facts=[]
+            for label,value in (
+                ("Artist type",artist.get("type")),
+                ("From",artist.get("begin_area") or artist.get("area") or artist.get("country")),
+                ("Active from",artist.get("begin")),
+            ):
+                if value:
+                    facts.append({"label":label,"value":str(value)})
+            genres=[str(x) for x in list(artist.get("genres") or []) if x][:6]
+            if genres:
+                facts.append({"label":"Tags","value":", ".join(genres)})
+            if facts:
+                cards.append({
+                    "id":"melodex-artist-context",
+                    "title":"At a glance",
+                    "kind":"facts",
+                    "priority":25,
+                    "facts":facts,
+                    "provenance":{"attribution":"Melodex / MusicBrainz"},
+                })
+
+        credits=[
+            dict(x) for x in list(self.bundle.get("credits") or [])
+            if isinstance(x,dict)
+        ]
+        if credits:
+            items=[]
+            for row in credits[:10]:
+                name=str(row.get("name") or "").strip()
+                role=str(row.get("role") or "").strip()
+                if name:
+                    items.append({"title":name,"subtitle":role})
+            if items:
+                cards.append({
+                    "id":"melodex-recording-connections",
+                    "title":"People & roles",
+                    "kind":"list",
+                    "priority":20,
+                    "items":items,
+                    "provenance":{"attribution":"Melodex / MusicBrainz"},
+                })
+        return cards
+
+    def _refresh_context_display(self) -> None:
+        plugin_cards=[
+            dict(x) for x in list(self.bundle.get("context") or [])
+            if isinstance(x,dict)
+        ]
+        cards=plugin_cards+self._native_context_cards()
+        self.context.setHtml(self._context_html(cards))
+        self.context_refresh_button.setEnabled(True)
+        self.context_refresh_button.setText("Refresh context")
+
     def _apply_identity(self, payload: dict[str, Any]) -> None:
         identity = payload.get("identity") if isinstance(payload.get("identity"), dict) else {}
         lyrics = payload.get("lyrics") if isinstance(payload.get("lyrics"), dict) else {}
         self.bundle["identity"] = dict(identity)
-        self.bundle["lyrics"] = dict(lyrics)
         self._local_lyrics = dict(lyrics)
-        self._active_lyrics_source = "local" if self._lyrics_has_content(lyrics) else ""
+        if self._lyrics_has_content(lyrics):
+            self.bundle["lyrics"] = dict(lyrics)
+            self._active_lyrics_source = "local"
+        elif self._lyrics_has_content(self._online_lyrics):
+            self.bundle["lyrics"] = dict(self._online_lyrics)
+            self._active_lyrics_source = "online"
+        else:
+            self.bundle["lyrics"] = dict(lyrics)
+            self._active_lyrics_source = ""
         if identity.get("title"):
             self.title.setText(str(identity.get("title")))
         if identity.get("artist"):
@@ -541,10 +682,16 @@ class RichNowPlayingWidget(QWidget):
         album = str(identity.get("album") or self.track.get("album") or "")
         date = str(identity.get("date") or "")
         self.album.setText(" · ".join(x for x in (album, date[:4] if date else "") if x))
-        self._apply_lyrics(lyrics)
+        active_lyrics=(
+            lyrics
+            if self._lyrics_has_content(lyrics)
+            else self._online_lyrics
+            if self._lyrics_has_content(self._online_lyrics)
+            else lyrics
+        )
+        self._apply_lyrics(active_lyrics)
         if (
-            not str(lyrics.get("text") or "").strip()
-            and not list(lyrics.get("synced") or [])
+            not self._lyrics_has_content(active_lyrics)
             and self.auto_online_lyrics.isChecked()
             and not self._online_lyrics_attempted
         ):
@@ -622,14 +769,16 @@ class RichNowPlayingWidget(QWidget):
             if source_url:
                 source_label += f' · <a href="{_escape(source_url)}">source</a>'
             if lyric_source.startswith("LRCLIB"):
-                source_label += " · on demand · not saved"
+                source_label += " · online"
                 method=str(match.get("method") or "")
                 if method=="cleaned_exact":
                     source_label += " · matched after cleaning metadata"
                 elif method=="structured_search":
                     source_label += " · matched by search"
                 if lyrics.get("cache")=="memory":
-                    source_label += " · reused this session"
+                    source_label += " · cached"
+                elif lyrics.get("cache")=="disk":
+                    source_label += " · cached locally"
             if self.synced:
                 source_label += " · synchronized"
             self.lyrics_source.setText(source_label)
@@ -1104,7 +1253,9 @@ class RichNowPlayingWidget(QWidget):
         source = f'<a href="{description_url}">Commons file</a>' if description_url else "Wikimedia Commons"
         licence = f'<a href="{license_url}">{license_name}</a>' if license_url and license_name else license_name
         suffix = f" · {licence}" if licence and licence.casefold() not in attribution.casefold() else ""
-        self.artist_photo_credit.setText(f"Photo: {attribution} · {source}{suffix}")
+        credit=f"Photo: {attribution} · {source}{suffix}"
+        self.artist_photo_credit.setText("")
+        self.artist_photo_thumb.setToolTip(credit)
 
     def _set_artist_photo(self, path: str) -> None:
         if path and Path(path).exists():
@@ -1198,7 +1349,10 @@ class RichNowPlayingWidget(QWidget):
     def _artist_html(self, artist: dict[str, Any], photo: dict[str, Any] | None = None) -> str:
         if not artist:
             return "<p style='color:#9097a2'>No MusicBrainz artist information found.</p>"
-        parts = [f"<h2>{_escape(artist.get('name'))}</h2>"]
+        parts = [
+            "<div style='max-width:860px;color:#dfe7f1'>"
+            f"<div style='font-size:22px;font-weight:700;margin-bottom:8px'>{_escape(artist.get('name'))}</div>"
+        ]
         dis = str(artist.get("disambiguation") or "")
         if dis:
             parts.append(f"<p>{_escape(dis)}</p>")
@@ -1216,21 +1370,6 @@ class RichNowPlayingWidget(QWidget):
         genres = [str(x) for x in list(artist.get("genres") or []) if x]
         if genres:
             parts.append("<p><b>Genres / tags:</b> " + _escape(", ".join(genres)) + "</p>")
-        photo = photo or {}
-        if photo.get("path"):
-            uri = Path(str(photo.get("path"))).resolve().as_uri()
-            caption = _escape(photo.get("attribution") or photo.get("source") or "")
-            description_url = _escape(photo.get("description_url") or "")
-            license_name = _escape(photo.get("license_name") or "")
-            license_url = _escape(photo.get("license_url") or "")
-            parts.append(f'<p><img src="{uri}" width="220"></p>')
-            credit_bits = [caption] if caption else []
-            if description_url:
-                credit_bits.append(f'<a href="{description_url}">Wikimedia Commons file</a>')
-            if license_name:
-                credit_bits.append(f'<a href="{license_url}">{license_name}</a>' if license_url else license_name)
-            if credit_bits:
-                parts.append("<p style='color:#9097a2'>Photo: " + " · ".join(credit_bits) + "</p>")
         members = [x for x in list(artist.get("members") or []) if isinstance(x, dict)]
         if members:
             parts.append("<h3>Members / membership</h3><ul>" + "".join(f"<li>{_escape(x.get('name'))} — {_escape(x.get('type'))}{' (former)' if x.get('ended') else ''}</li>" for x in members) + "</ul>")
@@ -1240,13 +1379,18 @@ class RichNowPlayingWidget(QWidget):
         links = [x for x in list(artist.get("links") or []) if isinstance(x, dict) and x.get("url")]
         if links:
             parts.append("<h3>Links</h3><ul>" + "".join(f'<li><a href="{_escape(x.get("url"))}">{_escape(x.get("type") or "website")}</a></li>' for x in links[:12]) + "</ul>")
+        parts.append("</div>")
         return "".join(parts)
 
     @staticmethod
     def _discography_html(rows: list[dict[str, Any]]) -> str:
         if not rows:
             return "<p style='color:#9097a2'>No release groups were returned for this artist.</p>"
-        parts = ["<h2>Release timeline</h2><table cellspacing='10'>"]
+        parts = [
+            "<div style='max-width:880px;color:#dfe7f1'>"
+            "<div style='font-size:20px;font-weight:700;margin-bottom:10px'>Releases</div>"
+            "<table cellspacing='8'>"
+        ]
         for row in rows:
             title = _escape(row.get("title"))
             year = _escape(row.get("year") or row.get("date") or "")
@@ -1254,25 +1398,35 @@ class RichNowPlayingWidget(QWidget):
             image = ""
             path = str(row.get("cover_path") or "")
             if path and Path(path).exists():
-                image = f'<img src="{Path(path).resolve().as_uri()}" width="58">'
+                image = f'<img src="{Path(path).resolve().as_uri()}" width="48">'
             else:
                 image = '<span style="color:#66717f">♪</span>'
             link = f'https://musicbrainz.org/release-group/{_escape(row.get("id"))}' if row.get("id") else ""
             title_html = f'<a href="{link}">{title}</a>' if link else title
             parts.append(f"<tr><td width='72'>{image}</td><td><b>{title_html}</b><br><span style='color:#aab0ba'>{year} {('· ' + typ) if typ else ''}</span></td></tr>")
-        parts.append("</table>")
+        parts.append("</table></div>")
         return "".join(parts)
 
     @staticmethod
     def _credits_html(rows: list[dict[str, Any]]) -> str:
         if not rows:
             return "<p style='color:#9097a2'>No structured credits were returned for this recording. MusicBrainz coverage varies by release.</p>"
-        return "<h2>Credits & relationships</h2><ul>" + "".join(f"<li><b>{_escape(x.get('role'))}</b> — {_escape(x.get('name'))}</li>" for x in rows) + "</ul>"
+        body="".join(
+            "<div style='margin:0 0 7px 0'>"
+            f"<span style='color:#8fa4ba'>{_escape(x.get('role'))}</span>"
+            f" &nbsp; {_escape(x.get('name'))}</div>"
+            for x in rows
+        )
+        return (
+            "<div style='max-width:860px;color:#dfe7f1'>"
+            "<div style='font-size:20px;font-weight:700;margin-bottom:10px'>Credits</div>"
+            + body + "</div>"
+        )
 
     @staticmethod
     def _context_html(cards: list[dict[str, Any]]) -> str:
         if not cards:
-            return "<p style='color:#9097a2'>No context cards were returned. Install or enable context plugins to add musical connections, liner notes and community context.</p>"
+            return "<p style='color:#9097a2'>No additional context is available for this track yet.</p>"
         parts: list[str] = []
         for card in cards:
             title = _escape(card.get("title") or "Context")
@@ -1381,18 +1535,21 @@ class RichNowPlayingWidget(QWidget):
             line=_escape(row.get("text")) or "&nbsp;"
             stamp=max(0,int(row.get("time_ms") or 0))
             if i==current:
+                colour="#ffffff"
                 style=(
-                    f"font-size:{active}px;font-weight:750;color:#ffffff;"
+                    f"font-size:{active}px;font-weight:750;color:{colour};"
                     f"margin:{margin}px 0"
                 )
             elif current>=0 and abs(i-current)<=2:
-                style="color:#c8d3df;margin:7px 0"
+                colour="#c8d3df"
+                style=f"color:{colour};margin:7px 0"
             else:
-                style="color:#8290a1;margin:6px 0"
+                colour="#8290a1"
+                style=f"color:{colour};margin:6px 0"
             parts.append(
                 f"<a name='line-{i}'></a>"
                 f"<div style='{style}'>"
-                f"<a href='seek:{stamp}' style='color:inherit;text-decoration:none'>{line}</a>"
+                f"<a href='seek:{stamp}' style='color:{colour};text-decoration:none'>{line}</a>"
                 "</div>"
             )
         parts.append("</div>")
