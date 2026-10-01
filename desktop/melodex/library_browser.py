@@ -342,6 +342,7 @@ class LibraryBrowser(QWidget):
         self._visible_artists: list[dict[str, Any]] = []
         self._art_requested: set[str] = set()
         self._artist_art_requested: set[str] = set()
+        self._tracks_built = False
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -502,6 +503,7 @@ class LibraryBrowser(QWidget):
         self._clear_grid(self.album_grid)
         self._clear_grid(self.artist_grid)
         self.track_list.clear()
+        self._tracks_built = False
 
         self.catalog = [dict(item) for item in catalog if isinstance(item, dict)]
         self._art_requested.clear()
@@ -526,7 +528,6 @@ class LibraryBrowser(QWidget):
                     self.track_album_key[_track_key(track)] = album_key
 
         self._rebuild_artists()
-        self._rebuild_tracks()
         self._apply_filter()
         self.set_view(self.current_view())
         self._request_artwork()
@@ -546,6 +547,9 @@ class LibraryBrowser(QWidget):
         if name not in self.view_buttons:
             name = "albums"
         self.view_buttons[name].setChecked(True)
+        if name == "tracks" and not self._tracks_built:
+            self._rebuild_tracks()
+            self._tracks_built = True
         target = {
             "albums": self.album_page,
             "artists": self.artist_page,
@@ -582,7 +586,8 @@ class LibraryBrowser(QWidget):
             )
         ]
         self._layout_album_cards()
-        self._layout_artist_cards()
+        if self.current_view() == "artists" or self.artist_cards:
+            self._layout_artist_cards()
 
         for key, item in self.track_items.items():
             row = self.track_rows.get(key)
