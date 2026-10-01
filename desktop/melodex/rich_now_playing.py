@@ -5,12 +5,15 @@ import threading
 from pathlib import Path
 from typing import Any, Callable
 
-from PySide6.QtCore import QObject, Qt, Signal
+from PySide6.QtCore import QObject, Qt, QUrl, Signal
 from PySide6.QtGui import QColor, QImage, QPixmap
 from PySide6.QtWidgets import (
     QFileDialog,
     QFrame,
     QCheckBox,
+    QComboBox,
+    QDialog,
+    QDialogButtonBox,
     QHBoxLayout,
     QInputDialog,
     QLabel,
@@ -18,6 +21,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QTabWidget,
     QTextBrowser,
+    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -39,6 +43,8 @@ class RichNowPlayingWidget(QWidget):
     accentChanged = Signal(object)
     paletteChanged = Signal(object)
     lyricsChanged = Signal(object)
+    lyricsSeekRequested = Signal(int)
+    lyricsTranslationRequested = Signal(object)
     lyricsPluginRequested = Signal()
     contextPluginRequested = Signal()
     onlineLyricsPreferenceChanged = Signal(bool)
@@ -65,6 +71,13 @@ class RichNowPlayingWidget(QWidget):
         self.bundle: dict[str, Any] = {}
         self.synced: list[dict[str, Any]] = []
         self._lyric_index = -2
+        self._current_lyrics: dict[str, Any] = {}
+        self._local_lyrics: dict[str, Any] = {}
+        self._online_lyrics: dict[str, Any] = {}
+        self._active_lyrics_source = ""
+        self._lyrics_fullscreen_dialog: QDialog | None = None
+        self._lyrics_fullscreen_browser: QTextBrowser | None = None
+        self._lyrics_fullscreen_source: QLabel | None = None
         self._identity: dict[str, Any] = {}
         self._pending: set[str] = set()
         self._context_started = False
@@ -114,6 +127,12 @@ class RichNowPlayingWidget(QWidget):
         lyrics_actions.setSpacing(7)
         self.online_lyrics_button=QPushButton("Find online")
         self.online_lyrics_button.setObjectName("primaryButton")
+        self.fullscreen_lyrics_button=QPushButton("Full screen")
+        self.fullscreen_lyrics_button.setEnabled(False)
+        self.edit_lyrics_button=QPushButton("Edit saved…")
+        self.edit_lyrics_button.setEnabled(False)
+        self.translate_lyrics_button=QPushButton("Translate…")
+        self.translate_lyrics_button.setEnabled(False)
         self.import_lyrics_button=QPushButton("Add file…")
         self.paste_lyrics_button=QPushButton("Paste…")
         self.find_lyrics_plugin_button=QPushButton("Manage lyrics sources…")
@@ -123,6 +142,9 @@ class RichNowPlayingWidget(QWidget):
         self.online_lyrics_button.clicked.connect(
             lambda: self._find_lyrics_online(force=True)
         )
+        self.fullscreen_lyrics_button.clicked.connect(self._show_fullscreen_lyrics)
+        self.edit_lyrics_button.clicked.connect(self._edit_saved_lyrics)
+        self.translate_lyrics_button.clicked.connect(self._request_lyrics_translation)
         self.import_lyrics_button.clicked.connect(self._import_lyrics_file)
         self.paste_lyrics_button.clicked.connect(self._paste_lyrics)
         self.find_lyrics_plugin_button.clicked.connect(self.lyricsPluginRequested)
@@ -130,6 +152,20 @@ class RichNowPlayingWidget(QWidget):
             "<b>Find lyrics online</b><br>Ask LRCLIB for this track on demand. "
             "Melodex does not bundle or permanently cache LRCLIB lyric text. "
             "Lyrics remain the work of their respective rights holders."
+        )
+        self.fullscreen_lyrics_button.setToolTip(
+            "<b>Full-screen lyrics</b><br>Open a distraction-free lyrics view. "
+            "Synchronized lines stay highlighted while the track plays."
+        )
+        self.edit_lyrics_button.setToolTip(
+            "<b>Edit saved lyrics</b><br>Edit a personal/local lyrics copy. "
+            "Melodex saves the correction in its own cache and does not rewrite the audio file. "
+            "Temporary online lyrics are never persisted by this action."
+        )
+        self.translate_lyrics_button.setToolTip(
+            "<b>Translate lyrics</b><br>Explicitly send the currently displayed lyric text "
+            "to your configured LLM for a temporary translation. Nothing is sent automatically "
+            "and the translation is not saved."
         )
         self.import_lyrics_button.setToolTip(
             "<b>Add lyrics file</b><br>Import an .lrc or .txt file for this track. "
@@ -148,6 +184,9 @@ class RichNowPlayingWidget(QWidget):
             "Core Melodex does not scrape commercial lyric websites."
         )
         lyrics_actions.addWidget(self.online_lyrics_button)
+        lyrics_actions.addWidget(self.fullscreen_lyrics_button)
+        lyrics_actions.addWidget(self.edit_lyrics_button)
+        lyrics_actions.addWidget(self.translate_lyrics_button)
         lyrics_actions.addWidget(self.import_lyrics_button)
         lyrics_actions.addWidget(self.paste_lyrics_button)
         lyrics_actions.addWidget(self.find_lyrics_plugin_button)
@@ -155,14 +194,27 @@ class RichNowPlayingWidget(QWidget):
         lyrics_actions.addWidget(self.auto_online_lyrics)
         lyrics_layout.addLayout(lyrics_actions)
 
+        source_row=QHBoxLayout()
+        source_row.setSpacing(7)
+        self.lyrics_source_picker=QComboBox()
+        self.lyrics_source_picker.setObjectName("lyricsSourcePicker")
+        self.lyrics_source_picker.setMinimumWidth(220)
+        self.lyrics_source_picker.currentIndexChanged.connect(
+            self._lyrics_source_selected
+        )
+        self.lyrics_source_picker.hide()
+        source_row.addWidget(self.lyrics_source_picker)
         self.lyrics_source=QLabel("")
         self.lyrics_source.setOpenExternalLinks(True)
         self.lyrics_source.setWordWrap(True)
         self.lyrics_source.setStyleSheet("color:#7f8b9b;font-size:11px")
-        lyrics_layout.addWidget(self.lyrics_source)
+        source_row.addWidget(self.lyrics_source,1)
+        lyrics_layout.addLayout(source_row)
 
         self.lyrics = QTextBrowser()
-        self.lyrics.setOpenExternalLinks(True)
+        self.lyrics.setOpenExternalLinks(False)
+        self.lyrics.setOpenLinks(False)
+        self.lyrics.anchorClicked.connect(self._lyrics_anchor_clicked)
         lyrics_layout.addWidget(self.lyrics,1)
 
         self.artist_info = QTextBrowser(); self.releases = QTextBrowser(); self.credits = QTextBrowser(); self.info = QTextBrowser()
@@ -223,6 +275,10 @@ class RichNowPlayingWidget(QWidget):
         self.bundle = {}
         self.synced = []
         self._lyric_index = -2
+        self._current_lyrics = {}
+        self._local_lyrics = {}
+        self._online_lyrics = {}
+        self._active_lyrics_source = ""
         self._identity = {}
         self._pending = {"identity"}
         self._context_started = False
@@ -311,8 +367,19 @@ class RichNowPlayingWidget(QWidget):
 
         if stage == "community lyrics":
             lyrics=payload.get("lyrics") if isinstance(payload.get("lyrics"),dict) else {}
-            self.bundle["lyrics"]=dict(lyrics)
-            self._apply_lyrics(lyrics)
+            self._online_lyrics=dict(lyrics)
+            if self._lyrics_has_content(lyrics):
+                self.bundle["lyrics"]=dict(lyrics)
+                self._active_lyrics_source="online"
+                self._apply_lyrics(lyrics)
+            elif self._lyrics_has_content(self._local_lyrics):
+                self.bundle["lyrics"]=dict(self._local_lyrics)
+                self._active_lyrics_source="local"
+                self._apply_lyrics(self._local_lyrics)
+            else:
+                self.bundle["lyrics"]=dict(lyrics)
+                self._active_lyrics_source="online"
+                self._apply_lyrics(lyrics)
             self.online_lyrics_button.setEnabled(True)
             status=str(lyrics.get("status") or "")
             self.online_lyrics_button.setText(
@@ -411,6 +478,8 @@ class RichNowPlayingWidget(QWidget):
         lyrics = payload.get("lyrics") if isinstance(payload.get("lyrics"), dict) else {}
         self.bundle["identity"] = dict(identity)
         self.bundle["lyrics"] = dict(lyrics)
+        self._local_lyrics = dict(lyrics)
+        self._active_lyrics_source = "local" if self._lyrics_has_content(lyrics) else ""
         if identity.get("title"):
             self.title.setText(str(identity.get("title")))
         if identity.get("artist"):
@@ -430,6 +499,7 @@ class RichNowPlayingWidget(QWidget):
         self._refresh_info()
 
     def _apply_lyrics(self, lyrics: dict[str, Any]) -> None:
+        self._current_lyrics=dict(lyrics or {})
         self.synced = [dict(x) for x in list(lyrics.get("synced") or []) if isinstance(x, dict)]
         lyric_text = str(lyrics.get("text") or "")
         lyric_source = str(lyrics.get("source") or "")
@@ -528,6 +598,13 @@ class RichNowPlayingWidget(QWidget):
         else:
             self.lyrics_source.setText("No local/plugin lyrics · try Find online or add your own")
 
+        self._refresh_lyrics_source_picker()
+        self.edit_lyrics_button.setEnabled(self._current_lyrics_editable())
+        self.translate_lyrics_button.setEnabled(bool(lyric_text.strip()))
+        self.fullscreen_lyrics_button.setEnabled(
+            bool(lyric_text or self.synced or instrumental)
+        )
+        self._sync_fullscreen_lyrics()
         self.lyricsChanged.emit({
             "text": lyric_text,
             "synced": [dict(row) for row in self.synced],
@@ -569,6 +646,248 @@ class RichNowPlayingWidget(QWidget):
             },
         )
 
+    @staticmethod
+    def _lyrics_has_content(lyrics: dict[str, Any]) -> bool:
+        lyrics=dict(lyrics or {})
+        return bool(
+            str(lyrics.get("text") or "").strip()
+            or list(lyrics.get("synced") or [])
+            or bool(lyrics.get("instrumental"))
+        )
+
+    def _current_lyrics_editable(self) -> bool:
+        lyrics=dict(self._current_lyrics or {})
+        if not self._lyrics_has_content(lyrics):
+            return False
+        source=str(lyrics.get("source") or "").casefold()
+        provenance=(
+            dict(lyrics.get("provenance") or {})
+            if isinstance(lyrics.get("provenance"),dict)
+            else {}
+        )
+        if source.startswith("lrclib") or provenance.get("source_extension_id"):
+            return False
+        return bool(
+            lyrics.get("user_added")
+            or lyrics.get("path")
+            or self.track.get("local_path")
+        )
+
+    @staticmethod
+    def _lyrics_editor_text(lyrics: dict[str, Any]) -> str:
+        synced=[
+            dict(row)
+            for row in list((lyrics or {}).get("synced") or [])
+            if isinstance(row,dict)
+        ]
+        if not synced:
+            return str((lyrics or {}).get("text") or "")
+        rows=[]
+        for row in synced:
+            total=max(0,int(row.get("time_ms") or 0))
+            minutes=total//60000
+            seconds=(total%60000)//1000
+            hundredths=(total%1000)//10
+            rows.append(
+                f"[{minutes:02d}:{seconds:02d}.{hundredths:02d}]"
+                + str(row.get("text") or "")
+            )
+        return "\n".join(rows)
+
+    def _request_lyrics_translation(self) -> None:
+        text=str(self._current_lyrics.get("text") or "").strip()
+        if not text and self.synced:
+            text="\n".join(
+                str(row.get("text") or "")
+                for row in self.synced
+                if str(row.get("text") or "").strip()
+            ).strip()
+        if not text:
+            QMessageBox.information(
+                self,
+                "Translate lyrics",
+                "There is no lyric text to translate.",
+            )
+            return
+        self.lyricsTranslationRequested.emit({
+            "text":text,
+            "source":str(self._current_lyrics.get("source") or ""),
+            "artist":str(self.track.get("artist") or ""),
+            "title":str(self.track.get("title") or ""),
+        })
+
+    def _edit_saved_lyrics(self) -> None:
+        if not self._current_lyrics_editable():
+            QMessageBox.information(
+                self,
+                "Edit lyrics",
+                "Only local or personal lyrics can be edited here. "
+                "Temporary online/plugin lyrics are not persisted by Melodex.",
+            )
+            return
+        initial=self._lyrics_editor_text(self._current_lyrics)
+        text,ok=QInputDialog.getMultiLineText(
+            self,
+            "Edit saved lyrics",
+            "Edit plain lyrics or timestamped LRC text. "
+            "Melodex saves a personal copy and does not change your audio file:",
+            initial,
+        )
+        if not ok:
+            return
+        result=self.metadata.remember_lyrics_text(
+            self.track,
+            text,
+            source="Edited lyrics",
+        )
+        if not result:
+            QMessageBox.warning(
+                self,
+                "Could not save lyrics",
+                "The edited lyrics were empty.",
+            )
+            return
+        self.bundle["lyrics"]=dict(result)
+        self._local_lyrics=dict(result)
+        self._active_lyrics_source="local"
+        self._apply_lyrics(result)
+
+    def _refresh_lyrics_source_picker(self) -> None:
+        options=[]
+        if self._lyrics_has_content(self._local_lyrics):
+            label=str(self._local_lyrics.get("source") or "Local / plugin lyrics")
+            options.append(("local",f"Local / saved · {label}"))
+        if self._lyrics_has_content(self._online_lyrics):
+            label=str(self._online_lyrics.get("source") or "Online lyrics")
+            options.append(("online",f"Online · {label}"))
+
+        self.lyrics_source_picker.blockSignals(True)
+        self.lyrics_source_picker.clear()
+        for value,label in options:
+            self.lyrics_source_picker.addItem(label,value)
+        active=self._active_lyrics_source
+        index=self.lyrics_source_picker.findData(active)
+        if index >= 0:
+            self.lyrics_source_picker.setCurrentIndex(index)
+        self.lyrics_source_picker.setVisible(len(options) > 1)
+        self.lyrics_source_picker.blockSignals(False)
+
+    def _lyrics_source_selected(self, _index: int) -> None:
+        value=str(self.lyrics_source_picker.currentData() or "")
+        if value=="local" and self._lyrics_has_content(self._local_lyrics):
+            self._active_lyrics_source="local"
+            self.bundle["lyrics"]=dict(self._local_lyrics)
+            self._apply_lyrics(self._local_lyrics)
+        elif value=="online" and self._lyrics_has_content(self._online_lyrics):
+            self._active_lyrics_source="online"
+            self.bundle["lyrics"]=dict(self._online_lyrics)
+            self._apply_lyrics(self._online_lyrics)
+
+    def _lyrics_anchor_clicked(self, url: QUrl) -> None:
+        if str(url.scheme()).casefold()!="seek":
+            return
+        raw=str(url.path() or url.host() or "").strip("/")
+        if not raw:
+            raw=str(url.toString()).split(":",1)[-1]
+        try:
+            position=max(0,int(raw))
+        except Exception:
+            return
+        self.lyricsSeekRequested.emit(position)
+
+    def _show_fullscreen_lyrics(self) -> None:
+        if not self._lyrics_has_content(self._current_lyrics):
+            QMessageBox.information(
+                self,
+                "Full-screen lyrics",
+                "Lyrics are not available for this track yet.",
+            )
+            return
+        if self._lyrics_fullscreen_dialog is not None:
+            try:
+                self._lyrics_fullscreen_dialog.raise_()
+                self._lyrics_fullscreen_dialog.activateWindow()
+                return
+            except Exception:
+                self._lyrics_fullscreen_dialog=None
+
+        dialog=QDialog(self)
+        dialog.setWindowTitle("Lyrics · Melodex")
+        dialog.setModal(False)
+        layout=QVBoxLayout(dialog)
+        layout.setContentsMargins(28,24,28,24)
+        layout.setSpacing(12)
+
+        heading=QLabel(
+            f"<div style='font-size:24px;font-weight:750'>{_escape(self.title.text())}</div>"
+            f"<div style='font-size:15px;color:#9aa6b5'>{_escape(self.artist.text())}</div>"
+        )
+        heading.setWordWrap(True)
+        layout.addWidget(heading)
+
+        source=QLabel(self.lyrics_source.text())
+        source.setOpenExternalLinks(True)
+        source.setWordWrap(True)
+        source.setStyleSheet("color:#8290a2;font-size:11px")
+        layout.addWidget(source)
+
+        browser=QTextBrowser()
+        browser.setObjectName("fullscreenLyrics")
+        browser.setOpenExternalLinks(False)
+        browser.setOpenLinks(False)
+        browser.anchorClicked.connect(self._lyrics_anchor_clicked)
+        browser.setStyleSheet(
+            "QTextBrowser{background:#0d1118;border:0;padding:28px;}"
+        )
+        layout.addWidget(browser,1)
+
+        buttons=QDialogButtonBox(QDialogButtonBox.Close)
+        buttons.rejected.connect(dialog.close)
+        layout.addWidget(buttons)
+
+        dialog.finished.connect(self._fullscreen_lyrics_closed)
+        self._lyrics_fullscreen_dialog=dialog
+        self._lyrics_fullscreen_browser=browser
+        self._lyrics_fullscreen_source=source
+        self._sync_fullscreen_lyrics()
+        dialog.showFullScreen()
+
+    def _fullscreen_lyrics_closed(self, _result: int) -> None:
+        self._lyrics_fullscreen_dialog=None
+        self._lyrics_fullscreen_browser=None
+        self._lyrics_fullscreen_source=None
+
+    def _sync_fullscreen_lyrics(self) -> None:
+        browser=self._lyrics_fullscreen_browser
+        if browser is None:
+            return
+        if self.synced:
+            html_text=self._synced_lyrics_html(
+                self._lyric_index,
+                full_screen=True,
+            )
+            browser.setHtml(html_text)
+            if self._lyric_index >= 0:
+                browser.scrollToAnchor(f"line-{self._lyric_index}")
+        else:
+            text=str(self._current_lyrics.get("text") or "")
+            if text:
+                browser.setHtml(
+                    "<div style='font-size:28px;line-height:1.85;"
+                    "max-width:900px;margin:20px auto;color:#eef3f8'>"
+                    + "<br>".join(_escape(text).splitlines())
+                    + "</div>"
+                )
+            elif bool(self._current_lyrics.get("instrumental")):
+                browser.setHtml(
+                    "<div style='font-size:28px;max-width:900px;margin:80px auto;"
+                    "color:#dce5ef;text-align:center'>Instrumental track</div>"
+                )
+            else:
+                browser.setHtml(self.lyrics.toHtml())
+        if self._lyrics_fullscreen_source is not None:
+            self._lyrics_fullscreen_source.setText(self.lyrics_source.text())
+
     def _import_lyrics_file(self) -> None:
         if not self.track or not track_key(self.track):
             QMessageBox.information(self,"Lyrics","Play or select a track first.")
@@ -590,6 +909,8 @@ class RichNowPlayingWidget(QWidget):
             )
             return
         self.bundle["lyrics"]=dict(result)
+        self._local_lyrics=dict(result)
+        self._active_lyrics_source="local"
         self._apply_lyrics(result)
 
     def _paste_lyrics(self) -> None:
@@ -918,7 +1239,7 @@ class RichNowPlayingWidget(QWidget):
         body = "<h2>Track identity</h2><table cellspacing='7'>" + "".join(rows) + "</table>" if rows else "<p>No external identity data yet.</p>"
         if errors:
             body += "<h3>Enrichment notes</h3><ul>" + "".join(f"<li>{_escape(x)}</li>" for x in errors) + "</ul>"
-        body += "<p style='color:#777'>Online metadata: MusicBrainz. Artist photos: Wikimedia Commons via Wikidata when linked. Cover images: Cover Art Archive or the playback provider. Lyrics: local files/tags only.</p>"
+        body += "<p style='color:#777'>Online metadata: MusicBrainz. Artist photos: Wikimedia Commons via Wikidata when linked. Cover images: Cover Art Archive or the playback provider. Lyrics: local files/tags and installed plugins first; LRCLIB only when requested or explicitly enabled.</p>"
         return body
 
     # ---------------------------- synchronized lyrics
@@ -935,15 +1256,43 @@ class RichNowPlayingWidget(QWidget):
             self._lyric_index = idx
             self._render_synced(idx)
 
-    def _render_synced(self, current: int) -> None:
-        parts = ["<div style='font-size:18px;line-height:1.65'>"]
-        for i, row in enumerate(self.synced):
-            line = _escape(row.get("text")) or "&nbsp;"
-            if i == current:
-                parts.append(f"<div style='font-size:22px;font-weight:700;color:#ffffff;margin:8px 0'>{line}</div>")
-            elif current >= 0 and abs(i-current) <= 2:
-                parts.append(f"<div style='color:#c7ccd4'>{line}</div>")
+    def _synced_lyrics_html(
+        self,
+        current: int,
+        *,
+        full_screen: bool = False,
+    ) -> str:
+        base=26 if full_screen else 18
+        active=36 if full_screen else 22
+        line_height=1.85 if full_screen else 1.65
+        margin=15 if full_screen else 8
+        parts=[
+            f"<div style='font-size:{base}px;line-height:{line_height};"
+            "max-width:980px;margin:0 auto'>"
+        ]
+        for i,row in enumerate(self.synced):
+            line=_escape(row.get("text")) or "&nbsp;"
+            stamp=max(0,int(row.get("time_ms") or 0))
+            if i==current:
+                style=(
+                    f"font-size:{active}px;font-weight:750;color:#ffffff;"
+                    f"margin:{margin}px 0"
+                )
+            elif current>=0 and abs(i-current)<=2:
+                style="color:#cbd5df;margin:5px 0"
             else:
-                parts.append(f"<div style='color:#7e858f'>{line}</div>")
+                style="color:#6f7885;margin:4px 0"
+            parts.append(
+                f"<a name='line-{i}'></a>"
+                f"<div style='{style}'>"
+                f"<a href='seek:{stamp}' style='color:inherit;text-decoration:none'>{line}</a>"
+                "</div>"
+            )
         parts.append("</div>")
-        self.lyrics.setHtml("".join(parts))
+        return "".join(parts)
+
+    def _render_synced(self, current: int) -> None:
+        self.lyrics.setHtml(self._synced_lyrics_html(current))
+        if current >= 0:
+            self.lyrics.scrollToAnchor(f"line-{current}")
+        self._sync_fullscreen_lyrics()
