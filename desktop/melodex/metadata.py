@@ -177,7 +177,7 @@ class RichMetadataService:
             keys.append(f"artist-album:{artist}|{album}|{year}")
         if album and year:
             keys.append(f"album-year:{album}|{year}")
-        if album:
+        if album and artist in {"", "unknown artist", "various artists"}:
             keys.append(f"album:{album}")
         key = track_key(track)
         if key:
@@ -477,28 +477,42 @@ class RichMetadataService:
         title = str(track.get("title") or "").strip()
         artist = str(track.get("artist") or "").strip()
         album = str(track.get("album") or "").strip()
-        if not title or not artist:
+        artist_known = _norm(artist) not in {"", "unknown artist", "unknown", "various artists"}
+        if not title and not album:
             return MetadataIdentity(artist=artist, title=title, album=album)
-        query = f'recording:"{title}" AND artist:"{artist}"'
-        data = self._mb_json("recording/", {"query": query, "fmt": "json", "limit": 8}, 21 * 86400)
+
+        terms=[]
+        if title:
+            terms.append(f'recording:"{title}"')
+        if artist_known:
+            terms.append(f'artist:"{artist}"')
+        elif album:
+            terms.append(f'release:"{album}"')
+        query = " AND ".join(terms)
+        data = self._mb_json("recording/", {"query": query, "fmt": "json", "limit": 10}, 21 * 86400)
         best: tuple[float, dict[str, Any], dict[str, Any] | None] | None = None
         for rec in list(data.get("recordings") or []):
             if not isinstance(rec, dict):
                 continue
             credited = "".join(str(x.get("name") or "") + str(x.get("joinphrase") or "") for x in list(rec.get("artist-credit") or []) if isinstance(x, dict)).strip()
-            title_score = _ratio(title, rec.get("title"))
-            artist_score = _ratio(artist, credited)
+            title_score = _ratio(title, rec.get("title")) if title else 0.75
+            artist_score = _ratio(artist, credited) if artist_known else 0.75
             releases = [x for x in list(rec.get("releases") or []) if isinstance(x, dict)]
             release = max(releases, key=lambda x: _ratio(album, x.get("title"))) if releases and album else (releases[0] if releases else None)
             album_score = _ratio(album, (release or {}).get("title")) if album else 0.75
-            score = 0.55 * title_score + 0.35 * artist_score + 0.10 * album_score
+            if artist_known:
+                score = 0.55 * title_score + 0.35 * artist_score + 0.10 * album_score
+                threshold = 0.62
+            else:
+                score = 0.68 * title_score + 0.32 * album_score
+                threshold = 0.72
             requested_flags = set(_VERSION_WORDS.findall(title))
             candidate_flags = set(_VERSION_WORDS.findall(str(rec.get("title") or "")))
             if requested_flags != candidate_flags and (requested_flags or candidate_flags):
                 score -= 0.10
             if best is None or score > best[0]:
                 best = (score, rec, release)
-        if not best or best[0] < 0.62:
+        if not best or best[0] < threshold:
             return MetadataIdentity(artist=artist, title=title, album=album, score=max(0.0, best[0] if best else 0.0))
         score, rec, release = best
         credit = list(rec.get("artist-credit") or [])
