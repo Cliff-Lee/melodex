@@ -161,13 +161,15 @@ You can also make a playlist in ChatGPT, Claude, Gemini or another chat AI and p
 
 ## A simpler desktop, with power underneath
 
-The current desktop interface is organised around listener goals rather than Melodex internals: **Home**, **My Music**, **Explore**, **Journeys**, **Playlists**, and **Sources & plugins**. Artwork and recognition lead everyday browsing; advanced provider, routing and diagnostic controls remain available through **Power tools**. The design rationale is documented in [UX redesign](docs/UX_REDESIGN.md).
+The current desktop interface is organised around listener goals rather than Melodex internals: **Home**, **My Music**, **Explore**, **Journeys**, **Playlists**, and **Sources & plugins**. Artwork and recognition lead everyday browsing; advanced provider, routing and diagnostic controls remain available through **Power tools**. Optional plugins now surface where their features are used, while the Plugin Centre provides clear Installed / Available / Needs setup / Updates views. The design rationale is documented in [UX redesign](docs/UX_REDESIGN.md).
 
 ### My Music is a collection, not a file list
 
 **My Music** now leads with a visual album grid, with separate visual **Artists** and artwork-rich **Tracks** views. Local/embedded artwork is preferred; explicit online artwork lookups are cached and remembered so covers do not disappear when the page is rebuilt.
 
 Local tracks can also be corrected inside Melodex when tags are incomplete. Artist, title, album, album artist, year and genre corrections survive rescans but **do not rewrite the original audio files**.
+
+Missing album covers and artist portraits can be recovered explicitly in bounded background batches. Melodex shows completed/total, found/no-match/failed counts, and provides pause, cancel and retry-failed controls so large-library enrichment does not freeze the interface.
 
 See [My Music](docs/MY_MUSIC.md).
 
@@ -243,6 +245,7 @@ You do **not** need Python or Git to use release builds.
 If a feature described elsewhere in this repository is missing from your installed build, check [Releases, `main`, and version numbers](docs/RELEASES_AND_MAIN.md): current documentation can describe work added after the latest tagged binary.
 
 - [Latest release](https://github.com/Cliff-Lee/melodex/releases/latest)
+- [Linux installation](docs/INSTALL_LINUX.md)
 - [macOS installation](docs/INSTALL_MACOS.md)
 - [Windows installation](docs/INSTALL_WINDOWS.md)
 - [Android installation](docs/INSTALL_ANDROID.md)
