@@ -443,6 +443,13 @@ class ProviderManager:
         from .provider import ExternalProvider
 
         provider = ExternalProvider(folder, manifest)
+        if self._is_legacy_private_provider(provider):
+            close=getattr(provider,"close",None)
+            if callable(close):
+                close()
+            raise ValueError(
+                "This legacy development provider is not supported by public Melodex builds."
+            )
         provider.configure(
             self.plugin_config.values(
                 provider.info.id, provider.info.configuration
