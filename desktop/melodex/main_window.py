@@ -2491,10 +2491,18 @@ class MainWindow(QMainWindow):
                     cached=self.metadata.cached_artist_photo({"name":artist_name})
                     path=str(cached.get("path") or "")
                     if not path:
-                        identity=self.metadata.identify(track)
-                        if identity.artist_mbid:
-                            info=self.metadata.artist_info(identity.artist_mbid)
+                        artist_mbid=str(
+                            track.get("musicbrainz_artist_id")
+                            or track.get("artist_mbid")
+                            or ""
+                        ).strip()
+                        if artist_mbid:
+                            info=self.metadata.artist_info(artist_mbid)
                         else:
+                            # Artist portrait enrichment does not need a
+                            # recording-level MusicBrainz lookup. Resolve the
+                            # artist directly; this is faster and avoids a
+                            # needless failure point for oddly tagged tracks.
                             info=self.metadata.resolve_artist(artist_name)
                         if info:
                             if not info.get("name"):
