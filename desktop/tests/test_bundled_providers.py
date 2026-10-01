@@ -116,6 +116,7 @@ def test_legacy_private_development_provider_is_quarantined_and_rejected(tmp_pat
         import pytest
         with pytest.raises(ValueError, match="legacy development provider"):
             manager.install_package(package)
+        assert not (manager.installer.providers_dir / plugin_id).exists()
 
         # Simulate an old development build that had already installed the
         # provider before the public-release quarantine existed.
