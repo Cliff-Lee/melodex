@@ -8,13 +8,13 @@ from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import QEvent, Qt, QTimer, Signal, QObject
-from PySide6.QtGui import QAction, QDesktopServices, QPixmap
+from PySide6.QtGui import QAction, QDesktopServices, QKeySequence, QPixmap, QShortcut
 from PySide6.QtMultimedia import QMediaPlayer
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QListWidget,
     QListWidgetItem, QStackedWidget, QLineEdit, QComboBox, QFileDialog, QMessageBox,
     QSlider, QTextEdit, QInputDialog, QDialog, QFormLayout, QDialogButtonBox, QCheckBox,
-    QTabWidget, QApplication, QPlainTextEdit,
+    QTabWidget, QApplication, QPlainTextEdit, QFrame,
 )
 
 from .paths import app_data_dir
@@ -24,6 +24,8 @@ from .mind import MindEngine
 from .local_intelligence import LocalIntelligenceService
 from .music_map import MusicMapWidget
 from .music_map_model import build_music_map
+from .album_wall import AlbumWallWidget
+from .album_wall_model import build_album_wall
 from .music_knowledge import MusicKnowledgeStore, build_knowledge_graph
 from .music_pathfinder import find_music_path
 from .music_journey import STAGE_LABELS, build_music_journey
@@ -53,6 +55,8 @@ from .plugin_configuration_dialog import configure_plugin
 from .plugin_onboarding import plugin_needs_setup
 from .plugin_health import health_badge, health_summary
 from .diagnostics import write_diagnostics
+from .library_browser import LibraryBrowser
+from .ux_components import ActionCard, CommandPaletteDialog, CoverLabel, EmptyState, SourceCard, set_help
 
 
 class WorkerSignals(QObject):
@@ -145,83 +149,550 @@ class MainWindow(QMainWindow):
 
     # ------------------------------- UI
     def _build_ui(self):
-        root = QWidget(); self.setCentralWidget(root)
-        outer = QVBoxLayout(root); outer.setContentsMargins(0,0,0,0); outer.setSpacing(0)
-        body = QWidget(); body_l = QHBoxLayout(body); body_l.setContentsMargins(0,0,0,0); body_l.setSpacing(0)
+        root = QWidget()
+        self.setCentralWidget(root)
+        outer = QVBoxLayout(root)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        body = QWidget()
+        body_l = QHBoxLayout(body)
+        body_l.setContentsMargins(0, 0, 0, 0)
+        body_l.setSpacing(0)
         outer.addWidget(body, 1)
 
-        self.sidebar = QWidget(); self.sidebar.setObjectName("sidebar"); self.sidebar.setFixedWidth(220)
-        side = QVBoxLayout(self.sidebar); side.setContentsMargins(16,18,16,14)
-        brand = QHBoxLayout(); brand.setSpacing(10)
+        # ------------------------------------------------------------------
+        # Navigation: user goals first. Advanced tools remain reachable
+        # contextually and through Power tools rather than owning the sidebar.
+        self.sidebar = QWidget()
+        self.sidebar.setObjectName("sidebar")
+        self.sidebar.setFixedWidth(210)
+        side = QVBoxLayout(self.sidebar)
+        side.setContentsMargins(15, 18, 15, 14)
+        side.setSpacing(4)
+
+        brand = QHBoxLayout()
+        brand.setSpacing(10)
         mark = QLabel()
         mark_path = Path(__file__).resolve().parent / "assets" / "melodex-mark.png"
         pixmap = QPixmap(str(mark_path))
         if not pixmap.isNull():
             mark.setPixmap(
-                pixmap.scaled(
-                    44, 44, Qt.KeepAspectRatio, Qt.SmoothTransformation
-                )
+                pixmap.scaled(42, 42, Qt.KeepAspectRatio, Qt.SmoothTransformation)
             )
-        mark.setFixedSize(46, 46)
-        titles = QVBoxLayout(); titles.setSpacing(0)
+        mark.setFixedSize(44, 44)
+        titles = QVBoxLayout()
+        titles.setSpacing(0)
         logo = QLabel("MELODEX")
-        logo.setStyleSheet("font-size:20px;font-weight:750;letter-spacing:2px")
+        logo.setObjectName("brandName")
         tagline = QLabel("Don't shuffle. Flow.")
         tagline.setObjectName("brandTagline")
-        titles.addWidget(logo); titles.addWidget(tagline)
-        brand.addWidget(mark); brand.addLayout(titles, 1)
-        side.addLayout(brand); side.addSpacing(12)
-        for text, page in [("Home","home"),("Now playing","now_playing"),("Play for me","for_you"),("Discover","discover"),("My music","library"),("Music map","music_map"),("Journeys","journeys"),("Playlists","playlists"),("Moments","moments"),("Ask Melodex","ask"),("Sources","sources")]:
-            b = QPushButton(text); b.setCursor(Qt.PointingHandCursor); b.clicked.connect(lambda _=False,p=page:self.open_page(p)); side.addWidget(b)
+        titles.addWidget(logo)
+        titles.addWidget(tagline)
+        brand.addWidget(mark)
+        brand.addLayout(titles, 1)
+        side.addLayout(brand)
+        side.addSpacing(18)
+
+        self.nav_buttons: dict[str, QPushButton] = {}
+
+        def add_nav(label: str, page: str) -> QPushButton:
+            button = QPushButton(label)
+            button.setObjectName("navButton")
+            button.setCursor(Qt.PointingHandCursor)
+            button.setProperty("active", False)
+            button.clicked.connect(lambda _checked=False, target=page: self.open_page(target))
+            self.nav_buttons[page] = button
+            side.addWidget(button)
+            return button
+
+        add_nav("Home", "home")
+        add_nav("My Music", "library")
+        add_nav("Explore", "explore")
+        add_nav("Journeys", "journeys")
+        add_nav("Playlists", "playlists")
+
         side.addStretch(1)
-        self.power_toggle = QCheckBox("Show power tools")
+
+        sources_nav = add_nav("Sources && plugins", "sources")
+        set_help(
+            sources_nav,
+            "Sources & plugins",
+            "Choose where Melodex can find music. Everyday controls stay simple; technical provider controls appear when Power tools are enabled.",
+        )
+
+        self.power_toggle = QCheckBox("Power tools")
+        self.power_toggle.setObjectName("powerToggle")
+        self.power_toggle.setChecked(self.state.get_bool("power_tools", False))
         self.power_toggle.stateChanged.connect(self._power_changed)
+        set_help(
+            self.power_toggle,
+            "Power tools",
+            "Reveal provider diagnostics, routing controls and other expert features. Turning this off hides complexity; it does not remove or reset anything.",
+        )
         side.addWidget(self.power_toggle)
         body_l.addWidget(self.sidebar)
 
-        self.stack = QStackedWidget(); body_l.addWidget(self.stack, 1)
+        self.stack = QStackedWidget()
+        body_l.addWidget(self.stack, 1)
         self.pages: dict[str, QWidget] = {}
-        for name in ["home","now_playing","for_you","discover","library","music_map","journeys","playlists","moments","ask","sources"]:
-            w = QWidget(); self.pages[name]=w; self.stack.addWidget(w)
-        self._build_home(); self._build_now_playing(); self._build_for_you(); self._build_discover(); self._build_library(); self._build_music_map(); self._build_journeys(); self._build_playlists(); self._build_moments(); self._build_ask(); self._build_sources()
+        for name in [
+            "home",
+            "library",
+            "explore",
+            "now_playing",
+            "for_you",
+            "discover",
+            "album_wall",
+            "music_map",
+            "journeys",
+            "playlists",
+            "moments",
+            "ask",
+            "sources",
+        ]:
+            page = QWidget()
+            self.pages[name] = page
+            self.stack.addWidget(page)
 
-        self.queue_panel = QWidget(); self.queue_panel.setFixedWidth(320)
-        ql = QVBoxLayout(self.queue_panel); ql.setContentsMargins(12,12,12,12)
-        qhead = QHBoxLayout(); qhead.addWidget(QLabel("Up next")); flow_btn=QPushButton("Flow queue"); flow_btn.clicked.connect(self._flow_queue); qhead.addWidget(flow_btn); ql.addLayout(qhead)
-        self.queue_list = QListWidget(); self.queue_list.itemDoubleClicked.connect(self._queue_jump); ql.addWidget(self.queue_list,1)
-        self.queue_panel.hide(); body_l.addWidget(self.queue_panel)
+        self._build_home()
+        self._build_library()
+        self._build_explore()
+        self._build_now_playing()
+        self._build_for_you()
+        self._build_discover()
+        self._build_album_wall()
+        self._build_music_map()
+        self._build_journeys()
+        self._build_playlists()
+        self._build_moments()
+        self._build_ask()
+        self._build_sources()
 
-        # player bar
-        bar = QWidget(); bar.setFixedHeight(112); bl=QHBoxLayout(bar); bl.setContentsMargins(20,8,20,8)
-        prev=QPushButton("◀"); prev.clicked.connect(self.player.previous); play=QPushButton("▶ / ❚❚"); play.clicked.connect(self.player.play_pause); nxt=QPushButton("▶"); nxt.clicked.connect(self.player.next)
-        bl.addWidget(prev); bl.addWidget(play); bl.addWidget(nxt)
-        text_col=QVBoxLayout(); self.now_title=QLabel("Nothing playing"); self.now_title.setStyleSheet("font-weight:650;font-size:15px"); self.now_meta=QLabel(""); self.now_meta.setOpenExternalLinks(True); text_col.addWidget(self.now_title); text_col.addWidget(self.now_meta)
-        self.seek=QSlider(Qt.Horizontal); self.seek.setRange(0,1000); self.seek.sliderReleased.connect(self._seek_released); text_col.addWidget(self.seek); bl.addLayout(text_col,1)
-        keep=QPushButton("Keep"); keep.clicked.connect(self._keep); love=QPushButton("♥"); love.clicked.connect(lambda:self._feedback(True)); info=QPushButton("Info"); info.clicked.connect(lambda:self.open_page("now_playing")); match=QPushButton("Match"); match.clicked.connect(self._inspect_current_match); more=QPushButton("•••"); more.clicked.connect(self._more_actions); queue=QPushButton("Queue"); queue.clicked.connect(lambda:self.queue_panel.setVisible(not self.queue_panel.isVisible()))
-        bl.addWidget(keep); bl.addWidget(love); bl.addWidget(info); bl.addWidget(match); bl.addWidget(more); bl.addWidget(queue)
+        # Queue is contextual and stays out of the primary navigation.
+        self.queue_panel = QWidget()
+        self.queue_panel.setObjectName("queuePanel")
+        self.queue_panel.setFixedWidth(330)
+        ql = QVBoxLayout(self.queue_panel)
+        ql.setContentsMargins(14, 14, 14, 14)
+        qhead = QHBoxLayout()
+        qtitle = QLabel("Up next")
+        qtitle.setObjectName("panelTitle")
+        qhead.addWidget(qtitle)
+        qhead.addStretch(1)
+        flow_btn = QPushButton("Refine with Flow")
+        flow_btn.setObjectName("quietButton")
+        flow_btn.clicked.connect(self._flow_queue)
+        set_help(
+            flow_btn,
+            "Refine with Flow",
+            "Reorders upcoming music to make transitions feel more coherent while preserving the current track.",
+        )
+        qhead.addWidget(flow_btn)
+        ql.addLayout(qhead)
+        self.queue_list = QListWidget()
+        self.queue_list.itemDoubleClicked.connect(self._queue_jump)
+        ql.addWidget(self.queue_list, 1)
+        self.queue_panel.hide()
+        body_l.addWidget(self.queue_panel)
+
+        # ------------------------------------------------------------------
+        # Persistent player. It behaves as the gateway to Now Playing rather
+        # than requiring a permanent sidebar destination.
+        bar = QWidget()
+        bar.setObjectName("playerBar")
+        bar.setFixedHeight(92)
+        bl = QHBoxLayout(bar)
+        bl.setContentsMargins(16, 10, 18, 10)
+        bl.setSpacing(9)
+
+        prev = QPushButton("⏮")
+        prev.setObjectName("transportButton")
+        prev.clicked.connect(self.player.previous)
+        self.play_button = QPushButton("▶")
+        self.play_button.setObjectName("transportButton")
+        self.play_button.clicked.connect(self.player.play_pause)
+        nxt = QPushButton("⏭")
+        nxt.setObjectName("transportButton")
+        nxt.clicked.connect(self.player.next)
+        self.player.playingChanged.connect(self._update_play_button)
+        set_help(prev, "Previous", "Restart the current track or return to the previous track.")
+        set_help(self.play_button, "Play / pause", "Pause or continue the current music.")
+        set_help(nxt, "Next", "Move to the next track in the queue.")
+        bl.addWidget(prev)
+        bl.addWidget(self.play_button)
+        bl.addWidget(nxt)
+
+        self.player_cover = CoverLabel(56)
+        self.player_cover.set_cover("", title="Melodex", key="melodex")
+        self.player_cover.setToolTip("Now playing artwork")
+        bl.addWidget(self.player_cover)
+
+        text_col = QVBoxLayout()
+        text_col.setSpacing(1)
+        self.now_title = QPushButton("Nothing playing")
+        self.now_title.setObjectName("nowPlayingTitle")
+        self.now_title.clicked.connect(lambda: self.open_page("now_playing"))
+        set_help(
+            self.now_title,
+            "Open Now Playing",
+            "See large artwork, lyrics, track information and visualisations for the current music.",
+        )
+        self.now_meta = QLabel("")
+        self.now_meta.setObjectName("nowPlayingMeta")
+        self.now_meta.setOpenExternalLinks(True)
+        text_col.addWidget(self.now_title)
+        text_col.addWidget(self.now_meta)
+        self.seek = QSlider(Qt.Horizontal)
+        self.seek.setRange(0, 1000)
+        self.seek.sliderReleased.connect(self._seek_released)
+        text_col.addWidget(self.seek)
+        bl.addLayout(text_col, 1)
+
+        keep = QPushButton("Keep")
+        keep.setObjectName("playerAction")
+        keep.clicked.connect(self._keep)
+        love = QPushButton("♥")
+        love.setObjectName("playerAction")
+        love.clicked.connect(lambda: self._feedback(True))
+        queue = QPushButton("Queue")
+        queue.setObjectName("playerAction")
+        queue.clicked.connect(
+            lambda: self.queue_panel.setVisible(not self.queue_panel.isVisible())
+        )
+        set_help(keep, "Keep", "Teach Melodex that this track is worth keeping around in future listening.")
+        set_help(love, "Love", "Mark this as a strong positive preference.")
+        set_help(queue, "Queue", "Show or hide the music that is coming next.")
+        bl.addWidget(keep)
+        bl.addWidget(love)
+        bl.addWidget(queue)
+
+        self.player_power_actions = QWidget()
+        power_row = QHBoxLayout(self.player_power_actions)
+        power_row.setContentsMargins(0, 0, 0, 0)
+        power_row.setSpacing(6)
+        match = QPushButton("Match")
+        match.setObjectName("quietButton")
+        match.clicked.connect(self._inspect_current_match)
+        more = QPushButton("•••")
+        more.setObjectName("quietButton")
+        more.clicked.connect(self._more_actions)
+        set_help(match, "Inspect match", "Show how Melodex resolved this track to its playable source.")
+        set_help(more, "More actions", "Open technical and less frequently used actions for the current track.")
+        power_row.addWidget(match)
+        power_row.addWidget(more)
+        self.player_power_actions.setVisible(self.power_toggle.isChecked())
+        bl.addWidget(self.player_power_actions)
         outer.addWidget(bar)
 
+        # Expert speed: command palette without forcing more controls onto
+        # everybody else's screen.
+        self.shortcut_palette = QShortcut(QKeySequence("Ctrl+K"), self)
+        self.shortcut_palette.activated.connect(self._open_command_palette)
+        self.shortcut_palette_mac = QShortcut(QKeySequence("Meta+K"), self)
+        self.shortcut_palette_mac.activated.connect(self._open_command_palette)
+
         self.setStyleSheet("""
-            QMainWindow,QWidget{background:#0f1116;color:#f4f6fa;font-family:Arial;font-size:13px}
-            QWidget#sidebar{background:#0b0d12;border-right:1px solid #242a34}
-            QLabel#brandTagline{color:#8f9aaa;font-size:10px}
-            QWidget#sidebar QPushButton{
-                background:transparent;border:0;border-radius:9px;
-                padding:10px 12px;text-align:left
+            QMainWindow,QWidget{
+                background:#0f1116;
+                color:#f4f6fa;
+                font-family:"SF Pro Text","Segoe UI",Arial;
+                font-size:13px;
             }
-            QWidget#sidebar QPushButton:hover{background:#1a2130}
+            QLabel{background:transparent}
+            QWidget#sidebar{
+                background:#0a0d12;
+                border-right:1px solid #202733;
+            }
+            QLabel#brandName{
+                font-size:20px;
+                font-weight:760;
+                letter-spacing:2px;
+            }
+            QLabel#brandTagline{
+                color:#778397;
+                font-size:10px;
+            }
+            QPushButton#navButton{
+                background:transparent;
+                border:0;
+                border-radius:9px;
+                padding:11px 12px;
+                text-align:left;
+                color:#dfe4ec;
+            }
+            QPushButton#navButton:hover{background:#151b25}
+            QPushButton#navButton[active="true"]{
+                background:#1b2739;
+                color:#ffffff;
+                font-weight:650;
+            }
+            QCheckBox#powerToggle{
+                background:transparent;
+                color:#9ca7b8;
+                padding:10px 7px;
+            }
             QPushButton{
-                background:#1a1f28;border:1px solid #2b3340;border-radius:9px;
-                padding:9px 12px;text-align:left
+                background:#181e28;
+                border:1px solid #2a3443;
+                border-radius:9px;
+                padding:9px 13px;
             }
-            QPushButton:hover{background:#232b37;border-color:#354154}
-            QLineEdit,QComboBox,QTextEdit,QListWidget{
-                background:#141820;border:1px solid #2b3340;border-radius:10px;padding:7px
+            QPushButton:hover{
+                background:#222b38;
+                border-color:#3a4a60;
             }
-            QListWidget::item{padding:11px;border-bottom:1px solid #222934}
-            QListWidget::item:selected{background:#233a59}
+            QPushButton#primaryButton{
+                background:#1875e8;
+                border-color:#2582f2;
+                color:white;
+                font-weight:700;
+                padding:11px 17px;
+            }
+            QPushButton#secondaryButton{font-weight:650}
+            QPushButton#quietButton{
+                background:transparent;
+                border-color:#28313e;
+                color:#c7ced9;
+            }
+            QPushButton#miniButton{
+                padding:6px 8px;
+                font-size:11px;
+            }
+            QPushButton#segmentButton{
+                background:transparent;
+                border-color:#28313e;
+                color:#aab3c1;
+                padding:8px 12px;
+            }
+            QPushButton#segmentButton:checked{
+                background:#1c2d46;
+                border-color:#31527a;
+                color:white;
+                font-weight:650;
+            }
+            QPushButton#transportButton{
+                min-width:38px;
+                min-height:38px;
+                max-width:38px;
+                border-radius:11px;
+            }
+            QPushButton#transportButtonWide{
+                min-height:38px;
+                border-radius:11px;
+            }
+            QPushButton#playerAction{min-height:36px}
+            QPushButton#nowPlayingTitle{
+                background:transparent;
+                border:0;
+                padding:0;
+                text-align:left;
+                font-weight:700;
+                font-size:15px;
+            }
+            QPushButton#nowPlayingTitle:hover{color:#72aefb}
+            QLabel#nowPlayingMeta{color:#9da7b7}
+            QWidget#playerBar{
+                background:#0c1016;
+                border-top:1px solid #202733;
+            }
+            QWidget#queuePanel{
+                background:#0d1118;
+                border-left:1px solid #202733;
+            }
+            QLabel#panelTitle{font-size:17px;font-weight:700}
+            QLineEdit,QComboBox,QTextEdit,QPlainTextEdit,QListWidget{
+                background:#131923;
+                border:1px solid #293443;
+                border-radius:10px;
+                padding:8px;
+                selection-background-color:#274f7a;
+            }
+            QLineEdit:focus,QComboBox:focus,QTextEdit:focus,QListWidget:focus{
+                border-color:#3c78b8;
+            }
+            QListWidget::item{
+                padding:11px;
+                border-bottom:1px solid #202733;
+            }
+            QListWidget::item:selected{background:#1e3552}
             QListWidget#sourcesList::item{padding:14px}
+            QFrame#actionCard{
+                background:#141b25;
+                border:1px solid #293544;
+                border-radius:14px;
+            }
+            QFrame#actionCard:hover{
+                background:#182231;
+                border-color:#3d5571;
+            }
+            QLabel#cardEyebrow{
+                color:#6fa9ef;
+                font-size:10px;
+                font-weight:700;
+            }
+            QLabel#cardTitle{font-size:18px;font-weight:720}
+            QLabel#cardBody{color:#9fa9b8}
+            QLabel#cardAction{color:#72aefb;font-weight:650}
+            QFrame#albumCard{
+                background:transparent;
+                border:1px solid transparent;
+                border-radius:12px;
+            }
+            QFrame#albumCard:hover{
+                background:#151c26;
+                border-color:#29384a;
+            }
+            QLabel#albumCardTitle{font-weight:700;font-size:12px}
+            QLabel#albumCardMeta{color:#8995a7;font-size:11px}
+            QListWidget#visualTrackList{
+                background:transparent;
+                border:0;
+                padding:0;
+            }
+            QListWidget#visualTrackList::item{
+                background:transparent;
+                border:0;
+                padding:0;
+            }
+            QListWidget#visualTrackList::item:selected{
+                background:transparent;
+            }
+            QFrame#trackRow{
+                background:#121923;
+                border:1px solid #222e3d;
+                border-radius:10px;
+            }
+            QFrame#trackRow:hover{
+                background:#161f2b;
+                border-color:#33465e;
+            }
+            QLabel#trackTitle{font-size:14px;font-weight:700}
+            QLabel#trackMeta{color:#8f9bad;font-size:12px}
+            QLabel#warningPill{
+                background:#3a2a16;
+                border:1px solid #6e5126;
+                border-radius:8px;
+                color:#e2bd77;
+                padding:4px 7px;
+                font-size:10px;
+            }
+            QLabel#coverArt{
+                background:#111722;
+                border:1px solid #253040;
+                border-radius:8px;
+            }
+            QFrame#emptyState{
+                background:#121821;
+                border:1px dashed #313d4e;
+                border-radius:15px;
+            }
+            QLabel#emptyTitle{font-size:20px;font-weight:720}
+            QLabel#emptyBody{color:#97a2b2;font-size:13px}
+            QFrame#homeHero{
+                background:#131c29;
+                border:1px solid #2a3d56;
+                border-radius:16px;
+            }
+            QFrame#continueCard{
+                background:#121923;
+                border:1px solid #273343;
+                border-radius:13px;
+            }
+            QFrame#powerPanel{
+                background:#111821;
+                border:1px solid #2b3747;
+                border-radius:12px;
+            }
+            QFrame#sourceCard{
+                background:transparent;
+                border:0;
+            }
+            QLabel#sourceBadge{
+                background:#1c2a3e;
+                color:#dce9fb;
+                border:1px solid #34506f;
+                border-radius:10px;
+                font-size:17px;
+                font-weight:750;
+            }
+            QLabel#sourceTitle{font-size:15px;font-weight:700}
+            QLabel#sourceDescription{color:#8f9bad}
+            QLabel#sourceKind{color:#7d899b;font-size:11px}
+            QLabel#statusPill{
+                background:#1a2634;
+                border:1px solid #30445b;
+                border-radius:9px;
+                padding:5px 8px;
+                color:#bfd4eb;
+                font-size:11px;
+            }
+            QTabWidget::pane{
+                border:0;
+                background:transparent;
+            }
+            QTabBar::tab{
+                background:transparent;
+                color:#aeb7c5;
+                border:0;
+                border-radius:8px;
+                padding:8px 14px;
+                margin-right:4px;
+            }
+            QTabBar::tab:selected{
+                background:#1875e8;
+                color:white;
+            }
+            QScrollBar:vertical{
+                background:transparent;
+                width:10px;
+                margin:2px;
+            }
+            QScrollBar::handle:vertical{
+                background:#334154;
+                min-height:32px;
+                border-radius:5px;
+            }
+            QScrollBar::handle:vertical:hover{background:#43566f}
+            QScrollBar::add-line:vertical,QScrollBar::sub-line:vertical{
+                height:0;
+                background:transparent;
+            }
+            QScrollBar::add-page:vertical,QScrollBar::sub-page:vertical{
+                background:transparent;
+            }
+            QScrollBar:horizontal{
+                background:transparent;
+                height:10px;
+                margin:2px;
+            }
+            QScrollBar::handle:horizontal{
+                background:#334154;
+                min-width:32px;
+                border-radius:5px;
+            }
+            QScrollBar::add-line:horizontal,QScrollBar::sub-line:horizontal{
+                width:0;
+                background:transparent;
+            }
+            QStatusBar{
+                background:#0b0f15;
+                color:#7f8b9b;
+                border-top:1px solid #202733;
+                font-size:11px;
+            }
+            QToolTip{
+                background:#18202c;
+                color:#f4f6fa;
+                border:1px solid #3a4658;
+                padding:7px;
+            }
         """)
+        self._update_nav_state("home")
+
+    def _update_play_button(self, playing: bool) -> None:
+        if hasattr(self,"play_button"):
+            self.play_button.setText("❚❚" if playing else "▶")
 
     def _page_layout(self, page: str, title: str, subtitle: str=""):
         lay=QVBoxLayout(self.pages[page]); lay.setContentsMargins(28,24,28,24)
@@ -231,21 +702,140 @@ class MainWindow(QMainWindow):
         return lay
 
     def _build_home(self):
-        l=self._page_layout("home","Your music, without the work.","Press one button, search everything you have connected, or add your own collection.")
-        hero=QPushButton("▶  Play for me"); hero.setMinimumHeight(74); hero.setStyleSheet("font-size:20px;font-weight:700;background:#2a5fd7"); hero.clicked.connect(lambda:self._play_for_me("balanced",60,0.35)); l.addWidget(hero)
-        row=QHBoxLayout(); a=QPushButton("Comfort"); a.clicked.connect(lambda:self._play_for_me("comfort",60,0.15)); b=QPushButton("Surprise me"); b.clicked.connect(lambda:self._play_for_me("explore",60,0.82)); c=QPushButton("Add my music"); c.clicked.connect(self._choose_music_folder)
-        row.addWidget(a); row.addWidget(b); row.addWidget(c); l.addLayout(row)
-        self.home_status=QLabel(); self.home_status.setWordWrap(True); l.addWidget(self.home_status); l.addStretch(1)
+        l=self._page_layout(
+            "home",
+            "What do you feel like hearing?",
+            "Start with an intention. Melodex can stay familiar, help you rediscover something, or take you somewhere less expected.",
+        )
+
+        hero=QFrame()
+        hero.setObjectName("homeHero")
+        hero_l=QVBoxLayout(hero)
+        hero_l.setContentsMargins(22,20,22,20)
+        hero_l.setSpacing(10)
+        prompt=QLabel("Start listening")
+        prompt.setStyleSheet("font-size:20px;font-weight:720")
+        hero_l.addWidget(prompt)
+        explanation=QLabel(
+            "One click builds a listening session from your own library. "
+            "You can fine-tune it later if you want."
+        )
+        explanation.setWordWrap(True)
+        explanation.setStyleSheet("color:#9fa9b8")
+        hero_l.addWidget(explanation)
+
+        self.home_primary_button=QPushButton("▶  Play something")
+        self.home_primary_button.setObjectName("primaryButton")
+        self.home_primary_button.setMinimumHeight(48)
+        self.home_primary_button.clicked.connect(self._home_primary_action)
+        set_help(
+            self.home_primary_button,
+            "Play something",
+            "Builds a balanced one-hour session from your local library using your listening history and Flow when available.",
+        )
+        hero_l.addWidget(self.home_primary_button)
+
+        moods=QHBoxLayout()
+        comfort=QPushButton("Comfort")
+        explore=QPushButton("Explore")
+        rediscover=QPushButton("Rediscover")
+        tune=QPushButton("Tune it…")
+        comfort.clicked.connect(lambda:self._play_for_me("comfort",60,0.14))
+        explore.clicked.connect(lambda:self._play_for_me("explore",60,0.72))
+        rediscover.clicked.connect(lambda:self._play_for_me("rediscover",60,0.42))
+        tune.clicked.connect(lambda:self.open_page("for_you"))
+        set_help(comfort,"Comfort","Stay close to music Melodex already knows you respond well to.")
+        set_help(explore,"Explore","Move further from the familiar while keeping the session musically coherent.")
+        set_help(rediscover,"Rediscover","Favour music from your library that you once played but have not heard recently.")
+        set_help(tune,"Fine-tune listening","Open duration, familiarity and local-intelligence controls.")
+        moods.addWidget(comfort)
+        moods.addWidget(explore)
+        moods.addWidget(rediscover)
+        moods.addStretch(1)
+        moods.addWidget(tune)
+        hero_l.addLayout(moods)
+        l.addWidget(hero)
+
+        continue_title=QLabel("Continue listening")
+        continue_title.setStyleSheet("font-size:18px;font-weight:700;margin-top:10px")
+        l.addWidget(continue_title)
+
+        self.home_continue=QFrame()
+        self.home_continue.setObjectName("continueCard")
+        continue_l=QHBoxLayout(self.home_continue)
+        continue_l.setContentsMargins(14,14,14,14)
+        continue_l.setSpacing(15)
+        self.home_continue_cover=CoverLabel(92)
+        continue_l.addWidget(self.home_continue_cover)
+        continue_text=QVBoxLayout()
+        self.home_continue_title=QLabel("Nothing played yet")
+        self.home_continue_title.setStyleSheet("font-size:17px;font-weight:700")
+        self.home_continue_meta=QLabel("Play something and it will be easy to return here.")
+        self.home_continue_meta.setWordWrap(True)
+        self.home_continue_meta.setStyleSheet("color:#98a3b3")
+        continue_text.addStretch(1)
+        continue_text.addWidget(self.home_continue_title)
+        continue_text.addWidget(self.home_continue_meta)
+        continue_text.addStretch(1)
+        continue_l.addLayout(continue_text,1)
+        self.home_continue_button=QPushButton("▶ Continue")
+        self.home_continue_button.setObjectName("secondaryButton")
+        self.home_continue_button.clicked.connect(self._home_continue_play)
+        self.home_continue_button.setEnabled(False)
+        set_help(
+            self.home_continue_button,
+            "Continue listening",
+            "Starts the most recent track again. Your listening history stays private on this computer.",
+        )
+        continue_l.addWidget(self.home_continue_button)
+        l.addWidget(self.home_continue)
+
+        explore_title=QLabel("Explore your music")
+        explore_title.setStyleSheet("font-size:18px;font-weight:700;margin-top:10px")
+        l.addWidget(explore_title)
+        cards=QHBoxLayout()
+        library_card=ActionCard(
+            "Browse your collection",
+            "Albums, artists and tracks with artwork instead of file-system detail.",
+            eyebrow="My Music",
+            action_text="Browse",
+        )
+        library_card.clicked.connect(lambda:self.open_page("library"))
+        wall_card=ActionCard(
+            "Album Wall",
+            "Explore your records spatially and move between sonic, time and familiarity views.",
+            eyebrow="Visual",
+            action_text="Explore",
+        )
+        wall_card.clicked.connect(lambda:self.open_page("album_wall"))
+        map_card=ActionCard(
+            "Music Map",
+            "See relationships between tracks and plan a route when you want deeper exploration.",
+            eyebrow="Deep explore",
+            action_text="Open map",
+        )
+        map_card.clicked.connect(lambda:self.open_page("music_map"))
+        cards.addWidget(library_card,1)
+        cards.addWidget(wall_card,1)
+        cards.addWidget(map_card,1)
+        l.addLayout(cards)
+
+        self.home_status=QLabel()
+        self.home_status.setWordWrap(True)
+        self.home_status.setStyleSheet("color:#7f8b9b;margin-top:8px")
+        l.addWidget(self.home_status)
+        l.addStretch(1)
+
 
     def _build_now_playing(self):
         l=self._page_layout(
             "now_playing",
             "Now playing",
-            "A living, seekable musical fingerprint alongside artwork, lyrics and track context.",
+            "Stay with the music first. Artwork, lyrics and context are primary; visualisations are there when you want them.",
         )
         self.now_views = QTabWidget()
-        self.living_canvas = LivingCanvasView(self, self.data_dir / "visualizers")
         self.rich_now = RichNowPlayingWidget(self.metadata, self)
+        self.living_canvas = LivingCanvasView(self, self.data_dir / "visualizers")
         self.rich_now.knowledgeChanged.connect(self._remember_now_playing_knowledge)
         self.rich_now.accentChanged.connect(self.living_canvas.set_accent_color)
         self.rich_now.paletteChanged.connect(self.living_canvas.set_palette)
@@ -254,31 +844,130 @@ class MainWindow(QMainWindow):
         self.living_canvas.modeDataRequested.connect(self._request_visual_mode_data)
         self.living_canvas.neighbourActivated.connect(self._queue_visual_neighbour)
         self.player.playingChanged.connect(self.living_canvas.set_playing)
-        self.now_views.addTab(self.living_canvas, "Living Canvas")
-        self.now_views.addTab(self.rich_now, "Details")
+        self.now_views.addTab(self.rich_now, "Now Playing")
+        self.now_views.addTab(self.living_canvas, "Visuals")
         l.addWidget(self.now_views, 1)
 
-    def _build_for_you(self):
-        l=self._page_layout("for_you","Play for me","Melodex uses only local listening history and audio analysis unless you explicitly connect an LLM.")
-        row=QHBoxLayout(); self.mode=QComboBox(); self.mode.addItems(["balanced","comfort","rediscover","explore"]); self.minutes=QComboBox(); self.minutes.addItems(["30","60","90","120"]); self.adventure=QSlider(Qt.Horizontal); self.adventure.setRange(0,100); self.adventure.setValue(35)
-        row.addWidget(QLabel("Mode")); row.addWidget(self.mode); row.addWidget(QLabel("Minutes")); row.addWidget(self.minutes); row.addWidget(QLabel("Familiar")); row.addWidget(self.adventure,1); row.addWidget(QLabel("Surprising")); l.addLayout(row)
-        go=QPushButton("▶ Build this journey"); go.clicked.connect(lambda:self._play_for_me(self.mode.currentText(),int(self.minutes.currentText()),self.adventure.value()/100)); l.addWidget(go)
-        self.taste_label=QLabel(); self.taste_label.setWordWrap(True); l.addWidget(self.taste_label)
 
-        intel_title=QLabel("Local intelligence plugins"); intel_title.setStyleSheet("font-size:18px;font-weight:650;margin-top:10px"); l.addWidget(intel_title)
-        intel_help=QLabel("Private, local suggestions from your own library. A detour keeps one Flow feature and changes two others; Melodex does not send file paths or database rows."); intel_help.setWordWrap(True); intel_help.setStyleSheet("color:#aab0ba"); l.addWidget(intel_help)
+    def _build_for_you(self):
+        l=self._page_layout(
+            "for_you",
+            "Tune your listening",
+            "These controls are optional. Start simple, then adjust how long the session lasts and how far Melodex should move from familiar music.",
+        )
+
+        row=QHBoxLayout()
+        self.mode=QComboBox()
+        self.mode.addItem("Balanced","balanced")
+        self.mode.addItem("Comfort","comfort")
+        self.mode.addItem("Rediscover","rediscover")
+        self.mode.addItem("Explore","explore")
+        self.minutes=QComboBox()
+        self.minutes.addItems(["30","60","90","120"])
+        self.adventure=QSlider(Qt.Horizontal)
+        self.adventure.setRange(0,100)
+        self.adventure.setValue(35)
+
+        set_help(
+            self.mode,
+            "Listening style",
+            "Balanced mixes familiarity and discovery. Comfort stays close to known preferences. Rediscover favours neglected music. Explore moves further away.",
+        )
+        set_help(
+            self.minutes,
+            "Session length",
+            "Choose approximately how long Melodex should plan for.",
+        )
+        set_help(
+            self.adventure,
+            "Familiar to adventurous",
+            "Move left to stay close to music Melodex already knows you respond well to; move right to allow more unexpected choices.",
+        )
+
+        row.addWidget(QLabel("Style"))
+        row.addWidget(self.mode)
+        row.addWidget(QLabel("Minutes"))
+        row.addWidget(self.minutes)
+        row.addWidget(QLabel("Familiar"))
+        row.addWidget(self.adventure,1)
+        row.addWidget(QLabel("Adventurous"))
+        l.addLayout(row)
+
+        go=QPushButton("▶ Build this session")
+        go.setObjectName("primaryButton")
+        go.clicked.connect(
+            lambda:self._play_for_me(
+                str(self.mode.currentData() or "balanced"),
+                int(self.minutes.currentText()),
+                self.adventure.value()/100,
+            )
+        )
+        set_help(
+            go,
+            "Build this session",
+            "Creates a queue from your local library using these preferences. The exact tracks can still change as you listen.",
+        )
+        l.addWidget(go)
+
+        self.taste_label=QLabel()
+        self.taste_label.setWordWrap(True)
+        self.taste_label.setStyleSheet("color:#8490a1")
+        l.addWidget(self.taste_label)
+
+        intel_title=QLabel("More ways to explore")
+        intel_title.setStyleSheet("font-size:18px;font-weight:650;margin-top:10px")
+        l.addWidget(intel_title)
+
+        intel_help=QLabel(
+            "These suggestions use your own library and listening history. Audio analysis stays on this computer."
+        )
+        intel_help.setWordWrap(True)
+        intel_help.setStyleSheet("color:#aab0ba")
+        l.addWidget(intel_help)
+
         intel_row=QHBoxLayout()
-        similar=QPushButton("More like current"); similar.clicked.connect(lambda:self._run_local_intelligence("similar"))
-        rediscover=QPushButton("Forgotten favourites"); rediscover.clicked.connect(lambda:self._run_local_intelligence("rediscover"))
-        bridge=QPushButton("Bridge current → next"); bridge.clicked.connect(lambda:self._run_local_intelligence("bridge"))
-        detour=QPushButton("Find a detour"); detour.clicked.connect(lambda:self._run_local_intelligence("detour"))
-        analyse=QPushButton("Analyse my library"); analyse.clicked.connect(self._analyse_library_for_intelligence)
-        intel_row.addWidget(similar); intel_row.addWidget(rediscover); intel_row.addWidget(bridge); intel_row.addWidget(detour); intel_row.addWidget(analyse); intel_row.addStretch(1); l.addLayout(intel_row)
-        self.intelligence_results=QListWidget(); self.intelligence_results.itemDoubleClicked.connect(self._play_intelligence_result); l.addWidget(self.intelligence_results,1)
+        similar=QPushButton("More like current")
+        similar.clicked.connect(lambda:self._run_local_intelligence("similar"))
+        rediscover=QPushButton("Forgotten favourites")
+        rediscover.clicked.connect(lambda:self._run_local_intelligence("rediscover"))
+        bridge=QPushButton("Bridge current → next")
+        bridge.clicked.connect(lambda:self._run_local_intelligence("bridge"))
+        detour=QPushButton("Find a detour")
+        detour.clicked.connect(lambda:self._run_local_intelligence("detour"))
+        analyse=QPushButton("Improve suggestions")
+        analyse.clicked.connect(self._analyse_library_for_intelligence)
+
+        set_help(similar,"More like current","Find music in your local library that is sonically near the track playing now.")
+        set_help(rediscover,"Forgotten favourites","Look for music you once played or kept but have not heard recently.")
+        set_help(bridge,"Bridge current to next","Find music that can make the transition between the current track and the next queued track feel more natural.")
+        set_help(detour,"Find a detour","Keep part of the current musical character while deliberately changing other qualities.")
+        set_help(
+            analyse,
+            "Improve suggestions",
+            "Analyse sonic features locally so similarity, detours and map placement can become more accurate. Your audio is not uploaded.",
+        )
+
+        intel_row.addWidget(similar)
+        intel_row.addWidget(rediscover)
+        intel_row.addWidget(bridge)
+        intel_row.addWidget(detour)
+        intel_row.addWidget(analyse)
+        intel_row.addStretch(1)
+        l.addLayout(intel_row)
+
+        self.intelligence_results=QListWidget()
+        self.intelligence_results.itemDoubleClicked.connect(self._play_intelligence_result)
+        l.addWidget(self.intelligence_results,1)
+
         intel_actions=QHBoxLayout()
-        play_pick=QPushButton("Play selected"); play_pick.clicked.connect(self._play_selected_intelligence)
-        queue_pick=QPushButton("Add selected to queue"); queue_pick.clicked.connect(self._queue_selected_intelligence)
-        intel_actions.addWidget(play_pick); intel_actions.addWidget(queue_pick); intel_actions.addStretch(1); l.addLayout(intel_actions)
+        play_pick=QPushButton("▶ Play selected")
+        play_pick.clicked.connect(self._play_selected_intelligence)
+        queue_pick=QPushButton("+ Queue selected")
+        queue_pick.clicked.connect(self._queue_selected_intelligence)
+        intel_actions.addWidget(play_pick)
+        intel_actions.addWidget(queue_pick)
+        intel_actions.addStretch(1)
+        l.addLayout(intel_actions)
 
     def _build_discover(self):
         l=self._page_layout("discover","Discover","Search all connected music sources. Add a source in Sources if you want more places to search.")
@@ -288,26 +977,215 @@ class MainWindow(QMainWindow):
         row2=QHBoxLayout(); addq=QPushButton("Add selected to queue"); addq.clicked.connect(self._add_selected_to_queue); source_btn=QPushButton("Open source page"); source_btn.clicked.connect(self._open_selected_source); row2.addWidget(addq); row2.addWidget(source_btn); row2.addStretch(1); l.addLayout(row2)
 
     def _build_library(self):
-        l=self._page_layout("library","My music","Local music stays on your device. Melodex analyses it locally for Flow.")
-        row=QHBoxLayout(); add=QPushButton("Add folder…"); add.clicked.connect(self._choose_music_folder); scan=QPushButton("Rescan"); scan.clicked.connect(self._rescan); row.addWidget(add); row.addWidget(scan); row.addStretch(1); l.addLayout(row)
-        self.library_list=QListWidget(); self.library_list.itemDoubleClicked.connect(self._play_library); l.addWidget(self.library_list,1)
+        l=self._page_layout(
+            "library",
+            "My Music",
+            "Browse the collection you chose to keep on this device. Album artwork and musical identity come first; file details stay out of the way.",
+        )
+        self.library_browser=LibraryBrowser(self)
+        self.library_browser.playAlbumRequested.connect(self._play_album_wall_album)
+        self.library_browser.queueAlbumRequested.connect(self._queue_album_data)
+        self.library_browser.playArtistRequested.connect(self._play_library_artist)
+        self.library_browser.playTrackRequested.connect(self._play_library_track)
+        self.library_browser.queueTrackRequested.connect(self._queue_library_track)
+        self.library_browser.editMetadataRequested.connect(self._edit_local_metadata)
+        self.library_browser.addFolderRequested.connect(self._choose_music_folder)
+        self.library_browser.rescanRequested.connect(self._rescan)
+        self.library_browser.albumWallRequested.connect(lambda:self.open_page("album_wall"))
+        self.library_browser.momentsRequested.connect(lambda:self.open_page("moments"))
+        self.library_browser.artworkRequested.connect(self._library_artwork_requested)
+        self.library_browser.onlineArtworkRequested.connect(self._library_online_artwork_requested)
+        self.library_browser.artistImageRequested.connect(self._library_artist_images_requested)
+        self.library_browser.artistImageCacheRequested.connect(self._library_cached_artist_images_requested)
+        l.addWidget(self.library_browser,1)
+
+
+    def _build_explore(self):
+        l=self._page_layout(
+            "explore",
+            "Explore",
+            "Choose the kind of exploration you want. Search is direct; Album Wall is visual; Music Map goes deeper into relationships and routes.",
+        )
+
+        cards=QHBoxLayout()
+        search_card=ActionCard(
+            "Search everything",
+            "Find artists, albums or tracks across all the music sources you have connected.",
+            eyebrow="Search",
+            action_text="Search",
+        )
+        search_card.clicked.connect(lambda:self.open_page("discover"))
+        wall_card=ActionCard(
+            "Album Wall",
+            "Browse your own collection as a stable visual place built from album covers.",
+            eyebrow="Browse",
+            action_text="Open wall",
+        )
+        wall_card.clicked.connect(lambda:self.open_page("album_wall"))
+        map_card=ActionCard(
+            "Music Map",
+            "Explore sonic relationships between tracks. Advanced route-planning appears when you need it.",
+            eyebrow="Relationships",
+            action_text="Open map",
+        )
+        map_card.clicked.connect(lambda:self.open_page("music_map"))
+        cards.addWidget(search_card,1)
+        cards.addWidget(wall_card,1)
+        cards.addWidget(map_card,1)
+        l.addLayout(cards)
+
+        help_title=QLabel("Not sure where to start?")
+        help_title.setStyleSheet("font-size:18px;font-weight:700;margin-top:18px")
+        l.addWidget(help_title)
+        help_row=QHBoxLayout()
+        similar=QPushButton("More like what is playing")
+        similar.clicked.connect(lambda:self._run_local_intelligence("similar"))
+        rediscover=QPushButton("Find a forgotten favourite")
+        rediscover.clicked.connect(lambda:self._run_local_intelligence("rediscover"))
+        ask=QPushButton("Ask Melodex…")
+        ask.clicked.connect(lambda:self.open_page("ask"))
+        set_help(similar,"More like this","Uses local intelligence to look for nearby music in your own library.")
+        set_help(rediscover,"Forgotten favourite","Looks for music you used to play but have not heard for a while.")
+        set_help(ask,"Ask Melodex","Use an optional connected LLM for natural-language listening requests. Melodex still works without one.")
+        help_row.addWidget(similar)
+        help_row.addWidget(rediscover)
+        help_row.addWidget(ask)
+        help_row.addStretch(1)
+        l.addLayout(help_row)
+
+        note=QLabel(
+            "Tip: Album Wall is designed for visual browsing. Music Map is the power tool for understanding and shaping routes between tracks."
+        )
+        note.setWordWrap(True)
+        note.setStyleSheet("color:#8793a4;margin-top:12px")
+        l.addWidget(note)
+        l.addStretch(1)
+
+    def _build_album_wall(self):
+        l=self._page_layout(
+            "album_wall",
+            "Album Wall",
+            "Browse your collection as a visual place. Drag to explore, scroll to zoom, and change the lens when you want a different way of seeing the same music.",
+        )
+
+        actions=QHBoxLayout()
+        improve=QPushButton("Improve sonic layout")
+        improve.clicked.connect(self._analyse_library_for_album_wall)
+        self.album_wall_play_button=QPushButton("▶ Play selected")
+        self.album_wall_play_button.clicked.connect(self._play_album_wall_selected)
+        self.album_wall_play_button.setEnabled(False)
+        self.album_wall_queue_button=QPushButton("+ Queue selected")
+        self.album_wall_queue_button.clicked.connect(self._queue_album_wall_selected)
+        self.album_wall_queue_button.setEnabled(False)
+        set_help(
+            improve,
+            "Improve sonic layout",
+            "Analyses tempo, dynamics and other sonic characteristics on this computer so the Sound lens can place related albums near each other. Audio is not uploaded.",
+        )
+        set_help(
+            self.album_wall_play_button,
+            "Play selected album",
+            "Starts the selected album from track one in disc and track order.",
+        )
+        set_help(
+            self.album_wall_queue_button,
+            "Queue selected album",
+            "Adds every track from the selected album after the music already in your queue.",
+        )
+        actions.addWidget(improve)
+        actions.addStretch(1)
+        actions.addWidget(self.album_wall_play_button)
+        actions.addWidget(self.album_wall_queue_button)
+        l.addLayout(actions)
+
+        self.album_wall_power_panel=QFrame()
+        self.album_wall_power_panel.setObjectName("powerPanel")
+        power=QHBoxLayout(self.album_wall_power_panel)
+        power.setContentsMargins(12,8,12,8)
+        refresh=QPushButton("Rebuild wall")
+        refresh.clicked.connect(self._refresh_album_wall)
+        raw_analyse=QPushButton("Run library analysis")
+        raw_analyse.clicked.connect(self._analyse_library_for_album_wall)
+        power.addWidget(QLabel("Power tools"))
+        power.addWidget(refresh)
+        power.addWidget(raw_analyse)
+        power.addStretch(1)
+        self.album_wall_power_panel.setVisible(self.power_toggle.isChecked())
+        l.addWidget(self.album_wall_power_panel)
+
+        self.album_wall=AlbumWallWidget(self)
+        self.album_wall.albumSelected.connect(self._album_wall_selection_changed)
+        self.album_wall.albumActivated.connect(self._play_album_wall_album)
+        self.album_wall.artworkRequested.connect(self._album_wall_artwork_requested)
+        self.album_wall.onlineArtworkRequested.connect(self._album_wall_online_artwork_requested)
+        l.addWidget(self.album_wall,1)
+
+    def _album_wall_selection_changed(self, album: object) -> None:
+        enabled=isinstance(album,dict) and bool(album)
+        self.album_wall_play_button.setEnabled(enabled)
+        self.album_wall_queue_button.setEnabled(enabled)
+
 
     def _build_music_map(self):
         l=self._page_layout(
             "music_map",
-            "Music map",
-            "Explore your library as both a sonic landscape and a knowledge graph. Keep the dots fixed, switch Connections, or ask Pathfinder to build an explainable listening route between two tracks."
+            "Music Map",
+            "Explore relationships between tracks. Select something on the map first; route-planning and technical controls appear only when you ask for them.",
         )
-        actions=QHBoxLayout()
-        refresh=QPushButton("Refresh map"); refresh.clicked.connect(self._refresh_music_map)
-        analyse=QPushButton("Analyse my library"); analyse.clicked.connect(self._analyse_library_for_map)
-        enrich_selected=QPushButton("Enrich selected"); enrich_selected.clicked.connect(self._enrich_selected_map_knowledge)
-        enrich_map=QPushButton("Enrich map (+8)"); enrich_map.clicked.connect(self._enrich_map_knowledge_batch)
-        play=QPushButton("Play selected"); play.clicked.connect(self._play_music_map_selected)
-        queue=QPushButton("Add selected to queue"); queue.clicked.connect(self._queue_music_map_selected)
-        journey=QPushButton("Start Mind journey here"); journey.clicked.connect(self._journey_from_music_map)
-        actions.addWidget(refresh); actions.addWidget(analyse); actions.addWidget(enrich_selected); actions.addWidget(enrich_map); actions.addWidget(play); actions.addWidget(queue); actions.addWidget(journey); actions.addStretch(1)
-        l.addLayout(actions)
+
+        simple=QHBoxLayout()
+        improve=QPushButton("Improve map")
+        improve.clicked.connect(self._analyse_library_for_map)
+        play=QPushButton("▶ Play selected")
+        play.clicked.connect(self._play_music_map_selected)
+        queue=QPushButton("+ Queue selected")
+        queue.clicked.connect(self._queue_music_map_selected)
+        plan=QPushButton("Plan a route…")
+        plan.clicked.connect(self._toggle_music_map_tools)
+        set_help(
+            improve,
+            "Improve map",
+            "Analyses your local tracks on this computer so sonic relationships can be placed more accurately.",
+        )
+        set_help(
+            plan,
+            "Plan a route",
+            "Reveal start, destination and journey-shaping controls. You can hide them again when you only want to browse.",
+        )
+        simple.addWidget(improve)
+        simple.addStretch(1)
+        simple.addWidget(play)
+        simple.addWidget(queue)
+        simple.addWidget(plan)
+        l.addLayout(simple)
+
+        self.music_map_power_panel=QFrame()
+        self.music_map_power_panel.setObjectName("powerPanel")
+        power=QVBoxLayout(self.music_map_power_panel)
+        power.setContentsMargins(13,11,13,11)
+        power.setSpacing(8)
+
+        top=QHBoxLayout()
+        power_title=QLabel("Route & map tools")
+        power_title.setStyleSheet("font-size:15px;font-weight:700")
+        refresh=QPushButton("Refresh map")
+        refresh.clicked.connect(self._refresh_music_map)
+        enrich_selected=QPushButton("Find selected details")
+        enrich_selected.clicked.connect(self._enrich_selected_map_knowledge)
+        enrich_map=QPushButton("Find map details (+8)")
+        enrich_map.clicked.connect(self._enrich_map_knowledge_batch)
+        journey=QPushButton("Start listening here")
+        journey.clicked.connect(self._journey_from_music_map)
+        close_tools=QPushButton("Hide tools")
+        close_tools.clicked.connect(lambda:self.music_map_power_panel.hide())
+        top.addWidget(power_title)
+        top.addStretch(1)
+        top.addWidget(refresh)
+        top.addWidget(enrich_selected)
+        top.addWidget(enrich_map)
+        top.addWidget(journey)
+        top.addWidget(close_tools)
+        power.addLayout(top)
 
         path_row=QHBoxLayout()
         self.music_path_mode=QComboBox()
@@ -317,20 +1195,30 @@ class MainWindow(QMainWindow):
         self.music_path_mode.currentIndexChanged.connect(
             lambda *_:self._journey_recipe_mark_modified()
         )
-        set_start=QPushButton("Set start"); set_start.clicked.connect(self._music_path_set_start)
-        set_end=QPushButton("Set destination"); set_end.clicked.connect(self._music_path_set_end)
-        find_path=QPushButton("Find path"); find_path.clicked.connect(self._music_path_find)
-        play_path=QPushButton("Play route"); play_path.clicked.connect(self._music_path_play)
-        queue_path=QPushButton("Queue route"); queue_path.clicked.connect(self._music_path_queue)
-        clear_path=QPushButton("Clear path"); clear_path.clicked.connect(self._music_path_clear)
-        self.music_path_label=QLabel("Pathfinder · start —  →  destination —")
+        set_start=QPushButton("Use selected as start")
+        set_start.clicked.connect(self._music_path_set_start)
+        set_end=QPushButton("Use selected as destination")
+        set_end.clicked.connect(self._music_path_set_end)
+        find_path=QPushButton("Find route")
+        find_path.clicked.connect(self._music_path_find)
+        play_path=QPushButton("▶ Play route")
+        play_path.clicked.connect(self._music_path_play)
+        queue_path=QPushButton("+ Queue route")
+        queue_path.clicked.connect(self._music_path_queue)
+        clear_path=QPushButton("Clear")
+        clear_path.clicked.connect(self._music_path_clear)
+        self.music_path_label=QLabel("Start —  →  Destination —")
         self.music_path_label.setStyleSheet("color:#aab0ba")
-        path_row.addWidget(QLabel("Pathfinder"))
+        path_row.addWidget(QLabel("Route"))
         path_row.addWidget(self.music_path_mode)
-        path_row.addWidget(set_start); path_row.addWidget(set_end); path_row.addWidget(find_path)
-        path_row.addWidget(play_path); path_row.addWidget(queue_path); path_row.addWidget(clear_path)
+        path_row.addWidget(set_start)
+        path_row.addWidget(set_end)
+        path_row.addWidget(find_path)
+        path_row.addWidget(play_path)
+        path_row.addWidget(queue_path)
+        path_row.addWidget(clear_path)
         path_row.addWidget(self.music_path_label,1)
-        l.addLayout(path_row)
+        power.addLayout(path_row)
 
         journey_edit=QHBoxLayout()
         self.music_journey_preset=QComboBox()
@@ -350,15 +1238,20 @@ class MainWindow(QMainWindow):
             "Surprising → Darker → Bright",
             ["surprising","dark","bright"],
         )
-        load_preset=QPushButton("Load preset"); load_preset.clicked.connect(self._music_journey_load_preset)
+        load_preset=QPushButton("Load shape")
+        load_preset.clicked.connect(self._music_journey_load_preset)
         self.music_journey_constraint=QComboBox()
         for key in ("calm","dark","forgotten","energetic","bright","rhythmic","familiar","surprising"):
             self.music_journey_constraint.addItem(STAGE_LABELS[key],key)
-        add_constraint=QPushButton("Add constraint"); add_constraint.clicked.connect(self._music_journey_add_constraint)
-        add_track=QPushButton("Add selected track"); add_track.clicked.connect(self._music_journey_add_track)
-        remove_stage=QPushButton("Remove stage"); remove_stage.clicked.connect(self._music_journey_remove_stage)
-        clear_stages=QPushButton("Clear stages"); clear_stages.clicked.connect(self._music_journey_clear_stages)
-        journey_edit.addWidget(QLabel("Journey Designer"))
+        add_constraint=QPushButton("Add direction")
+        add_constraint.clicked.connect(self._music_journey_add_constraint)
+        add_track=QPushButton("Add selected track")
+        add_track.clicked.connect(self._music_journey_add_track)
+        remove_stage=QPushButton("Remove")
+        remove_stage.clicked.connect(self._music_journey_remove_stage)
+        clear_stages=QPushButton("Clear shape")
+        clear_stages.clicked.connect(self._music_journey_clear_stages)
+        journey_edit.addWidget(QLabel("Shape journey"))
         journey_edit.addWidget(self.music_journey_preset,1)
         journey_edit.addWidget(load_preset)
         journey_edit.addWidget(self.music_journey_constraint)
@@ -366,26 +1259,29 @@ class MainWindow(QMainWindow):
         journey_edit.addWidget(add_track)
         journey_edit.addWidget(remove_stage)
         journey_edit.addWidget(clear_stages)
-        l.addLayout(journey_edit)
+        power.addLayout(journey_edit)
 
         journey_actions=QHBoxLayout()
-        build_journey=QPushButton("Build journey"); build_journey.clicked.connect(self._music_journey_build)
-        play_journey=QPushButton("Play journey"); play_journey.clicked.connect(self._music_path_play)
-        queue_journey=QPushButton("Queue journey"); queue_journey.clicked.connect(self._music_path_queue)
-        journey_help=QLabel("Uses the Pathfinder start/destination and routing mode.")
+        build_journey=QPushButton("Build journey")
+        build_journey.clicked.connect(self._music_journey_build)
+        play_journey=QPushButton("▶ Play")
+        play_journey.clicked.connect(self._music_path_play)
+        queue_journey=QPushButton("+ Queue")
+        queue_journey.clicked.connect(self._music_path_queue)
+        journey_help=QLabel("Start and destination come from the route above.")
         journey_help.setStyleSheet("color:#aab0ba")
         journey_actions.addWidget(build_journey)
         journey_actions.addWidget(play_journey)
         journey_actions.addWidget(queue_journey)
         journey_actions.addWidget(journey_help,1)
-        l.addLayout(journey_actions)
+        power.addLayout(journey_actions)
 
         self.music_journey_stages=QListWidget()
-        self.music_journey_stages.setMaximumHeight(96)
+        self.music_journey_stages.setMaximumHeight(92)
         self.music_journey_stages.addItem(
-            "Journey stages use the Pathfinder start/destination. Load a preset or add constraints/track waypoints."
+            "Choose a shape or add directions after setting a start and destination."
         )
-        l.addWidget(self.music_journey_stages)
+        power.addWidget(self.music_journey_stages)
 
         live_row=QHBoxLayout()
         self.music_live_steering=QComboBox()
@@ -401,16 +1297,23 @@ class MainWindow(QMainWindow):
             ("rediscover","Rediscover next"),
         ):
             self.music_live_steering.addItem(label,key)
-        play_live=QPushButton("Play live journey"); play_live.clicked.connect(self._journey_live_start)
-        apply_steer=QPushButton("Apply steer"); apply_steer.clicked.connect(self._journey_live_apply_steer)
-        avoid_artist=QPushButton("Avoid current artist"); avoid_artist.clicked.connect(self._journey_live_avoid_current_artist)
-        skip_replan=QPushButton("Skip + replan"); skip_replan.clicked.connect(self.player.next)
-        replan=QPushButton("Replan remaining"); replan.clicked.connect(lambda:self._journey_live_replan("",reason="manual replan"))
-        restore=QPushButton("Restore designed route"); restore.clicked.connect(self._journey_live_restore)
-        stop_live=QPushButton("Stop live"); stop_live.clicked.connect(self._journey_live_stop)
-        self.music_live_label=QLabel("Journey Live · inactive")
+        play_live=QPushButton("Play live journey")
+        play_live.clicked.connect(self._journey_live_start)
+        apply_steer=QPushButton("Apply steer")
+        apply_steer.clicked.connect(self._journey_live_apply_steer)
+        avoid_artist=QPushButton("Avoid current artist")
+        avoid_artist.clicked.connect(self._journey_live_avoid_current_artist)
+        skip_replan=QPushButton("Skip + replan")
+        skip_replan.clicked.connect(self.player.next)
+        replan=QPushButton("Replan")
+        replan.clicked.connect(lambda:self._journey_live_replan("",reason="manual replan"))
+        restore=QPushButton("Restore design")
+        restore.clicked.connect(self._journey_live_restore)
+        stop_live=QPushButton("Stop live")
+        stop_live.clicked.connect(self._journey_live_stop)
+        self.music_live_label=QLabel("Live journey inactive")
         self.music_live_label.setStyleSheet("color:#aab0ba")
-        live_row.addWidget(QLabel("Journey Live"))
+        live_row.addWidget(QLabel("While listening"))
         live_row.addWidget(play_live)
         live_row.addWidget(self.music_live_steering)
         live_row.addWidget(apply_steer)
@@ -420,88 +1323,236 @@ class MainWindow(QMainWindow):
         live_row.addWidget(restore)
         live_row.addWidget(stop_live)
         live_row.addWidget(self.music_live_label,1)
-        l.addLayout(live_row)
+        power.addLayout(live_row)
+
+        self.music_map_power_panel.setVisible(self.power_toggle.isChecked())
+        l.addWidget(self.music_map_power_panel)
 
         self.music_map=MusicMapWidget(self)
         self.music_map.trackActivated.connect(self._play_music_map_track)
         l.addWidget(self.music_map,1)
+
         self.music_path_steps=QListWidget()
-        self.music_path_steps.setMaximumHeight(132)
-        self.music_path_steps.addItem("Pathfinder explanations will appear here.")
+        self.music_path_steps.setMaximumHeight(116)
+        self.music_path_steps.addItem("Route explanations will appear here after you plan one.")
+        self.music_path_steps.setVisible(self.power_toggle.isChecked())
         l.addWidget(self.music_path_steps)
+
+    def _toggle_music_map_tools(self) -> None:
+        visible=not self.music_map_power_panel.isVisible()
+        self.music_map_power_panel.setVisible(visible)
+        self.music_path_steps.setVisible(visible)
+        if visible:
+            self.statusBar().showMessage(
+                "Route tools revealed · select a track, set start and destination, then Find route",
+                5000,
+            )
+
 
     def _build_journeys(self):
         l=self._page_layout(
             "journeys",
-            "Journey library",
-            "Save reusable journey intent separately from private listening history. Recipes can be imported/exported without exposing local paths; runs show how live listening actually diverged from the design.",
+            "Journeys",
+            "A journey is a listening route that develops gradually instead of shuffling randomly. Save designs you want to reuse; run history stays private on this computer.",
         )
-        columns=QHBoxLayout()
 
-        recipes_panel=QWidget()
-        recipes_layout=QVBoxLayout(recipes_panel)
-        recipe_title=QLabel("Recipes")
-        recipe_title.setStyleSheet("font-size:18px;font-weight:700")
-        recipes_layout.addWidget(recipe_title)
-        recipe_help=QLabel(
-            "Recipes store routing mode + ordered semantic/exact waypoints. "
-            "Choose fresh start/destination tracks when you reuse them."
+        top=QHBoxLayout()
+        design=QPushButton("Design a journey")
+        design.setObjectName("primaryButton")
+        design.clicked.connect(self._open_journey_designer)
+        import_recipe=QPushButton("Import journey…")
+        import_recipe.clicked.connect(self._journey_recipe_import)
+        set_help(
+            design,
+            "Design a journey",
+            "Open Music Map with route tools revealed so you can choose a start, destination and the shape of the listening route.",
         )
-        recipe_help.setWordWrap(True)
-        recipe_help.setStyleSheet("color:#aab0ba")
-        recipes_layout.addWidget(recipe_help)
+        set_help(
+            import_recipe,
+            "Import journey",
+            "Open a portable .mdxjourney recipe. Recipes store intent and waypoints without exposing your private listening history.",
+        )
+        top.addWidget(design)
+        top.addWidget(import_recipe)
+        top.addStretch(1)
+        l.addLayout(top)
+
+        self.journey_tabs=QTabWidget()
+        l.addWidget(self.journey_tabs,1)
+
+        saved=QWidget()
+        saved_l=QVBoxLayout(saved)
+        saved_l.setContentsMargins(0,10,0,0)
+        saved_help=QLabel(
+            "Saved journeys remember the route idea. When you reuse one, Melodex can resolve it against the music available now."
+        )
+        saved_help.setWordWrap(True)
+        saved_help.setStyleSheet("color:#8f9bad")
+        saved_l.addWidget(saved_help)
+        self.journey_recipes_stack=QStackedWidget()
         self.journey_recipes_list=QListWidget()
         self.journey_recipes_list.itemDoubleClicked.connect(
             lambda _item:self._journey_recipe_load_selected()
         )
-        recipes_layout.addWidget(self.journey_recipes_list,1)
+        self.journey_recipes_empty=EmptyState(
+            "No saved journeys yet",
+            "Design a journey to remember a route you may want to reuse later.",
+            "Design a journey",
+        )
+        self.journey_recipes_empty.actionRequested.connect(self._open_journey_designer)
+        self.journey_recipes_stack.addWidget(self.journey_recipes_list)
+        self.journey_recipes_stack.addWidget(self.journey_recipes_empty)
+        saved_l.addWidget(self.journey_recipes_stack,1)
         recipe_buttons=QHBoxLayout()
-        save_current=QPushButton("Save current design"); save_current.clicked.connect(self._journey_recipe_save_current)
-        load_selected=QPushButton("Load into Music Map"); load_selected.clicked.connect(self._journey_recipe_load_selected)
-        import_recipe=QPushButton("Import…"); import_recipe.clicked.connect(self._journey_recipe_import)
-        export_recipe=QPushButton("Export…"); export_recipe.clicked.connect(self._journey_recipe_export)
-        delete_recipe=QPushButton("Delete"); delete_recipe.clicked.connect(self._journey_recipe_delete)
-        for button in (save_current,load_selected,import_recipe,export_recipe,delete_recipe):
+        load_selected=QPushButton("Open selected")
+        load_selected.clicked.connect(self._journey_recipe_load_selected)
+        save_current=QPushButton("Save current design")
+        save_current.clicked.connect(self._journey_recipe_save_current)
+        export_recipe=QPushButton("Export…")
+        export_recipe.clicked.connect(self._journey_recipe_export)
+        delete_recipe=QPushButton("Delete")
+        delete_recipe.clicked.connect(self._journey_recipe_delete)
+        set_help(
+            save_current,
+            "Save current design",
+            "Stores the route shape currently prepared in Music Map as a reusable journey recipe.",
+        )
+        for button in (load_selected,save_current,export_recipe,delete_recipe):
             recipe_buttons.addWidget(button)
-        recipes_layout.addLayout(recipe_buttons)
+        recipe_buttons.addStretch(1)
+        saved_l.addLayout(recipe_buttons)
+        self.journey_tabs.addTab(saved,"Saved journeys")
 
-        runs_panel=QWidget()
-        runs_layout=QVBoxLayout(runs_panel)
-        runs_title=QLabel("Recent runs")
-        runs_title.setStyleSheet("font-size:18px;font-weight:700")
-        runs_layout.addWidget(runs_title)
+        runs=QWidget()
+        runs_l=QVBoxLayout(runs)
+        runs_l.setContentsMargins(0,10,0,0)
         runs_help=QLabel(
-            "Run history is private local state: original design, final adapted route, "
-            "and the steering/skip/avoid decisions that changed it."
+            "Recent runs show what actually happened after skips, steering and live replanning. This history is local to Melodex."
         )
         runs_help.setWordWrap(True)
-        runs_help.setStyleSheet("color:#aab0ba")
-        runs_layout.addWidget(runs_help)
+        runs_help.setStyleSheet("color:#8f9bad")
+        runs_l.addWidget(runs_help)
+        self.journey_runs_stack=QStackedWidget()
         self.journey_runs_list=QListWidget()
         self.journey_runs_list.itemDoubleClicked.connect(
             lambda _item:self._journey_run_inspect()
         )
-        runs_layout.addWidget(self.journey_runs_list,1)
+        self.journey_runs_empty=EmptyState(
+            "No journey runs yet",
+            "When you play a journey, Melodex keeps a private local record of how the route changed while you listened.",
+        )
+        self.journey_runs_stack.addWidget(self.journey_runs_list)
+        self.journey_runs_stack.addWidget(self.journey_runs_empty)
+        runs_l.addWidget(self.journey_runs_stack,1)
         run_buttons=QHBoxLayout()
-        inspect=QPushButton("Inspect"); inspect.clicked.connect(self._journey_run_inspect)
-        replay_original=QPushButton("Replay designed"); replay_original.clicked.connect(lambda:self._journey_run_replay("original"))
-        replay_final=QPushButton("Replay final"); replay_final.clicked.connect(lambda:self._journey_run_replay("final"))
-        run_buttons.addWidget(inspect); run_buttons.addWidget(replay_original); run_buttons.addWidget(replay_final)
+        inspect=QPushButton("Inspect")
+        inspect.clicked.connect(self._journey_run_inspect)
+        replay_original=QPushButton("Replay designed")
+        replay_original.clicked.connect(lambda:self._journey_run_replay("original"))
+        replay_final=QPushButton("Replay final")
+        replay_final.clicked.connect(lambda:self._journey_run_replay("final"))
+        run_buttons.addWidget(inspect)
+        run_buttons.addWidget(replay_original)
+        run_buttons.addWidget(replay_final)
         run_buttons.addStretch(1)
-        runs_layout.addLayout(run_buttons)
+        runs_l.addLayout(run_buttons)
+        self.journey_tabs.addTab(runs,"Recent runs")
 
-        columns.addWidget(recipes_panel,1)
-        columns.addWidget(runs_panel,1)
-        l.addLayout(columns,1)
+    def _open_journey_designer(self) -> None:
+        self.open_page("music_map")
+        self.music_map_power_panel.show()
+        self.music_path_steps.show()
+        self.statusBar().showMessage(
+            "Journey design ready · select a track for the start, another for the destination, then shape the route",
+            6000,
+        )
+
 
     def _build_playlists(self):
-        l=self._page_layout("playlists","Playlists","Saved journeys and imported playlists live locally. Import or export XSPF, M3U and M3U8.")
-        self.playlists_list=QListWidget(); self.playlists_list.itemDoubleClicked.connect(self._play_saved_playlist); l.addWidget(self.playlists_list,1)
-        row=QHBoxLayout(); imp=QPushButton("Import playlist…"); imp.clicked.connect(self._import_playlist_file); ai=QPushButton("Paste from AI…"); ai.clicked.connect(self._open_ai_playlist_import); exp=QPushButton("Export selected…"); exp.clicked.connect(self._export_selected_playlist); expq=QPushButton("Export queue…"); expq.clicked.connect(self._export_queue); row.addWidget(imp); row.addWidget(ai); row.addWidget(exp); row.addWidget(expq); row.addStretch(1); l.addLayout(row)
+        l=self._page_layout(
+            "playlists",
+            "Playlists",
+            "Keep ordinary playlists alongside AI-generated or imported ones. Melodex stores them locally and resolves tracks through the sources you have connected.",
+        )
+
+        top=QHBoxLayout()
+        imp=QPushButton("Import playlist…")
+        imp.clicked.connect(self._import_playlist_file)
+        ai=QPushButton("Paste from AI…")
+        ai.setObjectName("primaryButton")
+        ai.clicked.connect(self._open_ai_playlist_import)
+        set_help(
+            imp,
+            "Import playlist",
+            "Import XSPF, M3U or M3U8. Melodex keeps unmatched requests so they can be resolved later.",
+        )
+        set_help(
+            ai,
+            "Paste from AI",
+            "Paste a playlist generated in ChatGPT, Claude, Gemini or another AI. No AI account is connected and the pasted text is not sent back to an AI service.",
+        )
+        top.addWidget(ai)
+        top.addWidget(imp)
+        top.addStretch(1)
+        l.addLayout(top)
+
+        self.playlists_stack=QStackedWidget()
+        self.playlists_list=QListWidget()
+        self.playlists_list.itemDoubleClicked.connect(self._play_saved_playlist)
+        self.playlists_list.itemSelectionChanged.connect(self._playlist_selection_changed)
+        self.playlists_empty=EmptyState(
+            "No playlists yet",
+            "Paste one from an AI chat, import an existing playlist, or export the music already in your queue.",
+            "Paste from AI",
+        )
+        self.playlists_empty.actionRequested.connect(self._open_ai_playlist_import)
+        self.playlists_stack.addWidget(self.playlists_list)
+        self.playlists_stack.addWidget(self.playlists_empty)
+        l.addWidget(self.playlists_stack,1)
+
+        row=QHBoxLayout()
+        self.playlist_export_button=QPushButton("Export selected…")
+        self.playlist_export_button.clicked.connect(self._export_selected_playlist)
+        self.playlist_export_button.setEnabled(False)
+        expq=QPushButton("Export current queue…")
+        expq.clicked.connect(self._export_queue)
+        row.addWidget(self.playlist_export_button)
+        row.addWidget(expq)
+        row.addStretch(1)
+        l.addLayout(row)
+
+    def _playlist_selection_changed(self) -> None:
+        item=self.playlists_list.currentItem() if hasattr(self,"playlists_list") else None
+        record=item.data(Qt.UserRole) if item else None
+        if hasattr(self,"playlist_export_button"):
+            self.playlist_export_button.setEnabled(isinstance(record,dict))
+
 
     def _build_moments(self):
-        l=self._page_layout("moments","Moments","Bookmarks inside songs — the exact musical moments you wanted to remember.")
-        self.moments_list=QListWidget(); l.addWidget(self.moments_list,1)
+        l=self._page_layout(
+            "moments",
+            "Moments",
+            "Bookmarks inside songs — the exact musical moments you wanted to remember, not just a list of favourite tracks.",
+        )
+        note=QLabel(
+            "While something is playing, use the current-track actions to remember a moment. Double-click a saved moment to play from that point."
+        )
+        note.setWordWrap(True)
+        note.setStyleSheet("color:#8f9bad")
+        l.addWidget(note)
+        self.moments_stack=QStackedWidget()
+        self.moments_list=QListWidget()
+        self.moments_list.itemDoubleClicked.connect(self._play_saved_moment)
+        self.moments_empty=EmptyState(
+            "No moments saved yet",
+            "When a song reaches a part you want to remember, save that exact point and it will appear here.",
+            "Open Now Playing",
+        )
+        self.moments_empty.actionRequested.connect(lambda:self.open_page("now_playing"))
+        self.moments_stack.addWidget(self.moments_list)
+        self.moments_stack.addWidget(self.moments_empty)
+        l.addWidget(self.moments_stack,1)
+
 
     def _build_ask(self):
         l=self._page_layout("ask","Ask Melodex","Optional. Connect OpenWebUI, Ollama or another compatible model. The player still works without any LLM.")
@@ -511,55 +1562,139 @@ class MainWindow(QMainWindow):
     def _build_sources(self):
         l=self._page_layout(
             "sources",
-            "Music sources",
-            "Connect Melodex to your music. Built-in sources stay simple; "
-            "provider tools are available when you need them.",
+            "Sources & plugins",
+            "Choose where Melodex can find music. Everyday controls stay simple; provider internals appear only when you enable Power tools.",
         )
-        self.sources_list=QListWidget(); self.sources_list.setObjectName("sourcesList"); l.addWidget(self.sources_list,1)
 
-        row=QHBoxLayout()
-        local=QPushButton("Add local folder…"); local.clicked.connect(self._choose_music_folder)
-        jam=QPushButton("Jamendo settings…"); jam.clicked.connect(self._jamendo_settings)
-        streams=QPushButton("User Streams…"); streams.clicked.connect(self._user_streams_dialog)
-        directory=QPushButton("Explore plugins…"); directory.clicked.connect(self._plugin_directory)
-        test_plugin=QPushButton("Test selected"); test_plugin.clicked.connect(self._test_selected_plugin)
-        row.addWidget(local); row.addWidget(jam); row.addWidget(streams); row.addWidget(directory); row.addWidget(test_plugin)
-        row.addStretch(1); l.addLayout(row)
+        actions=QHBoxLayout()
+        local=QPushButton("+ Add my music")
+        local.setObjectName("primaryButton")
+        local.clicked.connect(self._choose_music_folder)
+        directory=QPushButton("Explore plugins")
+        directory.clicked.connect(self._plugin_directory)
+        streams=QPushButton("My streams")
+        streams.clicked.connect(self._user_streams_dialog)
+        self.source_primary_button=QPushButton("Set up selected")
+        self.source_primary_button.clicked.connect(self._source_primary_action)
+        self.source_primary_button.setEnabled(False)
+        set_help(
+            local,
+            "Add local music",
+            "Choose a folder of music on this computer. Your files stay local.",
+        )
+        set_help(
+            directory,
+            "Explore plugins",
+            "Browse optional providers and extensions that add new music sources or capabilities.",
+        )
+        set_help(
+            streams,
+            "My streams",
+            "Add direct radio or stream URLs that you already know and trust.",
+        )
+        set_help(
+            self.source_primary_button,
+            "Set up selected source",
+            "Opens the most useful action for the selected source, such as configuration or testing.",
+        )
+        actions.addWidget(local)
+        actions.addWidget(directory)
+        actions.addWidget(streams)
+        actions.addStretch(1)
+        actions.addWidget(self.source_primary_button)
+        l.addLayout(actions)
 
-        self.source_power_panel = QWidget()
-        power=QVBoxLayout(self.source_power_panel); power.setContentsMargins(0,4,0,0); power.setSpacing(8)
+        self.sources_list=QListWidget()
+        self.sources_list.setObjectName("sourcesList")
+        self.sources_list.itemSelectionChanged.connect(self._source_selection_changed)
+        l.addWidget(self.sources_list,1)
+
+        self.source_hint=QLabel(
+            "Select a source to see what you can do with it. Technical controls are hidden unless Power tools is enabled."
+        )
+        self.source_hint.setWordWrap(True)
+        self.source_hint.setStyleSheet("color:#8793a4")
+        l.addWidget(self.source_hint)
+
+        self.source_power_panel = QFrame()
+        self.source_power_panel.setObjectName("powerPanel")
+        power=QVBoxLayout(self.source_power_panel)
+        power.setContentsMargins(14,12,14,12)
+        power.setSpacing(8)
+
+        title=QLabel("Power tools")
+        title.setStyleSheet("font-size:15px;font-weight:700")
+        power.addWidget(title)
+
         provider_row=QHBoxLayout()
-        inst=QPushButton("Install .mdxprovider…"); inst.clicked.connect(self._install_provider)
-        ext=QPushButton("Install .mdxplugin…"); ext.clicked.connect(self._install_extension)
-        bridge=QPushButton("Provider Bridge…"); bridge.clicked.connect(self._bridge_dialog)
-        diagnostics=QPushButton("Export diagnostics…"); diagnostics.clicked.connect(self._export_diagnostics)
-        provider_row.addWidget(inst); provider_row.addWidget(ext); provider_row.addWidget(bridge); provider_row.addWidget(diagnostics); provider_row.addStretch(1)
+        jam=QPushButton("Jamendo settings…")
+        jam.clicked.connect(self._jamendo_settings)
+        inst=QPushButton("Install .mdxprovider…")
+        inst.clicked.connect(self._install_provider)
+        ext=QPushButton("Install .mdxplugin…")
+        ext.clicked.connect(self._install_extension)
+        bridge=QPushButton("Provider Bridge…")
+        bridge.clicked.connect(self._bridge_dialog)
+        diagnostics=QPushButton("Export diagnostics…")
+        diagnostics.clicked.connect(self._export_diagnostics)
+        provider_row.addWidget(jam)
+        provider_row.addWidget(inst)
+        provider_row.addWidget(ext)
+        provider_row.addWidget(bridge)
+        provider_row.addWidget(diagnostics)
+        provider_row.addStretch(1)
         power.addLayout(provider_row)
+
         priority=QHBoxLayout()
-        up=QPushButton("Prefer source ↑"); down=QPushButton("Prefer source ↓")
-        configure=QPushButton("Configure selected…"); configure.clicked.connect(self._configure_selected_plugin)
-        toggle_ext=QPushButton("Enable / disable extension"); toggle_ext.clicked.connect(self._toggle_extension)
-        remove_ext=QPushButton("Remove extension"); remove_ext.clicked.connect(self._remove_extension)
-        up.clicked.connect(lambda:self._move_source(-1)); down.clicked.connect(lambda:self._move_source(1))
-        priority.addWidget(up); priority.addWidget(down); priority.addWidget(configure); priority.addWidget(toggle_ext); priority.addStretch(1); power.addLayout(priority)
+        up=QPushButton("Prefer source ↑")
+        down=QPushButton("Prefer source ↓")
+        configure=QPushButton("Configure selected…")
+        configure.clicked.connect(self._configure_selected_plugin)
+        toggle_ext=QPushButton("Enable / disable extension")
+        toggle_ext.clicked.connect(self._toggle_extension)
+        remove_ext=QPushButton("Remove extension")
+        remove_ext.clicked.connect(self._remove_extension)
+        test_plugin=QPushButton("Test selected")
+        test_plugin.clicked.connect(self._test_selected_plugin)
+        up.clicked.connect(lambda:self._move_source(-1))
+        down.clicked.connect(lambda:self._move_source(1))
+        priority.addWidget(up)
+        priority.addWidget(down)
+        priority.addWidget(configure)
+        priority.addWidget(test_plugin)
+        priority.addWidget(toggle_ext)
+        priority.addStretch(1)
+        power.addLayout(priority)
+
         provider_actions=QHBoxLayout()
-        remove_provider=QPushButton("Remove selected provider"); remove_provider.clicked.connect(self._remove_provider)
-        restore_bundled=QPushButton("Restore bundled sources"); restore_bundled.clicked.connect(self._restore_bundled_sources)
-        provider_actions.addWidget(remove_provider); provider_actions.addWidget(remove_ext); provider_actions.addWidget(restore_bundled); provider_actions.addStretch(1)
+        remove_provider=QPushButton("Remove selected provider")
+        remove_provider.clicked.connect(self._remove_provider)
+        restore_bundled=QPushButton("Restore bundled sources")
+        restore_bundled.clicked.connect(self._restore_bundled_sources)
+        provider_actions.addWidget(remove_provider)
+        provider_actions.addWidget(remove_ext)
+        provider_actions.addWidget(restore_bundled)
+        provider_actions.addStretch(1)
         power.addLayout(provider_actions)
+
         self.source_power_panel.setVisible(self.power_toggle.isChecked())
         l.addWidget(self.source_power_panel)
 
-    # ------------------------------- navigation/data
+
     def changeEvent(self, event):
         super().changeEvent(event)
         if event.type() == QEvent.WindowStateChange and hasattr(self, "living_canvas"):
             self.living_canvas.set_window_minimized(self.isMinimized())
 
     def open_page(self, name: str):
-        self.current_page=name; self.stack.setCurrentWidget(self.pages[name])
+        if name not in self.pages:
+            return
+        self.current_page=name
+        self.stack.setCurrentWidget(self.pages[name])
+        self._update_nav_state(name)
         if name=="home": self._show_home()
         elif name=="library": self._refresh_library()
+        elif name=="album_wall": self._refresh_album_wall()
         elif name=="music_map": self._refresh_music_map()
         elif name=="sources": self._refresh_sources()
         elif name=="moments": self._refresh_moments()
@@ -568,16 +1703,154 @@ class MainWindow(QMainWindow):
         elif name=="for_you": self._refresh_taste()
         elif name=="discover": self._refresh_source_combo()
 
-    def _show_home(self):
-        self._refresh_library(); self._refresh_sources(); self._refresh_taste()
-        count=len(self.providers.local_catalog()); src=len(self.providers.providers); ext=len(self.providers.extensions())
-        self.home_status.setText(f"{count:,} local tracks · {src} connected sources · {ext} extension{'s' if ext != 1 else ''} · Flow {'ready' if self.flow.analysis_available else 'works with metadata; install ffmpeg for deep analysis'}")
+    def _update_nav_state(self, page: str) -> None:
+        parent = {
+            "home":"home",
+            "for_you":"home",
+            "now_playing":"home",
+            "library":"library",
+            "moments":"library",
+            "explore":"explore",
+            "discover":"explore",
+            "album_wall":"explore",
+            "music_map":"explore",
+            "ask":"explore",
+            "journeys":"journeys",
+            "playlists":"playlists",
+            "sources":"sources",
+        }.get(str(page or ""), "")
+        for key,button in getattr(self,"nav_buttons",{}).items():
+            active = key == parent
+            if bool(button.property("active")) == active:
+                continue
+            button.setProperty("active",active)
+            button.style().unpolish(button)
+            button.style().polish(button)
+            button.update()
 
-    def _power_changed(self, _):
+    def _show_home(self):
+        self._refresh_taste()
+        count=len(self.providers.local_catalog())
+        src=len(self.providers.providers)
+        ext=len(self.providers.extensions())
+        flow_text = (
+            "Flow analysis ready"
+            if self.flow.analysis_available
+            else "metadata mode; install ffmpeg for deeper sonic analysis"
+        )
+        self.home_status.setText(
+            f"{count:,} local tracks · {src} music sources · {ext} plugin"
+            f"{'s' if ext != 1 else ''} · {flow_text}"
+        )
+        if hasattr(self,"home_primary_button"):
+            if count:
+                self.home_primary_button.setText("▶  Play something")
+                set_help(
+                    self.home_primary_button,
+                    "Play something",
+                    "Builds a balanced one-hour session from your local library using your listening history and Flow when available.",
+                )
+            else:
+                self.home_primary_button.setText("+  Add my music")
+                set_help(
+                    self.home_primary_button,
+                    "Add your music",
+                    "Choose a folder of music on this computer. Melodex indexes it locally and does not upload your audio.",
+                )
+        self._refresh_home_continue()
+
+    def _home_primary_action(self) -> None:
+        if self.providers.local_catalog():
+            self._play_for_me("balanced",60,0.35)
+        else:
+            self._choose_music_folder()
+
+    def _refresh_home_continue(self) -> None:
+        if not hasattr(self,"home_continue_cover"):
+            return
+        recent = self.state.recent_tracks(1)
+        track = dict(self.current_track or (recent[0] if recent else {}))
+        self.home_recent_track = track
+        if not track:
+            self.home_continue_cover.set_cover("",title="Your music",key="empty-home")
+            self.home_continue_title.setText("Nothing played yet")
+            self.home_continue_meta.setText(
+                "Choose Play something or browse My Music. Your recent listening will appear here."
+            )
+            self.home_continue_button.setEnabled(False)
+            return
+        title=str(track.get("title") or "Unknown track")
+        artist=str(track.get("artist") or "Unknown artist")
+        album=str(track.get("album") or "")
+        self.home_continue_title.setText(title)
+        self.home_continue_meta.setText(artist + (f"  ·  {album}" if album else ""))
+        self.home_continue_button.setEnabled(True)
+        self.home_continue_cover.set_cover("",title=album or title,key=UserState.track_key(track))
+        token=UserState.track_key(track)
+        self._run_async(
+            lambda:self.metadata.local_artwork(track),
+            lambda result:self._home_continue_art_loaded(token,result),
+        )
+
+    def _home_continue_art_loaded(self, token: str, result: object) -> None:
+        current=UserState.track_key(dict(getattr(self,"home_recent_track",{}) or {}))
+        if token!=current or not isinstance(result,dict):
+            return
+        path=str(result.get("path") or "")
+        self.home_continue_cover.set_cover(
+            path,
+            title=str(self.home_recent_track.get("album") or self.home_recent_track.get("title") or ""),
+            key=token,
+        )
+        current=dict(self.current_track or {})
+        if current and token==UserState.track_key(current) and hasattr(self,"player_cover"):
+            self.player_cover.set_cover(
+                path,
+                title=str(current.get("album") or current.get("title") or ""),
+                key=token,
+            )
+
+    def _home_continue_play(self) -> None:
+        track=dict(getattr(self,"home_recent_track",{}) or {})
+        if track:
+            self.player.set_queue([track],0,True)
+
+    def _power_changed(self, _, announce: bool = True):
         enabled = self.power_toggle.isChecked()
+        self.state.set_bool("power_tools",enabled)
         if hasattr(self, "source_power_panel"):
             self.source_power_panel.setVisible(enabled)
-        self.statusBar().showMessage("Power tools enabled" if enabled else "Simple mode", 2500)
+        if hasattr(self, "player_power_actions"):
+            self.player_power_actions.setVisible(enabled)
+        if hasattr(self, "music_map_power_panel"):
+            self.music_map_power_panel.setVisible(enabled)
+        if hasattr(self, "music_path_steps"):
+            self.music_path_steps.setVisible(enabled)
+        if hasattr(self, "album_wall_power_panel"):
+            self.album_wall_power_panel.setVisible(enabled)
+        if announce:
+            self.statusBar().showMessage(
+                "Power tools enabled" if enabled else "Power tools hidden",
+                2500,
+            )
+
+    def _open_command_palette(self) -> None:
+        actions=[
+            ("Home","Start listening and see recent music.",lambda:self.open_page("home")),
+            ("My Music","Browse albums, artists and tracks.",lambda:self.open_page("library")),
+            ("Explore","Search, Album Wall and Music Map.",lambda:self.open_page("explore")),
+            ("Search everything","Search all connected music sources.",lambda:self.open_page("discover")),
+            ("Album Wall","Browse your collection spatially.",lambda:self.open_page("album_wall")),
+            ("Music Map","Explore track relationships and routes.",lambda:self.open_page("music_map")),
+            ("Now Playing","Open artwork, lyrics and visuals.",lambda:self.open_page("now_playing")),
+            ("Journeys","Open saved listening journeys.",lambda:self.open_page("journeys")),
+            ("Playlists","Open saved and imported playlists.",lambda:self.open_page("playlists")),
+            ("Sources & plugins","Manage where Melodex finds music.",lambda:self.open_page("sources")),
+            ("Ask Melodex","Open optional natural-language control.",lambda:self.open_page("ask")),
+            ("Add music folder","Choose a local music folder.",self._choose_music_folder),
+            ("Analyse local library","Analyse sonic features locally for Flow and maps.",self._analyse_library_for_intelligence),
+        ]
+        CommandPaletteDialog(actions,self).exec()
 
     def _refresh_source_combo(self):
         current=self.search_source.currentData(); self.search_source.clear(); self.search_source.addItem("All sources","all")
@@ -592,75 +1865,132 @@ class MainWindow(QMainWindow):
         self.sources_list.clear()
         for pid in self.providers.provider_order():
             p=self.providers.providers[pid]
-            name = p.info.name.replace(" (reference provider)", "")
-            if pid == "local":
-                count = len(self.providers.local_catalog())
-                status = f"{count:,} TRACKS" if count else "ADD MUSIC"
-                kind = "BUILT-IN"
-            elif pid == "jamendo":
-                configured = bool(str(self.providers.settings.get("jamendo_client_id", "")).strip())
-                status = "READY" if configured else "SETUP NEEDED"
-                kind = "REFERENCE"
-            elif pid == "streams":
-                count = len(self.providers.user_streams())
-                status = f"{count} STREAM" if count == 1 else f"{count} STREAMS"
-                kind = "BUILT-IN"
+            name=p.info.name.replace(" (reference provider)","")
+            if pid=="local":
+                count=len(self.providers.local_catalog())
+                status=f"{count:,} tracks" if count else "Add music"
+                kind="On this device"
+            elif pid=="jamendo":
+                configured=bool(str(self.providers.settings.get("jamendo_client_id","")).strip())
+                status="Ready" if configured else "Setup needed"
+                kind="Online source"
+            elif pid=="streams":
+                count=len(self.providers.user_streams())
+                status=f"{count} stream" if count==1 else f"{count} streams"
+                kind="Your links"
             else:
-                installation = self.providers.installation_record(pid)
-                status = (
-                    "REGISTRY VERIFIED"
-                    if installation.get("registry_verified")
-                    else "MANUAL"
-                    if installation.get("method") == "manual"
-                    else "BUNDLED"
-                    if installation.get("method") == "bundled"
-                    else "INSTALLED"
-                )
+                installation=self.providers.installation_record(pid)
+                verified=bool(installation.get("registry_verified"))
+                status="Installed"
                 if p.info.configuration:
-                    config_status = self.providers.plugin_config.status(
-                        pid, p.info.configuration
-                    )
-                    if not config_status.get("ready", True):
-                        status += " · SETUP NEEDED"
-                health = self.providers.plugin_health(pid)
-                if health.get("status") not in {"setup_required"}:
-                    status += f" · {health_badge(health)}"
-                kind = "PROVIDER"
-            item=QListWidgetItem(
-                f"{name}    ·    {kind}    ·    {status}\n{p.info.description}"
-            )
+                    config_status=self.providers.plugin_config.status(pid,p.info.configuration)
+                    if not config_status.get("ready",True):
+                        status="Setup needed"
+                health=self.providers.plugin_health(pid)
+                if health.get("status") in {"error","stopped","unhealthy"}:
+                    status="Needs attention"
+                elif verified and status=="Installed":
+                    status="Ready"
+                kind="Plugin source"
+
+            item=QListWidgetItem()
             item.setData(Qt.UserRole,pid)
+            card=SourceCard(
+                name,
+                str(p.info.description or ""),
+                status,
+                kind=kind,
+            )
+            item.setSizeHint(card.sizeHint())
             self.sources_list.addItem(item)
-        extensions = self.providers.extensions()
+            self.sources_list.setItemWidget(item,card)
+
+        extensions=self.providers.extensions()
         if extensions:
-            heading = QListWidgetItem("CAPABILITY EXTENSIONS")
+            heading=QListWidgetItem("PLUGINS THAT EXTEND MELODEX")
             heading.setFlags(heading.flags() & ~Qt.ItemIsSelectable)
             self.sources_list.addItem(heading)
             for extension in extensions:
-                capabilities = ", ".join(extension.get("capabilities") or []) or "no capabilities"
-                enabled_status = "ENABLED" if extension.get("enabled", True) else "DISABLED"
-                installation = self.providers.installation_record(
-                    str(extension.get("id") or "")
+                extension_id=str(extension.get("id") or "")
+                enabled=bool(extension.get("enabled",True))
+                config_status=dict(extension.get("configuration_status") or {})
+                if not enabled:
+                    status="Disabled"
+                elif config_status.get("declared") and not config_status.get("ready",True):
+                    status="Setup needed"
+                else:
+                    health=self.providers.plugin_health(extension_id)
+                    status="Needs attention" if health.get("status") in {"error","stopped","unhealthy"} else "Ready"
+                capabilities=", ".join(extension.get("capabilities") or []) or "Adds extra Melodex capabilities"
+                description=str(extension.get("description") or capabilities)
+                item=QListWidgetItem()
+                item.setData(Qt.UserRole,"extension:"+extension_id)
+                card=SourceCard(
+                    str(extension.get("name") or extension_id),
+                    description,
+                    status,
+                    kind="Extension",
                 )
-                trust_status = (
-                    "REGISTRY VERIFIED"
-                    if installation.get("registry_verified")
-                    else "MANUAL"
-                    if installation.get("method") == "manual"
-                    else "INSTALLED"
-                )
-                config_status = dict(extension.get("configuration_status") or {})
-                if config_status.get("declared") and not config_status.get("ready", True):
-                    trust_status += " · SETUP NEEDED"
-                health = self.providers.plugin_health(str(extension.get("id") or ""))
-                health_text = health_badge(health)
-                item = QListWidgetItem(
-                    f"{extension.get('name') or extension.get('id')}    ·    EXTENSION    ·    {enabled_status}    ·    {trust_status}    ·    {health_text}\n"
-                    f"{capabilities} · {extension.get('description') or ''}"
-                )
-                item.setData(Qt.UserRole, "extension:" + str(extension.get("id") or ""))
+                item.setSizeHint(card.sizeHint())
                 self.sources_list.addItem(item)
+                self.sources_list.setItemWidget(item,card)
+
         self._refresh_source_combo()
+        self._source_selection_changed()
+
+    def _source_selection_changed(self) -> None:
+        item=self.sources_list.currentItem() if hasattr(self,"sources_list") else None
+        key=str(item.data(Qt.UserRole) or "") if item else ""
+        enabled=bool(key)
+        if hasattr(self,"source_primary_button"):
+            self.source_primary_button.setEnabled(enabled)
+        if not hasattr(self,"source_hint"):
+            return
+        if not key:
+            self.source_hint.setText(
+                "Select a source to see what you can do with it. Technical controls are hidden unless Power tools is enabled."
+            )
+            return
+        if key=="local":
+            self.source_hint.setText(
+                "This computer · your files stay on this device. Add another folder or rescan from My Music."
+            )
+        elif key=="jamendo":
+            self.source_hint.setText(
+                "Jamendo · an optional online source. Setup requires its API credentials."
+            )
+        elif key=="streams":
+            self.source_hint.setText(
+                "My streams · direct radio or audio URLs that you add yourself."
+            )
+        elif key.startswith("extension:"):
+            self.source_hint.setText(
+                "This plugin extends Melodex rather than supplying ordinary tracks. Use Set up selected if it needs configuration."
+            )
+        else:
+            self.source_hint.setText(
+                "Plugin source · Melodex can search or play through this provider according to the permissions it declares."
+            )
+
+    def _source_primary_action(self) -> None:
+        item=self.sources_list.currentItem() if hasattr(self,"sources_list") else None
+        key=str(item.data(Qt.UserRole) or "") if item else ""
+        if not key:
+            return
+        if key=="local":
+            self._choose_music_folder()
+        elif key=="jamendo":
+            self._jamendo_settings()
+        elif key=="streams":
+            self._user_streams_dialog()
+        elif key.startswith("extension:"):
+            self._configure_selected_plugin()
+        else:
+            provider=self.providers.providers.get(key)
+            if provider is not None and provider.info.configuration:
+                self._configure_selected_plugin()
+            else:
+                self._test_selected_plugin()
 
     def _move_source(self, delta):
         item=self.sources_list.currentItem()
@@ -673,9 +2003,282 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Source priority updated",2500)
 
     def _refresh_library(self):
-        self.library_list.clear()
-        for t in self.providers.local_catalog():
-            it=QListWidgetItem(_track_text(t)); it.setData(Qt.UserRole,t); self.library_list.addItem(it)
+        if hasattr(self,"library_browser"):
+            self.library_browser.set_catalog(self.providers.local_catalog())
+
+    def _play_library_track(self, track: object) -> None:
+        if not isinstance(track,dict):
+            return
+        tracks=self.providers.local_catalog()
+        tid=str(track.get("track_id") or "")
+        index=next(
+            (i for i,item in enumerate(tracks) if str(item.get("track_id") or "")==tid),
+            0,
+        )
+        self.player.set_queue(tracks,index,True)
+
+    def _play_library_artist(self, artist: object) -> None:
+        if not isinstance(artist,dict):
+            return
+        tracks=[dict(x) for x in list(artist.get("tracks") or []) if isinstance(x,dict)]
+        if tracks:
+            self.player.set_queue(tracks,0,True)
+
+    def _queue_library_track(self, track: object) -> None:
+        if not isinstance(track,dict):
+            return
+        if not self.player.queue:
+            self.player.set_queue([dict(track)],0,False)
+        else:
+            self.player.append_queue([dict(track)],autoplay=False)
+        self.statusBar().showMessage(
+            f"Queued {track.get('title') or 'track'}",
+            3000,
+        )
+
+    def _edit_local_metadata(self, track: object) -> None:
+        if not isinstance(track,dict) or not str(track.get("local_path") or "").strip():
+            QMessageBox.information(
+                self,
+                "Local music only",
+                "Metadata corrections are currently available for music stored on this computer.",
+            )
+            return
+
+        original=dict(track)
+        dialog=QDialog(self)
+        dialog.setWindowTitle("Correct track details")
+        dialog.resize(520,360)
+        layout=QVBoxLayout(dialog)
+        layout.setContentsMargins(22,20,22,18)
+        title=QLabel("Correct track details")
+        title.setStyleSheet("font-size:20px;font-weight:700")
+        layout.addWidget(title)
+        note=QLabel(
+            "These corrections are stored by Melodex and survive rescans. "
+            "Your original audio file and its embedded tags are not changed."
+        )
+        note.setWordWrap(True)
+        note.setStyleSheet("color:#9aa4b8")
+        layout.addWidget(note)
+
+        form=QFormLayout()
+        fields={}
+        for key,label in (
+            ("artist","Artist"),
+            ("title","Track title"),
+            ("album","Album"),
+            ("album_artist","Album artist"),
+            ("year","Year"),
+            ("genre","Genre"),
+        ):
+            edit=QLineEdit()
+            value=str(original.get(key) or "")
+            if key=="artist" and value.casefold().strip()=="unknown artist":
+                value=""
+            edit.setText(value)
+            fields[key]=edit
+            form.addRow(label+":",edit)
+        layout.addLayout(form)
+
+        buttons=QDialogButtonBox(QDialogButtonBox.Save|QDialogButtonBox.Cancel)
+        reset=buttons.addButton("Use file tags again",QDialogButtonBox.ResetRole)
+        set_help(
+            reset,
+            "Remove Melodex correction",
+            "Forget the local correction for this file and use its embedded/file metadata again.",
+        )
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        reset.clicked.connect(lambda:self._reset_local_metadata_dialog(dialog,original))
+        layout.addWidget(buttons)
+
+        if dialog.exec()!=QDialog.Accepted:
+            return
+
+        changes={key:edit.text().strip() for key,edit in fields.items()}
+        try:
+            updated=self.providers.update_local_metadata(original,changes)
+        except Exception as exc:
+            QMessageBox.warning(self,"Could not save correction",str(exc))
+            return
+        self._apply_local_metadata_update(original,updated)
+        self.statusBar().showMessage(
+            f"Saved Melodex metadata correction for {updated.get('title') or original.get('title') or 'track'}",
+            4500,
+        )
+
+    def _reset_local_metadata_dialog(self, dialog: QDialog, track: dict[str,Any]) -> None:
+        if self.providers.clear_local_metadata_correction(track):
+            self._refresh_library()
+            self.statusBar().showMessage("Removed Melodex metadata correction",3500)
+        dialog.reject()
+
+    def _apply_local_metadata_update(
+        self,
+        original: dict[str,Any],
+        updated: dict[str,Any],
+    ) -> None:
+        path=str(original.get("local_path") or "")
+        for index,item in enumerate(list(self.player.queue)):
+            if str(item.get("local_path") or "")==path:
+                self.player.queue[index]={**item,**updated}
+        self.player.queueChanged.emit(list(self.player.queue))
+
+        if str(self.current_track.get("local_path") or "")==path:
+            self.current_track={**self.current_track,**updated}
+            self.now_title.setText(str(self.current_track.get("title") or "Unknown track"))
+            pieces=[str(self.current_track.get("artist") or "Unknown artist")]
+            album=str(self.current_track.get("album") or "")
+            if album:
+                pieces.append(album)
+            self.now_meta.setText("   ·   ".join(pieces))
+            if hasattr(self,"rich_now"):
+                self.rich_now.set_track(dict(self.current_track))
+        self._refresh_library()
+
+    def _queue_album_data(self, album: object) -> None:
+        if not isinstance(album,dict):
+            return
+        tracks=[dict(x) for x in list(album.get("tracks") or []) if isinstance(x,dict)]
+        if not tracks:
+            return
+        if not self.player.queue:
+            self.player.set_queue(tracks,0,False)
+        else:
+            self.player.append_queue(tracks,autoplay=False)
+        self.statusBar().showMessage(
+            f"Queued {len(tracks)} tracks from {album.get('title') or 'album'}",
+            3500,
+        )
+
+    def _library_artwork_requested(self, requests: object) -> None:
+        rows=[dict(x) for x in list(requests or []) if isinstance(x,dict)]
+        if not rows:
+            return
+        def load():
+            result={}
+            for row in rows:
+                key=str(row.get("key") or "")
+                track=dict(row.get("track") or {})
+                if key and track:
+                    info=self.metadata.local_artwork(track)
+                    result[key]=str(info.get("path") or "")
+            return result
+        self._run_async(load,self.library_browser.set_artwork)
+
+    def _library_online_artwork_requested(self, requests: object) -> None:
+        rows=[dict(x) for x in list(requests or []) if isinstance(x,dict)]
+        if not rows:
+            return
+        self.statusBar().showMessage(
+            f"Looking online for artwork for {len(rows)} album{'s' if len(rows)!=1 else ''}…"
+        )
+
+        def load():
+            result={}
+            for row in rows:
+                key=str(row.get("key") or "")
+                track=dict(row.get("track") or {})
+                if not key or not track:
+                    continue
+                path=""
+                artwork_info={}
+                try:
+                    local=self.metadata.local_artwork(track)
+                    path=str(local.get("path") or "")
+                    artwork_info=dict(local)
+                    if not path:
+                        identity=self.metadata.identify(track)
+                        artwork_info=self.metadata.artwork(track,identity)
+                        path=str(artwork_info.get("path") or "")
+                    if path:
+                        for sibling in list(row.get("tracks") or []):
+                            if isinstance(sibling,dict):
+                                self.metadata.remember_artwork(
+                                    sibling,
+                                    path,
+                                    source=str(artwork_info.get("source") or ""),
+                                    source_url=str(artwork_info.get("source_url") or ""),
+                                    attribution=str(artwork_info.get("attribution") or ""),
+                                    license_name=str(artwork_info.get("license") or ""),
+                                )
+                except Exception:
+                    path=""
+                result[key]=path
+            return result
+
+        def apply(result):
+            result_rows=dict(result or {})
+            self.library_browser.set_artwork(result_rows)
+            found=sum(1 for path in result_rows.values() if str(path or "").strip())
+            self.statusBar().showMessage(
+                f"Artwork lookup finished · {found} cover{'s' if found!=1 else ''} found and remembered",
+                5000,
+            )
+
+        self._run_async(load,apply)
+
+    def _library_cached_artist_images_requested(self, requests: object) -> None:
+        rows=[dict(x) for x in list(requests or []) if isinstance(x,dict)]
+        if not rows:
+            return
+
+        def load():
+            result={}
+            for row in rows:
+                key=str(row.get("key") or "")
+                artist_name=str(row.get("artist") or "")
+                if key and artist_name:
+                    cached=self.metadata.cached_artist_photo({"name":artist_name})
+                    result[key]=str(cached.get("path") or "")
+            return result
+
+        self._run_async(load,self.library_browser.set_artist_images)
+
+    def _library_artist_images_requested(self, requests: object) -> None:
+        rows=[dict(x) for x in list(requests or []) if isinstance(x,dict)]
+        if not rows:
+            return
+        self.statusBar().showMessage(
+            f"Looking for artist photos for {len(rows)} artist{'s' if len(rows)!=1 else ''}…"
+        )
+
+        def load():
+            result={}
+            for row in rows:
+                key=str(row.get("key") or "")
+                artist_name=str(row.get("artist") or "")
+                track=dict(row.get("track") or {})
+                if not key or not artist_name or not track:
+                    continue
+                path=""
+                try:
+                    cached=self.metadata.cached_artist_photo({"name":artist_name})
+                    path=str(cached.get("path") or "")
+                    if not path:
+                        identity=self.metadata.identify(track)
+                        if identity.artist_mbid:
+                            info=self.metadata.artist_info(identity.artist_mbid)
+                            if not info.get("name"):
+                                info["name"]=artist_name
+                            photo=self.metadata.artist_photo(info)
+                            path=str(photo.get("path") or "")
+                except Exception:
+                    path=""
+                result[key]=path
+            return result
+
+        def apply(result):
+            result_rows=dict(result or {})
+            self.library_browser.set_artist_images(result_rows)
+            found=sum(1 for path in result_rows.values() if str(path or "").strip())
+            self.statusBar().showMessage(
+                f"Artist image lookup finished · {found} photo{'s' if found!=1 else ''} found",
+                5000,
+            )
+
+        self._run_async(load,apply)
 
     def _refresh_journeys(self):
         if not hasattr(self,"journey_recipes_list") or not hasattr(self,"journey_runs_list"):
@@ -692,6 +2295,12 @@ class MainWindow(QMainWindow):
             item=QListWidgetItem(f"{record.get('name') or 'Journey recipe'}\n{subtitle}")
             item.setData(Qt.UserRole,record)
             self.journey_recipes_list.addItem(item)
+        if hasattr(self,"journey_recipes_stack"):
+            self.journey_recipes_stack.setCurrentWidget(
+                self.journey_recipes_list
+                if self.journey_recipes_list.count()
+                else self.journey_recipes_empty
+            )
 
         self.journey_runs_list.clear()
         for run in self.state.journey_runs(80):
@@ -712,6 +2321,12 @@ class MainWindow(QMainWindow):
             )
             item.setData(Qt.UserRole,run)
             self.journey_runs_list.addItem(item)
+        if hasattr(self,"journey_runs_stack"):
+            self.journey_runs_stack.setCurrentWidget(
+                self.journey_runs_list
+                if self.journey_runs_list.count()
+                else self.journey_runs_empty
+            )
 
     def _selected_journey_recipe_record(self):
         item=self.journey_recipes_list.currentItem() if hasattr(self,"journey_recipes_list") else None
@@ -1016,8 +2631,25 @@ class MainWindow(QMainWindow):
 
     def _refresh_playlists(self):
         self.playlists_list.clear()
-        for p in self.state.playlists():
-            item=QListWidgetItem(f"{p.get('name')}\n{p.get('description','')}"); item.setData(Qt.UserRole,p); self.playlists_list.addItem(item)
+        records=self.state.playlists()
+        for p in records:
+            name=str(p.get("name") or "Playlist")
+            description=str(p.get("description") or "").strip()
+            count=int(p.get("track_count") or 0)
+            source=str(p.get("source") or "")
+            subtitle=f"{count} track{'s' if count!=1 else ''}"
+            if source:
+                subtitle+=f" · {source.replace('import:','imported ')}"
+            if description:
+                subtitle+=f"\n{description}"
+            item=QListWidgetItem(f"{name}\n{subtitle}")
+            item.setData(Qt.UserRole,p)
+            self.playlists_list.addItem(item)
+        if hasattr(self,"playlists_stack"):
+            self.playlists_stack.setCurrentWidget(
+                self.playlists_list if records else self.playlists_empty
+            )
+        self._playlist_selection_changed()
 
     @staticmethod
     def _playlist_tracks(record):
@@ -1156,13 +2788,37 @@ class MainWindow(QMainWindow):
 
     def _refresh_moments(self):
         self.moments_list.clear()
-        for m in self.state.moments():
+        records=self.state.moments()
+        for m in records:
             t=m.get("track") if isinstance(m.get("track"),dict) else {}
             if not t:
-                try: t=json.loads(m.get("track_json") or "{}")
-                except Exception: t={}
+                try:
+                    t=json.loads(m.get("track_json") or "{}")
+                except Exception:
+                    t={}
             sec=int(m.get("position_ms",0))//1000
-            self.moments_list.addItem(f"{_track_text(t)} · {sec//60}:{sec%60:02d}   {m.get('label','')}")
+            label=str(m.get("label") or "").strip()
+            title=f"{t.get('title') or 'Unknown track'} — {t.get('artist') or 'Unknown artist'}"
+            subtitle=f"{sec//60}:{sec%60:02d}" + (f" · {label}" if label else "")
+            item=QListWidgetItem(f"{title}\n{subtitle}")
+            item.setData(Qt.UserRole,dict(m))
+            self.moments_list.addItem(item)
+        if hasattr(self,"moments_stack"):
+            self.moments_stack.setCurrentWidget(
+                self.moments_list if records else self.moments_empty
+            )
+
+    def _play_saved_moment(self, item: QListWidgetItem) -> None:
+        data=item.data(Qt.UserRole)
+        if not isinstance(data,dict):
+            return
+        track=data.get("track") if isinstance(data.get("track"),dict) else {}
+        if not track:
+            return
+        position=max(0,int(data.get("position_ms") or 0))
+        self.player.set_queue([dict(track)],0,True)
+        if position:
+            QTimer.singleShot(700,lambda:self.player.seek(position))
 
     def _refresh_taste(self):
         s=self.state.taste_summary(); self.taste_label.setText(f"Taste memory: {s.get('tracks',0)} tracks learned · {s.get('artists',0)} artists · completion rate {float(s.get('completion_rate',0))*100:.0f}%")
@@ -1716,6 +3372,149 @@ class MainWindow(QMainWindow):
         )
 
     # ------------------------------- Music Map
+    def _build_album_wall_payload(self):
+        catalog=self.providers.local_catalog()
+        profiles, _seed_refs, ref_map, _analysed = self.local_intelligence.build_snapshot(
+            catalog,
+            [],
+            max_tracks=5000,
+            analyse_seeds=False,
+        )
+        projection=build_music_map(profiles,max_nodes=5000,neighbours=0)
+        projected_refs={
+            str(node.get("ref") or "")
+            for node in list(projection.get("nodes") or [])
+            if isinstance(node,dict) and str(node.get("ref") or "")
+        }
+        projected_ref_map={
+            ref:dict(track)
+            for ref,track in ref_map.items()
+            if ref in projected_refs
+        }
+        return build_album_wall(
+            catalog,
+            projection,
+            projected_ref_map,
+            max_albums=1200,
+        )
+
+    def _refresh_album_wall(self):
+        catalog=self.providers.local_catalog()
+        if not catalog:
+            self.album_wall.set_model({},self.current_track)
+            self.statusBar().showMessage("Add local music to build an Album Wall",4000)
+            return
+        self.statusBar().showMessage("Building Album Wall from local metadata and cached Flow analysis…")
+        self._run_async(self._build_album_wall_payload,self._apply_album_wall_payload)
+
+    def _apply_album_wall_payload(self,payload):
+        payload=dict(payload or {})
+        self.album_wall.set_model(payload,self.current_track)
+        albums=int(payload.get("album_count") or 0)
+        analysed=int(payload.get("analysed_albums") or 0)
+        if analysed:
+            message=f"Album Wall ready · {albums} albums · {analysed} positioned from Flow analysis"
+        else:
+            message=f"Album Wall ready · {albums} albums · analyse your library for sonic neighbourhoods"
+        self.statusBar().showMessage(message,6000)
+
+    def _analyse_library_for_album_wall(self):
+        catalog=self.providers.local_catalog()
+        if not catalog:
+            QMessageBox.information(self,"Add music first","Add a local music folder before analysing your Album Wall.")
+            return
+        if not self.flow.analysis_available:
+            QMessageBox.information(
+                self,
+                "Audio analysis unavailable",
+                "Album Wall sonic layout needs ffmpeg and NumPy. The wall still works in metadata mode; install/enable them for sonic neighbourhoods.",
+            )
+            return
+        self.statusBar().showMessage("Analysing local library for Album Wall…")
+        self._run_async(
+            lambda:self.local_intelligence.analyse_catalog(catalog),
+            self._album_wall_analysis_finished,
+        )
+
+    def _album_wall_analysis_finished(self,result):
+        self.statusBar().showMessage(
+            f"Album Wall analysis ready · {int(result.get('analysed') or 0)}/{int(result.get('total') or 0)} analysed",
+            5000,
+        )
+        self._refresh_album_wall()
+
+    def _album_wall_selected(self):
+        return self.album_wall.selected_album() if hasattr(self,"album_wall") else {}
+
+    def _play_album_wall_album(self,album):
+        tracks=[dict(x) for x in list((album or {}).get("tracks") or []) if isinstance(x,dict)]
+        if tracks:
+            self.player.set_queue(tracks,0,True)
+            self.statusBar().showMessage(
+                f"Playing {album.get('artist') or 'Unknown artist'} — {album.get('title') or 'Unknown album'}",
+                4500,
+            )
+
+    def _play_album_wall_selected(self):
+        album=self._album_wall_selected()
+        if album:
+            self._play_album_wall_album(album)
+
+    def _queue_album_wall_selected(self):
+        album=self._album_wall_selected()
+        tracks=[dict(x) for x in list(album.get("tracks") or []) if isinstance(x,dict)] if album else []
+        if not tracks:
+            self.statusBar().showMessage("Select an album on the wall first",3000)
+            return
+        if not self.player.queue:
+            self.player.set_queue(tracks,0,False)
+        else:
+            self.player.append_queue(tracks,autoplay=False)
+        self.statusBar().showMessage(f"Queued {len(tracks)} tracks from {album.get('title') or 'album'}",4000)
+
+    def _album_wall_artwork_requested(self,requests):
+        rows=[dict(x) for x in list(requests or []) if isinstance(x,dict)]
+        if not rows:
+            return
+        def load():
+            result={}
+            for row in rows:
+                key=str(row.get("key") or "")
+                track=dict(row.get("track") or {})
+                if not key or not track:
+                    continue
+                info=self.metadata.local_artwork(track)
+                result[key]=str(info.get("path") or "")
+            return result
+        self._run_async(load,self.album_wall.set_artwork)
+
+    def _album_wall_online_artwork_requested(self,requests):
+        rows=[dict(x) for x in list(requests or []) if isinstance(x,dict)]
+        if not rows:
+            return
+
+        def load():
+            result={}
+            for row in rows:
+                key=str(row.get("key") or "")
+                track=dict(row.get("track") or {})
+                if not key or not track:
+                    continue
+                path=""
+                try:
+                    local=self.metadata.local_artwork(track)
+                    path=str(local.get("path") or "")
+                    if not path:
+                        identity=self.metadata.identify(track)
+                        artwork=self.metadata.artwork(track,identity)
+                        path=str(artwork.get("path") or "")
+                except Exception:
+                    path=""
+                result[key]=path
+            return result
+
+        self._run_async(load,self.album_wall.set_artwork)
+
     def _build_music_map_payload(self):
         catalog=self.providers.local_catalog()
         profiles, _seed_refs, ref_map, _analysed = self.local_intelligence.build_snapshot(
@@ -2623,7 +4422,7 @@ class MainWindow(QMainWindow):
                 self._path_for,
                 minutes=int(self.minutes.currentText()),
                 adventure=self.adventure.value()/100,
-                mode=self.mode.currentText(),
+                mode=str(self.mode.currentData() or "balanced"),
                 start_track=track,
             ),
             lambda plan:self._apply_mind(plan),
@@ -2671,6 +4470,8 @@ class MainWindow(QMainWindow):
             self._request_cached_visual_analysis(self.current_track)
         if hasattr(self,"music_map"):
             self.music_map.highlight_track(t)
+        if hasattr(self,"album_wall"):
+            self.album_wall.highlight_track(t)
         if self.music_live_active:
             current_ref=self._music_ref_for_track(self.current_track)
             if current_ref and (
@@ -2682,10 +4483,50 @@ class MainWindow(QMainWindow):
                 self._journey_live_stop("destination reached")
             else:
                 self._journey_live_update_label()
-        self.now_title.setText(str(t.get("title") or "Unknown track")); base=f"{t.get('artist','Unknown artist')}   ·   {t.get('album','')}   ·   {t.get('provider_id','')}"; src=str(t.get("source_page") or ""); attr=str(t.get("attribution") or ""); self.now_meta.setText(base + ((f"   ·   <a href=\"{src}\">{attr or 'Source'}</a>") if src else ""))
-        if hasattr(self,"rich_now"):self.rich_now.set_track(dict(t))
+        self.now_title.setText(str(t.get("title") or "Unknown track"))
+        artist=str(t.get("artist") or "Unknown artist")
+        album=str(t.get("album") or "")
+        provider=str(t.get("provider_id") or "")
+        pieces=[artist]
+        if album:
+            pieces.append(album)
+        if self.power_toggle.isChecked() and provider:
+            pieces.append(provider)
+        src=str(t.get("source_page") or "")
+        attr=str(t.get("attribution") or "")
+        base="   ·   ".join(pieces)
+        self.now_meta.setText(
+            base + ((f"   ·   <a href=\"{src}\">{attr or 'Source'}</a>") if src else "")
+        )
+        if hasattr(self,"player_cover"):
+            token=UserState.track_key(t)
+            self.player_cover.set_cover(
+                "",
+                title=album or str(t.get("title") or ""),
+                key=token,
+            )
+            self._run_async(
+                lambda:self.metadata.local_artwork(dict(t)),
+                lambda result:self._player_artwork_loaded(token,result),
+            )
+        if hasattr(self,"rich_now"):
+            self.rich_now.set_track(dict(t))
         if hasattr(self, "living_canvas"):
             self.living_canvas.refresh_context()
+        if self.current_page=="home":
+            self._refresh_home_continue()
+
+    def _player_artwork_loaded(self, token: str, result: object) -> None:
+        if not isinstance(result,dict):
+            return
+        current=dict(self.current_track or {})
+        if token!=UserState.track_key(current):
+            return
+        self.player_cover.set_cover(
+            str(result.get("path") or ""),
+            title=str(current.get("album") or current.get("title") or ""),
+            key=token,
+        )
 
     def _request_cached_visual_analysis(self, track: dict[str, Any]) -> None:
         local_path = str(track.get("local_path") or "").strip()

@@ -1,7 +1,11 @@
 # Next release — draft notes
 
-**Planned target: Melodex v0.6.1. This release has not been tagged or published.** The latest downloadable release is [v0.6.0](v0.6.0.md).
+**Development after Melodex v0.7.0.**
 
-The release summary will be updated as changes are selected and verified. These notes are a development placeholder, not release notes or a record of tested binaries.
+Use this file for changes intended for the next release after v0.7.0. Stable v0.7.0 notes are in [v0.7.0.md](v0.7.0.md).
 
 See [Releasing Melodex](../RELEASING.md) for the release process.
+
+## Unreleased
+
+No post-v0.7.0 changes have been selected yet.

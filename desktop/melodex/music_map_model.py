@@ -274,7 +274,15 @@ def build_music_map(
 
     edge_set: set[tuple[int, int]] = set()
     edges: list[dict[str, Any]] = []
-    k = max(1, min(4, int(neighbours)))
+    k = max(0, min(4, int(neighbours)))
+    if k <= 0:
+        return {
+            "nodes": nodes,
+            "edges": [],
+            "analysed": len(nodes),
+            "input_profiles": len(profiles),
+            "feature_names": list(FEATURE_NAMES),
+        }
     for i, node in enumerate(nodes):
         candidates: list[tuple[float, int]] = []
         for j, other in enumerate(nodes):

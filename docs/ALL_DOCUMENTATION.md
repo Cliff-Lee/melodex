@@ -9,6 +9,8 @@ This page is intentionally exhaustive. For a shorter route by goal, use the [doc
 - [5-minute Visual Tour](VISUAL_TOUR.md)
 - [Why Melodex?](WHY_MELODEX.md)
 - [User Guide](USER_GUIDE.md)
+- [My Music](MY_MUSIC.md)
+- [UX Redesign](UX_REDESIGN.md)
 - [FAQ](FAQ.md)
 - [Troubleshooting](TROUBLESHOOTING.md)
 
@@ -76,6 +78,7 @@ This page is intentionally exhaustive. For a shorter route by goal, use the [doc
 - [Resolver Inspector](RESOLVER_INSPECTOR.md)
 - [Playlist interchange](PLAYLIST_INTERCHANGE.md)
 - [Rich Now Playing](RICH_NOW_PLAYING.md)
+- [Album Wall](ALBUM_WALL.md)
 - [Music Map](MUSIC_MAP.md)
 - [Journey Library](JOURNEY_LIBRARY.md)
 
@@ -101,6 +104,7 @@ This page is intentionally exhaustive. For a shorter route by goal, use the [doc
 - [Build from source](BUILD_FROM_SOURCE.md)
 - [Releases, `main`, and version numbers](RELEASES_AND_MAIN.md)
 - [Releasing](RELEASING.md)
+- [Melodex v0.7.0 release notes](releases/v0.7.0.md)
 - [Melodex v0.6.0 release notes](releases/v0.6.0.md)
 
 ## Trust and security

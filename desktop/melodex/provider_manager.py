@@ -33,15 +33,17 @@ class ProviderManager:
         self.data_dir = Path(data_dir)
         self.settings_path = self.data_dir / "sources.json"
         self.installations_path = self.data_dir / "plugin-installations.json"
+        self.local_metadata_path = self.data_dir / "local-metadata-overrides.json"
         self.installer = ProviderInstaller(self.data_dir / "providers")
         self.plugin_config = PluginConfigBroker(self.data_dir)
         self.settings = self._load_settings()
         self._installations = self._load_installations()
+        self._local_metadata_overrides = self._load_local_metadata_overrides()
         bundled_ids = set(ensure_bundled_providers(self.installer, self.settings))
         self._record_bundled_installations(bundled_ids)
         local_roots = [Path(x) for x in self.settings.get("local_roots", [])]
         self.providers: dict[str, MusicProvider] = {
-            "local": LocalFilesProvider(local_roots),
+            "local": LocalFilesProvider(local_roots, self._local_metadata_overrides),
             "jamendo": JamendoProvider(str(self.settings.get("jamendo_client_id", ""))),
             "streams": UserStreamsProvider(list(self.settings.get("user_streams", []))),
         }
@@ -70,6 +72,32 @@ class ProviderManager:
         self.settings_path.write_text(
             json.dumps(self.settings, indent=2, ensure_ascii=False), "utf-8"
         )
+
+    def _load_local_metadata_overrides(self) -> dict[str, dict[str, Any]]:
+        try:
+            raw = json.loads(self.local_metadata_path.read_text("utf-8"))
+            if not isinstance(raw, dict):
+                return {}
+            return {
+                str(key): dict(value)
+                for key, value in raw.items()
+                if isinstance(value, dict)
+            }
+        except Exception:
+            return {}
+
+    def _save_local_metadata_overrides(self) -> None:
+        self.data_dir.mkdir(parents=True, exist_ok=True)
+        temp = self.local_metadata_path.with_suffix(".tmp")
+        temp.write_text(
+            json.dumps(
+                self._local_metadata_overrides,
+                indent=2,
+                ensure_ascii=False,
+            ),
+            "utf-8",
+        )
+        temp.replace(self.local_metadata_path)
 
     def _load_installations(self) -> dict[str, dict[str, Any]]:
         try:
@@ -197,6 +225,53 @@ class ProviderManager:
         self.settings["local_roots"] = [str(x) for x in roots]
         self.save()
         return len(provider.tracks)
+
+    def update_local_metadata(
+        self,
+        track: dict[str, Any],
+        changes: dict[str, Any],
+    ) -> dict[str, Any]:
+        local_path = str(track.get("local_path") or "").strip()
+        if not local_path:
+            raise ValueError("Only local music can be corrected here.")
+        provider = self.providers.get("local")
+        if not isinstance(provider, LocalFilesProvider):
+            raise RuntimeError("Local music provider is unavailable.")
+
+        clean: dict[str, Any] = {}
+        for field in LocalFilesProvider.EDITABLE_METADATA_FIELDS:
+            if field not in changes:
+                continue
+            value = changes[field]
+            if field in {"year", "track_number", "disc_number"}:
+                text = str(value or "").strip()
+                clean[field] = int(text) if text.isdigit() else 0
+            else:
+                clean[field] = str(value or "").strip()
+
+        key = provider._override_key(local_path)
+        existing = dict(self._local_metadata_overrides.get(key) or {})
+        existing.update(clean)
+        self._local_metadata_overrides[key] = existing
+        self._save_local_metadata_overrides()
+
+        updated = provider.set_metadata_override(local_path, clean)
+        return updated or {**track, **clean}
+
+    def clear_local_metadata_correction(self, track: dict[str, Any]) -> bool:
+        local_path = str(track.get("local_path") or "").strip()
+        if not local_path:
+            return False
+        provider = self.providers.get("local")
+        if not isinstance(provider, LocalFilesProvider):
+            return False
+        key = provider._override_key(local_path)
+        changed = key in self._local_metadata_overrides
+        self._local_metadata_overrides.pop(key, None)
+        if changed:
+            self._save_local_metadata_overrides()
+            provider.clear_metadata_override(local_path)
+        return changed
 
     def set_jamendo_client_id(self, client_id: str) -> None:
         provider = self.providers["jamendo"]
