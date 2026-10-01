@@ -21,6 +21,7 @@ _WD_ENTITY_BASE = "https://www.wikidata.org/wiki/Special:EntityData"
 _WM_FILE_PATH = "https://commons.wikimedia.org/wiki/Special:FilePath"
 _WM_API = "https://commons.wikimedia.org/w/api.php"
 _WP_API = "https://en.wikipedia.org/w/api.php"
+_LRCLIB_API = "https://lrclib.net/api"
 _USER_AGENT = "Melodex/0.1 (https://github.com/Cliff-Lee/melodex)"
 _LRC_RE = re.compile(r"\[(?P<m>\d{1,3}):(?P<s>\d{1,2})(?:[\.:](?P<f>\d{1,3}))?\]")
 _VERSION_WORDS = re.compile(r"\b(live|remix|acoustic|cover|karaoke|instrumental|demo|edit|remaster(?:ed)?)\b", re.I)
@@ -608,6 +609,114 @@ class RichMetadataService:
         except Exception:
             pass
         return {"text": "", "synced": [], "source": ""}
+
+    def community_lyrics(self, track: dict[str, Any]) -> dict[str, Any]:
+        """Fetch lyrics on demand from LRCLIB without persisting the lyric text.
+
+        This is deliberately user-initiated. Melodex does not ship an LRCLIB
+        database and does not write third-party lyric text to its local cache.
+        """
+        track=dict(track or {})
+        title=str(track.get("title") or "").strip()
+        artist=str(track.get("artist") or "").strip()
+        album=str(track.get("album") or "").strip()
+        duration=float(track.get("duration") or 0)
+        if not title or not artist or _norm(artist) in {"unknown artist","unknown"}:
+            return {
+                "text":"","synced":[],"source":"LRCLIB","instrumental":False,
+                "error":"Artist and title are required for online lyric lookup.",
+            }
+
+        def parse_row(row: dict[str, Any]) -> dict[str, Any]:
+            instrumental=bool(row.get("instrumental"))
+            synced_text=str(row.get("syncedLyrics") or "").strip()
+            plain=str(row.get("plainLyrics") or "").strip()
+            synced=parse_lrc(synced_text) if synced_text else []
+            text=plain
+            if not text and synced:
+                text="\n".join(x["text"] for x in synced if x.get("text"))
+            item_id=str(row.get("id") or "")
+            return {
+                "text":text,
+                "synced":synced,
+                "source":"LRCLIB community lyrics",
+                "instrumental":instrumental,
+                "provenance":{
+                    "source_url":(
+                        f"https://lrclib.net/api/get/{urllib.parse.quote(item_id)}"
+                        if item_id else "https://lrclib.net/"
+                    ),
+                    "source_extension_id":"core.lrclib-on-demand",
+                    "attribution":"Lyrics delivered on demand by LRCLIB",
+                    "license":"",
+                },
+                "remote_id":item_id,
+            }
+
+        params={"track_name":title,"artist_name":artist}
+        if album:
+            params["album_name"]=album
+        if duration > 0:
+            params["duration"]=f"{duration:.2f}"
+
+        try:
+            response=self.session.get(
+                _LRCLIB_API+"/get",
+                params=params,
+                timeout=10,
+                headers={"Accept":"application/json","User-Agent":_USER_AGENT},
+            )
+            if response.status_code == 200:
+                row=response.json()
+                if isinstance(row,dict):
+                    return parse_row(row)
+        except Exception:
+            pass
+
+        # Exact metadata is often incomplete in personal libraries. Search is a
+        # fallback, but acceptance remains conservative to avoid wrong lyrics.
+        try:
+            response=self.session.get(
+                _LRCLIB_API+"/search",
+                params={"q":f"{artist} {title}"},
+                timeout=10,
+                headers={"Accept":"application/json","User-Agent":_USER_AGENT},
+            )
+            response.raise_for_status()
+            rows=response.json()
+        except Exception as exc:
+            return {
+                "text":"","synced":[],"source":"LRCLIB","instrumental":False,
+                "error":str(exc),
+            }
+
+        best: tuple[float,dict[str,Any]] | None=None
+        for row in list(rows or []):
+            if not isinstance(row,dict):
+                continue
+            title_score=_ratio(title,row.get("trackName"))
+            artist_score=_ratio(artist,row.get("artistName"))
+            if title_score < 0.88 or artist_score < 0.82:
+                continue
+            score=title_score*0.58 + artist_score*0.37
+            if album and row.get("albumName"):
+                score += 0.05*_ratio(album,row.get("albumName"))
+            remote_duration=float(row.get("duration") or 0)
+            if duration > 0 and remote_duration > 0:
+                delta=abs(duration-remote_duration)
+                if delta > max(12.0,duration*0.08):
+                    continue
+                score += 0.05*max(0.0,1.0-delta/12.0)
+            if best is None or score > best[0]:
+                best=(score,row)
+
+        if best is None:
+            return {
+                "text":"","synced":[],"source":"LRCLIB community lyrics",
+                "instrumental":False,
+                "error":"",
+            }
+        return parse_row(best[1])
 
     def _embedded_artwork(self, track: dict[str, Any]) -> Path | None:
         path_text = str(track.get("local_path") or "")
