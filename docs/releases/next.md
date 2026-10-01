@@ -19,3 +19,12 @@ This file tracks changes intended for **v0.7.3**.
 - Now Playing warms remembered lyrics and artwork immediately before background metadata enrichment begins.
 - Album artwork cache keys now include year-independent artist/album aliases so covers survive raw-versus-enriched metadata differences.
 - Explicit lyric refresh still bypasses cached results when the listener asks for a fresh lookup.
+
+## K3 — Compact artist and credit details
+
+- Artist, Releases and Credits now use lightweight native summary panels instead of nested text-browser boxes.
+- The artist photo appears once in the Now Playing hero rather than being duplicated inside the Artist tab.
+- Artist membership, related projects and external links are deliberately capped to keep the tab glanceable.
+- Releases show the first six release groups with direct MusicBrainz links instead of an exhaustive scrolling timeline.
+- Credits are grouped by role and duplicate names are collapsed.
+- Artist-photo attribution is shortened beneath the portrait, with the full attribution retained in a tooltip.
