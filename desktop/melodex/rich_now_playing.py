@@ -724,13 +724,15 @@ class RichNowPlayingWidget(QWidget):
             if source_url:
                 source_label += f' · <a href="{_escape(source_url)}">source</a>'
             if lyric_source.startswith("LRCLIB"):
-                source_label += " · on demand · not saved"
+                source_label += " · online · cached privately"
                 method=str(match.get("method") or "")
                 if method=="cleaned_exact":
                     source_label += " · matched after cleaning metadata"
                 elif method=="structured_search":
                     source_label += " · matched by search"
-                if lyrics.get("cache")=="memory":
+                if lyrics.get("cache")=="disk":
+                    source_label += " · reused locally"
+                elif lyrics.get("cache")=="memory":
                     source_label += " · reused this session"
             if self.synced:
                 source_label += " · synchronized"
@@ -934,7 +936,7 @@ class RichNowPlayingWidget(QWidget):
                 self,
                 "Edit lyrics",
                 "Only local or personal lyrics can be edited here. "
-                "Temporary online/plugin lyrics are not persisted by Melodex.",
+                "Provider lyrics remain read-only even when Melodex keeps a private local cache.",
             )
             return
         initial=self._lyrics_editor_text(self._current_lyrics)
