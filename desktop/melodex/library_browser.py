@@ -262,6 +262,17 @@ class LibraryBrowser(QWidget):
         return super().eventFilter(watched, event)
 
     def set_catalog(self, catalog: list[dict[str, Any]]) -> None:
+        for card in list(self.cards.values()):
+            card.setParent(None)
+            card.deleteLater()
+        self.cards.clear()
+        while self.album_grid.count():
+            item = self.album_grid.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.setParent(None)
+                widget.deleteLater()
+
         self.catalog = [dict(item) for item in catalog if isinstance(item, dict)]
         self._art_requested.clear()
         if not self.catalog:
