@@ -149,83 +149,419 @@ class MainWindow(QMainWindow):
 
     # ------------------------------- UI
     def _build_ui(self):
-        root = QWidget(); self.setCentralWidget(root)
-        outer = QVBoxLayout(root); outer.setContentsMargins(0,0,0,0); outer.setSpacing(0)
-        body = QWidget(); body_l = QHBoxLayout(body); body_l.setContentsMargins(0,0,0,0); body_l.setSpacing(0)
+        root = QWidget()
+        self.setCentralWidget(root)
+        outer = QVBoxLayout(root)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        body = QWidget()
+        body_l = QHBoxLayout(body)
+        body_l.setContentsMargins(0, 0, 0, 0)
+        body_l.setSpacing(0)
         outer.addWidget(body, 1)
 
-        self.sidebar = QWidget(); self.sidebar.setObjectName("sidebar"); self.sidebar.setFixedWidth(220)
-        side = QVBoxLayout(self.sidebar); side.setContentsMargins(16,18,16,14)
-        brand = QHBoxLayout(); brand.setSpacing(10)
+        # ------------------------------------------------------------------
+        # Navigation: user goals first. Advanced tools remain reachable
+        # contextually and through Power tools rather than owning the sidebar.
+        self.sidebar = QWidget()
+        self.sidebar.setObjectName("sidebar")
+        self.sidebar.setFixedWidth(210)
+        side = QVBoxLayout(self.sidebar)
+        side.setContentsMargins(15, 18, 15, 14)
+        side.setSpacing(4)
+
+        brand = QHBoxLayout()
+        brand.setSpacing(10)
         mark = QLabel()
         mark_path = Path(__file__).resolve().parent / "assets" / "melodex-mark.png"
         pixmap = QPixmap(str(mark_path))
         if not pixmap.isNull():
             mark.setPixmap(
-                pixmap.scaled(
-                    44, 44, Qt.KeepAspectRatio, Qt.SmoothTransformation
-                )
+                pixmap.scaled(42, 42, Qt.KeepAspectRatio, Qt.SmoothTransformation)
             )
-        mark.setFixedSize(46, 46)
-        titles = QVBoxLayout(); titles.setSpacing(0)
+        mark.setFixedSize(44, 44)
+        titles = QVBoxLayout()
+        titles.setSpacing(0)
         logo = QLabel("MELODEX")
-        logo.setStyleSheet("font-size:20px;font-weight:750;letter-spacing:2px")
+        logo.setObjectName("brandName")
         tagline = QLabel("Don't shuffle. Flow.")
         tagline.setObjectName("brandTagline")
-        titles.addWidget(logo); titles.addWidget(tagline)
-        brand.addWidget(mark); brand.addLayout(titles, 1)
-        side.addLayout(brand); side.addSpacing(12)
-        for text, page in [("Home","home"),("Now playing","now_playing"),("Play for me","for_you"),("Discover","discover"),("My music","library"),("Album wall","album_wall"),("Music map","music_map"),("Journeys","journeys"),("Playlists","playlists"),("Moments","moments"),("Ask Melodex","ask"),("Sources","sources")]:
-            b = QPushButton(text); b.setCursor(Qt.PointingHandCursor); b.clicked.connect(lambda _=False,p=page:self.open_page(p)); side.addWidget(b)
+        titles.addWidget(logo)
+        titles.addWidget(tagline)
+        brand.addWidget(mark)
+        brand.addLayout(titles, 1)
+        side.addLayout(brand)
+        side.addSpacing(18)
+
+        self.nav_buttons: dict[str, QPushButton] = {}
+
+        def add_nav(label: str, page: str) -> QPushButton:
+            button = QPushButton(label)
+            button.setObjectName("navButton")
+            button.setCursor(Qt.PointingHandCursor)
+            button.setProperty("active", False)
+            button.clicked.connect(lambda _checked=False, target=page: self.open_page(target))
+            self.nav_buttons[page] = button
+            side.addWidget(button)
+            return button
+
+        add_nav("Home", "home")
+        add_nav("My Music", "library")
+        add_nav("Explore", "explore")
+        add_nav("Journeys", "journeys")
+        add_nav("Playlists", "playlists")
+
         side.addStretch(1)
-        self.power_toggle = QCheckBox("Show power tools")
+
+        sources_nav = add_nav("Sources & plugins", "sources")
+        set_help(
+            sources_nav,
+            "Sources & plugins",
+            "Choose where Melodex can find music. Everyday controls stay simple; technical provider controls appear when Power tools are enabled.",
+        )
+
+        self.power_toggle = QCheckBox("Power tools")
+        self.power_toggle.setObjectName("powerToggle")
+        self.power_toggle.setChecked(self.state.get_bool("power_tools", False))
         self.power_toggle.stateChanged.connect(self._power_changed)
+        set_help(
+            self.power_toggle,
+            "Power tools",
+            "Reveal provider diagnostics, routing controls and other expert features. Turning this off hides complexity; it does not remove or reset anything.",
+        )
         side.addWidget(self.power_toggle)
         body_l.addWidget(self.sidebar)
 
-        self.stack = QStackedWidget(); body_l.addWidget(self.stack, 1)
+        self.stack = QStackedWidget()
+        body_l.addWidget(self.stack, 1)
         self.pages: dict[str, QWidget] = {}
-        for name in ["home","now_playing","for_you","discover","library","album_wall","music_map","journeys","playlists","moments","ask","sources"]:
-            w = QWidget(); self.pages[name]=w; self.stack.addWidget(w)
-        self._build_home(); self._build_now_playing(); self._build_for_you(); self._build_discover(); self._build_library(); self._build_album_wall(); self._build_music_map(); self._build_journeys(); self._build_playlists(); self._build_moments(); self._build_ask(); self._build_sources()
+        for name in [
+            "home",
+            "library",
+            "explore",
+            "now_playing",
+            "for_you",
+            "discover",
+            "album_wall",
+            "music_map",
+            "journeys",
+            "playlists",
+            "moments",
+            "ask",
+            "sources",
+        ]:
+            page = QWidget()
+            self.pages[name] = page
+            self.stack.addWidget(page)
 
-        self.queue_panel = QWidget(); self.queue_panel.setFixedWidth(320)
-        ql = QVBoxLayout(self.queue_panel); ql.setContentsMargins(12,12,12,12)
-        qhead = QHBoxLayout(); qhead.addWidget(QLabel("Up next")); flow_btn=QPushButton("Flow queue"); flow_btn.clicked.connect(self._flow_queue); qhead.addWidget(flow_btn); ql.addLayout(qhead)
-        self.queue_list = QListWidget(); self.queue_list.itemDoubleClicked.connect(self._queue_jump); ql.addWidget(self.queue_list,1)
-        self.queue_panel.hide(); body_l.addWidget(self.queue_panel)
+        self._build_home()
+        self._build_library()
+        self._build_explore()
+        self._build_now_playing()
+        self._build_for_you()
+        self._build_discover()
+        self._build_album_wall()
+        self._build_music_map()
+        self._build_journeys()
+        self._build_playlists()
+        self._build_moments()
+        self._build_ask()
+        self._build_sources()
 
-        # player bar
-        bar = QWidget(); bar.setFixedHeight(112); bl=QHBoxLayout(bar); bl.setContentsMargins(20,8,20,8)
-        prev=QPushButton("◀"); prev.clicked.connect(self.player.previous); play=QPushButton("▶ / ❚❚"); play.clicked.connect(self.player.play_pause); nxt=QPushButton("▶"); nxt.clicked.connect(self.player.next)
-        bl.addWidget(prev); bl.addWidget(play); bl.addWidget(nxt)
-        text_col=QVBoxLayout(); self.now_title=QLabel("Nothing playing"); self.now_title.setStyleSheet("font-weight:650;font-size:15px"); self.now_meta=QLabel(""); self.now_meta.setOpenExternalLinks(True); text_col.addWidget(self.now_title); text_col.addWidget(self.now_meta)
-        self.seek=QSlider(Qt.Horizontal); self.seek.setRange(0,1000); self.seek.sliderReleased.connect(self._seek_released); text_col.addWidget(self.seek); bl.addLayout(text_col,1)
-        keep=QPushButton("Keep"); keep.clicked.connect(self._keep); love=QPushButton("♥"); love.clicked.connect(lambda:self._feedback(True)); info=QPushButton("Info"); info.clicked.connect(lambda:self.open_page("now_playing")); match=QPushButton("Match"); match.clicked.connect(self._inspect_current_match); more=QPushButton("•••"); more.clicked.connect(self._more_actions); queue=QPushButton("Queue"); queue.clicked.connect(lambda:self.queue_panel.setVisible(not self.queue_panel.isVisible()))
-        bl.addWidget(keep); bl.addWidget(love); bl.addWidget(info); bl.addWidget(match); bl.addWidget(more); bl.addWidget(queue)
+        # Queue is contextual and stays out of the primary navigation.
+        self.queue_panel = QWidget()
+        self.queue_panel.setObjectName("queuePanel")
+        self.queue_panel.setFixedWidth(330)
+        ql = QVBoxLayout(self.queue_panel)
+        ql.setContentsMargins(14, 14, 14, 14)
+        qhead = QHBoxLayout()
+        qtitle = QLabel("Up next")
+        qtitle.setObjectName("panelTitle")
+        qhead.addWidget(qtitle)
+        qhead.addStretch(1)
+        flow_btn = QPushButton("Refine with Flow")
+        flow_btn.setObjectName("quietButton")
+        flow_btn.clicked.connect(self._flow_queue)
+        set_help(
+            flow_btn,
+            "Refine with Flow",
+            "Reorders upcoming music to make transitions feel more coherent while preserving the current track.",
+        )
+        qhead.addWidget(flow_btn)
+        ql.addLayout(qhead)
+        self.queue_list = QListWidget()
+        self.queue_list.itemDoubleClicked.connect(self._queue_jump)
+        ql.addWidget(self.queue_list, 1)
+        self.queue_panel.hide()
+        body_l.addWidget(self.queue_panel)
+
+        # ------------------------------------------------------------------
+        # Persistent player. It behaves as the gateway to Now Playing rather
+        # than requiring a permanent sidebar destination.
+        bar = QWidget()
+        bar.setObjectName("playerBar")
+        bar.setFixedHeight(104)
+        bl = QHBoxLayout(bar)
+        bl.setContentsMargins(16, 10, 18, 10)
+        bl.setSpacing(9)
+
+        prev = QPushButton("◀")
+        prev.setObjectName("transportButton")
+        prev.clicked.connect(self.player.previous)
+        play = QPushButton("▶ / ❚❚")
+        play.setObjectName("transportButtonWide")
+        play.clicked.connect(self.player.play_pause)
+        nxt = QPushButton("▶")
+        nxt.setObjectName("transportButton")
+        nxt.clicked.connect(self.player.next)
+        set_help(prev, "Previous", "Restart the current track or return to the previous track.")
+        set_help(play, "Play / pause", "Pause or continue the current music.")
+        set_help(nxt, "Next", "Move to the next track in the queue.")
+        bl.addWidget(prev)
+        bl.addWidget(play)
+        bl.addWidget(nxt)
+
+        self.player_cover = CoverLabel(64)
+        self.player_cover.set_cover("", title="Melodex", key="melodex")
+        self.player_cover.setToolTip("Now playing artwork")
+        bl.addWidget(self.player_cover)
+
+        text_col = QVBoxLayout()
+        text_col.setSpacing(1)
+        self.now_title = QPushButton("Nothing playing")
+        self.now_title.setObjectName("nowPlayingTitle")
+        self.now_title.clicked.connect(lambda: self.open_page("now_playing"))
+        set_help(
+            self.now_title,
+            "Open Now Playing",
+            "See large artwork, lyrics, track information and visualisations for the current music.",
+        )
+        self.now_meta = QLabel("")
+        self.now_meta.setObjectName("nowPlayingMeta")
+        self.now_meta.setOpenExternalLinks(True)
+        text_col.addWidget(self.now_title)
+        text_col.addWidget(self.now_meta)
+        self.seek = QSlider(Qt.Horizontal)
+        self.seek.setRange(0, 1000)
+        self.seek.sliderReleased.connect(self._seek_released)
+        text_col.addWidget(self.seek)
+        bl.addLayout(text_col, 1)
+
+        keep = QPushButton("Keep")
+        keep.setObjectName("playerAction")
+        keep.clicked.connect(self._keep)
+        love = QPushButton("♥")
+        love.setObjectName("playerAction")
+        love.clicked.connect(lambda: self._feedback(True))
+        queue = QPushButton("Queue")
+        queue.setObjectName("playerAction")
+        queue.clicked.connect(
+            lambda: self.queue_panel.setVisible(not self.queue_panel.isVisible())
+        )
+        set_help(keep, "Keep", "Teach Melodex that this track is worth keeping around in future listening.")
+        set_help(love, "Love", "Mark this as a strong positive preference.")
+        set_help(queue, "Queue", "Show or hide the music that is coming next.")
+        bl.addWidget(keep)
+        bl.addWidget(love)
+        bl.addWidget(queue)
+
+        self.player_power_actions = QWidget()
+        power_row = QHBoxLayout(self.player_power_actions)
+        power_row.setContentsMargins(0, 0, 0, 0)
+        power_row.setSpacing(6)
+        match = QPushButton("Match")
+        match.setObjectName("quietButton")
+        match.clicked.connect(self._inspect_current_match)
+        more = QPushButton("•••")
+        more.setObjectName("quietButton")
+        more.clicked.connect(self._more_actions)
+        set_help(match, "Inspect match", "Show how Melodex resolved this track to its playable source.")
+        set_help(more, "More actions", "Open technical and less frequently used actions for the current track.")
+        power_row.addWidget(match)
+        power_row.addWidget(more)
+        self.player_power_actions.setVisible(self.power_toggle.isChecked())
+        bl.addWidget(self.player_power_actions)
         outer.addWidget(bar)
 
+        # Expert speed: command palette without forcing more controls onto
+        # everybody else's screen.
+        self.shortcut_palette = QShortcut(QKeySequence("Ctrl+K"), self)
+        self.shortcut_palette.activated.connect(self._open_command_palette)
+        self.shortcut_palette_mac = QShortcut(QKeySequence("Meta+K"), self)
+        self.shortcut_palette_mac.activated.connect(self._open_command_palette)
+
         self.setStyleSheet("""
-            QMainWindow,QWidget{background:#0f1116;color:#f4f6fa;font-family:Arial;font-size:13px}
-            QWidget#sidebar{background:#0b0d12;border-right:1px solid #242a34}
-            QLabel#brandTagline{color:#8f9aaa;font-size:10px}
-            QWidget#sidebar QPushButton{
-                background:transparent;border:0;border-radius:9px;
-                padding:10px 12px;text-align:left
+            QMainWindow,QWidget{
+                background:#0f1116;
+                color:#f4f6fa;
+                font-family:"SF Pro Text","Segoe UI",Arial;
+                font-size:13px;
             }
-            QWidget#sidebar QPushButton:hover{background:#1a2130}
+            QWidget#sidebar{
+                background:#0a0d12;
+                border-right:1px solid #202733;
+            }
+            QLabel#brandName{
+                font-size:20px;
+                font-weight:760;
+                letter-spacing:2px;
+            }
+            QLabel#brandTagline{
+                color:#778397;
+                font-size:10px;
+            }
+            QPushButton#navButton{
+                background:transparent;
+                border:0;
+                border-radius:9px;
+                padding:11px 12px;
+                text-align:left;
+                color:#dfe4ec;
+            }
+            QPushButton#navButton:hover{background:#151b25}
+            QPushButton#navButton[active="true"]{
+                background:#1b2739;
+                color:#ffffff;
+                font-weight:650;
+            }
+            QCheckBox#powerToggle{
+                color:#9ca7b8;
+                padding:10px 7px;
+            }
             QPushButton{
-                background:#1a1f28;border:1px solid #2b3340;border-radius:9px;
-                padding:9px 12px;text-align:left
+                background:#181e28;
+                border:1px solid #2a3443;
+                border-radius:9px;
+                padding:9px 13px;
             }
-            QPushButton:hover{background:#232b37;border-color:#354154}
-            QLineEdit,QComboBox,QTextEdit,QListWidget{
-                background:#141820;border:1px solid #2b3340;border-radius:10px;padding:7px
+            QPushButton:hover{
+                background:#222b38;
+                border-color:#3a4a60;
             }
-            QListWidget::item{padding:11px;border-bottom:1px solid #222934}
-            QListWidget::item:selected{background:#233a59}
+            QPushButton#primaryButton{
+                background:#1875e8;
+                border-color:#2582f2;
+                color:white;
+                font-weight:700;
+                padding:11px 17px;
+            }
+            QPushButton#secondaryButton{font-weight:650}
+            QPushButton#quietButton{
+                background:transparent;
+                border-color:#28313e;
+                color:#c7ced9;
+            }
+            QPushButton#miniButton{
+                padding:6px 8px;
+                font-size:11px;
+            }
+            QPushButton#segmentButton{
+                background:transparent;
+                border-color:#28313e;
+                color:#aab3c1;
+                padding:8px 12px;
+            }
+            QPushButton#segmentButton:checked{
+                background:#1c2d46;
+                border-color:#31527a;
+                color:white;
+                font-weight:650;
+            }
+            QPushButton#transportButton{
+                min-width:38px;
+                min-height:38px;
+                max-width:38px;
+                border-radius:11px;
+            }
+            QPushButton#transportButtonWide{
+                min-height:38px;
+                border-radius:11px;
+            }
+            QPushButton#playerAction{min-height:36px}
+            QPushButton#nowPlayingTitle{
+                background:transparent;
+                border:0;
+                padding:0;
+                text-align:left;
+                font-weight:700;
+                font-size:15px;
+            }
+            QPushButton#nowPlayingTitle:hover{color:#72aefb}
+            QLabel#nowPlayingMeta{color:#9da7b7}
+            QWidget#playerBar{
+                background:#0c1016;
+                border-top:1px solid #202733;
+            }
+            QWidget#queuePanel{
+                background:#0d1118;
+                border-left:1px solid #202733;
+            }
+            QLabel#panelTitle{font-size:17px;font-weight:700}
+            QLineEdit,QComboBox,QTextEdit,QPlainTextEdit,QListWidget{
+                background:#131923;
+                border:1px solid #293443;
+                border-radius:10px;
+                padding:8px;
+                selection-background-color:#274f7a;
+            }
+            QLineEdit:focus,QComboBox:focus,QTextEdit:focus,QListWidget:focus{
+                border-color:#3c78b8;
+            }
+            QListWidget::item{
+                padding:11px;
+                border-bottom:1px solid #202733;
+            }
+            QListWidget::item:selected{background:#1e3552}
             QListWidget#sourcesList::item{padding:14px}
+            QFrame#actionCard{
+                background:#141b25;
+                border:1px solid #293544;
+                border-radius:14px;
+            }
+            QFrame#actionCard:hover{
+                background:#182231;
+                border-color:#3d5571;
+            }
+            QLabel#cardEyebrow{
+                color:#6fa9ef;
+                font-size:10px;
+                font-weight:700;
+            }
+            QLabel#cardTitle{font-size:18px;font-weight:720}
+            QLabel#cardBody{color:#9fa9b8}
+            QLabel#cardAction{color:#72aefb;font-weight:650}
+            QFrame#albumCard{
+                background:transparent;
+                border:1px solid transparent;
+                border-radius:12px;
+            }
+            QFrame#albumCard:hover{
+                background:#151c26;
+                border-color:#29384a;
+            }
+            QLabel#albumCardTitle{font-weight:700;font-size:12px}
+            QLabel#albumCardMeta{color:#8995a7;font-size:11px}
+            QLabel#coverArt{
+                background:#111722;
+                border:1px solid #253040;
+                border-radius:8px;
+            }
+            QFrame#emptyState{
+                background:#121821;
+                border:1px dashed #313d4e;
+                border-radius:15px;
+            }
+            QLabel#emptyTitle{font-size:20px;font-weight:720}
+            QLabel#emptyBody{color:#97a2b2;font-size:13px}
+            QToolTip{
+                background:#18202c;
+                color:#f4f6fa;
+                border:1px solid #3a4658;
+                padding:7px;
+            }
         """)
+        self._update_nav_state("home")
 
     def _page_layout(self, page: str, title: str, subtitle: str=""):
         lay=QVBoxLayout(self.pages[page]); lay.setContentsMargins(28,24,28,24)
