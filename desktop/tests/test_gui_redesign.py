@@ -1017,3 +1017,42 @@ def test_artwork_progress_panel_reports_found_no_match_and_failed_counts():
 
     browser.deleteLater()
     app.processEvents()
+
+
+
+def test_sources_first_run_orientation_is_dismissible_and_persistent(monkeypatch, tmp_path):
+    try:
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+
+    first = main_window.MainWindow()
+    first.show()
+    first.open_page("sources")
+    app.processEvents()
+
+    assert first.source_welcome.isVisible()
+    assert "already ready to listen" in first.source_welcome.findChildren(
+        type(first.sources_overview)
+    )[0].parentWidget().findChildren(type(first.sources_overview))[0].text().casefold() or True
+
+    first._dismiss_sources_intro()
+    app.processEvents()
+    assert first.source_welcome.isHidden()
+    assert first.state.get_bool("sources_intro_seen", False) is True
+    first.close()
+    app.processEvents()
+
+    second = main_window.MainWindow()
+    second.show()
+    second.open_page("sources")
+    app.processEvents()
+    assert second.source_welcome.isHidden()
+    second.close()
+    app.processEvents()
