@@ -15,7 +15,7 @@ Use **Check installed** for a bounded live health check on the current computer/
 
 See [Plugin and source audit](PLUGIN_AUDIT.md) for the complete matrix.
 
-# Music sources
+## Source architecture
 
 Melodex is source-neutral. A source is any provider that can search/browse music and resolve a selected track to a playable local file or stream.
 
@@ -48,11 +48,11 @@ These provider packages connect to their respective sources; the installer does 
 
 Old private development adapters are **not** part of the public bundled-provider set or public registry. If an earlier development build left one in the local Melodex data folder, current development builds quarantine it: it is not loaded, searched or played, and its old local files are left untouched.
 
-## Plugin Directory on desktop
+## Plugin Centre on desktop
 
-Use **Sources & plugins → Explore plugins** to browse the registry.
+Use **Sources & plugins → Browse optional plugins** to browse the registry.
 
-The directory shows publisher, status, licence, capabilities, permissions, compatibility, source repository and package verification data before installation.
+The Plugin Centre shows the user-facing purpose, capabilities, permissions and installation state first. Compatibility, package verification, source repository and review metadata remain available under **Technical details**.
 
 Installable packages are downloaded over HTTPS and must match the registry SHA-256 and byte size.
 
