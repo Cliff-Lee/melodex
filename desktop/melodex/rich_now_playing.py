@@ -614,8 +614,28 @@ class RichNowPlayingWidget(QWidget):
         lyrics = payload.get("lyrics") if isinstance(payload.get("lyrics"), dict) else {}
         self.bundle["identity"] = dict(identity)
         self.bundle["lyrics"] = dict(lyrics)
-        self._local_lyrics = dict(lyrics)
-        self._active_lyrics_source = "local" if self._lyrics_has_content(lyrics) else ""
+        if self._lyrics_has_content(lyrics):
+            source=str(lyrics.get("source") or "")
+            provenance=(
+                dict(lyrics.get("provenance") or {})
+                if isinstance(lyrics.get("provenance"),dict)
+                else {}
+            )
+            is_online=(
+                source.startswith("LRCLIB")
+                or str(provenance.get("source_extension_id") or "")
+                == "core.lrclib-on-demand"
+            )
+            if is_online:
+                self._online_lyrics=dict(lyrics)
+                self._local_lyrics={}
+                self._active_lyrics_source="online"
+            else:
+                self._local_lyrics=dict(lyrics)
+                self._active_lyrics_source="local"
+        else:
+            self._local_lyrics={}
+            self._active_lyrics_source=""
         if identity.get("title"):
             self.title.setText(str(identity.get("title")))
         if identity.get("artist"):
