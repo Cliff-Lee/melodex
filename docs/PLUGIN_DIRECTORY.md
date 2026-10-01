@@ -103,17 +103,19 @@ If a plugin still needs credentials or configuration, the same button says **Set
 
 ## Contextual discovery
 
-The Plugin Centre is no longer the only place where extensions are visible. Melodex also surfaces a small feature-presence strip inside the listener experience itself:
+The Plugin Centre is no longer the only place where extensions matter. Melodex surfaces optional capabilities in the listener experience where that improves clarity, while some capabilities—especially lyrics—are deliberately absorbed into the native feature rather than exposed as plugin chrome:
 
 | Surface | What it shows |
 | --- | --- |
 | Explore → Search everything | active searchable music sources + **Add music source…** |
 | My Music | active artwork helpers + **Add artwork helper…** |
 | For You | active recommendation helpers + **Add recommendation helper…** |
-| Now Playing → Lyrics | active lyrics helpers + **Add lyrics source…** |
+| Now Playing → Lyrics | installed `lyrics.lookup` sources participate automatically in the native Lyrics page; the listener chooses lyric **Source** rather than “using a plugin” |
 | Now Playing → Context | active context/metadata/identity helpers + **Add context plugin…** |
 
-Disabled extensions and plugins that still need required configuration are not presented as active. Changes made in the Plugin Centre refresh these contextual indicators immediately.
+Disabled extensions and plugins that still need required configuration are not used as active capability sources. Changes made in the Plugin Centre take effect in the native feature surfaces immediately.
+
+For lyrics specifically, the ownership boundary is intentional: **Melodex owns the Lyrics UI; extensions only supply lyric results.** Source management remains available under **Lyrics → More → Manage lyric sources…** and in Sources & plugins, but installing a lyrics extension does not create a separate lyrics page or workflow.
 
 ## Health and connection testing
 
