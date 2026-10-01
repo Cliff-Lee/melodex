@@ -1066,8 +1066,8 @@ class PluginDirectoryDialog(QDialog):
         )
         self.test_button.setEnabled(bool(installed))
         self.test_button.setText(
-            str(health_view.get("action") or "Check connection")
-            if installed
+            "Try connection again"
+            if installed and str(health_view.get("action") or "") == "Try connection again"
             else "Check connection"
         )
         extension=self._extension_record(plugin_id) if installed and kind!="provider" else {}
