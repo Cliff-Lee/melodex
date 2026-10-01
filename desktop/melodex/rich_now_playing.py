@@ -125,6 +125,7 @@ class RichNowPlayingWidget(QWidget):
         lyrics_layout.addLayout(lyrics_actions)
 
         self.lyrics_source=QLabel("")
+        self.lyrics_source.setOpenExternalLinks(True)
         self.lyrics_source.setWordWrap(True)
         self.lyrics_source.setStyleSheet("color:#7f8b9b;font-size:11px")
         lyrics_layout.addWidget(self.lyrics_source)
@@ -394,9 +395,16 @@ class RichNowPlayingWidget(QWidget):
             )
 
         if lyric_text or self.synced or instrumental:
-            source_label=lyric_source or ("Instrumental" if instrumental else "Lyrics available")
-            if provenance.get("source_url"):
-                source_label += " · sourced by installed plugin"
+            source_label=_escape(
+                lyric_source or ("Instrumental" if instrumental else "Lyrics available")
+            )
+            source_url=str(provenance.get("source_url") or "").strip()
+            if source_url:
+                source_label += f' · <a href="{_escape(source_url)}">source</a>'
+            if lyric_source.startswith("LRCLIB"):
+                source_label += " · on demand · not saved"
+            elif source_url:
+                source_label += " · installed plugin"
             if self.synced:
                 source_label += " · synchronized"
             self.lyrics_source.setText(source_label)
