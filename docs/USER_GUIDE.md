@@ -38,6 +38,17 @@ Synchronized lines highlight with playback and remain click-to-seek. Installed `
 
 Online LRCLIB results can be cached privately in Melodex's local metadata cache so returning to the same track is immediate. The cache does not rewrite your music files, and provider-supplied lyrics remain read-only.
 
+### Artist, Releases, Credits and Context
+
+These tabs are native Now Playing summaries rather than separate plugin pages.
+
+- **Artist** gives a compact identity, origin, tags, members/projects and useful links. The artist portrait appears once in the Now Playing hero rather than being repeated in the tab.
+- **Releases** shows a concise selection of release groups with MusicBrainz links for the full discography.
+- **Credits** groups names by role instead of presenting a long relationship dump.
+- **Context** always uses the track, artist and recording information Melodex already knows. Optional context extensions can add liner notes, relationships and community signals, but an unavailable source does not leave the whole tab empty.
+
+Choose **Context → Sources…** when you want to inspect or manage optional context extensions.
+
 In **Visuals**, choose a view from the selector. Each track has a repeatable visual identity. Cached Flow features shape its scene when available; album artwork supplies a sampled colour palette.
 
 The modes include the animated Living Canvas, Song Fingerprint, the seekable Musical Journey, a queue/history Constellation, local Lyrics Typography, Album World, Sonic Weather, a local Visual Memory atlas and Minimal. Constellation stars can be inspected with a click and queued with a double-click. Visual Memory can zoom by session, album, week or year; it reads only the listening history already stored on this device.
