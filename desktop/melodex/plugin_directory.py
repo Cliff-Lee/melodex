@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html
 import threading
 from typing import Any, Callable
 
@@ -16,6 +17,7 @@ from .plugin_health import health_badge, health_summary
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -23,7 +25,8 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QMessageBox,
     QPushButton,
-    QTextEdit,
+    QTextBrowser,
+    QStyle,
     QVBoxLayout,
 )
 
@@ -31,6 +34,90 @@ from PySide6.QtWidgets import (
 class _Signals(QObject):
     done = Signal(object)
     error = Signal(str)
+
+
+class PluginDirectoryCard(QFrame):
+    """Visual registry row for normal users; technical detail lives elsewhere."""
+
+    def __init__(
+        self,
+        entry: dict[str, Any],
+        badge: str,
+        *,
+        installed: bool = False,
+        parent=None,
+    ):
+        super().__init__(parent)
+        self.setObjectName("pluginDirectoryCard")
+        self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        row=QHBoxLayout(self)
+        row.setContentsMargins(12,10,12,10)
+        row.setSpacing(11)
+
+        capabilities=[str(x) for x in list(entry.get("capabilities") or []) if x]
+        capability=capabilities[0] if capabilities else ""
+        icon_map={
+            "lyrics":QStyle.SP_FileIcon,
+            "artwork":QStyle.SP_FileDialogContentsView,
+            "metadata":QStyle.SP_FileDialogDetailedView,
+            "identity":QStyle.SP_FileDialogInfoView,
+            "context":QStyle.SP_MessageBoxInformation,
+            "library_suggestions":QStyle.SP_BrowserReload,
+            "recommendations":QStyle.SP_BrowserReload,
+            "search":QStyle.SP_DriveNetIcon,
+            "playback":QStyle.SP_MediaPlay,
+        }
+        icon_label=QLabel()
+        icon_label.setObjectName("pluginDirectoryIcon")
+        icon_label.setAlignment(Qt.AlignCenter)
+        icon_label.setFixedSize(44,44)
+        icon= self.style().standardIcon(icon_map.get(capability,QStyle.SP_CommandLink))
+        icon_label.setPixmap(icon.pixmap(25,25))
+        row.addWidget(icon_label)
+
+        text=QVBoxLayout()
+        text.setSpacing(3)
+        title_row=QHBoxLayout()
+        title_row.setSpacing(7)
+        title=QLabel(str(entry.get("name") or entry.get("id") or "Plugin"))
+        title.setObjectName("pluginDirectoryTitle")
+        title_row.addWidget(title)
+        status=str(entry.get("status") or "").casefold()
+        type_label="Reference" if status=="example" else "Community" if status=="community" else "Reviewed" if status=="reviewed" else status.title()
+        if type_label:
+            pill=QLabel(type_label)
+            pill.setObjectName("pluginDirectoryType")
+            title_row.addWidget(pill)
+        title_row.addStretch(1)
+        text.addLayout(title_row)
+
+        desc=QLabel(str(entry.get("description") or ""))
+        desc.setObjectName("pluginDirectoryDescription")
+        desc.setWordWrap(True)
+        text.addWidget(desc)
+
+        human_caps=[]
+        for value in capabilities[:3]:
+            human_caps.append({
+                "library_suggestions":"recommendations",
+                "identity":"track matching",
+                "metadata":"metadata",
+                "artwork":"artwork",
+                "lyrics":"lyrics",
+                "context":"context",
+                "search":"search",
+                "playback":"playback",
+                "offline":"offline",
+                "recommendations":"recommendations",
+            }.get(value,value.replace("_"," ")))
+        meta=QLabel(" · ".join(human_caps))
+        meta.setObjectName("pluginDirectoryMeta")
+        text.addWidget(meta)
+        row.addLayout(text,1)
+
+        state=QLabel(str(badge or ("Installed" if installed else "Optional")))
+        state.setObjectName("statusPill")
+        row.addWidget(state)
 
 
 class PluginDirectoryDialog(QDialog):
