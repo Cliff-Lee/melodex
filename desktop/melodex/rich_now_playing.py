@@ -127,7 +127,9 @@ class RichNowPlayingWidget(QWidget):
         self.online_lyrics_button=QPushButton("Find online")
         self.online_lyrics_button.setObjectName("primaryButton")
         self.fullscreen_lyrics_button=QPushButton("Full screen")
+        self.fullscreen_lyrics_button.setEnabled(False)
         self.edit_lyrics_button=QPushButton("Edit saved…")
+        self.edit_lyrics_button.setEnabled(False)
         self.import_lyrics_button=QPushButton("Add file…")
         self.paste_lyrics_button=QPushButton("Paste…")
         self.find_lyrics_plugin_button=QPushButton("Manage lyrics sources…")
@@ -783,6 +785,7 @@ class RichNowPlayingWidget(QWidget):
         layout.addWidget(heading)
 
         source=QLabel(self.lyrics_source.text())
+        source.setOpenExternalLinks(True)
         source.setWordWrap(True)
         source.setStyleSheet("color:#8290a2;font-size:11px")
         layout.addWidget(source)
@@ -826,7 +829,21 @@ class RichNowPlayingWidget(QWidget):
             if self._lyric_index >= 0:
                 browser.scrollToAnchor(f"line-{self._lyric_index}")
         else:
-            browser.setHtml(self.lyrics.toHtml())
+            text=str(self._current_lyrics.get("text") or "")
+            if text:
+                browser.setHtml(
+                    "<div style='font-size:28px;line-height:1.85;"
+                    "max-width:900px;margin:20px auto;color:#eef3f8'>"
+                    + "<br>".join(_escape(text).splitlines())
+                    + "</div>"
+                )
+            elif bool(self._current_lyrics.get("instrumental")):
+                browser.setHtml(
+                    "<div style='font-size:28px;max-width:900px;margin:80px auto;"
+                    "color:#dce5ef;text-align:center'>Instrumental track</div>"
+                )
+            else:
+                browser.setHtml(self.lyrics.toHtml())
         if self._lyrics_fullscreen_source is not None:
             self._lyrics_fullscreen_source.setText(self.lyrics_source.text())
 
