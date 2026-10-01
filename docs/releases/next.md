@@ -16,6 +16,7 @@ See [Releasing Melodex](../RELEASING.md) for the release process.
 - Lookup now falls through Wikidata portrait → linked free Wikipedia lead image → conservative Wikipedia artist-page search → installed artwork portrait plugins → conservative Wikimedia Commons artist search.
 - One click processes the complete missing-artist list in small background batches rather than stopping after the first batch.
 - Album covers/logos and ambiguous artist/image matches are rejected rather than guessed.
+- Artist cards now offer **Photo…** as a manual fallback; the selected local image is copied into Melodex's artwork cache and remembered for that artist.
 
 ### Plugin usability
 
