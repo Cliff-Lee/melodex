@@ -274,10 +274,9 @@ class RichNowPlayingWidget(QWidget):
             panel.setOpenExternalLinks(True)
             panel.setWordWrap(True)
             panel.setAlignment(Qt.AlignTop | Qt.AlignLeft)
-            panel.setMargin(14)
+            panel.setMargin(10)
             panel.setStyleSheet(
-                "background:#111a24;border:1px solid #293c51;border-radius:11px;"
-                "color:#dce5ef"
+                "background:transparent;border:0;color:#dce5ef;padding:4px"
             )
         self.info = QTextBrowser()
         self.info.setOpenExternalLinks(True)
