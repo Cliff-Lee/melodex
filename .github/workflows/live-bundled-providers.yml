@@ -1,0 +1,27 @@
+name: Live bundled provider smoke
+
+on:
+  workflow_dispatch:
+
+jobs:
+  live-provider-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install desktop runtime dependencies
+        run: pip install numpy mutagen requests PySide6
+      - name: Run live bundled-provider smoke test
+        env:
+          PYTHONPATH: desktop
+        run: python scripts/live_bundled_provider_smoke.py --json live-provider-report.json
+      - name: Upload live provider report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-provider-report
+          path: live-provider-report.json
+          if-no-files-found: warn
