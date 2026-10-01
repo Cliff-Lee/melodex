@@ -343,6 +343,9 @@ class LibraryBrowser(QWidget):
         self._visible_artists: list[dict[str, Any]] = []
         self._art_requested: set[str] = set()
         self._artist_art_requested: set[str] = set()
+        self._artist_lookup_queue: list[dict[str, Any]] = []
+        self._artist_lookup_inflight = 0
+        self._artist_lookup_active = False
         self._tracks_built = False
 
         outer = QVBoxLayout(self)
@@ -774,14 +777,14 @@ class LibraryBrowser(QWidget):
 
     def _request_online_artwork(self) -> None:
         if self.current_view() == "artists":
-            batch = []
             artists = self._visible_artists if self._visible_artists else self.artist_rows
+            self._artist_lookup_queue = []
+            self._artist_lookup_inflight = 0
             for artist in artists:
                 key = str(artist.get("key") or "")
                 card = self.artist_cards.get(key)
                 if (
                     not key
-                    or key in self._artist_art_requested
                     or card is None
                     or card.has_artist_photo
                     or _norm(artist.get("name")) == "unknown artist"
@@ -789,16 +792,13 @@ class LibraryBrowser(QWidget):
                     continue
                 track = dict(artist.get("representative_track") or {})
                 if track:
-                    self._artist_art_requested.add(key)
-                    batch.append({
+                    self._artist_lookup_queue.append({
                         "key": key,
                         "artist": str(artist.get("name") or ""),
                         "track": track,
                     })
-                if len(batch) >= 12:
-                    break
-            if batch:
-                self.artistImageRequested.emit(batch)
+            self._artist_lookup_active = bool(self._artist_lookup_queue)
+            self._emit_next_artist_lookup_batch()
             return
 
         batch = []
@@ -819,6 +819,29 @@ class LibraryBrowser(QWidget):
                 break
         if batch:
             self.onlineArtworkRequested.emit(batch)
+
+    def _emit_next_artist_lookup_batch(self) -> bool:
+        if not self._artist_lookup_active or not self._artist_lookup_queue:
+            self._artist_lookup_active = False
+            self._artist_lookup_inflight = 0
+            return False
+        batch=self._artist_lookup_queue[:10]
+        self._artist_lookup_queue=self._artist_lookup_queue[10:]
+        self._artist_lookup_inflight=len(batch)
+        for row in batch:
+            key=str(row.get("key") or "")
+            if key:
+                self._artist_art_requested.add(key)
+        self.artistImageRequested.emit(batch)
+        return True
+
+    def continue_artist_image_lookup(self) -> bool:
+        """Continue an explicit whole-library portrait lookup after one batch."""
+        self._artist_lookup_inflight = 0
+        return self._emit_next_artist_lookup_batch()
+
+    def artist_image_lookup_remaining(self) -> int:
+        return len(self._artist_lookup_queue) + int(self._artist_lookup_inflight or 0)
 
     def set_artwork(self, mapping: dict[str, str]) -> None:
         for key, path in dict(mapping or {}).items():
