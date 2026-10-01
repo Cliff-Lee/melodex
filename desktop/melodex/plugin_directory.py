@@ -13,6 +13,7 @@ from .plugin_onboarding import (
     plugin_configuration_info,
 )
 from .plugin_health import health_badge, health_summary
+from .ux_components import source_icon_spec
 
 from PySide6.QtWidgets import (
     QComboBox,
@@ -56,23 +57,31 @@ class PluginDirectoryCard(QFrame):
 
         capabilities=[str(x) for x in list(entry.get("capabilities") or []) if x]
         capability=capabilities[0] if capabilities else ""
-        icon_map={
-            "lyrics":QStyle.SP_FileIcon,
-            "artwork":QStyle.SP_FileDialogContentsView,
-            "metadata":QStyle.SP_FileDialogDetailedView,
-            "identity":QStyle.SP_FileDialogInfoView,
-            "context":QStyle.SP_MessageBoxInformation,
-            "library_suggestions":QStyle.SP_BrowserReload,
-            "recommendations":QStyle.SP_BrowserReload,
-            "search":QStyle.SP_DriveNetIcon,
-            "playback":QStyle.SP_MediaPlay,
-        }
+        icon_key={
+            "lyrics":"lyrics",
+            "artwork":"artwork",
+            "metadata":"metadata",
+            "identity":"identity",
+            "context":"context",
+            "library_suggestions":"recommendation",
+            "recommendations":"recommendation",
+            "search":"provider",
+            "playback":"provider",
+        }.get(capability,"plugin")
         icon_label=QLabel()
         icon_label.setObjectName("pluginDirectoryIcon")
         icon_label.setAlignment(Qt.AlignCenter)
-        icon_label.setFixedSize(44,44)
-        icon= self.style().standardIcon(icon_map.get(capability,QStyle.SP_CommandLink))
-        icon_label.setPixmap(icon.pixmap(25,25))
+        icon_label.setFixedSize(46,46)
+        glyph,accent,background=source_icon_spec(
+            str(entry.get("name") or entry.get("id") or ""),
+            icon_key,
+        )
+        icon_label.setText(glyph)
+        icon_label.setStyleSheet(
+            "font-weight:800;font-size:14px;"
+            f"color:{accent};background:{background};"
+            f"border:1px solid {accent};border-radius:12px;"
+        )
         row.addWidget(icon_label)
 
         text=QVBoxLayout()
