@@ -571,21 +571,140 @@ class MainWindow(QMainWindow):
         return lay
 
     def _build_home(self):
-        l=self._page_layout("home","Your music, without the work.","Press one button, search everything you have connected, or add your own collection.")
-        hero=QPushButton("▶  Play for me"); hero.setMinimumHeight(74); hero.setStyleSheet("font-size:20px;font-weight:700;background:#2a5fd7"); hero.clicked.connect(lambda:self._play_for_me("balanced",60,0.35)); l.addWidget(hero)
-        row=QHBoxLayout(); a=QPushButton("Comfort"); a.clicked.connect(lambda:self._play_for_me("comfort",60,0.15)); b=QPushButton("Surprise me"); b.clicked.connect(lambda:self._play_for_me("explore",60,0.82)); c=QPushButton("Add my music"); c.clicked.connect(self._choose_music_folder)
-        row.addWidget(a); row.addWidget(b); row.addWidget(c); l.addLayout(row)
-        self.home_status=QLabel(); self.home_status.setWordWrap(True); l.addWidget(self.home_status); l.addStretch(1)
+        l=self._page_layout(
+            "home",
+            "What do you feel like hearing?",
+            "Start with an intention. Melodex can stay familiar, help you rediscover something, or take you somewhere less expected.",
+        )
+
+        hero=QFrame()
+        hero.setObjectName("homeHero")
+        hero_l=QVBoxLayout(hero)
+        hero_l.setContentsMargins(22,20,22,20)
+        hero_l.setSpacing(10)
+        prompt=QLabel("Start listening")
+        prompt.setStyleSheet("font-size:20px;font-weight:720")
+        hero_l.addWidget(prompt)
+        explanation=QLabel(
+            "One click builds a listening session from your own library. "
+            "You can fine-tune it later if you want."
+        )
+        explanation.setWordWrap(True)
+        explanation.setStyleSheet("color:#9fa9b8")
+        hero_l.addWidget(explanation)
+
+        primary=QPushButton("▶  Play something")
+        primary.setObjectName("primaryButton")
+        primary.setMinimumHeight(48)
+        primary.clicked.connect(lambda:self._play_for_me("balanced",60,0.35))
+        set_help(
+            primary,
+            "Play something",
+            "Builds a balanced one-hour session from your local library using your listening history and Flow when available.",
+        )
+        hero_l.addWidget(primary)
+
+        moods=QHBoxLayout()
+        comfort=QPushButton("Comfort")
+        explore=QPushButton("Explore")
+        rediscover=QPushButton("Rediscover")
+        tune=QPushButton("Tune it…")
+        comfort.clicked.connect(lambda:self._play_for_me("comfort",60,0.14))
+        explore.clicked.connect(lambda:self._play_for_me("explore",60,0.72))
+        rediscover.clicked.connect(lambda:self._play_for_me("rediscover",60,0.42))
+        tune.clicked.connect(lambda:self.open_page("for_you"))
+        set_help(comfort,"Comfort","Stay close to music Melodex already knows you respond well to.")
+        set_help(explore,"Explore","Move further from the familiar while keeping the session musically coherent.")
+        set_help(rediscover,"Rediscover","Favour music from your library that you once played but have not heard recently.")
+        set_help(tune,"Fine-tune listening","Open duration, familiarity and local-intelligence controls.")
+        moods.addWidget(comfort)
+        moods.addWidget(explore)
+        moods.addWidget(rediscover)
+        moods.addStretch(1)
+        moods.addWidget(tune)
+        hero_l.addLayout(moods)
+        l.addWidget(hero)
+
+        continue_title=QLabel("Continue listening")
+        continue_title.setStyleSheet("font-size:18px;font-weight:700;margin-top:10px")
+        l.addWidget(continue_title)
+
+        self.home_continue=QFrame()
+        self.home_continue.setObjectName("continueCard")
+        continue_l=QHBoxLayout(self.home_continue)
+        continue_l.setContentsMargins(14,14,14,14)
+        continue_l.setSpacing(15)
+        self.home_continue_cover=CoverLabel(92)
+        continue_l.addWidget(self.home_continue_cover)
+        continue_text=QVBoxLayout()
+        self.home_continue_title=QLabel("Nothing played yet")
+        self.home_continue_title.setStyleSheet("font-size:17px;font-weight:700")
+        self.home_continue_meta=QLabel("Play something and it will be easy to return here.")
+        self.home_continue_meta.setWordWrap(True)
+        self.home_continue_meta.setStyleSheet("color:#98a3b3")
+        continue_text.addStretch(1)
+        continue_text.addWidget(self.home_continue_title)
+        continue_text.addWidget(self.home_continue_meta)
+        continue_text.addStretch(1)
+        continue_l.addLayout(continue_text,1)
+        self.home_continue_button=QPushButton("▶ Continue")
+        self.home_continue_button.setObjectName("secondaryButton")
+        self.home_continue_button.clicked.connect(self._home_continue_play)
+        self.home_continue_button.setEnabled(False)
+        set_help(
+            self.home_continue_button,
+            "Continue listening",
+            "Starts the most recent track again. Your listening history stays private on this computer.",
+        )
+        continue_l.addWidget(self.home_continue_button)
+        l.addWidget(self.home_continue)
+
+        explore_title=QLabel("Explore your music")
+        explore_title.setStyleSheet("font-size:18px;font-weight:700;margin-top:10px")
+        l.addWidget(explore_title)
+        cards=QHBoxLayout()
+        library_card=ActionCard(
+            "Browse your collection",
+            "Albums, artists and tracks with artwork instead of file-system detail.",
+            eyebrow="My Music",
+            action_text="Browse",
+        )
+        library_card.clicked.connect(lambda:self.open_page("library"))
+        wall_card=ActionCard(
+            "Album Wall",
+            "Explore your records spatially and move between sonic, time and familiarity views.",
+            eyebrow="Visual",
+            action_text="Explore",
+        )
+        wall_card.clicked.connect(lambda:self.open_page("album_wall"))
+        map_card=ActionCard(
+            "Music Map",
+            "See relationships between tracks and plan a route when you want deeper exploration.",
+            eyebrow="Deep explore",
+            action_text="Open map",
+        )
+        map_card.clicked.connect(lambda:self.open_page("music_map"))
+        cards.addWidget(library_card,1)
+        cards.addWidget(wall_card,1)
+        cards.addWidget(map_card,1)
+        l.addLayout(cards)
+
+        self.home_status=QLabel()
+        self.home_status.setWordWrap(True)
+        self.home_status.setStyleSheet("color:#7f8b9b;margin-top:8px")
+        l.addWidget(self.home_status)
+        l.addStretch(1)
+
 
     def _build_now_playing(self):
         l=self._page_layout(
             "now_playing",
             "Now playing",
-            "A living, seekable musical fingerprint alongside artwork, lyrics and track context.",
+            "Stay with the music first. Artwork, lyrics and context are primary; visualisations are there when you want them.",
         )
         self.now_views = QTabWidget()
-        self.living_canvas = LivingCanvasView(self, self.data_dir / "visualizers")
         self.rich_now = RichNowPlayingWidget(self.metadata, self)
+        self.living_canvas = LivingCanvasView(self, self.data_dir / "visualizers")
         self.rich_now.knowledgeChanged.connect(self._remember_now_playing_knowledge)
         self.rich_now.accentChanged.connect(self.living_canvas.set_accent_color)
         self.rich_now.paletteChanged.connect(self.living_canvas.set_palette)
@@ -594,9 +713,10 @@ class MainWindow(QMainWindow):
         self.living_canvas.modeDataRequested.connect(self._request_visual_mode_data)
         self.living_canvas.neighbourActivated.connect(self._queue_visual_neighbour)
         self.player.playingChanged.connect(self.living_canvas.set_playing)
-        self.now_views.addTab(self.living_canvas, "Living Canvas")
-        self.now_views.addTab(self.rich_now, "Details")
+        self.now_views.addTab(self.rich_now, "Now Playing")
+        self.now_views.addTab(self.living_canvas, "Visuals")
         l.addWidget(self.now_views, 1)
+
 
     def _build_for_you(self):
         l=self._page_layout("for_you","Play for me","Melodex uses only local listening history and audio analysis unless you explicitly connect an LLM.")
@@ -628,9 +748,83 @@ class MainWindow(QMainWindow):
         row2=QHBoxLayout(); addq=QPushButton("Add selected to queue"); addq.clicked.connect(self._add_selected_to_queue); source_btn=QPushButton("Open source page"); source_btn.clicked.connect(self._open_selected_source); row2.addWidget(addq); row2.addWidget(source_btn); row2.addStretch(1); l.addLayout(row2)
 
     def _build_library(self):
-        l=self._page_layout("library","My music","Local music stays on your device. Melodex analyses it locally for Flow.")
-        row=QHBoxLayout(); add=QPushButton("Add folder…"); add.clicked.connect(self._choose_music_folder); scan=QPushButton("Rescan"); scan.clicked.connect(self._rescan); row.addWidget(add); row.addWidget(scan); row.addStretch(1); l.addLayout(row)
-        self.library_list=QListWidget(); self.library_list.itemDoubleClicked.connect(self._play_library); l.addWidget(self.library_list,1)
+        l=self._page_layout(
+            "library",
+            "My Music",
+            "Browse the collection you chose to keep on this device. Album artwork and musical identity come first; file details stay out of the way.",
+        )
+        self.library_browser=LibraryBrowser(self)
+        self.library_browser.playAlbumRequested.connect(self._play_album_wall_album)
+        self.library_browser.queueAlbumRequested.connect(self._queue_album_data)
+        self.library_browser.playTrackRequested.connect(self._play_library_track)
+        self.library_browser.addFolderRequested.connect(self._choose_music_folder)
+        self.library_browser.rescanRequested.connect(self._rescan)
+        self.library_browser.albumWallRequested.connect(lambda:self.open_page("album_wall"))
+        self.library_browser.momentsRequested.connect(lambda:self.open_page("moments"))
+        self.library_browser.artworkRequested.connect(self._library_artwork_requested)
+        l.addWidget(self.library_browser,1)
+
+
+    def _build_explore(self):
+        l=self._page_layout(
+            "explore",
+            "Explore",
+            "Choose the kind of exploration you want. Search is direct; Album Wall is visual; Music Map goes deeper into relationships and routes.",
+        )
+
+        cards=QHBoxLayout()
+        search_card=ActionCard(
+            "Search everything",
+            "Find artists, albums or tracks across all the music sources you have connected.",
+            eyebrow="Search",
+            action_text="Search",
+        )
+        search_card.clicked.connect(lambda:self.open_page("discover"))
+        wall_card=ActionCard(
+            "Album Wall",
+            "Browse your own collection as a stable visual place built from album covers.",
+            eyebrow="Browse",
+            action_text="Open wall",
+        )
+        wall_card.clicked.connect(lambda:self.open_page("album_wall"))
+        map_card=ActionCard(
+            "Music Map",
+            "Explore sonic relationships between tracks. Advanced route-planning appears when you need it.",
+            eyebrow="Relationships",
+            action_text="Open map",
+        )
+        map_card.clicked.connect(lambda:self.open_page("music_map"))
+        cards.addWidget(search_card,1)
+        cards.addWidget(wall_card,1)
+        cards.addWidget(map_card,1)
+        l.addLayout(cards)
+
+        help_title=QLabel("Not sure where to start?")
+        help_title.setStyleSheet("font-size:18px;font-weight:700;margin-top:18px")
+        l.addWidget(help_title)
+        help_row=QHBoxLayout()
+        similar=QPushButton("More like what is playing")
+        similar.clicked.connect(lambda:self._run_local_intelligence("similar"))
+        rediscover=QPushButton("Find a forgotten favourite")
+        rediscover.clicked.connect(lambda:self._run_local_intelligence("rediscover"))
+        ask=QPushButton("Ask Melodex…")
+        ask.clicked.connect(lambda:self.open_page("ask"))
+        set_help(similar,"More like this","Uses local intelligence to look for nearby music in your own library.")
+        set_help(rediscover,"Forgotten favourite","Looks for music you used to play but have not heard for a while.")
+        set_help(ask,"Ask Melodex","Use an optional connected LLM for natural-language listening requests. Melodex still works without one.")
+        help_row.addWidget(similar)
+        help_row.addWidget(rediscover)
+        help_row.addWidget(ask)
+        help_row.addStretch(1)
+        l.addLayout(help_row)
+
+        note=QLabel(
+            "Tip: Album Wall is designed for visual browsing. Music Map is the power tool for understanding and shaping routes between tracks."
+        )
+        note.setWordWrap(True)
+        note.setStyleSheet("color:#8793a4;margin-top:12px")
+        l.addWidget(note)
+        l.addStretch(1)
 
     def _build_album_wall(self):
         l=self._page_layout(
