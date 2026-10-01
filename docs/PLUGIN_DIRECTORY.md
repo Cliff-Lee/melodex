@@ -6,8 +6,10 @@ Open:
 
 ```text
 Sources & plugins
-→ Browse optional plugins
+→ Add features…
 ```
+
+On a first visit, Melodex explains that the local library and included sources already work. Plugins are optional additions rather than setup requirements.
 
 ## Consumer-facing presentation
 
@@ -16,7 +18,9 @@ The Plugin Centre and Sources & plugins page now share a visual language:
 - distinctive pictogram tiles by source/capability;
 - clear Installed / Included / Optional / Setup needed state;
 - plain-language descriptions before technical metadata;
-- direct **Use**, **Search**, **Set up** and **Check connection** actions.
+- visible **All / Installed / Available / Needs setup / Updates** views with live counts;
+- direct **Use**, **Search**, **Set up**, **Enable/Disable**, **Remove** and **Check connection** actions;
+- a plain-language **Where you'll use it** explanation for each plugin.
 
 The current public registry is still a reference ecosystem: all current registry entries are marked `example`. The UI does not imply that these are all production-grade consumer services.
 
@@ -60,10 +64,10 @@ Both are installed through their existing isolated provider/extension runtimes.
 For a normal user the complete flow stays inside the directory:
 
 ```text
-Sources
-→ Explore plugins…
+Sources & plugins
+→ choose a feature shortcut or Add features…
 → select a plugin
-→ review permissions/source/review information
+→ review what it does, where it appears, permissions and source/review information
 → Install
 → configure required fields when prompted
 → Ready
@@ -96,6 +100,20 @@ This distinction is intentional:
 - an **extension** adds a capability to an existing Melodex feature rather than creating a separate mini-application.
 
 If a plugin still needs credentials or configuration, the same button says **Set up plugin/source** first.
+
+## Contextual discovery
+
+The Plugin Centre is no longer the only place where extensions are visible. Melodex also surfaces a small feature-presence strip inside the listener experience itself:
+
+| Surface | What it shows |
+| --- | --- |
+| Explore → Search everything | active searchable music sources + **Add music source…** |
+| My Music | active artwork helpers + **Add artwork helper…** |
+| For You | active recommendation helpers + **Add recommendation helper…** |
+| Now Playing → Lyrics | active lyrics helpers + **Add lyrics source…** |
+| Now Playing → Context | active context/metadata/identity helpers + **Add context plugin…** |
+
+Disabled extensions and plugins that still need required configuration are not presented as active. Changes made in the Plugin Centre refresh these contextual indicators immediately.
 
 ## Health and connection testing
 
