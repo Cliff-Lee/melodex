@@ -10,6 +10,12 @@ on:
         description: Optional exact commit SHA to build for a release
         required: false
         type: string
+  pull_request:
+    paths:
+      - 'android/**'
+      - 'VERSION'
+      - 'scripts/version_check.py'
+      - '.github/workflows/android.yml'
   push:
     branches: [main]
     tags: ['v*']
