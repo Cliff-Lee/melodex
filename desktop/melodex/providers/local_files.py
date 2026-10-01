@@ -32,6 +32,11 @@ class LocalFilesProvider(MusicProvider):
     def _metadata(path: Path) -> dict[str, Any]:
         title, artist, album = path.stem, "", ""
         duration = 0.0
+        album_artist = ""
+        date = ""
+        genre = ""
+        track_number = 0
+        disc_number = 0
         musicbrainz_recording_id = ""
         musicbrainz_artist_id = ""
         musicbrainz_release_id = ""
@@ -46,6 +51,14 @@ class LocalFilesProvider(MusicProvider):
                 title = first("title") or title
                 artist = first("artist")
                 album = first("album")
+                album_artist = first("albumartist")
+                date = first("date") or first("originaldate")
+                genre = first("genre")
+                def number(key: str) -> int:
+                    raw = first(key).split("/", 1)[0].strip()
+                    return int(raw) if raw.isdigit() else 0
+                track_number = number("tracknumber")
+                disc_number = number("discnumber")
                 duration = float(getattr(getattr(audio, "info", None), "length", 0.0) or 0.0)
                 musicbrainz_recording_id = (
                     first("musicbrainz_recordingid")
@@ -65,6 +78,11 @@ class LocalFilesProvider(MusicProvider):
             "duration": duration, "local_path": str(path.resolve()), "source": "local",
         }
         for key, value in (
+            ("album_artist", album_artist),
+            ("date", date),
+            ("genre", genre),
+            ("track_number", track_number),
+            ("disc_number", disc_number),
             ("musicbrainz_recording_id", musicbrainz_recording_id),
             ("musicbrainz_artist_id", musicbrainz_artist_id),
             ("musicbrainz_release_id", musicbrainz_release_id),
@@ -72,6 +90,8 @@ class LocalFilesProvider(MusicProvider):
         ):
             if value:
                 out[key] = value
+        if date[:4].isdigit():
+            out["year"] = int(date[:4])
         return out
 
     def scan(self) -> int:
