@@ -348,3 +348,22 @@ def test_wikipedia_link_falls_back_to_non_english_wikidata_sitelink(tmp_path: Pa
     )
     assert api == "https://de.wikipedia.org/w/api.php"
     assert title == "Beispielkünstler"
+
+
+
+def test_user_selected_artist_photo_is_copied_and_remembered(tmp_path: Path):
+    source = tmp_path / "artist-photo.jpg"
+    source.write_bytes(b"user portrait")
+
+    svc = RichMetadataService(tmp_path / "data")
+    result = svc.remember_artist_photo_file({"name": "Brian Eno"}, source)
+
+    cached_path = Path(result["path"])
+    assert cached_path.is_file()
+    assert cached_path.read_bytes() == b"user portrait"
+    assert cached_path != source
+
+    reopened = RichMetadataService(tmp_path / "data")
+    cached = reopened.cached_artist_photo({"name": "Brian Eno"})
+    assert cached["path"] == str(cached_path)
+    assert cached["source"] == "User-selected artist photo"
