@@ -1,97 +1,47 @@
-# Melodex Documentation
+# Melodex documentation
 
-**Don't shuffle. Flow.**
+Choose the route that matches what you want to do. You can start listening without reading the full guide or setting up AI.
 
-This is the **friendly documentation map**: choose what you are trying to do and follow one route.
+This is the friendly documentation map. For exact technical details, use the [complete index](ALL_DOCUMENTATION.md).
 
-If you already know the exact document you need, use the [complete documentation index](ALL_DOCUMENTATION.md).
+## Find your path
 
-> Repository documentation follows current `main`; tagged binaries can lag behind it. See [Releases, `main`, and version numbers](RELEASES_AND_MAIN.md).
+| If you want to… | Start here |
+| --- | --- |
+| Download Melodex and listen | [Start Here](START_HERE.md) |
+| See what the app looks like | [Short visual tour](VISUAL_TOUR.md) |
+| Customize sources, playlists, or listening | [Tinkerer's guide](TINKERERS_GUIDE.md) |
+| Build an extension or integration | [Developer Gateway](DEVELOPERS.md) |
+| Look up a specific setting or technical detail | [Complete documentation index](ALL_DOCUMENTATION.md) |
 
-## I want to use Melodex
+## The simplest first session
 
-Start here:
+1. [Download Melodex](https://github.com/Cliff-Lee/melodex/releases/latest).
+2. Open **My Music → + Add music** and choose a folder.
+3. Return to **Home** and choose **▶  Play something**.
 
-1. [Start Here](START_HERE.md) — shortest first-use path.
-2. [5-minute visual tour](VISUAL_TOUR.md) — see the main ideas/screens.
-3. [User guide](USER_GUIDE.md) — learn the main player features.
+If you do not have local music ready, use **Explore → Search everything** to search connected sources.
 
-Then use:
+## Listening guides
 
-- [My Music](MY_MUSIC.md) for visual Albums/Artists/Tracks, artwork lookup and local metadata correction;
-- [UX redesign](UX_REDESIGN.md) for the human-centred interaction model behind the current desktop interface;
-- [Album Wall](ALBUM_WALL.md) for the spatial album browser;
-- [FAQ](FAQ.md) for common questions;
-- [Troubleshooting](TROUBLESHOOTING.md) when something is not working;
-- [Support](../SUPPORT.md) when you need to report a problem;
-- [Why Melodex?](WHY_MELODEX.md) for the design idea behind Flow and taste memory.
+- [Start Here](START_HERE.md) — install and start playing.
+- [Visual tour](VISUAL_TOUR.md) — follow the main screens with current screenshots.
+- [User guide](USER_GUIDE.md) — learn the controls and everyday features.
+- [My Music](MY_MUSIC.md) — browse albums, artists, and tracks.
+- [Troubleshooting](TROUBLESHOOTING.md) — solve common problems.
 
-## I want to install Melodex
+## More control
 
-- [Installation chooser](INSTALL.md)
-- [Linux (Ubuntu, Debian, AppImage)](INSTALL_LINUX.md)
-- [macOS](INSTALL_MACOS.md)
-- [Windows](INSTALL_WINDOWS.md)
-- [Android](INSTALL_ANDROID.md)
-- [Latest release notes](releases/v0.7.0.md)
+Use the [Tinkerer's guide](TINKERERS_GUIDE.md) for optional sources, plugins, visualizers, routes, and integrations. It links to the deeper feature guides without requiring you to read them all first.
 
-## I want optional AI control
+## Build with Melodex
 
-- [LLM guide](LLM_GUIDE.md)
-- [Ollama](OLLAMA.md)
-- [OpenWebUI](OPENWEBUI.md)
-- [MCP control](MCP_CONTROL.md)
+- [Developer Gateway](DEVELOPERS.md) — choose a provider, extension, or integration path.
+- [5-minute developer quickstart](DEVELOPER_QUICKSTART.md) — build a working scaffold.
+- [First contribution](FIRST_CONTRIBUTION.md) — make a change to the app or repository.
 
-Core playback, Flow and taste memory do not require an LLM.
+## Reference
 
-To create a playlist in an AI chat and bring it into Melodex, use [Paste a playlist from an AI chat](PLAYLIST_INTERCHANGE.md). This does not connect Melodex to the AI.
+The [complete documentation index](ALL_DOCUMENTATION.md) is exhaustive. It includes installation, user help, plugin and provider references, API guides, privacy, security, and release material.
 
-## I want to add music sources
-
-For users:
-
-- [Music sources](SOURCES.md)
-- [Installing providers/extensions](PROVIDER_INSTALLATION.md)
-- [Plugin Directory](PLUGIN_DIRECTORY.md)
-
-For developers:
-
-- [5-minute developer quickstart](DEVELOPER_QUICKSTART.md)
-- [Developer Gateway](DEVELOPERS.md)
-
-## I want to build something
-
-Use the **[developer gateway](DEVELOPERS.md)**.
-
-It routes you to the right interface:
-
-```text
-music source           → MPP / .mdxprovider
-metadata/artwork/etc.  → .mdxplugin
-external controller    → REST / OpenAPI
-AI client              → MCP / OpenAI tools
-public extension       → registry / Plugin Directory
-```
-
-For precise maturity/security status, use [Status, stability and trust](developers/00_STATUS_AND_STABILITY.md).
-
-## I want to contribute to Melodex itself
-
-Start with **[Your First Melodex Contribution](FIRST_CONTRIBUTION.md)** if you are new to the repository.
-
-Then use:
-
-- [Contributing](../CONTRIBUTING.md)
-- [Community](COMMUNITY.md)
-- [Build from source](BUILD_FROM_SOURCE.md)
-- [Code of Conduct](../CODE_OF_CONDUCT.md)
-- [Support](../SUPPORT.md)
-- [Security](../SECURITY.md)
-- [Roadmap](../ROADMAP.md)
-- [Release process](RELEASING.md)
-
-## I want every document
-
-Use the **[complete documentation index](ALL_DOCUMENTATION.md)**.
-
-It is intentionally exhaustive. This page is intentionally short.
+For the current release notes, see [Melodex v0.7.2](releases/v0.7.2.md).

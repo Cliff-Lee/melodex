@@ -3,12 +3,13 @@
 </p>
 
 <p align="center">
-  <strong>A local-first music player — and an open platform for music sources, metadata, automation and AI tools.</strong>
+  <strong>A local-first music player for your collection and connected sources.</strong>
 </p>
 
 <p align="center">
   <a href="https://github.com/Cliff-Lee/melodex/releases/latest"><strong>Download</strong></a> ·
   <a href="docs/START_HERE.md">Start here</a> ·
+  <a href="docs/TINKERERS_GUIDE.md">Make it yours</a> ·
   <a href="docs/DEVELOPERS.md">Developers</a> ·
   <a href="docs/FIRST_CONTRIBUTION.md">Contribute</a> ·
   <a href="docs/README.md">Documentation</a>
@@ -16,47 +17,35 @@
 
 # Melodex
 
-> **Development documentation:** this README follows the current `main` branch. Downloadable GitHub Releases are tagged snapshots and may lag behind `main`. See [Releases, `main`, and version numbers](docs/RELEASES_AND_MAIN.md).
 
 ## Don't shuffle. Flow.
 
-Melodex is a source-neutral music player that tries to make listening sessions **go somewhere**.
+Melodex is a local-first music player for your own collection and connected music sources. Use Home to start a listening session, My Music to browse your albums, and Flow to shape the queue. AI tools are optional.
 
-It combines your library and connected sources with taste memory, optional audio analysis, **Flow** sequencing, **Play for me**, a visual **Album Wall**, a local **Music Map**, Moments, and a resolver that can match requested music across multiple providers.
+## Start listening
 
-But Melodex is also becoming something broader:
+1. [Download the latest release](https://github.com/Cliff-Lee/melodex/releases/latest).
+2. Open **My Music → + Add music** and choose a folder.
+3. Return to **Home** and choose **▶  Play something**.
 
-> **An open music platform where independent extensions contribute capabilities and Melodex combines them.**
-
-A playback source does not need to become a metadata database. An artwork plugin does not need to know how the queue works. An AI client does not need to know which provider ultimately plays a track.
-
-Desktop releases install six streaming providers on first launch: ccMixter, SomaFM, Radio Browser, Wikimedia Commons Audio, LibriVox and Internet Archive Audio. Their music remains hosted by the original services. See [Music sources](docs/SOURCES.md) for details and rights notes.
-
-## Build something in 5 minutes
-
-If you want to develop rather than study the architecture first:
-
-**[→ 5-minute developer quickstart](docs/DEVELOPER_QUICKSTART.md)**
-
-For the precise current state—including what is implemented, preview, experimental, planned, or not sandboxed—see **[Status, stability and trust](docs/developers/00_STATUS_AND_STABILITY.md)**.
+No local collection yet? Use **Explore → Search everything** to search connected sources.
 
 ## Choose your path
 
-| I want to… | Start here |
+| If you want to… | Start here |
 | --- | --- |
-| Use Melodex as a music player | [5-minute start](docs/START_HERE.md) |
-| Build something quickly | [5-minute developer quickstart](docs/DEVELOPER_QUICKSTART.md) |
-| Build a music source / playback provider | [Provider tutorial](docs/tutorials/BUILD_A_PROVIDER.md) |
-| Add metadata, identity, artwork or lyrics | [Enrichment tutorial](docs/tutorials/BUILD_AN_ENRICHMENT_PLUGIN.md) |
-| Control Melodex from another app | [REST/OpenAPI tutorial](docs/tutorials/CONTROL_MELODEX_WITH_REST.md) |
-| Connect OpenWebUI or another MCP client | [MCP tutorial](docs/tutorials/CONNECT_OPENWEBUI_MCP.md) |
-| Use Melodex from an OpenAI application | [OpenAI function tutorial](docs/tutorials/USE_OPENAI_FUNCTIONS.md) |
-| Browse/install community extensions | [Plugin Directory](docs/PLUGIN_DIRECTORY.md) |
-| Publish a community plugin | [Registry tutorial](docs/tutorials/ADD_PLUGIN_TO_REGISTRY.md) |
-| Make a first contribution to this repository | [First contribution](docs/FIRST_CONTRIBUTION.md) |
-| Explore other community contribution paths | [Community guide](docs/COMMUNITY.md) |
+| Download and use Melodex | [Start Here](docs/START_HERE.md) |
+| Explore more features or customize your setup | [Tinkerer's guide](docs/TINKERERS_GUIDE.md) |
+| Build a provider, plugin, or integration | [Developer Gateway](docs/DEVELOPERS.md) · [5-minute quickstart](docs/DEVELOPER_QUICKSTART.md) |
+| Find a specific technical detail | [Complete documentation index](docs/ALL_DOCUMENTATION.md) |
+
+Developers can check [Status, stability and trust](docs/developers/00_STATUS_AND_STABILITY.md) before building.
+
+This README follows the repository's current branch. For a released build, use the [download page](https://github.com/Cliff-Lee/melodex/releases/latest) and its matching [release notes](docs/releases/v0.7.2.md).
 
 ## The developer platform
+
+Melodex is also an open platform where independent extensions can provide music sources, artwork, lyrics, metadata, and other capabilities. The player combines those services without requiring each one to implement everything.
 
 Melodex separates discovery/distribution from runtime capabilities and external control:
 

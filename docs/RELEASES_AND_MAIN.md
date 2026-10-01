@@ -22,7 +22,7 @@ If an installed release does not contain something described in current document
 
 This distinction is normal for an actively developed project, but it should be stated rather than left for users to infer.
 
-The current release line is **v0.7.0**, which introduces the redesigned desktop, Album Wall and the new visual My Music collection experience. Between tagged releases, development uses a `.devN` version; after v0.7.0 is published, the next development cycle should use **0.7.1.dev0** until another stable release is prepared.
+The current release target is **v0.7.2**, which combines native Lyrics and spatial browsing. During its release, the stable application version is **0.7.2**; after publication, the next development cycle should use **0.7.3.dev0**.
 
 ## App version policy
 
@@ -64,15 +64,15 @@ CI checks these values on every pull request/main build.
 Between tagged releases, `main` uses a development version such as:
 
 ```text
-0.7.1.dev0
+0.7.3.dev0
 ```
 
 A release tag may not be built from a `.devN` application version.
 
-Before any release tag, set every app-version surface to the exact stable version being released. For example, prepare a future `v0.7.1` release with:
+Before any release tag, set every app-version surface to the exact stable version being released. For example, prepare a future `v0.7.3` release with:
 
 ```text
-0.7.1
+0.7.3
 ```
 
 across all app-version surfaces.
@@ -80,7 +80,7 @@ across all app-version surfaces.
 The repository provides:
 
 ```bash
-python scripts/set_version.py 0.7.1
+python scripts/set_version.py 0.7.3
 python scripts/version_check.py
 ```
 

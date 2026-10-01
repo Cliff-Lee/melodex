@@ -1,6 +1,6 @@
 # Optional LLM integration
 
-Melodex does not require AI. Flow and Play for Me work locally.
+Melodex does not require AI. Playback, Home sessions, Flow and taste memory work locally.
 
 An LLM can be connected for natural-language control and playlist intent.
 
