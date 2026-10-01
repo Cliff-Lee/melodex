@@ -608,6 +608,13 @@ class LibraryBrowser(QWidget):
         self.images_button.update()
         self._apply_filter()
 
+    @staticmethod
+    def _progress_item_label(value: str, limit: int = 22) -> str:
+        value=" ".join(str(value or "").split())
+        if len(value) <= limit:
+            return value
+        return value[: max(1, limit - 1)].rstrip() + "…"
+
     def _refresh_images_button_label(self) -> None:
         view=self.current_view()
         if view == "artists":
@@ -618,7 +625,7 @@ class LibraryBrowser(QWidget):
                 self.images_button.setEnabled(False)
             elif self._artist_lookup_active:
                 remaining=self.artist_image_lookup_remaining()
-                current=self._artist_lookup_current
+                current=self._progress_item_label(self._artist_lookup_current)
                 self.images_button.setText(
                     f"Finding {current}… {remaining} left"
                     if current and remaining
@@ -640,7 +647,7 @@ class LibraryBrowser(QWidget):
                 self.images_button.setEnabled(False)
             elif self._album_lookup_active:
                 remaining=self.album_artwork_lookup_remaining()
-                current=self._album_lookup_current
+                current=self._progress_item_label(self._album_lookup_current)
                 self.images_button.setText(
                     f"Finding {current}… {remaining} left"
                     if current and remaining
