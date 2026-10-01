@@ -160,8 +160,8 @@ class MetadataIdentity:
 class RichMetadataService:
     """Local-first enrichment with a small MusicBrainz/Cover Art cache.
 
-    The service never fetches web lyrics. Lyrics come from user-owned files/tags;
-    online lyric services can be added later behind a separate provider interface.
+    Lyrics are local-first. User-initiated or explicitly enabled community lookup
+    is handled separately and third-party lyric text is not persisted to disk.
     """
 
     _mb_lock = threading.Lock()
@@ -748,7 +748,12 @@ class RichMetadataService:
             "duration":duration_score,
         }
 
-    def community_lyrics(self, track: dict[str, Any]) -> dict[str, Any]:
+    def community_lyrics(
+        self,
+        track: dict[str, Any],
+        *,
+        force: bool = False,
+    ) -> dict[str, Any]:
         """Fetch lyrics on demand from LRCLIB with conservative fallbacks.
 
         Third-party lyric text is never persisted to disk. Successful,
@@ -762,9 +767,12 @@ class RichMetadataService:
         duration=float(track.get("duration") or 0)
         key=_lyrics_lookup_key(track)
 
-        cached=self._community_lyrics_cached(key)
+        cached=None if force else self._community_lyrics_cached(key)
         if cached is not None:
             return cached
+        if force:
+            with self._community_lyrics_cache_lock:
+                self._community_lyrics_cache.pop(key,None)
 
         if not title or not artist or _norm(artist) in {"unknown artist","unknown"}:
             return {
