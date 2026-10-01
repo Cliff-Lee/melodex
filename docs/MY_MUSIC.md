@@ -62,7 +62,7 @@ The lookup is layered:
 1. cached artist portrait;
 2. MusicBrainz identity;
 3. Wikidata portrait (P18);
-4. freely licensed Wikipedia lead image from a linked page;
+4. freely licensed Wikipedia lead image from a linked page (English preferred, with other Wikipedia languages as fallback);
 5. conservative Wikipedia artist-page search by name when no reliable link exists;
 6. installed artwork plugins that explicitly return artist/profile/portrait imagery;
 7. conservative Wikimedia Commons artist search.
