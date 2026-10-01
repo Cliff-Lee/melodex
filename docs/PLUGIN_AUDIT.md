@@ -13,7 +13,7 @@ On a clean desktop install:
 | Enrichment extensions | 0 | No | Artwork, lyrics, metadata, context and identity extensions are optional |
 | Registry entries | 16 | No | All current registry entries are reference/example packages |
 
-The six included provider packages are repository-tested for package identity, manifest validity, install/restore behaviour and their fixture-backed provider contracts. **That is not the same as a live upstream-service guarantee.** The end-user page therefore exposes **Check connections** to perform bounded runtime checks on the current computer/network.
+The six included provider packages are repository-tested for package identity, manifest validity, install/restore behaviour and their fixture-backed provider contracts. A separate **manual live-provider smoke workflow** can also perform real search → resolve → media-byte checks against the current upstream services without making ordinary CI depend on external availability. The six bundled providers passed that live verification during the v0.7.1 development cycle. The end-user page still exposes **Check connections** for bounded checks on the current computer/network.
 
 The registry is currently a developer/reference ecosystem rather than a curated consumer app store: all 16 entries are marked `example`. The redesigned UI calls them optional/reference features rather than implying that every registry item is production-ready.
 
@@ -36,13 +36,15 @@ The desktop app carries six audited provider packages and installs them automati
 | Included source | Package version | Main role |
 | --- | ---: | --- |
 | Internet Archive Audio | 0.1.0 | Search/play openly accessible archive audio |
-| LibriVox | 0.1.2 | Public-domain audiobooks |
+| LibriVox | 0.1.4 | Public-domain audiobooks |
 | Radio Browser | 0.1.2 | Internet radio directory |
 | SomaFM | 0.1.1 | Curated internet radio |
 | Wikimedia Commons Audio | 0.1.1 | Openly licensed/public-domain audio |
 | ccMixter | 0.1.3 | Creative Commons music |
 
-Bundled-package tests verify package identity/version, manifest structure, entrypoints and installation/restore behaviour. Live upstream availability is deliberately **not** inferred from fixture tests: use **Sources & plugins → Check installed** for a bounded health check on the current machine/network.
+Bundled-package tests verify package identity/version, manifest structure, entrypoints and installation/restore behaviour. The manual live smoke test goes further by probing real media bytes; it remains non-blocking because public services can be temporarily unavailable. Use **Sources & plugins → Check connections** for a bounded health check on the current machine/network.
+
+LibriVox 0.1.4 searches the official LibriVox collection hosted by Internet Archive and resolves public-domain audiobook media there. This avoids interactive search pressure on the volunteer-hosted LibriVox API while preserving LibriVox as the content/source identity. Its checked-in source is rebuilt deterministically into the bundled package.
 
 ### Optional registry plugins
 
