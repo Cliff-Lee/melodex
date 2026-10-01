@@ -9,6 +9,7 @@
 <p align="center">
   <a href="https://github.com/Cliff-Lee/melodex/releases/latest"><strong>Download</strong></a> ·
   <a href="docs/START_HERE.md">Start here</a> ·
+  <a href="docs/releases/v0.7.2.md">v0.7.2 notes</a> ·
   <a href="docs/DEVELOPERS.md">Developers</a> ·
   <a href="docs/FIRST_CONTRIBUTION.md">Contribute</a> ·
   <a href="docs/README.md">Documentation</a>
@@ -20,9 +21,7 @@
 
 ## Don't shuffle. Flow.
 
-Melodex is a source-neutral music player that tries to make listening sessions **go somewhere**.
-
-It combines your library and connected sources with taste memory, optional audio analysis, **Flow** sequencing, **Play for me**, a visual **Album Wall**, a local **Music Map**, Moments, and a resolver that can match requested music across multiple providers.
+Melodex is a local-first music player for your own collection and connected music sources. It shapes listening sessions with **Flow** sequencing and taste memory, and gives you visual ways to browse albums and explore relationships between tracks. AI tools are optional; you do not need them to listen.
 
 But Melodex is also becoming something broader:
 

@@ -33,7 +33,7 @@ Then use:
 - [macOS](INSTALL_MACOS.md)
 - [Windows](INSTALL_WINDOWS.md)
 - [Android](INSTALL_ANDROID.md)
-- [Latest release notes](releases/v0.7.0.md)
+- [Melodex v0.7.2 release notes](releases/v0.7.2.md)
 
 ## I want optional AI control
 

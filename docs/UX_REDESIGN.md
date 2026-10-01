@@ -150,7 +150,7 @@ Then separated near the bottom:
 
 Not permanent sidebar destinations:
 - Now Playing — open from the persistent player;
-- Play for me — a Home experience;
+- Home session controls — part of Home;
 - Discover — inside Explore;
 - Album Wall / Music Map — inside Explore;
 - Moments — inside My Music / Now Playing;
@@ -171,7 +171,7 @@ Default: visual Albums grid.
 
 Secondary views are also visual:
 
-- **Artists** — artist photo when available, otherwise representative album artwork;
+- **Artists** — artist photo when available, otherwise a neutral placeholder;
 - **Tracks** — compact rows with album artwork, artist/album context and direct actions.
 
 File paths, source IDs and technical metadata stay out of the primary view.

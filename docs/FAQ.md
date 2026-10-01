@@ -1,13 +1,13 @@
 # FAQ
 
 ## Does Melodex need an LLM?
-No. Flow, Play for Me, taste memory and local playback work without one.
+No. Home sessions, Flow, taste memory, lyrics browsing, and local playback work without one.
 
 ## Does Melodex include a music subscription?
 No. Melodex plays music from sources you connect.
 
 ## What sources are built into the desktop app?
-Local Files and the Jamendo reference provider. Jamendo requires your own developer client ID.
+For streaming, the desktop app includes ccMixter, SomaFM, Radio Browser, Wikimedia Commons Audio, LibriVox, and Internet Archive Audio. Their catalogues and audio remain hosted by the original services. Local music is added from My Music. Jamendo is optional and requires your own developer client ID.
 
 Additional project-maintained examples and community packages may be available through the repository or Plugin Directory; that does not mean they are built into the application.
 
