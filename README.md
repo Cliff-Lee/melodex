@@ -8,11 +8,11 @@
 
 <p align="center">
   <a href="https://github.com/Cliff-Lee/melodex/releases/latest"><strong>Download</strong></a> ·
+  <a href="docs/TESTING.md"><strong>Help test Melodex</strong></a> ·
+  <a href="https://github.com/Cliff-Lee/melodex/issues/new?template=bug_report.yml">Report a bug</a> ·
+  <a href="https://github.com/Cliff-Lee/melodex/issues/new?template=feature_request.yml">Request a feature</a> ·
   <a href="docs/START_HERE.md">Start here</a> ·
-  <a href="docs/TINKERERS_GUIDE.md">Make it yours</a> ·
-  <a href="docs/DEVELOPERS.md">Developers</a> ·
-  <a href="docs/FIRST_CONTRIBUTION.md">Contribute</a> ·
-  <a href="docs/README.md">Documentation</a>
+  <a href="docs/README.md">Docs</a>
 </p>
 
 # Melodex
@@ -21,6 +21,27 @@
 ## Don't shuffle. Flow.
 
 Melodex is a local-first music player for your own collection and connected music sources. Use Home to start a listening session, My Music to browse your albums, and Flow to shape the queue. AI tools are optional.
+
+> ### 🧪 Public beta — testers wanted
+>
+> Melodex is being actively developed and we want feedback from people who were **not involved in building it**.
+>
+> The **macOS build has had the most hands-on testing so far**. Feedback from Apple Silicon and Intel Mac users is welcome, and Windows/Linux testing is especially valuable as those builds need more real-world use.
+>
+> You do not need to be technical or have a huge music collection. Tell us where you got confused, what broke, what felt good, and what would make you use Melodex again.
+>
+> **[Take the 10-minute tester path →](docs/TESTING.md)**  
+> [Give beta feedback](https://github.com/Cliff-Lee/melodex/issues/new?template=tester_feedback.yml) ·
+> [Report a bug](https://github.com/Cliff-Lee/melodex/issues/new?template=bug_report.yml) ·
+> [Request a feature](https://github.com/Cliff-Lee/melodex/issues/new?template=feature_request.yml)
+
+## Why try Melodex?
+
+- **Your music stays yours.** Local-first library and listening features do not require an account.
+- **Steer instead of shuffle.** Flow is designed to shape where a listening session goes next.
+- **Rediscover your collection.** Album Wall, Music Map and Journeys give you different ways to move through music you already own.
+- **Use AI only if you want it.** Paste a playlist from ChatGPT/Claude/Gemini, connect local AI, or ignore AI entirely.
+- **Extend it.** Providers and plugins can add music sources, artwork, lyrics, metadata and other capabilities.
 
 ## Start listening
 
@@ -35,6 +56,9 @@ No local collection yet? Use **Explore → Search everything** to search connect
 | If you want to… | Start here |
 | --- | --- |
 | Download and use Melodex | [Start Here](docs/START_HERE.md) |
+| Try it and help improve the beta | [Tester guide](docs/TESTING.md) · [Beta feedback](https://github.com/Cliff-Lee/melodex/issues/new?template=tester_feedback.yml) |
+| Report a problem | [Bug report](https://github.com/Cliff-Lee/melodex/issues/new?template=bug_report.yml) |
+| Suggest an improvement | [Feature request](https://github.com/Cliff-Lee/melodex/issues/new?template=feature_request.yml) |
 | Explore more features or customize your setup | [Tinkerer's guide](docs/TINKERERS_GUIDE.md) |
 | Build a provider, plugin, or integration | [Developer Gateway](docs/DEVELOPERS.md) · [5-minute quickstart](docs/DEVELOPER_QUICKSTART.md) |
 | Find a specific technical detail | [Complete documentation index](docs/ALL_DOCUMENTATION.md) |
@@ -203,7 +227,17 @@ The ecosystem is being developed with small examples built around documented, le
 
 The examples are designed to be copied, studied and changed. Canonical examples are packaged with exact SHA-256/size metadata and surfaced through the desktop [Plugin Directory](docs/PLUGIN_DIRECTORY.md).
 
-## Community philosophy
+## Community
+
+There are useful ways to help Melodex even if you never write code.
+
+- **Try the app:** [follow the tester guide](docs/TESTING.md) and tell us what happens.
+- **Something broke:** [open a bug report](https://github.com/Cliff-Lee/melodex/issues/new?template=bug_report.yml).
+- **Something is confusing:** [leave beta tester feedback](https://github.com/Cliff-Lee/melodex/issues/new?template=tester_feedback.yml).
+- **You have a concrete improvement:** [request a feature](https://github.com/Cliff-Lee/melodex/issues/new?template=feature_request.yml).
+- **You want to contribute:** start with [Your First Melodex Contribution](docs/FIRST_CONTRIBUTION.md).
+
+### Community philosophy
 
 You do not need to understand the whole Melodex codebase to contribute.
 
