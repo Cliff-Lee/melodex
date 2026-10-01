@@ -332,3 +332,19 @@ def test_artist_photo_can_use_artwork_extension_portrait(tmp_path: Path):
     assert result["path"] == str(portrait)
     assert result["source"] == "org.example.portraits"
     assert result["discovery_source"] == "Artwork plugin"
+
+
+
+def test_wikipedia_link_falls_back_to_non_english_wikidata_sitelink(tmp_path: Path):
+    svc = RichMetadataService(tmp_path / "data")
+    api, title = svc._wikipedia_link(
+        {"name": "Example Artist", "links": []},
+        {
+            "sitelinks": {
+                "dewiki": {"title": "Beispielkünstler"},
+                "frwiki": {"title": "Artiste exemple"},
+            }
+        },
+    )
+    assert api == "https://de.wikipedia.org/w/api.php"
+    assert title == "Beispielkünstler"
