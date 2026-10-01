@@ -1,12 +1,12 @@
 # Melodex Plugin Directory
 
-The desktop app includes a registry-backed **Plugin Directory** for discovering providers and capability extensions.
+The desktop app includes a registry-backed **Plugin Centre** for discovering optional providers and capability extensions. Its default view is deliberately user-facing: what a plugin does, whether it is installed, what access it requests, and how to use it. Package hashes and review metadata remain available under **Technical details**.
 
 Open:
 
 ```text
 Sources & plugins
-→ Explore plugins
+→ Browse optional plugins
 ```
 
 ## What the directory shows
@@ -242,3 +242,10 @@ See:
 - [Publish a community plugin](tutorials/ADD_PLUGIN_TO_REGISTRY.md)
 - [Registry governance](developers/17_REGISTRY_GOVERNANCE.md)
 - [Source and rights policy](developers/11_SOURCE_AND_RIGHTS_POLICY.md)
+
+
+## What ships with Melodex
+
+The Plugin Centre contains **optional** registry packages. It is not the list of everything already available in the app.
+
+See [Plugin and source audit](PLUGIN_AUDIT.md) for the current built-in vs included vs optional matrix. The Sources & plugins page groups these separately and provides **Check installed** for a live health audit on the current machine.
