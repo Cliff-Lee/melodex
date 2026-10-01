@@ -41,6 +41,12 @@ def _album_key(track: dict[str, Any]) -> str:
         # stored in artist-specific folders.
         album_artist = _norm(track.get("album_artist"))
         if album_artist:
+            year = _year(track)
+            if year:
+                return f"album-artist:{album_artist}|{album}|{year}"
+            folder = _album_folder(track)
+            if folder:
+                return f"album-artist-folder:{album_artist}|{folder}|{album}"
             return f"album-artist:{album_artist}|{album}"
         folder = _album_folder(track)
         if folder:
