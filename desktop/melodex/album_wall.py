@@ -562,20 +562,19 @@ class AlbumWallWidget(QWidget):
 
     def set_artwork(self, mapping: dict[str, str]) -> None:
         loaded = 0
-        for key, path in dict(mapping or {}).items():
+        rows = dict(mapping or {})
+        for key, path in rows.items():
             key = str(key)
+            self._online_requested.discard(key)
             tile = self.tiles.get(key)
             if tile and path:
                 tile.set_cover_path(str(path))
                 loaded += 1
-            elif key in self._online_requested:
-                self._online_requested.discard(key)
-        if mapping and any(str(key) in self._online_requested for key in mapping):
-            for key in mapping:
-                if str(key) in self._online_requested and mapping[key]:
-                    self._online_requested.add(str(key))
-        if loaded:
-            self.status.setText(f"Loaded {loaded} album cover{'s' if loaded != 1 else ''}.")
+        if rows:
+            if loaded:
+                self.status.setText(f"Loaded {loaded} album cover{'s' if loaded != 1 else ''}.")
+            elif any(str(key) in self.tiles for key in rows):
+                self.status.setText("No additional covers were found for that batch.")
 
 
 __all__ = ["AlbumWallWidget"]
