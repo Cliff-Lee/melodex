@@ -2,13 +2,6 @@ name: Live bundled provider smoke
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - campaign/live-provider-verification-2026-10-01
-    paths:
-      - "scripts/live_bundled_provider_smoke.py"
-      - ".github/workflows/live-bundled-providers.yml"
-      - "desktop/melodex/**"
 
 jobs:
   live-provider-smoke:
