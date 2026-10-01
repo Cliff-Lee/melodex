@@ -9,7 +9,6 @@ on:
       - "scripts/live_bundled_provider_smoke.py"
       - ".github/workflows/live-bundled-providers.yml"
       - "desktop/melodex/**"
-      - "desktop/bundled_provider_sources/**"
 
 jobs:
   live-provider-smoke:
