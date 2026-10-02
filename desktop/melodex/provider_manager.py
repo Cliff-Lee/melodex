@@ -287,6 +287,17 @@ class ProviderManager:
     def local_index_summary(self) -> dict[str, Any]:
         return self.library_index.summary(self.local_roots())
 
+    def load_indexed_local_tracks(
+        self,
+        roots: list[Path] | None = None,
+    ) -> list[dict[str, Any]]:
+        selected = self.local_roots() if roots is None else [Path(x) for x in roots]
+        provider = self.providers["local"]
+        assert isinstance(provider, LocalFilesProvider)
+        return provider.prepare_cached_tracks(
+            self.library_index.load_tracks(selected)
+        )
+
     def persist_local_scan_snapshot(
         self,
         roots: list[Path],
@@ -296,6 +307,16 @@ class ProviderManager:
             [Path(x) for x in roots],
             dict(snapshot or {}),
         )
+
+    def indexed_scan_result(
+        self,
+        roots: list[Path],
+        snapshot: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Return a completed scan merged with cached offline-root metadata."""
+        result = dict(snapshot or {})
+        result["tracks"] = self.load_indexed_local_tracks(roots)
+        return result
 
     def scan_local_roots_snapshot(
         self,
@@ -324,6 +345,7 @@ class ProviderManager:
         snapshot = self.scan_local_roots_snapshot(clean)
         if not bool(snapshot.get("cancelled")):
             self.persist_local_scan_snapshot(clean, snapshot)
+            snapshot = self.indexed_scan_result(clean, snapshot)
         return self.apply_local_scan_snapshot(snapshot)
 
     def update_local_metadata(
