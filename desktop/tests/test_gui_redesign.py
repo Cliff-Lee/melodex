@@ -2191,6 +2191,52 @@ def test_next_track_prefetch_yields_to_large_library_scan(monkeypatch, tmp_path)
     app.processEvents()
 
 
+def test_main_window_async_work_uses_bounded_scheduler(monkeypatch, tmp_path):
+    try:
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+
+    window = main_window.MainWindow()
+    release = threading.Event()
+    started = threading.Event()
+    finished = []
+
+    def slow():
+        started.set()
+        release.wait(2)
+        return "done"
+
+    future = window._run_async(
+        slow,
+        lambda result: finished.append(result),
+        priority="prefetch",
+        lane="prefetch",
+        label="synthetic-prefetch",
+    )
+
+    assert started.wait(1)
+    snapshot = window.background.snapshot()
+    assert snapshot["max_workers"] == 4
+    assert snapshot["foreground_reserve"] == 1
+    assert snapshot["active_by_lane"]["prefetch"] == 1
+    assert future.done() is False
+
+    release.set()
+    assert window.background.wait_for_idle(2)
+    app.processEvents()
+    assert finished == ["done"]
+
+    window.close()
+    app.processEvents()
+
+
 def test_global_scan_activity_persists_across_navigation(monkeypatch, tmp_path):
     try:
         from PySide6.QtWidgets import QApplication
