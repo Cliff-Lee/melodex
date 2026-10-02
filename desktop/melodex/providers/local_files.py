@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from ..provider import MusicProvider, ProviderInfo
+from ..scan_metrics import ScanProbe
 
 AUDIO_EXTS = {".mp3", ".flac", ".m4a", ".aac", ".ogg", ".opus", ".wav", ".aiff", ".wma"}
 
@@ -27,6 +28,7 @@ class LocalFilesProvider(MusicProvider):
             if isinstance(value, dict)
         }
         self._tracks: list[dict[str, Any]] = []
+        self._last_scan_metrics: dict[str, object] = {}
         if self.roots:
             self.scan()
 
@@ -158,16 +160,31 @@ class LocalFilesProvider(MusicProvider):
 
     def scan(self) -> int:
         tracks: list[dict[str, Any]] = []
-        for root in self.roots:
-            if not root.exists():
-                continue
-            for base, _, files in os.walk(root):
-                for name in files:
-                    p = Path(base) / name
-                    if p.suffix.lower() in AUDIO_EXTS:
-                        tracks.append(self._apply_override(self._metadata(p)))
-        self._tracks = tracks
-        return len(tracks)
+        probe = ScanProbe(len(self.roots))
+        try:
+            for root in self.roots:
+                exists = root.exists()
+                probe.root_checked(exists=exists)
+                if not exists:
+                    continue
+                for base, _, files in os.walk(root):
+                    probe.directory_seen()
+                    for name in files:
+                        p = Path(base) / name
+                        is_audio = p.suffix.lower() in AUDIO_EXTS
+                        probe.file_seen(audio=is_audio)
+                        if is_audio:
+                            with probe.metadata_read():
+                                metadata = self._metadata(p)
+                            tracks.append(self._apply_override(metadata))
+            self._tracks = tracks
+            return len(tracks)
+        finally:
+            self._last_scan_metrics = probe.finish(tracks_indexed=len(tracks))
+
+    @property
+    def last_scan_metrics(self) -> dict[str, object]:
+        return dict(self._last_scan_metrics)
 
     def search(self, query: str, limit: int = 50) -> list[dict[str, Any]]:
         q = query.casefold().strip()
