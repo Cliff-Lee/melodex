@@ -712,14 +712,23 @@ class CapabilityBroker:
             self.save()
         return changed
 
-    def list_extensions(self) -> list[dict[str, Any]]:
+    def list_extensions(
+        self,
+        *,
+        cached_config: bool = False,
+    ) -> list[dict[str, Any]]:
         out: list[dict[str, Any]] = []
         for extension in sorted(
             self.extensions.values(), key=lambda item: item.info.name.casefold()
         ):
             info = extension.info.as_dict()
             info["enabled"] = self.enabled(extension.info.id)
-            info["configuration_status"] = self.config_broker.status(
+            status_fn = (
+                self.config_broker.cached_status
+                if cached_config
+                else self.config_broker.status
+            )
+            info["configuration_status"] = status_fn(
                 extension.info.id, extension.info.configuration
             )
             info["health"] = extension.health()
