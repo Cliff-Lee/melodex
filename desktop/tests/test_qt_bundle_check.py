@@ -74,7 +74,9 @@ def test_melodex_source_only_imports_expected_qt_families():
         for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom) and node.module:
                 if node.module.startswith("PySide6.Qt"):
-                    families.add(node.module.split(".", 1)[0].removeprefix("PySide6."))
+                    parts = node.module.split(".")
+                    if len(parts) >= 2:
+                        families.add(parts[1])
 
     assert families <= {
         "QtCore",
