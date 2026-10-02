@@ -12,7 +12,7 @@ While development is in progress, `main` should normally use a development versi
 0.7.3.dev0
 ```
 
-Keep the working release summary in `docs/releases/next.md`. Before release, review it against the tested build, move it to `docs/releases/v<version>.md`, and verify the listed downloads against the artifacts CI produced. The release workflow uses that versioned file as the GitHub Release description. The v0.7.2 release notes are at [`docs/releases/v0.7.2.md`](releases/v0.7.2.md).
+Keep the working release summary in `docs/releases/next.md`. Before release, review it against the tested build, move it to `docs/releases/v<version>.md`, and verify the listed downloads against the artifacts CI produced. The release workflow uses that versioned file as the GitHub Release description. The v0.7.3 release notes are at [`docs/releases/v0.7.3.md`](releases/v0.7.3.md).
 
 When the next release is ready, choose its stable version and update every application-version surface with one command. For example:
 
