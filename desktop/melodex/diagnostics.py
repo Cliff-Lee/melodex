@@ -52,14 +52,23 @@ _CATALOG_METRIC_FIELDS = (
 
 _RESPONSIVENESS_FIELDS = (
     "interval_ms",
-    "stall_threshold_ms",
-    "severe_threshold_ms",
-    "critical_threshold_ms",
+    "long_task_threshold_ms",
+    "ci_threshold_ms",
+    "serious_threshold_ms",
+    "blocker_threshold_ms",
     "total_stalls",
-    "warning_stalls",
-    "severe_stalls",
-    "critical_stalls",
+    "long_tasks",
+    "ci_violations",
+    "serious_stalls",
+    "release_blockers",
+    "p99_event_loop_gap_ms",
+    "max_gap_ms",
     "max_delay_ms",
+    "interaction_count",
+    "interaction_p95_ms",
+    "interaction_max_ms",
+    "interactions_over_50_ms",
+    "interactions_over_100_ms",
 )
 
 _RESPONSIVENESS_EVENT_FIELDS = (
@@ -68,6 +77,11 @@ _RESPONSIVENESS_EVENT_FIELDS = (
     "delay_ms",
     "gap_ms",
     "action",
+)
+
+_RESPONSIVENESS_INTERACTION_FIELDS = (
+    "label",
+    "duration_ms",
 )
 
 
@@ -96,6 +110,21 @@ def _responsiveness_summary(raw: Any) -> dict[str, Any]:
         events.append(clean)
     if events:
         summary["recent_stalls"] = events
+
+    interactions: list[dict[str, Any]] = []
+    for event in list(raw.get("recent_interactions") or [])[-50:]:
+        if not isinstance(event, dict):
+            continue
+        clean = {
+            key: event.get(key)
+            for key in _RESPONSIVENESS_INTERACTION_FIELDS
+            if key in event
+        }
+        if "label" in clean:
+            clean["label"] = str(clean["label"] or "")[:80]
+        interactions.append(clean)
+    if interactions:
+        summary["recent_interactions"] = interactions
     return summary
 
 
