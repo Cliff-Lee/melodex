@@ -179,6 +179,17 @@ class BackgroundScheduler:
                 self._stale_queued_cancelled += 1
         return cancelled
 
+    def _prune_cancelled_locked(self) -> None:
+        if not self._queue:
+            return
+        if not any(task.future.cancelled() for task in self._queue):
+            return
+        self._queue = [
+            task for task in self._queue
+            if not task.future.cancelled()
+        ]
+        heapq.heapify(self._queue)
+
     def _invalidate_key_locked(self, key: str) -> int:
         key_name = str(key or "").strip()
         if not key_name:
@@ -191,6 +202,8 @@ class BackgroundScheduler:
         for task in self._queue:
             if task.key == key_name and self._cancel_task_locked(task, stale=True):
                 cancelled += 1
+        if cancelled:
+            self._prune_cancelled_locked()
         self._condition.notify_all()
         return cancelled
 
