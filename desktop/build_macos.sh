@@ -8,6 +8,9 @@ pip install -r requirements-build.txt
 rm -rf build dist
 pyinstaller --noconfirm --windowed --name Melodex --icon ../assets/icon.png --add-data "melodex/assets/melodex-mark.png:melodex/assets" --add-data "melodex/bundled_providers:melodex/bundled_providers" --collect-all keyring run.py
 python check_bundled_provider_payload.py dist/Melodex.app
+python tools/audit_qt_dependencies.py dist/Melodex.app \
+  --json-out dist/Melodex-qt-audit.json \
+  --markdown-out dist/Melodex-qt-audit.md
 python tools/check_qt_bundle.py dist/Melodex.app
 python frozen_child_smoke.py "dist/Melodex.app/Contents/MacOS/Melodex"
 mkdir -p dist/release
