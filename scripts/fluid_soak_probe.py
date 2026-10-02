@@ -1,0 +1,354 @@
+from __future__ import annotations
+
+import argparse
+import gc
+import json
+import math
+import os
+import sys
+import time
+import tracemalloc
+from pathlib import Path
+from typing import Any
+
+ROOT = Path(__file__).resolve().parents[1]
+DESKTOP = ROOT / "desktop"
+SCRIPTS = ROOT / "scripts"
+for entry in (DESKTOP, SCRIPTS):
+    if str(entry) not in sys.path:
+        sys.path.insert(0, str(entry))
+
+from large_library_probe import synthetic_catalog  # noqa: E402
+
+
+def _scroll_to_fraction(scrollbar: Any, fraction: float) -> None:
+    maximum = max(0, int(scrollbar.maximum()))
+    value = int(round(maximum * max(0.0, min(1.0, float(fraction)))))
+    scrollbar.setValue(value)
+
+
+def _wait_scheduler_idle(app: Any, scheduler: Any, timeout: float = 5.0) -> bool:
+    deadline = time.monotonic() + max(0.1, float(timeout))
+    while time.monotonic() < deadline:
+        app.processEvents()
+        if int(scheduler.snapshot().get("pending_total") or 0) == 0 and int(
+            scheduler.snapshot().get("active_total") or 0
+        ) == 0:
+            return True
+        time.sleep(0.005)
+    app.processEvents()
+    snapshot = scheduler.snapshot()
+    return (
+        int(snapshot.get("pending_total") or 0) == 0
+        and int(snapshot.get("active_total") or 0) == 0
+    )
+
+
+def run_soak(
+    *,
+    track_count: int = 12_700,
+    cycles: int = 80,
+    pause_ms: int = 5,
+    memory_growth_limit_mib: float = 64.0,
+    p99_gap_limit_ms: float = 250.0,
+    max_pending_limit: int = 12,
+) -> dict[str, Any]:
+    """Exercise a large synthetic library through repeated mixed UI workloads.
+
+    The probe is intentionally deterministic and offline. It stresses the same
+    browse/filter/scroll paths that previously froze large collections while
+    simultaneously churning the shared background scheduler.
+    """
+
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtTest import QTest
+    from PySide6.QtWidgets import QApplication, QWidget
+
+    from melodex.background_scheduler import BackgroundScheduler
+    from melodex.library_browser import LibraryBrowser
+    from melodex.responsiveness import UiResponsivenessMonitor
+
+    track_count = max(100, int(track_count))
+    cycles = max(1, int(cycles))
+    pause_ms = max(0, int(pause_ms))
+
+    app = QApplication.instance() or QApplication([])
+    catalog = synthetic_catalog(track_count)
+    browser = LibraryBrowser()
+    browser.resize(1200, 800)
+    browser.show()
+
+    browser.set_catalog(catalog, revision=track_count)
+    app.processEvents()
+
+    # Warm all three presentations before taking memory/widget baselines. This
+    # means the measured growth is repeated-use growth, not legitimate lazy
+    # construction of Artists/Tracks the first time they are visited.
+    for view in ("albums", "artists", "tracks", "albums"):
+        browser.set_view(view)
+        app.processEvents()
+    browser.search.clear()
+    app.processEvents()
+    QTest.qWait(20)
+    gc.collect()
+    app.processEvents()
+
+    baseline_widget_count = len(browser.findChildren(QWidget))
+    baseline_track_rows = len(browser.track_rows)
+
+    tracemalloc.start()
+    gc.collect()
+    baseline_memory, _ = tracemalloc.get_traced_memory()
+
+    monitor = UiResponsivenessMonitor(
+        browser,
+        interval_ms=20,
+        long_task_threshold_ms=50,
+        ci_threshold_ms=250,
+        serious_threshold_ms=500,
+        blocker_threshold_ms=1000,
+    )
+    monitor.start()
+
+    scheduler = BackgroundScheduler(
+        max_workers=4,
+        reserved_foreground_slots=1,
+    )
+
+    views = ("albums", "artists", "tracks")
+    queries = (
+        "",
+        "Album 000123",
+        "Artist 00042",
+        "Genre 03",
+        "Track 07",
+        "",
+    )
+
+    max_pending = 0
+    max_active = 0
+    max_widgets = baseline_widget_count
+    max_album_cards = len(browser.cards)
+    max_artist_cards = len(browser.artist_cards)
+    max_track_rows = baseline_track_rows
+    max_python_mib = 0.0
+    cycle_durations_ms: list[float] = []
+
+    started = time.perf_counter()
+    for cycle in range(cycles):
+        cycle_started = time.perf_counter()
+        view = views[cycle % len(views)]
+        monitor.mark_action(f"soak:view:{view}")
+        browser.set_view(view)
+        app.processEvents()
+
+        fraction = ((cycle * 37) % 101) / 100.0
+        if view == "albums":
+            _scroll_to_fraction(browser.album_scroll.verticalScrollBar(), fraction)
+        elif view == "artists":
+            _scroll_to_fraction(browser.artist_scroll.verticalScrollBar(), fraction)
+        else:
+            _scroll_to_fraction(browser.track_list.verticalScrollBar(), fraction)
+        app.processEvents()
+
+        query = queries[cycle % len(queries)]
+        monitor.mark_action("soak:filter")
+        browser.search.setText(query)
+        app.processEvents()
+
+        # Simulate replaceable background work arriving faster than it can
+        # complete. A healthy scheduler should retain at most the newest queued
+        # request for each replace_key rather than growing without bound.
+        scheduler.submit(
+            lambda: time.sleep(0.008),
+            priority="background",
+            name="soak-model-old",
+            replace_key="soak:model",
+        )
+        scheduler.submit(
+            lambda: time.sleep(0.008),
+            priority="background",
+            name="soak-model-new",
+            replace_key="soak:model",
+        )
+        scheduler.submit(
+            lambda: time.sleep(0.002),
+            priority="prefetch",
+            name="soak-prefetch",
+            replace_key="soak:prefetch",
+        )
+        scheduler.submit(
+            lambda: None,
+            priority="foreground",
+            name="soak-foreground",
+        )
+
+        if pause_ms:
+            QTest.qWait(pause_ms)
+        else:
+            app.processEvents()
+
+        scheduler_snapshot = scheduler.snapshot()
+        max_pending = max(
+            max_pending,
+            int(scheduler_snapshot.get("pending_total") or 0),
+        )
+        max_active = max(
+            max_active,
+            int(scheduler_snapshot.get("active_total") or 0),
+        )
+        max_widgets = max(max_widgets, len(browser.findChildren(QWidget)))
+        max_album_cards = max(max_album_cards, len(browser.cards))
+        max_artist_cards = max(max_artist_cards, len(browser.artist_cards))
+        max_track_rows = max(max_track_rows, len(browser.track_rows))
+        current_memory, peak_memory = tracemalloc.get_traced_memory()
+        max_python_mib = max(
+            max_python_mib,
+            current_memory / (1024 * 1024),
+            peak_memory / (1024 * 1024),
+        )
+        cycle_durations_ms.append(
+            (time.perf_counter() - cycle_started) * 1000.0
+        )
+
+    browser.search.clear()
+    browser.set_view("albums")
+    app.processEvents()
+    scheduler_idle = _wait_scheduler_idle(app, scheduler)
+    QTest.qWait(40)
+    monitor.stop()
+    app.processEvents()
+    gc.collect()
+    app.processEvents()
+
+    final_memory, peak_memory = tracemalloc.get_traced_memory()
+    tracemalloc.stop()
+
+    final_widget_count = len(browser.findChildren(QWidget))
+    final_scheduler = scheduler.snapshot()
+    responsiveness = monitor.summary()
+    scheduler.shutdown(wait=True)
+
+    viewport_rows = max(
+        1,
+        int(math.ceil(browser.track_list.viewport().height() / browser._track_row_height)),
+    )
+    track_row_limit = viewport_rows + browser._track_overscan_rows * 2 + 6
+
+    memory_growth_mib = max(
+        0.0,
+        (final_memory - baseline_memory) / (1024 * 1024),
+    )
+    peak_growth_mib = max(
+        0.0,
+        (peak_memory - baseline_memory) / (1024 * 1024),
+    )
+
+    checks = {
+        "scheduler_drained": bool(scheduler_idle),
+        "no_release_blocker": int(responsiveness.get("release_blockers") or 0) == 0,
+        "no_serious_stall": int(responsiveness.get("serious_stalls") or 0) == 0,
+        "p99_event_loop_gap_within_budget": float(
+            responsiveness.get("p99_event_loop_gap_ms") or 0.0
+        ) <= float(p99_gap_limit_ms),
+        "pending_queue_bounded": max_pending <= int(max_pending_limit),
+        "worker_pool_bounded": max_active <= 4,
+        "album_cards_bounded": max_album_cards <= int(browser._album_batch_size),
+        "artist_cards_bounded": max_artist_cards <= int(browser._artist_batch_size),
+        "track_rows_bounded": max_track_rows <= int(track_row_limit),
+        "widgets_stable": final_widget_count <= baseline_widget_count + 24,
+        "retained_python_memory_bounded": memory_growth_mib
+        <= float(memory_growth_limit_mib),
+    }
+
+    sorted_cycles = sorted(cycle_durations_ms)
+    p95_index = max(0, math.ceil(len(sorted_cycles) * 0.95) - 1)
+    result = {
+        "schema": 1,
+        "track_count": track_count,
+        "cycles": cycles,
+        "duration_seconds": round(time.perf_counter() - started, 3),
+        "passed": all(checks.values()),
+        "checks": checks,
+        "responsiveness": responsiveness,
+        "scheduler": {
+            **final_scheduler,
+            "max_pending_observed": max_pending,
+            "max_active_observed": max_active,
+        },
+        "widgets": {
+            "baseline": baseline_widget_count,
+            "final": final_widget_count,
+            "max_observed": max_widgets,
+            "max_album_cards": max_album_cards,
+            "max_artist_cards": max_artist_cards,
+            "max_track_rows": max_track_rows,
+            "track_row_limit": track_row_limit,
+        },
+        "memory": {
+            "baseline_mib": round(baseline_memory / (1024 * 1024), 3),
+            "final_mib": round(final_memory / (1024 * 1024), 3),
+            "retained_growth_mib": round(memory_growth_mib, 3),
+            "peak_growth_mib": round(peak_growth_mib, 3),
+            "max_traced_mib": round(max_python_mib, 3),
+            "growth_limit_mib": float(memory_growth_limit_mib),
+        },
+        "cycles_ms": {
+            "min": round(min(cycle_durations_ms, default=0.0), 3),
+            "mean": round(
+                sum(cycle_durations_ms) / max(1, len(cycle_durations_ms)),
+                3,
+            ),
+            "p95": round(sorted_cycles[p95_index] if sorted_cycles else 0.0, 3),
+            "max": round(max(cycle_durations_ms, default=0.0), 3),
+        },
+    }
+
+    browser.deleteLater()
+    app.processEvents()
+    del catalog
+    gc.collect()
+    return result
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Run an offline large-library Fluid Melodex soak workload and "
+            "check responsiveness, queue, widget and memory bounds."
+        )
+    )
+    parser.add_argument("--tracks", type=int, default=12_700)
+    parser.add_argument("--cycles", type=int, default=80)
+    parser.add_argument("--pause-ms", type=int, default=5)
+    parser.add_argument("--memory-growth-limit-mib", type=float, default=64.0)
+    parser.add_argument("--p99-gap-limit-ms", type=float, default=250.0)
+    parser.add_argument("--max-pending-limit", type=int, default=12)
+    parser.add_argument("--assert-contract", action="store_true")
+    parser.add_argument("--output", type=Path)
+    args = parser.parse_args()
+
+    result = run_soak(
+        track_count=args.tracks,
+        cycles=args.cycles,
+        pause_ms=args.pause_ms,
+        memory_growth_limit_mib=args.memory_growth_limit_mib,
+        p99_gap_limit_ms=args.p99_gap_limit_ms,
+        max_pending_limit=args.max_pending_limit,
+    )
+    rendered = json.dumps(result, indent=2, sort_keys=True)
+    print(rendered)
+    if args.output:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(rendered + "\n", "utf-8")
+    if args.assert_contract and not result["passed"]:
+        failed = [
+            name for name, passed in result["checks"].items() if not passed
+        ]
+        print("Fluid soak contract failed: " + ", ".join(failed), file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
