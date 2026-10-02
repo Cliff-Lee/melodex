@@ -13,7 +13,7 @@ On a clean desktop install:
 | Enrichment extensions | 0 | No | Artwork, lyrics, metadata, context and identity extensions are optional |
 | Registry entries | 16 | No | All current registry entries are reference/example packages |
 
-The seven included provider packages are repository-tested for package identity, manifest validity, install/restore behaviour and their fixture-backed provider contracts. A separate **manual live-provider smoke workflow** can also perform real search → resolve → media-byte checks against the current upstream services without making ordinary CI depend on external availability. The seven bundled providers passed that live verification during the v0.7.1 development cycle. The end-user page still exposes **Check connections** for bounded checks on the current computer/network.
+The seven included provider packages are repository-tested for package identity, manifest validity, install/restore behaviour and their fixture-backed provider contracts. A separate **per-source live-provider smoke workflow** performs real search → resolve → media-byte checks for provider-related changes, with one CI job per source so a failure identifies the affected integration immediately. The seven bundled providers passed that live verification during the v0.7.1 development cycle. The end-user page still exposes **Check connections** for bounded checks on the current computer/network.
 
 The registry is currently a developer/reference ecosystem rather than a curated consumer app store: all 16 entries are marked `example`. The redesigned UI calls them optional/reference features rather than implying that every registry item is production-ready.
 
@@ -43,7 +43,7 @@ The desktop app carries seven audited provider packages and installs them automa
 | Wikimedia Commons Audio | 0.1.1 | Openly licensed/public-domain audio |
 | ccMixter | 0.1.3 | Creative Commons music |
 
-Bundled-package tests verify package identity/version, manifest structure, entrypoints and installation/restore behaviour. The manual live smoke test goes further by probing real media bytes; it remains non-blocking because public services can be temporarily unavailable. Use **Sources & plugins → Check connections** for a bounded health check on the current machine/network.
+Bundled-package tests verify package identity/version, manifest structure, entrypoints and installation/restore behaviour. The live provider matrix goes further by probing real media bytes for each source independently; Openverse Audio is included in that audit even though it remains an optional registry provider. Use **Sources & plugins → Check connections** for a bounded health check on the current machine/network.
 
 LibriVox 0.1.4 searches the official LibriVox collection hosted by Internet Archive and resolves public-domain audiobook media there. This avoids interactive search pressure on the volunteer-hosted LibriVox API while preserving LibriVox as the content/source identity. Its checked-in source is rebuilt deterministically into the bundled package.
 

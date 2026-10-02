@@ -145,7 +145,7 @@ def _verify_provider(manager: ProviderManager, provider_id: str, query: str) -> 
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Live smoke test the provider packages bundled with Melodex."
+        description="Live smoke test Melodex provider integrations."
     )
     parser.add_argument("--json", type=Path, help="Optional output report path.")
     parser.add_argument(
@@ -193,7 +193,7 @@ def main() -> int:
 
     report = {
         "schema_version": 1,
-        "purpose": "live bundled-provider search/resolve/playback reachability",
+        "purpose": "live provider search/resolve/playback reachability",
         "providers_expected": len(selected_cases),
         "providers_passed": sum(1 for row in results if row.get("status") == "pass"),
         "providers_failed": len(failures),
@@ -209,7 +209,7 @@ def main() -> int:
 
     print(
         f"SUMMARY {report['providers_passed']}/{report['providers_expected']} "
-        "bundled providers live-verified"
+        "providers live-verified"
     )
     return 1 if failures else 0
 
