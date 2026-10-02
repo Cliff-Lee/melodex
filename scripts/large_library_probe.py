@@ -168,10 +168,12 @@ def profile_gui(
     browser.set_view("artists")
     app.processEvents()
     artist_view_metrics = dict(browser.last_view_metrics)
+    artist_filter_metrics = dict(browser.last_filter_metrics)
 
     browser.set_view("tracks")
     app.processEvents()
     track_view_metrics = dict(browser.last_view_metrics)
+    track_filter_metrics = dict(browser.last_filter_metrics)
 
     metrics = {
         "available": True,
@@ -179,7 +181,9 @@ def profile_gui(
         "catalog": dict(browser.last_catalog_metrics),
         "last_filter": filter_metrics,
         "artist_view": artist_view_metrics,
+        "artist_filter": artist_filter_metrics,
         "track_view": track_view_metrics,
+        "track_filter": track_filter_metrics,
         "album_batch_size": int(browser._album_batch_size),
         "artist_batch_size": int(browser._artist_batch_size),
         "track_batch_size": int(browser._track_batch_size),
