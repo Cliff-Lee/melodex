@@ -23,7 +23,7 @@ def _touch(root: Path, relative: str) -> None:
 def test_minimal_qt_bundle_accepts_only_required_modules(tmp_path: Path):
     checker = _load_checker()
     root = tmp_path / "Melodex.app"
-    for name in ("QtCore", "QtGui", "QtWidgets", "QtMultimedia"):
+    for name in ("QtCore", "QtGui", "QtWidgets", "QtMultimedia", "QtNetwork"):
         _touch(root, f"Contents/Frameworks/PySide6/{name}.abi3.so")
 
     errors, findings = checker.validate_bundle(root)
@@ -35,7 +35,7 @@ def test_minimal_qt_bundle_accepts_only_required_modules(tmp_path: Path):
 def test_qt_bundle_rejects_webengine_and_qml_payload(tmp_path: Path):
     checker = _load_checker()
     root = tmp_path / "Melodex.app"
-    for name in ("QtCore", "QtGui", "QtWidgets", "QtMultimedia"):
+    for name in ("QtCore", "QtGui", "QtWidgets", "QtMultimedia", "QtNetwork"):
         _touch(root, f"Contents/Frameworks/PySide6/{name}.abi3.so")
     _touch(
         root,
@@ -83,4 +83,5 @@ def test_melodex_source_only_imports_expected_qt_families():
         "QtGui",
         "QtWidgets",
         "QtMultimedia",
+        "QtNetwork",
     }, f"Unexpected Qt families imported: {sorted(families)}"
