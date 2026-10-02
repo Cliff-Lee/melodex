@@ -421,6 +421,8 @@ class LibraryBrowser(QWidget):
         self._artist_batch_size = 120
         self._album_render_limit = self._album_batch_size
         self._artist_render_limit = self._artist_batch_size
+        self._album_columns = 2
+        self._artist_columns = 2
         self._track_row_height = 82
         self._track_overscan_rows = 6
         self._track_hydration_scheduled = False
@@ -1539,6 +1541,7 @@ class LibraryBrowser(QWidget):
         self._clear_grid(self.album_grid)
         width = max(400, self.album_scroll.viewport().width())
         columns = max(2, min(8, width // 190))
+        self._album_columns = columns
         rendered = self._visible_albums[: self._album_render_limit]
         rendered_keys = {str(album.get("key") or "") for album in rendered}
         for key in list(self.cards):
@@ -1577,6 +1580,7 @@ class LibraryBrowser(QWidget):
         self._clear_grid(self.artist_grid)
         width = max(400, self.artist_scroll.viewport().width())
         columns = max(2, min(8, width // 190))
+        self._artist_columns = columns
         rendered = self._visible_artists[: self._artist_render_limit]
         rendered_keys = {str(artist.get("key") or "") for artist in rendered}
         for key in list(self.artist_cards):
@@ -1842,11 +1846,15 @@ class LibraryBrowser(QWidget):
             cards=self.artist_cards
             rows=self._visible_artists[: self._artist_render_limit]
             direction=self._artist_scroll_direction
+            columns=max(1,int(self._artist_columns))
+            row_height=272+max(0,int(self.artist_grid.verticalSpacing()))
         else:
             scroll=self.album_scroll
             cards=self.cards
             rows=self._visible_albums[: self._album_render_limit]
             direction=self._album_scroll_direction
+            columns=max(1,int(self._album_columns))
+            row_height=286+max(0,int(self.album_grid.verticalSpacing()))
 
         top=max(0,int(scroll.verticalScrollBar().value()))
         height=max(1,int(scroll.viewport().height()))
@@ -1861,12 +1869,13 @@ class LibraryBrowser(QWidget):
         visible: list[tuple[int,dict[str,Any]]] = []
         near: list[tuple[int,int,dict[str,Any]]] = []
         distant: list[tuple[int,int,dict[str,Any]]] = []
-        for row in rows:
+        for index,row in enumerate(rows):
             key=str(row.get("key") or "")
             card=cards.get(key)
             if card is None:
                 continue
-            card_top=int(card.y())
+            grid_row=index // columns
+            card_top=grid_row*row_height
             card_bottom=card_top+max(1,int(card.height()))
             if card_bottom >= top and card_top <= bottom:
                 visible.append((card_top,dict(row)))
