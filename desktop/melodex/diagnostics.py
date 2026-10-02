@@ -165,6 +165,17 @@ def build_diagnostics(
     if library_catalog:
         performance["library_catalog"] = library_catalog
 
+    library_index: dict[str, Any] = {}
+    summary_fn = getattr(manager, "local_index_summary", None)
+    if callable(summary_fn):
+        try:
+            raw_summary = dict(summary_fn() or {})
+        except Exception:
+            raw_summary = {}
+        for key in ("root_count", "ready_roots", "track_count", "all_ready"):
+            if key in raw_summary:
+                library_index[key] = raw_summary.get(key)
+
     return {
         "schema_version": "0.1",
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -178,6 +189,7 @@ def build_diagnostics(
         "sources": providers,
         "extensions": extensions,
         "performance": performance,
+        "library_index": library_index,
         "notes": [
             "This export omits plugin configuration values, API keys, tokens, "
             "local library paths, user-stream URLs, playback URLs, headers and cookies.",

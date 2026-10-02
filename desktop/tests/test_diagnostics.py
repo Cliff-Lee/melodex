@@ -96,6 +96,15 @@ class FakeManager:
     def user_streams(self):
         return [{"name": "Private radio", "url": "https://secret.example/stream"}]
 
+    def local_index_summary(self):
+        return {
+            "root_count": 1,
+            "ready_roots": 1,
+            "track_count": 12700,
+            "all_ready": True,
+            "private_path": "/Volumes/SecretNAS/Music",
+        }
+
     def installation_record(self, plugin_id):
         return {
             "id": plugin_id,
@@ -160,6 +169,12 @@ def test_diagnostics_excludes_secret_values_and_private_paths():
     assert payload["extensions"][0]["health"]["last_error"] == "call_error"
     assert payload["performance"]["local_scan"]["tracks_indexed"] == 12700
     assert payload["performance"]["local_scan"]["main_thread"] is True
+    assert payload["library_index"] == {
+        "root_count": 1,
+        "ready_roots": 1,
+        "track_count": 12700,
+        "all_ready": True,
+    }
 
 
 def test_diagnostics_filters_ui_performance_fields():

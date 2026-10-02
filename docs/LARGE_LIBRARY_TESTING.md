@@ -196,3 +196,86 @@ where scanning can be isolated in a killable worker process.
 - Cancel discards partial results and preserves the previous catalog
 - only a filename/basename may appear in progress events, never a full library path
 - the panel always explains that Melodex does not copy the user's audio
+
+
+## Campaign 4 — persistent library index
+
+A successful library scan is now cached in a local SQLite metadata index:
+
+`library-index.sqlite3`
+
+The index contains track metadata and path references only. Melodex does **not**
+copy audio files into Application Support.
+
+### Startup behaviour
+
+After a root has completed one successful scan:
+
+```text
+Launch Melodex
+  ↓
+read library-index.sqlite3
+  ↓
+library is available immediately
+  ↓
+no automatic NAS traversal
+```
+
+This remains true when the NAS is disconnected. Cached albums/tracks can still
+be browsed; playback naturally depends on the original file becoming available.
+
+Existing users with configured music roots but no index get one background
+migration scan. A successfully scanned empty folder also counts as indexed, so
+Melodex does not repeatedly rescan it on every launch.
+
+### Scan commit behaviour
+
+Completed scans use this sequence:
+
+```text
+background filesystem scan
+  ↓
+background SQLite transaction
+  ↓
+merge cached metadata for any unavailable roots
+  ↓
+apply the completed catalog on the Qt thread
+```
+
+A failed/cancelled scan never replaces the persistent index. If a previously
+indexed NAS root is temporarily unavailable, its cached tracks are preserved
+rather than being interpreted as deleted.
+
+Melodex metadata corrections remain separate from the raw indexed file tags.
+That means a correction can be removed later without having permanently baked
+it into the cached file metadata.
+
+### Persistent-index benchmark
+
+The synthetic benchmark writes and reopens the permanent 12,700-track stress
+case without touching a real music collection:
+
+```bash
+cd desktop
+python tools/profile_library_index.py --tracks 12700
+```
+
+Use `--json` for machine-readable timings. The important startup number is
+`read_seconds`: this is the metadata load that replaces a NAS traversal on
+normal launches.
+
+### Campaign 4 acceptance checks
+
+- a previously indexed 12,700-track library opens from SQLite without walking the NAS
+- startup works with the indexed NAS completely offline
+- indexed roots do not automatically rescan on launch
+- pre-index upgrade users receive one background migration scan
+- a successfully scanned empty root is considered ready
+- SQLite persistence runs off the Qt UI thread
+- unavailable roots preserve their previously cached tracks
+- metadata corrections apply on top of cached raw tags
+- the SQLite index stores metadata/path references, never audio bytes
+
+File size/mtime based incremental rescanning is intentionally Campaign 5. The
+schema already reserves nullable `size` and `mtime_ns` columns so that work
+can be added without redesigning the cache format.

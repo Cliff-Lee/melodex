@@ -823,6 +823,13 @@ class LibraryBrowser(QWidget):
                     else "No supported audio files were discovered."
                 )
             )
+        elif phase=="saving":
+            self.scan_progress.setRange(0,0)
+            self.scan_progress.setFormat("")
+            self.scan_progress_summary.setText("Saving library index…")
+            self.scan_progress_detail.setText(
+                "Saving metadata locally so Melodex can reopen this library without rescanning your music."
+            )
         elif phase=="cancelled":
             self.scan_progress_summary.setText("Cancelled")
             self.scan_progress_detail.setText(

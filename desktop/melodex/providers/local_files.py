@@ -37,12 +37,13 @@ class LocalFilesProvider(MusicProvider):
 
     @staticmethod
     def _override_key(path: str | Path) -> str:
-        value = Path(path).expanduser()
-        try:
-            value = value.resolve()
-        except Exception:
-            pass
-        return str(value)
+        # Keep override lookup purely lexical. Resolving thousands of cached
+        # NAS paths at startup would touch the network and defeat instant load.
+        return os.path.normcase(
+            os.path.abspath(
+                os.path.expanduser(str(path))
+            )
+        )
 
     def _apply_override(self, track: dict[str, Any]) -> dict[str, Any]:
         out = dict(track)
@@ -151,10 +152,17 @@ class LocalFilesProvider(MusicProvider):
                 musicbrainz_release_group_id = first("musicbrainz_releasegroupid")
         except Exception:
             pass
+        absolute_path = os.path.abspath(os.path.expanduser(str(path)))
         out = {
-            "provider_id": "local", "track_id": str(path.resolve()), "rel": f"local:{path.resolve()}",
-            "title": title, "artist": artist or "Unknown artist", "album": album,
-            "duration": duration, "local_path": str(path.resolve()), "source": "local",
+            "provider_id": "local",
+            "track_id": absolute_path,
+            "rel": f"local:{absolute_path}",
+            "title": title,
+            "artist": artist or "Unknown artist",
+            "album": album,
+            "duration": duration,
+            "local_path": absolute_path,
+            "source": "local",
         }
         for key, value in (
             ("album_artist", album_artist),
@@ -197,6 +205,8 @@ class LocalFilesProvider(MusicProvider):
         throttle = ProgressThrottle()
         audio_paths: list[Path] = []
         tracks: list[dict[str, Any]] = []
+        index_tracks: list[dict[str, Any]] = []
+        root_states: list[dict[str, Any]] = []
         probe = ScanProbe(len(scan_roots))
 
         def emit(
@@ -231,6 +241,10 @@ class LocalFilesProvider(MusicProvider):
                 control.checkpoint()
                 exists = root.exists()
                 probe.root_checked(exists=exists)
+                root_states.append({
+                    "path": str(root),
+                    "available": bool(exists),
+                })
                 if not exists:
                     continue
                 for base, _, files in os.walk(root):
@@ -257,7 +271,9 @@ class LocalFilesProvider(MusicProvider):
             for index, p in enumerate(audio_paths, start=1):
                 control.checkpoint()
                 with probe.metadata_read():
-                    metadata = self._metadata(p)
+                    raw_metadata = self._metadata(p)
+                index_tracks.append(dict(raw_metadata))
+                metadata = dict(raw_metadata)
                 local_path = str(
                     metadata.get("local_path")
                     or metadata.get("track_id")
@@ -268,7 +284,6 @@ class LocalFilesProvider(MusicProvider):
                     {},
                 )
                 if override:
-                    metadata = dict(metadata)
                     for key, value in override.items():
                         if key in self.EDITABLE_METADATA_FIELDS:
                             metadata[key] = value
@@ -293,7 +308,9 @@ class LocalFilesProvider(MusicProvider):
             )
             return {
                 "tracks": [],
+                "index_tracks": [],
                 "metrics": metrics,
+                "root_states": root_states,
                 "cancelled": True,
             }
 
@@ -305,9 +322,27 @@ class LocalFilesProvider(MusicProvider):
         )
         return {
             "tracks": tracks,
+            "index_tracks": index_tracks,
             "metrics": metrics,
+            "root_states": root_states,
             "cancelled": False,
         }
+
+    def prepare_cached_tracks(
+        self,
+        tracks: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """Apply Melodex-only corrections without probing any audio path."""
+        return [
+            self._apply_override(dict(item))
+            for item in list(tracks or [])
+            if isinstance(item, dict)
+        ]
+
+    def load_cached_tracks(self, tracks: list[dict[str, Any]]) -> int:
+        """Load persisted metadata without probing the underlying audio files."""
+        self._tracks = self.prepare_cached_tracks(tracks)
+        return len(self._tracks)
 
     def apply_scan_snapshot(self, snapshot: dict[str, Any]) -> int:
         """Atomically replace the live catalog with a completed scan snapshot."""
