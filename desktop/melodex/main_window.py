@@ -2547,15 +2547,42 @@ class MainWindow(QMainWindow):
             self.sources_overview.setText(summary)
 
         legacy=self.providers.quarantined_legacy_providers()
+        superseded=self.providers.quarantined_superseded_providers()
         if hasattr(self,"legacy_source_notice"):
+            notices=[]
+            if superseded:
+                names=", ".join(
+                    str(row.get("name") or row.get("id") or "reference provider")
+                    for row in superseded
+                )
+                replacements=", ".join(
+                    str(row.get("replacement_name") or row.get("replacement_id") or "")
+                    for row in superseded
+                )
+                notices.append(
+                    "Older reference source"
+                    + ("s" if len(superseded)!=1 else "")
+                    + " hidden: "
+                    + names
+                    + ". Melodex is using the included replacement"
+                    + ("s" if len(superseded)!=1 else "")
+                    + ": "
+                    + replacements
+                    + "."
+                )
             if legacy:
-                names=", ".join(str(row.get("name") or row.get("id") or "legacy provider") for row in legacy)
-                self.legacy_source_notice.setText(
+                names=", ".join(
+                    str(row.get("name") or row.get("id") or "legacy provider")
+                    for row in legacy
+                )
+                notices.append(
                     "Legacy development provider disabled: "
                     + names
                     + ". It is not part of public Melodex and will not be searched or played. "
                     "Its old local files have been left untouched."
                 )
+            if notices:
+                self.legacy_source_notice.setText(" ".join(notices))
                 self.legacy_source_notice.show()
             else:
                 self.legacy_source_notice.hide()
