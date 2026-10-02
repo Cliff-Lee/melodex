@@ -1505,7 +1505,7 @@ def test_cancelled_main_window_scan_keeps_existing_catalog(monkeypatch, tmp_path
 
     worker_started = threading.Event()
 
-    def cancellable_snapshot(roots=None, *, progress=None, control=None):
+    def cancellable_snapshot(roots=None, *, progress=None, control=None, **kwargs):
         worker_started.set()
         while control is not None and not control.cancelled:
             time.sleep(0.005)
