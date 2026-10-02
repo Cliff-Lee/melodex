@@ -165,3 +165,21 @@ def test_hard_cancel_never_changes_persistent_index(tmp_path: Path):
     rows = index.load_tracks([root])
     assert len(rows) == 1
     assert rows[0]["title"] == "Cached Track"
+
+
+
+def test_isolated_scan_error_redaction_hides_private_paths(tmp_path: Path):
+    root = tmp_path / "Private Music" / "Collection"
+    index_path = tmp_path / "Application Support" / "library-index.sqlite3"
+    runner = IsolatedLibraryScanRunner(index_path)
+
+    detail = (
+        f"failed while opening {root / 'Artist' / 'secret.flac'} "
+        f"using {index_path}"
+    )
+    safe = runner._safe_error_detail(detail, [root])
+
+    assert str(root) not in safe
+    assert str(index_path) not in safe
+    assert "<music-root>" in safe
+    assert "<library-index>" in safe
