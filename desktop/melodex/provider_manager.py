@@ -112,8 +112,10 @@ class ProviderManager:
             declarations = list(provider.info.configuration or [])
             if declarations:
                 provider.set_config_loader(
-                    lambda item=provider, fields=declarations:
-                        self.plugin_config.values(item.info.id, fields)
+                    lambda item=provider, fields=declarations: self.plugin_config.values(
+                        item.info.id,
+                        fields,
+                    )
                 )
             self.providers[provider.info.id] = provider
         self._startup_mark("providers:installed_ready")
