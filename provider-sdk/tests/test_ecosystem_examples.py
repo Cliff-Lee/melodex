@@ -87,6 +87,40 @@ def test_openverse_audio_example_with_fixture(monkeypatch):
     assert play["seekable"] is True
 
 
+def test_openverse_resolves_media_redirect_before_playback(monkeypatch):
+    monkeypatch.delenv("MELODEX_EXAMPLE_FIXTURES", raising=False)
+    module = _load(
+        "openverse_audio_redirect",
+        EXAMPLES / "openverse_audio_provider" / "provider.py",
+    )
+
+    class FakeResponse:
+        status_code = 206
+        url = "https://cdn.example.net/final/audio.mp3"
+
+        def raise_for_status(self):
+            return None
+
+        def close(self):
+            return None
+
+    calls = []
+
+    def fake_get(url, **kwargs):
+        calls.append((url, kwargs))
+        return FakeResponse()
+
+    monkeypatch.setattr(module._SESSION, "get", fake_get)
+    final = module._final_media_url(
+        {"url": "https://source.example.org/media/audio"}
+    )
+
+    assert final == "https://cdn.example.net/final/audio.mp3"
+    assert calls[0][1]["allow_redirects"] is True
+    assert calls[0][1]["stream"] is True
+    assert calls[0][1]["headers"]["Range"] == "bytes=0-0"
+
+
 def test_cover_art_archive_example_with_fixture(monkeypatch):
     monkeypatch.setenv("MELODEX_EXAMPLE_FIXTURES", "1")
     module = _load(
