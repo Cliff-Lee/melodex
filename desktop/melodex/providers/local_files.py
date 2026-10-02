@@ -309,6 +309,15 @@ class LocalFilesProvider(MusicProvider):
             "cancelled": False,
         }
 
+    def load_cached_tracks(self, tracks: list[dict[str, Any]]) -> int:
+        """Load persisted metadata without probing the underlying audio files."""
+        self._tracks = [
+            self._apply_override(dict(item))
+            for item in list(tracks or [])
+            if isinstance(item, dict)
+        ]
+        return len(self._tracks)
+
     def apply_scan_snapshot(self, snapshot: dict[str, Any]) -> int:
         """Atomically replace the live catalog with a completed scan snapshot."""
         tracks = [
