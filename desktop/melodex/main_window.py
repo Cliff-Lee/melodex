@@ -995,6 +995,19 @@ class MainWindow(QMainWindow):
             if widget is not None:
                 widget.deleteLater()
 
+    def _ensure_page_built(self, name: str) -> None:
+        built = getattr(self, "_built_pages", set())
+        if name in built:
+            return
+        builder = getattr(self, "_page_builders", {}).get(name)
+        if builder is None:
+            return
+        self._startup_mark(f"lazy_page:{name}:start")
+        builder()
+        built.add(name)
+        self._built_pages = built
+        self._startup_mark(f"lazy_page:{name}:ready")
+
     def _page_layout(self, page: str, title: str, subtitle: str=""):
         existing=self.pages[page].layout()
         if existing is None:
@@ -1181,9 +1194,7 @@ class MainWindow(QMainWindow):
 
 
     def _build_now_playing(self):
-        from .living_canvas import LivingCanvasView
-        from .rich_now_playing import RichNowPlayingWidget
-
+                
         l=self._page_layout(
             "now_playing",
             "Now playing",
@@ -1400,8 +1411,7 @@ class MainWindow(QMainWindow):
         l.addLayout(row2)
 
     def _build_library(self):
-        from .library_browser import LibraryBrowser
-
+        
         l=self._page_layout(
             "library",
             "My Music",
@@ -1500,8 +1510,7 @@ class MainWindow(QMainWindow):
         l.addStretch(1)
 
     def _build_album_wall(self):
-        from .album_wall import AlbumWallWidget
-
+        
         l=self._page_layout(
             "album_wall",
             "Album Wall",
@@ -1573,8 +1582,7 @@ class MainWindow(QMainWindow):
 
 
     def _build_music_map(self):
-        from .music_map import MusicMapWidget
-
+        
         l=self._page_layout(
             "music_map",
             "Music Map",
@@ -2392,6 +2400,8 @@ class MainWindow(QMainWindow):
             or name != self.current_page
         ):
             return
+
+        self._ensure_page_built(name)
 
         if name=="home":
             self._show_home()
@@ -4411,8 +4421,7 @@ class MainWindow(QMainWindow):
         self._refresh_plugin_presence()
 
     def _plugin_directory(self, capability: str = ""):
-        from .plugin_directory import PluginDirectoryDialog
-
+        
         dialog=PluginDirectoryDialog(
             self.providers,
             on_installed=self._refresh_sources_and_plugin_presence,
@@ -5256,9 +5265,7 @@ class MainWindow(QMainWindow):
 
     # ------------------------------- Music Map
     def _build_album_wall_payload(self):
-        from .album_wall_model import build_album_wall
-        from .music_map_model import build_music_map
-
+                
         catalog=self.providers.local_catalog()
         profiles, _seed_refs, ref_map, _analysed = self.local_intelligence.build_snapshot(
             catalog,
