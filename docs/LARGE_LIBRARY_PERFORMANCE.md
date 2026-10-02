@@ -131,6 +131,36 @@ leave the buffered viewport rather than accumulating widgets indefinitely.
 
 The Fluid Melodex release gate now includes this bounded-window regression.
 
+## P8b2 result — viewport-first artwork
+
+Automatic cached album artwork and artist-photo hydration now use the same foreground
+priority rule as Tracks rendering.
+
+On the 12,700-track CI profile, both Albums and Artists produced this initial split:
+
+- **18 cards currently visible**;
+- **12 cards in the next viewport**;
+- **90 rendered cards currently distant**; and
+- only **12 cached-image requests launched immediately**.
+
+Previously the cache path could submit all 120 rendered cards in collection order.
+
+The foreground batch is now capped at 12 and drains visible work before near work.
+Distant hydration happens only after foreground work is exhausted, in idle batches
+capped at 4 items.
+
+Scrolling increments a generation token. Any previously scheduled idle callback from
+the old viewport becomes stale and cannot launch distant work ahead of the new visible
+region.
+
+Cached artwork/photo lookup is also limited to one in-flight batch per kind. A cache
+worker failure releases the guard and makes the failed keys eligible for a deferred
+retry rather than blocking future viewport work.
+
+The online **Find missing artwork / Get artist photos** operation remains separate. It
+is an explicit user-requested long operation with its own bounded queue, progress and
+pause/cancel behaviour.
+
 ## P8 campaign sequence
 
 ### P8a — Synthetic baseline
