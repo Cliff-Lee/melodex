@@ -1381,6 +1381,15 @@ def test_library_scan_progress_panel_is_clear_and_reassuring():
     assert browser.scan_pause_button.text() == "Pause"
     assert browser.scan_cancel_button.text() == "Cancel"
 
+    pause_requests = []
+    cancel_requests = []
+    browser.scanPauseRequested.connect(lambda: pause_requests.append(True))
+    browser.scanCancelRequested.connect(lambda: cancel_requests.append(True))
+    browser.scan_pause_button.click()
+    browser.scan_cancel_button.click()
+    assert pause_requests == [True]
+    assert cancel_requests == [True]
+
     browser.set_scan_progress(
         {
             "phase": "discovering",
