@@ -68,3 +68,11 @@ This file tracks changes intended for the next release after **v0.7.4**.
 - macOS builds now record the installed app size and compressed DMG size separately.
 - CI publishes a breakdown of the largest bundle areas, files and file types.
 - This establishes a reproducible baseline before removing unnecessary Qt/PySide payload in the next packaging campaign.
+
+
+## Desktop packaging — minimal Qt bundle
+
+- macOS and Windows builds no longer collect every PySide6 module.
+- Frozen builds now keep only the Qt families Melodex imports plus required runtime dependencies.
+- A bundle guard prevents heavyweight unused Qt payload such as WebEngine, QML/Quick3D, Designer, PDF and Charts from silently returning.
+- The 8A bundle report remains in place so installed-app size can be compared directly against the 669.4 MB macOS baseline.
