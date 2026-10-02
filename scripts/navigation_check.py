@@ -28,10 +28,10 @@ def main() -> int:
     )
 
     # One obvious docs front door from the project landing page.
-    if '<a href="docs/README.md">Documentation</a>' not in root_readme:
-        errors.append("README top navigation must point Documentation to docs/README.md")
-    if '<a href="docs/FIRST_CONTRIBUTION.md">Contribute</a>' not in root_readme:
-        errors.append("README top navigation must point Contribute to docs/FIRST_CONTRIBUTION.md")
+    if '<a href="docs/README.md">Docs</a>' not in root_readme:
+        errors.append("README top navigation must point Docs to docs/README.md")
+    if "docs/FIRST_CONTRIBUTION.md" not in root_readme:
+        errors.append("README must link to docs/FIRST_CONTRIBUTION.md")
 
     # Friendly docs home should route to the canonical audience entry points.
     for link in (
