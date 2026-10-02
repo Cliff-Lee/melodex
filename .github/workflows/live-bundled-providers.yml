@@ -2,11 +2,37 @@ name: Live bundled provider smoke
 
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - "desktop/melodex/bundled_providers/**"
+      - "desktop/bundled_provider_sources/**"
+      - "desktop/melodex/process_env.py"
+      - "scripts/live_bundled_provider_smoke.py"
+      - ".github/workflows/live-bundled-providers.yml"
 
 jobs:
   live-provider-smoke:
+    name: live ${{ matrix.label }}
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 8
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: org.melodex.ccmixter
+            label: ccMixter
+          - id: org.melodex.wikimedia.commons.audio
+            label: Wikimedia Commons Audio
+          - id: org.melodex.internetarchive.audio
+            label: Internet Archive Audio
+          - id: org.melodex.somafm
+            label: SomaFM
+          - id: org.melodex.radiobrowser
+            label: Radio Browser
+          - id: org.melodex.nichedb.radio
+            label: NicheDB Radio
+          - id: org.melodex.librivox
+            label: LibriVox
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -14,14 +40,17 @@ jobs:
           python-version: "3.12"
       - name: Install desktop runtime dependencies
         run: pip install numpy mutagen requests PySide6
-      - name: Run live bundled-provider smoke test
+      - name: Verify ${{ matrix.label }}
         env:
           PYTHONPATH: desktop
-        run: python scripts/live_bundled_provider_smoke.py --json live-provider-report.json
+        run: >-
+          python scripts/live_bundled_provider_smoke.py
+          --provider "${{ matrix.id }}"
+          --json "live-provider-${{ matrix.id }}.json"
       - name: Upload live provider report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: live-provider-report
-          path: live-provider-report.json
+          name: "live-provider-${{ matrix.id }}"
+          path: "live-provider-${{ matrix.id }}.json"
           if-no-files-found: warn
