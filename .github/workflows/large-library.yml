@@ -1,0 +1,46 @@
+name: Large library acceptance
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'desktop/**'
+      - '.github/workflows/large-library.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'desktop/**'
+      - '.github/workflows/large-library.yml'
+
+jobs:
+  large-library:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install benchmark dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pytest numpy mutagen requests PySide6
+      - name: Verify isolated scan cancellation
+        env:
+          PYTHONPATH: desktop
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          pytest -q             desktop/tests/test_library_scan_process.py             desktop/tests/test_large_library_acceptance.py
+      - name: Run permanent 12,700-track acceptance suite
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          cd desktop
+          python tools/verify_large_library_readiness.py             --tracks 12700             --json-out dist/Melodex-large-library-acceptance.json             --markdown-out dist/Melodex-large-library-acceptance.md
+          cat dist/Melodex-large-library-acceptance.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Melodex-large-library-acceptance
+          path: |
+            desktop/dist/Melodex-large-library-acceptance.json
+            desktop/dist/Melodex-large-library-acceptance.md
