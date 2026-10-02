@@ -6,7 +6,7 @@ source .venv-build/bin/activate
 python -m pip install --upgrade pip
 pip install -r requirements-build.txt
 rm -rf build dist
-pyinstaller --noconfirm --windowed --name Melodex --icon ../assets/icon.png --add-data "melodex/assets/melodex-mark.png:melodex/assets" --add-data "melodex/bundled_providers:melodex/bundled_providers" --collect-all keyring run.py
+pyinstaller --noconfirm --windowed --name Melodex --icon ../assets/icon.png --add-data "melodex/assets/melodex-mark.png:melodex/assets" --add-data "melodex/bundled_providers:melodex/bundled_providers" run.py
 python check_bundled_provider_payload.py dist/Melodex.app
 python tools/audit_qt_dependencies.py dist/Melodex.app \
   --json-out dist/Melodex-qt-audit-before.json \
@@ -21,6 +21,9 @@ if command -v codesign >/dev/null; then
   codesign --force --deep --sign - dist/Melodex.app
 fi
 python tools/check_qt_bundle.py dist/Melodex.app
+python tools/audit_runtime_bundle.py dist/Melodex.app \
+  --json-out dist/Melodex-runtime-audit.json \
+  --markdown-out dist/Melodex-runtime-audit.md
 python frozen_child_smoke.py "dist/Melodex.app/Contents/MacOS/Melodex"
 mkdir -p dist/release
 cp -R dist/Melodex.app dist/release/ 2>/dev/null || true

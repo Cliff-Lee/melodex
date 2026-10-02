@@ -91,3 +91,38 @@ NumPy and other dependency trimming belongs to 8C.
 - QtWebEngine and the other explicitly unused heavyweight Qt families are absent
 - installed macOS size is materially below the 669.4 MB 8A baseline
 - the same 8A report is generated so before/after numbers are directly comparable
+
+
+## Campaign 8C — non-Qt runtime audit
+
+After the Qt cleanup, the Intel macOS bundle is approximately **124 MB**. The
+largest remaining non-Qt components are now real runtime features rather than
+obvious accidental payload:
+
+- NumPy: about **10.5 MB** — used by Flow and local audio analysis
+- Python runtime / dynamic modules: about **16 MB** — required by the frozen app
+- OpenSSL libraries: about **4.9 MB** — required for HTTPS
+- keyring package/data: small, but the previous build still used blanket
+  `--collect-all keyring`
+
+8C therefore starts conservatively. It removes blanket keyring collection and
+relies on PyInstaller's keyring hooks to include only the platform-appropriate
+backend. A frozen-runtime smoke probe then verifies that:
+
+- NumPy FFT/percentile operations work
+- Requests can locate its CA bundle
+- OpenSSL is available
+- macOS and Windows discover a usable native keyring backend
+
+The build also emits `Melodex-runtime-audit.json` and
+`Melodex-runtime-audit.md` for both macOS and Windows so further cuts are based
+on measured payload rather than disabling features blindly.
+
+### 8C acceptance checks
+
+- macOS Intel, Apple Silicon and Windows frozen builds pass the runtime smoke
+- plugin secret storage still discovers a usable system keyring on macOS/Windows
+- NumPy-based Flow analysis remains bundled and functional
+- HTTPS certificate data remains available
+- no Qt changes are made in this campaign
+- any further non-Qt removal must have measurable benefit and a matching feature smoke test
