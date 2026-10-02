@@ -4888,6 +4888,7 @@ class MainWindow(QMainWindow):
             priority="foreground",
             lane="network",
             label="discover-search",
+            latest_key="discover-search",
         )
 
     def _search_report_failed(
@@ -5200,6 +5201,7 @@ class MainWindow(QMainWindow):
             priority="visible",
             lane="default",
             label="album-wall-model",
+            latest_key="album-wall-model",
         )
 
     def _apply_album_wall_payload(self,payload):
@@ -5365,6 +5367,7 @@ class MainWindow(QMainWindow):
             priority="visible",
             lane="default",
             label="music-map-model",
+            latest_key="music-map-model",
         )
 
     def _apply_music_map_payload(self,payload):
@@ -6293,6 +6296,8 @@ class MainWindow(QMainWindow):
     def _schedule_next_track_prefetch(self) -> None:
         if self._closing:
             return
+        if hasattr(self,"background"):
+            self.background.cancel_key("next-track-prefetch")
         self._prefetch_sequence += 1
         sequence=self._prefetch_sequence
         QTimer.singleShot(
@@ -6360,6 +6365,7 @@ class MainWindow(QMainWindow):
             priority="prefetch",
             lane="prefetch",
             label="next-track-prefetch",
+            latest_key="next-track-prefetch",
         )
 
     # ------------------------------- player/taste
@@ -6438,6 +6444,7 @@ class MainWindow(QMainWindow):
                     priority="foreground",
                     lane="disk",
                     label="current-track-artwork",
+                    latest_key="current-track-artwork",
                 )
         if hasattr(self,"rich_now"):
             self.rich_now.set_track(dict(t))
@@ -6481,6 +6488,7 @@ class MainWindow(QMainWindow):
             priority="foreground",
             lane="analysis",
             label="current-track-analysis",
+            latest_key="current-track-analysis",
         )
 
     def _visual_analysis_loaded(self, local_path: str, analysis: object) -> None:
@@ -6538,6 +6546,7 @@ class MainWindow(QMainWindow):
             priority="visible",
             lane="disk",
             label=f"visual-context:{mode}",
+            latest_key="visual-context",
         )
 
     def _visual_context_loaded(self, sequence: int, mode: str, payload: object) -> None:
