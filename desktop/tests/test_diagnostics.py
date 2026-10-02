@@ -37,7 +37,21 @@ class FakeManager:
                     capabilities=["search", "playback"],
                     permissions={},
                     configuration=[],
-                )
+                ),
+                last_scan_metrics={
+                    "thread_name": "MainThread",
+                    "main_thread": True,
+                    "root_count": 1,
+                    "directories_seen": 508,
+                    "files_seen": 13208,
+                    "audio_files_seen": 12700,
+                    "metadata_attempts": 12700,
+                    "metadata_seconds": 92.5,
+                    "non_metadata_seconds": 11.0,
+                    "total_seconds": 103.5,
+                    "tracks_indexed": 12700,
+                    "private_path": "/Volumes/SecretNAS/Music",
+                },
             ),
             "jamendo": SimpleNamespace(
                 info=SimpleNamespace(
@@ -139,10 +153,42 @@ def test_diagnostics_excludes_secret_values_and_private_paths():
     assert "https://secret.example/stream" not in text
     assert "private local track" not in text
     assert "https://should-not-appear.example/package" not in text
+    assert "/Volumes/SecretNAS/Music" not in text
     assert payload["sources"][1]["configured"] is True
     assert payload["sources"][2]["stream_count"] == 1
     assert payload["sources"][3]["configuration_status"]["ready"] is True
     assert payload["extensions"][0]["health"]["last_error"] == "call_error"
+    assert payload["performance"]["local_scan"]["tracks_indexed"] == 12700
+    assert payload["performance"]["local_scan"]["main_thread"] is True
+
+
+def test_diagnostics_filters_ui_performance_fields():
+    payload = build_diagnostics(
+        FakeManager(),
+        ui_metrics={
+            "library_catalog": {
+                "thread_name": "MainThread",
+                "main_thread": True,
+                "track_count": 12700,
+                "album_count": 954,
+                "artist_count": 612,
+                "reset_seconds": 0.1,
+                "copy_catalog_seconds": 0.02,
+                "album_model_seconds": 0.3,
+                "artist_model_seconds": 0.2,
+                "initial_layout_seconds": 4.5,
+                "artwork_request_seconds": 0.1,
+                "total_seconds": 5.22,
+                "private_path": "/Volumes/AnotherSecret/Music",
+            }
+        },
+    )
+    text = json.dumps(payload)
+    metrics = payload["performance"]["library_catalog"]
+    assert metrics["track_count"] == 12700
+    assert metrics["initial_layout_seconds"] == 4.5
+    assert "/Volumes/AnotherSecret/Music" not in text
+    assert "private_path" not in text
 
 
 def test_write_diagnostics_creates_json_file(tmp_path: Path):
