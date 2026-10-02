@@ -346,6 +346,8 @@ class LibraryBrowser(QWidget):
     artistImageRequested = Signal(object)
     artistImageCacheRequested = Signal(object)
     artistPhotoFileRequested = Signal(object)
+    scanPauseRequested = Signal()
+    scanCancelRequested = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -385,6 +387,8 @@ class LibraryBrowser(QWidget):
         self._album_lookup_stats = self._new_lookup_stats()
         self._tracks_built = False
         self.last_catalog_metrics: dict[str, object] = {}
+        self._scan_active = False
+        self._scan_paused = False
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -461,6 +465,60 @@ class LibraryBrowser(QWidget):
         actions.addWidget(self.images_button)
         actions.addStretch(1)
         outer.addLayout(actions)
+
+        self.scan_progress_panel=QFrame()
+        self.scan_progress_panel.setObjectName("artworkProgressPanel")
+        scan_l=QVBoxLayout(self.scan_progress_panel)
+        scan_l.setContentsMargins(12,10,12,10)
+        scan_l.setSpacing(7)
+
+        scan_top=QHBoxLayout()
+        self.scan_progress_title=QLabel("Indexing your music")
+        self.scan_progress_title.setObjectName("artworkProgressTitle")
+        self.scan_progress_summary=QLabel("")
+        self.scan_progress_summary.setObjectName("artworkProgressSummary")
+        scan_top.addWidget(self.scan_progress_title)
+        scan_top.addStretch(1)
+        scan_top.addWidget(self.scan_progress_summary)
+        scan_l.addLayout(scan_top)
+
+        self.scan_progress=QProgressBar()
+        self.scan_progress.setRange(0,0)
+        self.scan_progress.setTextVisible(True)
+        scan_l.addWidget(self.scan_progress)
+
+        scan_detail_row=QHBoxLayout()
+        scan_text=QVBoxLayout()
+        scan_text.setSpacing(2)
+        self.scan_progress_detail=QLabel("")
+        self.scan_progress_detail.setObjectName("artworkProgressDetail")
+        self.scan_progress_detail.setWordWrap(True)
+        self.scan_safety_note=QLabel(
+            "Melodex indexes music where it already lives. Audio files are never copied."
+        )
+        self.scan_safety_note.setObjectName("artworkProgressDetail")
+        self.scan_safety_note.setWordWrap(True)
+        scan_text.addWidget(self.scan_progress_detail)
+        scan_text.addWidget(self.scan_safety_note)
+        scan_detail_row.addLayout(scan_text,1)
+
+        self.scan_pause_button=QPushButton("Pause")
+        self.scan_pause_button.setObjectName("quietButton")
+        self.scan_pause_button.clicked.connect(
+            lambda _checked=False: self.scanPauseRequested.emit()
+        )
+        scan_detail_row.addWidget(self.scan_pause_button)
+
+        self.scan_cancel_button=QPushButton("Cancel")
+        self.scan_cancel_button.setObjectName("quietButton")
+        self.scan_cancel_button.clicked.connect(
+            lambda _checked=False: self.scanCancelRequested.emit()
+        )
+        scan_detail_row.addWidget(self.scan_cancel_button)
+
+        scan_l.addLayout(scan_detail_row)
+        self.scan_progress_panel.hide()
+        outer.addWidget(self.scan_progress_panel)
 
         self.artwork_progress_panel=QFrame()
         self.artwork_progress_panel.setObjectName("artworkProgressPanel")
@@ -710,6 +768,126 @@ class LibraryBrowser(QWidget):
         )
         metrics["total_seconds"] = round(time.perf_counter() - started, 6)
         self.last_catalog_metrics = metrics
+
+    def begin_scan(self, reason: str = "") -> None:
+        self._scan_active = True
+        self._scan_paused = False
+        self.scan_progress_title.setText("Indexing your music")
+        self.scan_progress_summary.setText("Discovering files…")
+        self.scan_progress_detail.setText(
+            "Checking your selected music folders."
+        )
+        self.scan_progress.setRange(0,0)
+        self.scan_progress.setFormat("")
+        self.scan_pause_button.setText("Pause")
+        self.scan_pause_button.setEnabled(True)
+        self.scan_cancel_button.setText("Cancel")
+        self.scan_cancel_button.setEnabled(True)
+        self.scan_progress_panel.show()
+
+    def set_scan_progress(self, payload: object) -> None:
+        if not isinstance(payload,dict):
+            return
+        phase=str(payload.get("phase") or "")
+        found=max(0,int(payload.get("audio_files_seen") or 0))
+        completed=max(0,int(payload.get("completed") or 0))
+        total=max(0,int(payload.get("total") or 0))
+        current=str(payload.get("current") or "").strip()
+
+        self._scan_active=phase not in {"complete","cancelled","error"}
+        if phase=="discovering":
+            self.scan_progress.setRange(0,0)
+            self.scan_progress.setFormat("")
+            self.scan_progress_summary.setText(
+                f"{found:,} track{'s' if found != 1 else ''} found"
+            )
+            self.scan_progress_detail.setText(
+                f"Discovering files · {current}" if current else "Discovering files…"
+            )
+        elif phase=="metadata":
+            if total:
+                self.scan_progress.setRange(0,total)
+                self.scan_progress.setValue(min(completed,total))
+                self.scan_progress.setFormat("%v / %m")
+            else:
+                self.scan_progress.setRange(0,1)
+                self.scan_progress.setValue(0)
+                self.scan_progress.setFormat("No audio files found")
+            self.scan_progress_summary.setText(
+                f"Reading metadata · {completed:,} / {total:,}"
+            )
+            self.scan_progress_detail.setText(
+                current or (
+                    "Reading track information…"
+                    if total
+                    else "No supported audio files were discovered."
+                )
+            )
+        elif phase=="cancelled":
+            self.scan_progress_summary.setText("Cancelled")
+            self.scan_progress_detail.setText(
+                "The existing Melodex library was kept unchanged."
+            )
+        elif phase=="complete":
+            if total:
+                self.scan_progress.setRange(0,total)
+                self.scan_progress.setValue(total)
+                self.scan_progress.setFormat("%v / %m")
+            else:
+                self.scan_progress.setRange(0,1)
+                self.scan_progress.setValue(0)
+                self.scan_progress.setFormat("No audio files found")
+            self.scan_progress_summary.setText(
+                f"Complete · {completed:,} track{'s' if completed != 1 else ''}"
+            )
+            self.scan_progress_detail.setText("Your music index is ready.")
+
+    def set_scan_paused(self, paused: bool) -> None:
+        self._scan_paused=bool(paused)
+        self.scan_pause_button.setText("Resume" if paused else "Pause")
+        if paused:
+            self.scan_progress_title.setText("Indexing paused")
+        else:
+            self.scan_progress_title.setText("Indexing your music")
+
+    def set_scan_cancelling(self) -> None:
+        self.scan_progress_title.setText("Stopping indexing…")
+        self.scan_progress_summary.setText("Cancelling")
+        self.scan_pause_button.setEnabled(False)
+        self.scan_cancel_button.setEnabled(False)
+
+    def finish_scan(
+        self,
+        status: str,
+        *,
+        count: int = 0,
+        error: str = "",
+    ) -> None:
+        status=str(status or "complete")
+        self._scan_active=False
+        self._scan_paused=False
+        self.scan_pause_button.setEnabled(False)
+        self.scan_cancel_button.setEnabled(False)
+        if status=="cancelled":
+            self.scan_progress_title.setText("Indexing cancelled")
+            self.scan_progress_summary.setText("Existing library kept")
+            self.scan_progress_detail.setText(
+                "No partial scan was applied."
+            )
+        elif status=="error":
+            self.scan_progress_title.setText("Indexing stopped")
+            self.scan_progress_summary.setText("Could not finish")
+            self.scan_progress_detail.setText(str(error or "Unknown scan error"))
+        else:
+            self.scan_progress_title.setText("Indexing complete")
+            self.scan_progress_summary.setText(
+                f"{max(0,int(count)):,} track{'s' if int(count) != 1 else ''}"
+            )
+            self.scan_progress_detail.setText("Your music index is ready.")
+
+    def clear_scan_status(self) -> None:
+        if not self._scan_active:
+            self.scan_progress_panel.hide()
 
     def current_view(self) -> str:
         for key, button in self.view_buttons.items():

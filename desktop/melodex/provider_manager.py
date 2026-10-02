@@ -6,7 +6,7 @@ import shutil
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from .provider import MusicProvider, ProviderInstaller
 from .providers import JamendoProvider, LocalFilesProvider, UserStreamsProvider
@@ -273,11 +273,18 @@ class ProviderManager:
     def scan_local_roots_snapshot(
         self,
         roots: list[Path] | None = None,
+        *,
+        progress: Callable[[dict[str, Any]], None] | None = None,
+        control: Any = None,
     ) -> dict[str, Any]:
         provider = self.providers["local"]
         assert isinstance(provider, LocalFilesProvider)
         scan_roots = self.local_roots() if roots is None else [Path(x) for x in roots]
-        return provider.scan_snapshot(scan_roots)
+        return provider.scan_snapshot(
+            scan_roots,
+            progress=progress,
+            control=control,
+        )
 
     def apply_local_scan_snapshot(self, snapshot: dict[str, Any]) -> int:
         provider = self.providers["local"]

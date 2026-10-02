@@ -5,6 +5,7 @@ import time
 from pathlib import Path
 
 import melodex.providers.local_files as local_files
+from melodex.library_scan import ScanControl
 from melodex.provider_manager import ProviderManager
 from melodex.providers.local_files import LocalFilesProvider
 
@@ -244,3 +245,127 @@ def test_manager_clearing_metadata_override_does_not_rescan_synchronously(
         assert provider._override_key(track_path) not in provider.overrides
     finally:
         manager.close()
+
+
+
+def test_scan_progress_has_discovery_metadata_and_complete_phases(
+    monkeypatch,
+    tmp_path: Path,
+):
+    root = tmp_path / "progress-share"
+    root.mkdir()
+
+    monkeypatch.setattr(
+        local_files.os,
+        "walk",
+        lambda _root: [
+            (str(root / "Artist"), [], ["one.flac", "two.flac", "notes.txt"])
+        ],
+    )
+    monkeypatch.setattr(
+        LocalFilesProvider,
+        "_metadata",
+        staticmethod(_metadata_row),
+    )
+
+    provider = LocalFilesProvider(scan_on_init=False)
+    events = []
+    snapshot = provider.scan_snapshot([root], progress=lambda row: events.append(dict(row)))
+
+    phases = [row["phase"] for row in events]
+    assert phases[0] == "discovering"
+    assert "metadata" in phases
+    assert phases[-1] == "complete"
+    assert events[-1]["completed"] == 2
+    assert events[-1]["total"] == 2
+    assert snapshot["cancelled"] is False
+    serialized = json.dumps(events)
+    assert str(root) not in serialized
+
+
+def test_cancelled_scan_never_returns_partial_catalog(
+    monkeypatch,
+    tmp_path: Path,
+):
+    root = tmp_path / "cancel-share"
+    root.mkdir()
+    control = ScanControl()
+    calls = []
+
+    monkeypatch.setattr(
+        local_files.os,
+        "walk",
+        lambda _root: [(str(root), [], ["one.flac", "two.flac", "three.flac"])],
+    )
+
+    def metadata_then_cancel(path: Path):
+        calls.append(path.name)
+        if len(calls) == 1:
+            control.cancel()
+        return _metadata_row(path)
+
+    monkeypatch.setattr(
+        LocalFilesProvider,
+        "_metadata",
+        staticmethod(metadata_then_cancel),
+    )
+
+    provider = LocalFilesProvider(scan_on_init=False)
+    snapshot = provider.scan_snapshot([root], control=control)
+
+    assert snapshot["cancelled"] is True
+    assert snapshot["tracks"] == []
+    assert snapshot["metrics"]["tracks_indexed"] == 1
+    assert calls == ["one.flac"]
+    assert provider.tracks == []
+
+
+def test_paused_scan_waits_until_resumed(
+    monkeypatch,
+    tmp_path: Path,
+):
+    import threading
+
+    root = tmp_path / "pause-share"
+    root.mkdir()
+    control = ScanControl()
+    control.pause()
+    metadata_calls = []
+    holder = {}
+
+    monkeypatch.setattr(
+        local_files.os,
+        "walk",
+        lambda _root: [(str(root), [], ["one.flac"])],
+    )
+
+    def metadata(path: Path):
+        metadata_calls.append(path.name)
+        return _metadata_row(path)
+
+    monkeypatch.setattr(
+        LocalFilesProvider,
+        "_metadata",
+        staticmethod(metadata),
+    )
+
+    provider = LocalFilesProvider(scan_on_init=False)
+
+    worker = threading.Thread(
+        target=lambda: holder.setdefault(
+            "snapshot",
+            provider.scan_snapshot([root], control=control),
+        )
+    )
+    worker.start()
+    time.sleep(0.05)
+
+    assert worker.is_alive()
+    assert metadata_calls == []
+
+    control.resume()
+    worker.join(timeout=2)
+
+    assert not worker.is_alive()
+    assert holder["snapshot"]["cancelled"] is False
+    assert len(holder["snapshot"]["tracks"]) == 1
