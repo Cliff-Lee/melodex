@@ -197,6 +197,7 @@ class LocalFilesProvider(MusicProvider):
         throttle = ProgressThrottle()
         audio_paths: list[Path] = []
         tracks: list[dict[str, Any]] = []
+        index_tracks: list[dict[str, Any]] = []
         root_states: list[dict[str, Any]] = []
         probe = ScanProbe(len(scan_roots))
 
@@ -262,7 +263,9 @@ class LocalFilesProvider(MusicProvider):
             for index, p in enumerate(audio_paths, start=1):
                 control.checkpoint()
                 with probe.metadata_read():
-                    metadata = self._metadata(p)
+                    raw_metadata = self._metadata(p)
+                index_tracks.append(dict(raw_metadata))
+                metadata = dict(raw_metadata)
                 local_path = str(
                     metadata.get("local_path")
                     or metadata.get("track_id")
@@ -273,7 +276,6 @@ class LocalFilesProvider(MusicProvider):
                     {},
                 )
                 if override:
-                    metadata = dict(metadata)
                     for key, value in override.items():
                         if key in self.EDITABLE_METADATA_FIELDS:
                             metadata[key] = value
@@ -298,6 +300,7 @@ class LocalFilesProvider(MusicProvider):
             )
             return {
                 "tracks": [],
+                "index_tracks": [],
                 "metrics": metrics,
                 "root_states": root_states,
                 "cancelled": True,
@@ -311,6 +314,7 @@ class LocalFilesProvider(MusicProvider):
         )
         return {
             "tracks": tracks,
+            "index_tracks": index_tracks,
             "metrics": metrics,
             "root_states": root_states,
             "cancelled": False,
