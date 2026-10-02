@@ -125,3 +125,13 @@ This file tracks changes intended for the next release after **v0.7.4**.
 - My Music must retain the full 12,700-track model while keeping the initial Albums and Tracks widget windows bounded.
 - The acceptance workflow also reruns hard-cancellation coverage for a deliberately hung scan worker.
 - A tester-facing Synology/NAS retest checklist now covers first import, restart, unchanged rescan, cancel, offline NAS startup and redacted diagnostics export.
+
+
+## Public beta — release readiness
+
+- Beta testing now has two clear paths: a 10-minute listener test and a dedicated large-library/NAS retest.
+- Tester feedback captures installation friction, storage type and indexing experience so reports are easier to reproduce.
+- Bug reports can include local/NAS context without exposing private paths.
+- Public release orchestration now runs the permanent 12,700-track acceptance gate before a release is created.
+- The release checklist also requires package-size regression checks and review of the macOS trust report.
+- The README no longer hard-codes an old release-notes version and now points large-library testers directly to the NAS retest procedure.
