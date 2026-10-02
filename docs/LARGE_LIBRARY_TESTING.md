@@ -352,3 +352,64 @@ python tools/profile_incremental_rescan.py \
 - legacy cache rows without fingerprints are refreshed once, then become reusable
 - progress distinguishes files discovered from files whose metadata actually needs reading
 - diagnostics report aggregate incremental counts without exposing filenames or paths
+
+
+## Campaign 6A — isolate NAS scans from the application process
+
+Background threads solved the UI beach-ball, but a thread cannot reliably
+interrupt a filesystem call that is already blocked inside macOS/Windows/Linux
+or an SMB/NFS client. A disconnected or unhealthy NAS can therefore leave the
+scan thread stuck even though the Melodex window itself remains responsive.
+
+Application-initiated library scans now run in a **separate Melodex worker
+process**:
+
+```text
+Melodex UI process
+  |
+  | JSON scan request
+  v
+Melodex scan-worker process
+  |
+  | directory/stat/tag I/O
+  v
+progress / completed snapshot
+```
+
+The worker uses the same packaged Python runtime as Melodex. In PyInstaller
+builds the executable re-enters itself in module-worker mode **before Qt is
+imported**, so a scan worker never opens a second Melodex window.
+
+### Cancellation
+
+Cancel first sends a normal cooperative cancellation request. This remains the
+preferred path because it lets the worker stop between files/directories.
+
+If the worker is still alive after the short cancellation grace period, Melodex
+terminates the worker process. This gives Cancel a hard boundary even when the
+worker is blocked inside an operating-system/network filesystem call.
+
+A hard-cancelled worker never returns a partial catalog and never commits a
+partial SQLite index. The existing library remains active.
+
+### Packaging verification
+
+The scan-worker module is explicitly included in macOS, Windows and Linux
+PyInstaller builds. The existing frozen-child smoke test now also launches:
+
+```text
+Melodex --melodex-python-module-child melodex.scan_worker --smoke
+```
+
+and verifies that it returns worker JSON without constructing the GUI.
+
+### Campaign 6A acceptance checks
+
+- normal scans run in a separate process from the Qt application
+- normal Pause/Resume/Cancel continue to work across the worker protocol
+- cancelling an OS-blocked file open terminates the scan worker within a bounded time
+- hard cancellation returns no partial tracks
+- hard cancellation cannot replace the persistent SQLite library index
+- the user is told that the blocked scan was stopped safely and the existing library was kept
+- worker errors redact configured music-root and library-index paths before reaching the UI
+- packaged macOS, Windows and Linux builds can launch the bundled scan-worker module without opening a second GUI
