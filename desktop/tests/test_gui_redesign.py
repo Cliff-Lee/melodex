@@ -72,6 +72,9 @@ def test_visual_library_defaults_to_album_cards_and_filters():
 
     browser.set_view("tracks")
     assert browser.stack.currentWidget() is browser.track_list
+    assert browser.track_model.rowCount() == 3
+    app.processEvents()
+    app.processEvents()
     assert len(browser.track_rows) == 3
 
     browser.set_catalog([])
