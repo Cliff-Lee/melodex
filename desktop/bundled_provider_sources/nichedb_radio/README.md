@@ -13,7 +13,7 @@ NicheDB maintains a daily-refreshed index of internet-radio stations sourced fro
 - station artwork when supplied;
 - country, language, genre, codec, bitrate, votes/listens and coordinates preserved as metadata.
 
-The anonymous API does not require an account or key. `NICHEDB_API_KEY` can optionally be supplied in the environment for deployments that have a higher API allowance.
+The anonymous API does not require an account or key. An optional NicheDB API key can be entered in Melodex source settings only if a higher API allowance is needed.
 
 Offline downloads are deliberately disabled because these are live radio streams.
 
