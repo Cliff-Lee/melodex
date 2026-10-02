@@ -307,6 +307,81 @@ def test_redesigned_main_window_builds_with_goal_navigation(monkeypatch, tmp_pat
     app.processEvents()
 
 
+def test_filter_clear_reuses_home_cards_and_skips_hidden_layouts():
+    try:
+        from PySide6.QtWidgets import QApplication
+        from melodex.library_browser import LibraryBrowser
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    browser = LibraryBrowser()
+    browser.resize(1100, 760)
+    browser.show()
+
+    tracks = [
+        _track(
+            f"/filter-cache/{index:04d}.flac",
+            f"Artist {index:04d}",
+            f"Album {index:04d}",
+            f"Track {index:04d}",
+            1,
+        )
+        for index in range(350)
+    ]
+    browser.set_catalog(tracks)
+    app.processEvents()
+
+    assert len(browser.cards) == 120
+    home_ids = {key: id(card) for key, card in browser.cards.items()}
+
+    # A narrow result should move the normal first-page widgets into the
+    # bounded home cache, not destroy them.
+    browser.search.setText("Album 0349")
+    app.processEvents()
+    assert len(browser.cards) == 1
+    assert len(browser._album_home_cards) == 120
+
+    browser.search.clear()
+    app.processEvents()
+    assert len(browser.cards) == 120
+    assert len(browser._album_home_cards) == 0
+    assert {key: id(browser.cards[key]) for key in home_ids} == home_ids
+
+    # Search changes while Tracks is visible must not relayout the hidden
+    # Albums grid or destroy/recreate its cached first page.
+    browser.set_view("tracks")
+    app.processEvents()
+    album_ids_before = {key: id(card) for key, card in browser.cards.items()}
+    browser.search.setText("Album 0349")
+    app.processEvents()
+    browser.search.clear()
+    app.processEvents()
+    assert {key: id(card) for key, card in browser.cards.items()} == album_ids_before
+
+    # Artists use the same bounded home-card policy.
+    browser.set_view("artists")
+    app.processEvents()
+    assert len(browser.artist_cards) == 120
+    artist_ids = {key: id(card) for key, card in browser.artist_cards.items()}
+    browser.search.setText("Artist 0349")
+    app.processEvents()
+    assert len(browser.artist_cards) == 1
+    assert len(browser._artist_home_cards) == 120
+    browser.search.clear()
+    app.processEvents()
+    assert len(browser.artist_cards) == 120
+    assert len(browser._artist_home_cards) == 0
+    assert {
+        key: id(browser.artist_cards[key])
+        for key in artist_ids
+    } == artist_ids
+
+    browser.deleteLater()
+    app.processEvents()
+
+
 def test_cached_album_artwork_prioritizes_viewport_and_scroll_target():
     try:
         from PySide6.QtWidgets import QApplication
