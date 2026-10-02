@@ -4,6 +4,7 @@ import json
 import os
 import urllib.parse
 import urllib.request
+from urllib.error import HTTPError, URLError
 from pathlib import Path
 
 PROVIDER_ID = "org.melodex.example.openverse-audio"
@@ -29,6 +30,48 @@ def _get_json(params):
     )
     with urllib.request.urlopen(req, timeout=20) as response:
         return json.load(response)
+
+
+def _final_media_url(url):
+    """Resolve third-party media redirects before Melodex applies host policy."""
+    value = str(url or "").strip()
+    if not value.startswith(("http://", "https://")):
+        raise RuntimeError("Openverse item has no playable HTTP media URL")
+    if os.getenv("MELODEX_EXAMPLE_FIXTURES") == "1":
+        return value
+
+    common = {
+        "User-Agent": USER_AGENT,
+        "Accept-Encoding": "identity",
+    }
+
+    def probe(method, extra=None):
+        headers = dict(common)
+        headers.update(extra or {})
+        request = urllib.request.Request(value, headers=headers, method=method)
+        with urllib.request.urlopen(request, timeout=20) as response:
+            final = str(response.geturl() or value).strip()
+            content_type = str(response.headers.get("Content-Type") or "").casefold()
+            if not final.startswith(("http://", "https://")):
+                raise RuntimeError("Openverse media redirected to a non-HTTP URL")
+            if "text/html" in content_type:
+                raise RuntimeError("Openverse media URL returned a web page instead of audio")
+            return final
+
+    try:
+        return probe("HEAD")
+    except HTTPError as exc:
+        if exc.code not in {400, 403, 405, 501}:
+            raise RuntimeError(f"Openverse media check failed: HTTP {exc.code}") from exc
+    except (URLError, TimeoutError, OSError):
+        pass
+
+    try:
+        return probe("GET", {"Range": "bytes=0-0"})
+    except HTTPError as exc:
+        raise RuntimeError(f"Openverse media check failed: HTTP {exc.code}") from exc
+    except (URLError, TimeoutError, OSError) as exc:
+        raise RuntimeError(f"Openverse media check failed: {exc}") from exc
 
 
 def _tags(row):
@@ -113,7 +156,7 @@ def respond(request):
         return {
             "id": PROVIDER_ID,
             "name": "Openverse Audio Example",
-            "version": "0.1.0",
+            "version": "0.1.2",
             "protocol_version": "1.0",
             "capabilities": ["search", "track", "playback"],
         }
@@ -154,9 +197,7 @@ def respond(request):
     if method in {"playback.resolve", "playback.refresh"}:
         track_id = str(params.get("provider_track_id") or params.get("track_id") or "")
         row = _find(track_id)
-        url = str(row.get("url") or "").strip()
-        if not url:
-            raise RuntimeError("Openverse item has no media URL")
+        url = _final_media_url(row.get("url"))
         filetype = str(row.get("filetype") or "").casefold()
         mime = {
             "mp3": "audio/mpeg",
@@ -169,6 +210,7 @@ def respond(request):
         return {
             "kind": "http",
             "url": url,
+            "stream_url": url,
             "headers": {"User-Agent": USER_AGENT},
             "cookies": {},
             "mime_type": mime,
