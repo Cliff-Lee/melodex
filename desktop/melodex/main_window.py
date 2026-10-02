@@ -236,6 +236,7 @@ class MainWindow(QMainWindow):
         self._ui_callback_dispatcher = _UiCallbackDispatcher(
             QApplication.instance()
         )
+        self._async_closing_event = threading.Event()
         self._async_generations: dict[str, int] = {}
         self._async_invalidations = 0
         self._async_stale_results_dropped = 0
@@ -7290,9 +7291,13 @@ class MainWindow(QMainWindow):
             )
 
         dispatcher = self._ui_callback_dispatcher
+        closing_event = self._async_closing_event
 
         def deliver_done(result: object) -> None:
-            if self._closing:
+            # This check deliberately touches no QObject-backed wrapper. A
+            # completion can arrive after Qt has destroyed MainWindow's C++
+            # object but while Python closures still retain the wrapper.
+            if closing_event.is_set():
                 return
             if not is_current():
                 self._async_stale_results_dropped += 1
@@ -7300,7 +7305,7 @@ class MainWindow(QMainWindow):
             done(result)
 
         def deliver_error(error: str) -> None:
-            if self._closing:
+            if closing_event.is_set():
                 return
             if not is_current():
                 self._async_stale_results_dropped += 1
@@ -7337,12 +7342,15 @@ class MainWindow(QMainWindow):
             name=task_name,
             replace_key=scope,
         )
-        if not submitted and not self._closing:
+        if not submitted and not closing_event.is_set():
             post_to_ui(
                 lambda: deliver_error("Background work is shutting down")
             )
 
     def closeEvent(self,event):
+        # Set the plain-Python gate before any Qt-owned children are torn down.
+        if hasattr(self, "_async_closing_event"):
+            self._async_closing_event.set()
         if self.music_live_active:
             self._journey_live_stop("application closed")
         if hasattr(self, "responsiveness"):
