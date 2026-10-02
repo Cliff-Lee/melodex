@@ -79,7 +79,7 @@ def main() -> int:
         if probe_exit:
             # Let deferred show/paint callbacks run before quitting the
             # headless startup probe.
-            QTimer.singleShot(0, app.quit)
+            QTimer.singleShot(0, win.close)
 
     QTimer.singleShot(0, first_event_loop_turn)
     return app.exec()
