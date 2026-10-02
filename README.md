@@ -66,7 +66,7 @@ No local collection yet? Use **Explore → Search everything** to search connect
 
 Developers can check [Status, stability and trust](docs/developers/00_STATUS_AND_STABILITY.md) before building.
 
-This README follows the repository's current branch. For a released build, use the [download page](https://github.com/Cliff-Lee/melodex/releases/latest) and its matching [release notes](docs/releases/v0.7.2.md).
+This README follows the repository's current branch. For a released build, use the [download page](https://github.com/Cliff-Lee/melodex/releases/latest) and its matching [release notes](docs/releases/v0.7.3.md).
 
 ## The developer platform
 
@@ -215,7 +215,7 @@ The ecosystem is being developed with small examples built around documented, le
 
 | Example | What it demonstrates |
 | --- | --- |
-| Radio Browser | station search + live playback |
+| NicheDB Radio | rich radio discovery + live playback |\n| Radio Browser | station search + live playback |
 | LibriVox | public-domain search + playback + offline |
 | MusicBrainz | canonical identity + metadata provenance |
 | Wikimedia Commons | artwork + per-file licence/attribution |

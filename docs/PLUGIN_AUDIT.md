@@ -9,11 +9,11 @@ On a clean desktop install:
 | Layer | Count | Installed automatically? | Product meaning |
 | --- | ---: | --- | --- |
 | Core sources | 3 | Yes | Local files, user streams, optional Jamendo connector |
-| Included provider packages | 6 | Yes | Search/play sources carried with Melodex |
+| Included provider packages | 7 | Yes | Search/play sources carried with Melodex |
 | Enrichment extensions | 0 | No | Artwork, lyrics, metadata, context and identity extensions are optional |
 | Registry entries | 16 | No | All current registry entries are reference/example packages |
 
-The six included provider packages are repository-tested for package identity, manifest validity, install/restore behaviour and their fixture-backed provider contracts. A separate **manual live-provider smoke workflow** can also perform real search → resolve → media-byte checks against the current upstream services without making ordinary CI depend on external availability. The six bundled providers passed that live verification during the v0.7.1 development cycle. The end-user page still exposes **Check connections** for bounded checks on the current computer/network.
+The seven included provider packages are repository-tested for package identity, manifest validity, install/restore behaviour and their fixture-backed provider contracts. A separate **manual live-provider smoke workflow** can also perform real search → resolve → media-byte checks against the current upstream services without making ordinary CI depend on external availability. The seven bundled providers passed that live verification during the v0.7.1 development cycle. The end-user page still exposes **Check connections** for bounded checks on the current computer/network.
 
 The registry is currently a developer/reference ecosystem rather than a curated consumer app store: all 16 entries are marked `example`. The redesigned UI calls them optional/reference features rather than implying that every registry item is production-ready.
 
@@ -31,13 +31,13 @@ These are Core integrations rather than separately installed plugin packages.
 
 ### Included with Melodex
 
-The desktop app carries six audited provider packages and installs them automatically on first run unless the user has explicitly removed/disabled one:
+The desktop app carries seven audited provider packages and installs them automatically on first run unless the user has explicitly removed/disabled one:
 
 | Included source | Package version | Main role |
 | --- | ---: | --- |
 | Internet Archive Audio | 0.1.0 | Search/play openly accessible archive audio |
 | LibriVox | 0.1.4 | Public-domain audiobooks |
-| Radio Browser | 0.1.2 | Internet radio directory |
+| NicheDB Radio | 0.1.0 | Rich daily-refreshed internet-radio discovery |\n| Radio Browser | 0.1.2 | Internet radio directory |
 | SomaFM | 0.1.1 | Curated internet radio |
 | Wikimedia Commons Audio | 0.1.1 | Openly licensed/public-domain audio |
 | ccMixter | 0.1.3 | Creative Commons music |
