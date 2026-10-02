@@ -619,8 +619,10 @@ class CapabilityBroker:
             declarations = list(extension.info.configuration or [])
             if declarations:
                 extension.set_config_loader(
-                    lambda ext=extension, fields=declarations:
-                        self.config_broker.values(ext.info.id, fields)
+                    lambda ext=extension, fields=declarations: self.config_broker.values(
+                        ext.info.id,
+                        fields,
+                    )
                 )
             self.extensions[extension.info.id] = extension
 
