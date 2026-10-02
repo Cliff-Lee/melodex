@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import QEvent, Qt, QTimer, Signal, QObject
-from PySide6.QtGui import QAction, QDesktopServices, QKeySequence, QPixmap, QShortcut
+from PySide6.QtGui import QAction, QColor, QDesktopServices, QKeySequence, QPixmap, QShortcut
 from PySide6.QtMultimedia import QMediaPlayer
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QListWidget,
