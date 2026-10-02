@@ -39,6 +39,8 @@ def evaluate(
     bundle_report: dict[str, Any] | None = None,
     portable: Path | None = None,
     installer: Path | None = None,
+    deb: Path | None = None,
+    appimage: Path | None = None,
 ) -> dict[str, Any]:
     tolerance = float(baselines.get("tolerance_percent") or 0.0)
     profiles = dict(baselines.get("profiles") or {})
@@ -56,6 +58,10 @@ def evaluate(
         actual["portable_zip_bytes"] = int(Path(portable).stat().st_size)
     if installer is not None:
         actual["installer_bytes"] = int(Path(installer).stat().st_size)
+    if deb is not None:
+        actual["deb_bytes"] = int(Path(deb).stat().st_size)
+    if appimage is not None:
+        actual["appimage_bytes"] = int(Path(appimage).stat().st_size)
 
     rows: list[dict[str, Any]] = []
     failed = False
@@ -124,6 +130,8 @@ def main() -> int:
     parser.add_argument("--bundle-report", type=Path)
     parser.add_argument("--portable", type=Path)
     parser.add_argument("--installer", type=Path)
+    parser.add_argument("--deb", type=Path)
+    parser.add_argument("--appimage", type=Path)
     parser.add_argument("--json-out", type=Path)
     parser.add_argument("--markdown-out", type=Path)
     args = parser.parse_args()
@@ -136,6 +144,8 @@ def main() -> int:
         bundle_report=report,
         portable=args.portable,
         installer=args.installer,
+        deb=args.deb,
+        appimage=args.appimage,
     )
     rendered = markdown(result)
 
