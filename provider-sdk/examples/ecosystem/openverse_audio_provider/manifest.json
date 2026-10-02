@@ -13,7 +13,8 @@
   ],
   "permissions": {
     "network_hosts": [
-      "api.openverse.org"
+      "api.openverse.org",
+      "*"
     ],
     "offline_downloads": false,
     "local_files": false,
