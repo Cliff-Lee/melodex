@@ -152,7 +152,13 @@ def profile_gui(
     started = time.perf_counter()
     browser.set_catalog(catalog, revision=revision)
     app.processEvents()
+    if not browser.last_artwork_priority_metrics:
+        browser._emit_viewport_artwork_batch(
+            "albums",
+            browser._artwork_generation("albums"),
+        )
     catalog_seconds = time.perf_counter() - started
+    album_artwork_priority = dict(browser.last_artwork_priority_metrics)
 
     filter_query = ""
     if catalog:
@@ -167,8 +173,14 @@ def profile_gui(
     app.processEvents()
     browser.set_view("artists")
     app.processEvents()
+    if browser.last_artwork_priority_metrics.get("kind") != "artists":
+        browser._emit_viewport_artwork_batch(
+            "artists",
+            browser._artwork_generation("artists"),
+        )
     artist_view_metrics = dict(browser.last_view_metrics)
     artist_filter_metrics = dict(browser.last_filter_metrics)
+    artist_artwork_priority = dict(browser.last_artwork_priority_metrics)
 
     browser.set_view("tracks")
     app.processEvents()
@@ -185,6 +197,8 @@ def profile_gui(
         "track_view": track_view_metrics,
         "track_filter": track_filter_metrics,
         "track_virtualization": dict(browser.last_track_virtualization_metrics),
+        "album_artwork_priority": album_artwork_priority,
+        "artist_artwork_priority": artist_artwork_priority,
         "album_batch_size": int(browser._album_batch_size),
         "artist_batch_size": int(browser._artist_batch_size),
         "track_row_height": int(browser._track_row_height),

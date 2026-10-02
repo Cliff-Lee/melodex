@@ -67,6 +67,18 @@ _LIBRARY_FILTER_METRIC_FIELDS = (
     "total_seconds",
 )
 
+_ARTWORK_PRIORITY_METRIC_FIELDS = (
+    "kind",
+    "tier",
+    "scroll_value",
+    "direction",
+    "visible_candidates",
+    "near_candidates",
+    "distant_candidates",
+    "requested_now",
+    "requested_total",
+)
+
 _TRACK_VIRTUALIZATION_METRIC_FIELDS = (
     "model_row_count",
     "window_start",
@@ -303,6 +315,13 @@ def build_diagnostics(
     )
     if track_virtualization:
         performance["track_virtualization"] = track_virtualization
+
+    artwork_priority = _metric_summary(
+        supplied_ui.get("artwork_priority"),
+        _ARTWORK_PRIORITY_METRIC_FIELDS,
+    )
+    if artwork_priority:
+        performance["artwork_priority"] = artwork_priority
 
     ui_responsiveness = _responsiveness_summary(
         supplied_ui.get("responsiveness")

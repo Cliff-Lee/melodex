@@ -307,6 +307,162 @@ def test_redesigned_main_window_builds_with_goal_navigation(monkeypatch, tmp_pat
     app.processEvents()
 
 
+def test_cached_album_artwork_prioritizes_viewport_and_scroll_target():
+    try:
+        from PySide6.QtWidgets import QApplication
+        from melodex.library_browser import LibraryBrowser
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    browser = LibraryBrowser()
+    browser.resize(1100, 760)
+    browser.show()
+
+    batches = []
+    browser.artworkRequested.connect(
+        lambda rows: batches.append([dict(row) for row in rows])
+    )
+
+    tracks = [
+        _track(
+            f"/viewport/albums/{index:03d}.flac",
+            f"Artist {index:03d}",
+            f"Album {index:03d}",
+            f"Track {index:03d}",
+            1,
+            1980 + (index % 40),
+        )
+        for index in range(120)
+    ]
+    browser.set_catalog(tracks)
+    app.processEvents()
+    app.processEvents()
+    if not batches:
+        browser._emit_viewport_artwork_batch(
+            "albums",
+            browser._artwork_generation("albums"),
+        )
+
+    assert batches
+    first = batches[0]
+    assert 1 <= len(first) <= browser._viewport_artwork_batch_size
+
+    visible, near, _distant = browser._card_artwork_priority("albums")
+    priority_keys = {
+        str(row.get("key") or "")
+        for row in visible + near
+    }
+    assert {row["key"] for row in first} <= priority_keys
+    assert browser.last_artwork_priority_metrics["requested_now"] <= 12
+
+    # Move to the bottom while the first cache batch is still in flight.
+    # Completing that old batch should continue from the new viewport, not
+    # from the top of the collection.
+    scrollbar = browser.album_scroll.verticalScrollBar()
+    scrollbar.setValue(scrollbar.maximum())
+    app.processEvents()
+    before = len(batches)
+    browser.set_artwork({row["key"]: "" for row in first})
+    app.processEvents()
+    app.processEvents()
+    if len(batches) == before:
+        browser._emit_viewport_artwork_batch(
+            "albums",
+            browser._artwork_generation("albums"),
+        )
+
+    assert len(batches) > before
+    second = batches[-1]
+    visible2, near2, distant2 = browser._card_artwork_priority("albums")
+    bottom_priority = {
+        str(row.get("key") or "")
+        for row in visible2 + near2
+    }
+    assert {row["key"] for row in second} <= bottom_priority
+    assert {row["key"] for row in second}.isdisjoint(
+        {row["key"] for row in first}
+    )
+    assert browser.last_artwork_priority_metrics["scroll_value"] > 0
+
+    # Once viewport work is exhausted, distant cache hydration stays tiny.
+    browser._album_cache_inflight = False
+    for row in visible2 + near2:
+        browser._art_requested.add(str(row.get("key") or ""))
+    distant_keys = {
+        str(row.get("key") or "")
+        for row in distant2
+    }
+    before = len(batches)
+    browser._emit_viewport_artwork_batch(
+        "albums",
+        browser._artwork_generation("albums"),
+        idle=True,
+    )
+    if distant_keys:
+        assert len(batches) == before + 1
+        idle_batch = batches[-1]
+        assert 1 <= len(idle_batch) <= browser._idle_artwork_batch_size
+        assert {row["key"] for row in idle_batch} <= distant_keys
+
+    browser.deleteLater()
+    app.processEvents()
+
+
+def test_cached_artist_photos_use_same_viewport_priority():
+    try:
+        from PySide6.QtWidgets import QApplication
+        from melodex.library_browser import LibraryBrowser
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    browser = LibraryBrowser()
+    browser.resize(1100, 760)
+    browser.show()
+
+    batches = []
+    browser.artistImageCacheRequested.connect(
+        lambda rows: batches.append([dict(row) for row in rows])
+    )
+    tracks = [
+        _track(
+            f"/viewport/artists/{index:03d}.flac",
+            f"Artist {index:03d}",
+            f"Album {index:03d}",
+            f"Track {index:03d}",
+            1,
+            1990 + (index % 30),
+        )
+        for index in range(120)
+    ]
+    browser.set_catalog(tracks)
+    browser.set_view("artists")
+    app.processEvents()
+    app.processEvents()
+    if not batches:
+        browser._emit_viewport_artwork_batch(
+            "artists",
+            browser._artwork_generation("artists"),
+        )
+
+    assert batches
+    first = batches[0]
+    assert 1 <= len(first) <= browser._viewport_artwork_batch_size
+    visible, near, _distant = browser._card_artwork_priority("artists")
+    priority_keys = {
+        str(row.get("key") or "")
+        for row in visible + near
+    }
+    assert {row["key"] for row in first} <= priority_keys
+    assert browser.last_artwork_priority_metrics["kind"] == "artists"
+
+    browser.deleteLater()
+    app.processEvents()
+
+
 def test_artist_photo_lookup_runs_in_bounded_batches_with_progress():
     try:
         from PySide6.QtWidgets import QApplication
