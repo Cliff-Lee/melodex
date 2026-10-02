@@ -330,6 +330,7 @@ result is:
 ```text
 Rescan metadata reads: 0
 Metadata reused:       12,700
+Index rows rewritten:  0
 ```
 
 Use a simulated tag-read cost to make the avoided work more visible:
@@ -343,6 +344,7 @@ python tools/profile_incremental_rescan.py \
 ### Campaign 5 acceptance checks
 
 - an unchanged fingerprinted 12,700-track library performs zero Mutagen tag reads
+- an unchanged rescan rewrites zero track rows in the SQLite index
 - changing one file causes exactly one metadata read
 - adding one file causes exactly one new metadata read
 - files removed from an available root disappear after a successful rescan
