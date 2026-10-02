@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import ast
 import json
+import os
+import subprocess
+import sys
 
 from pathlib import Path
 
@@ -60,6 +63,22 @@ def test_main_window_does_not_eager_import_heavy_page_modules() -> None:
         "music_map_model",
         "visualization_models",
         "plugin_directory",
+        # P9d: Home/playback startup must not import optional feature graphs.
+        "mind",
+        "local_intelligence",
+        "music_knowledge",
+        "music_pathfinder",
+        "music_journey",
+        "music_journey_live",
+        "journey_recipe",
+        "journey_replay",
+        "llm_bridge",
+        "metadata",
+        "playlist_io",
+        "plugin_configuration_dialog",
+        "plugin_onboarding",
+        "diagnostics",
+        "library_scan_process",
     }
     assert forbidden.isdisjoint(imported), imported & forbidden
 
@@ -74,3 +93,29 @@ def test_provider_manager_keeps_plugin_registry_lazy(tmp_path) -> None:
         assert registry is manager._registry
     finally:
         manager.close()
+
+
+def test_flow_import_keeps_numpy_cold() -> None:
+    desktop = Path(__file__).resolve().parents[1]
+    env = dict(os.environ)
+    existing = str(env.get("PYTHONPATH") or "")
+    env["PYTHONPATH"] = (
+        str(desktop)
+        if not existing
+        else str(desktop) + os.pathsep + existing
+    )
+    code = (
+        "import sys; import melodex.flow; "
+        "assert 'numpy' not in sys.modules, 'Flow eagerly imported NumPy'"
+    )
+    completed = subprocess.run(
+        [sys.executable, "-c", code],
+        env=env,
+        cwd=desktop.parent,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+        timeout=20,
+    )
+    assert completed.returncode == 0, completed.stderr
