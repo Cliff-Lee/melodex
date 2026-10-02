@@ -3709,7 +3709,15 @@ class MainWindow(QMainWindow):
         elif phase=="metadata":
             completed=int(payload.get("completed") or 0)
             total=int(payload.get("total") or 0)
-            message=f"Indexing music · reading metadata · {completed:,}/{total:,}"
+            found=int(payload.get("audio_files_seen") or 0)
+            unchanged=int(payload.get("unchanged") or 0)
+            if total==0 and found:
+                message=(
+                    f"Indexing music · metadata already up to date · "
+                    f"{unchanged or found:,} reused"
+                )
+            else:
+                message=f"Indexing music · reading metadata · {completed:,}/{total:,}"
             self.statusBar().showMessage(message)
             if hasattr(self,"home_status"):
                 self.home_status.setText(message)
