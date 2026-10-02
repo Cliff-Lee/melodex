@@ -77,6 +77,9 @@ _BACKGROUND_SCHEDULER_FIELDS = (
     "cancelled",
     "queue_high_water",
     "max_active_observed",
+    "invalidations",
+    "stale_queued_cancelled",
+    "stale_results_suppressed",
 )
 
 _ARTWORK_PRIORITY_METRIC_FIELDS = (
