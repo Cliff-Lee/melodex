@@ -297,6 +297,45 @@ def test_replaced_running_task_result_is_suppressed():
         scheduler.shutdown(wait=True)
 
 
+def test_replaced_running_task_suppresses_late_error():
+    from melodex.background_scheduler import StaleTaskError
+
+    scheduler = BackgroundScheduler(max_workers=2, foreground_reserve=0)
+    started = threading.Event()
+    release = threading.Event()
+
+    def old_work():
+        started.set()
+        release.wait(2)
+        raise RuntimeError("obsolete failure")
+
+    try:
+        old = scheduler.submit(
+            old_work,
+            priority="foreground",
+            key="current-track-artwork",
+            replace=True,
+        )
+        assert started.wait(1)
+
+        newest = scheduler.submit(
+            lambda: "current",
+            priority="foreground",
+            key="current-track-artwork",
+            replace=True,
+        )
+        assert newest.result(timeout=1) == "current"
+
+        release.set()
+        try:
+            old.result(timeout=1)
+            raise AssertionError("obsolete failure should be suppressed as stale")
+        except StaleTaskError:
+            pass
+    finally:
+        scheduler.shutdown(wait=True)
+
+
 def test_cancel_key_invalidates_running_and_queued_work():
     from melodex.background_scheduler import StaleTaskError
 
