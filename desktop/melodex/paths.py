@@ -6,7 +6,10 @@ from pathlib import Path
 
 
 def app_data_dir() -> Path:
-    if sys.platform == "darwin":
+    override = str(os.environ.get("MELODEX_DATA_DIR") or "").strip()
+    if override:
+        root = Path(override).expanduser()
+    elif sys.platform == "darwin":
         root = Path.home() / "Library" / "Application Support" / "Melodex"
     elif os.name == "nt":
         root = Path(os.environ.get("APPDATA", Path.home())) / "Melodex"
