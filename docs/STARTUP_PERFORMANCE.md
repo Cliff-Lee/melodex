@@ -277,6 +277,26 @@ CI cannot rely on FUSE for AppImage, so the AppImage probe uses
 but it must not be compared directly with a normal user's FUSE-mounted AppImage launch.
 The installed `.deb` measurement is the cleaner Linux end-user startup reference.
 
+### Intel bridge stall found by P9e
+
+The first packaged baseline exposed a platform-specific issue that source-mode startup
+could not see. The macOS Intel runner reached the UI in roughly **36–37 seconds**, while
+the same package path was sub-second to about a second on the other runners.
+
+The trace isolated approximately **35.0 seconds** of every Intel launch inside automatic
+startup of the loopback AI/control bridge. That bridge is not required to render Home or
+play local music, so P9e moves its socket bind/start onto the bounded background
+scheduler.
+
+The startup contract now requires `bridge_start_scheduled`, not `bridge_ready`.
+A slow or temporarily blocked networking stack can therefore delay bridge availability
+without delaying the first usable Melodex window. If the app closes while the bind is
+still blocked, the worker stops the bridge as soon as the bind returns instead of
+leaking a background server.
+
+The Sources/bridge UI reports that the bridge is still starting if opened during that
+short background window.
+
 ### Regression policy
 
 The first P9e runs establish per-platform packaged baselines. They are required to
