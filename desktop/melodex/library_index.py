@@ -98,20 +98,26 @@ class LocalLibraryIndex:
     def root_id(path: str | Path) -> str:
         return _root_id(path)
 
-    def sync_roots(self, roots: list[Path]) -> None:
-        """Make the root table match configured roots without probing them."""
+    def ensure_roots(self, roots: list[Path]) -> None:
+        """Register roots without deleting any other cached roots."""
         clean = [Path(root) for root in roots]
-        wanted = {_root_id(root): str(root) for root in clean}
         with self._connect() as db:
-            for root_id, path in wanted.items():
+            for root in clean:
                 db.execute(
                     """
                     INSERT INTO roots(root_id, path)
                     VALUES(?, ?)
                     ON CONFLICT(root_id) DO UPDATE SET path=excluded.path
                     """,
-                    (root_id, path),
+                    (_root_id(root), str(root)),
                 )
+
+    def sync_roots(self, roots: list[Path]) -> None:
+        """Make the root table match configured roots without probing them."""
+        clean = [Path(root) for root in roots]
+        wanted = {_root_id(root): str(root) for root in clean}
+        self.ensure_roots(clean)
+        with self._connect() as db:
             if wanted:
                 placeholders = ",".join("?" for _ in wanted)
                 db.execute(
@@ -212,7 +218,9 @@ class LocalLibraryIndex:
         the completed scan are replaced.
         """
         clean_roots = [Path(root) for root in roots]
-        self.sync_roots(clean_roots)
+        # A worker may finish after the user has changed configured roots.
+        # Never let an older snapshot delete newer root registrations.
+        self.ensure_roots(clean_roots)
 
         state_rows = [
             dict(row)
