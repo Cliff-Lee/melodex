@@ -72,6 +72,7 @@ class BackgroundScheduler:
         self._closing = False
         self._active_total = 0
         self._active_by_lane: dict[str, int] = {}
+        self._active_by_priority: dict[str, int] = {}
         self._submitted = 0
         self._completed = 0
         self._cancelled = 0
@@ -155,10 +156,16 @@ class BackgroundScheduler:
             lane_active = self._active_by_lane.get(task.lane, 0)
             low_priority = task.priority_value >= PRIORITIES["background"]
             low_priority_cap = self.max_workers - self.foreground_reserve
+            active_low_priority = sum(
+                count
+                for name,count in self._active_by_priority.items()
+                if PRIORITIES.get(name, PRIORITIES["background"])
+                >= PRIORITIES["background"]
+            )
             reserve_blocked = (
                 low_priority
                 and self.foreground_reserve
-                and self._active_total >= low_priority_cap
+                and active_low_priority >= low_priority_cap
             )
             if (
                 lane_active < self._lane_limit(task.lane)
@@ -183,6 +190,9 @@ class BackgroundScheduler:
                         self._active_total += 1
                         self._active_by_lane[task.lane] = (
                             self._active_by_lane.get(task.lane, 0) + 1
+                        )
+                        self._active_by_priority[task.priority_name] = (
+                            self._active_by_priority.get(task.priority_name, 0) + 1
                         )
                         self._max_active_observed = max(
                             self._max_active_observed,
@@ -211,6 +221,14 @@ class BackgroundScheduler:
                     self._active_by_lane[task.lane] = lane_active
                 else:
                     self._active_by_lane.pop(task.lane, None)
+                priority_active = max(
+                    0,
+                    self._active_by_priority.get(task.priority_name, 0) - 1,
+                )
+                if priority_active:
+                    self._active_by_priority[task.priority_name] = priority_active
+                else:
+                    self._active_by_priority.pop(task.priority_name, None)
                 self._completed += 1
                 self._condition.notify_all()
 
@@ -242,6 +260,7 @@ class BackgroundScheduler:
                 "lane_limits": dict(self.lane_limits),
                 "active_total": self._active_total,
                 "active_by_lane": dict(self._active_by_lane),
+                "active_by_priority": dict(self._active_by_priority),
                 "pending_total": sum(pending_by_priority.values()),
                 "pending_by_priority": pending_by_priority,
                 "pending_by_lane": pending_by_lane,
