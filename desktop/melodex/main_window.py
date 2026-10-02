@@ -56,6 +56,7 @@ from .plugin_configuration_dialog import configure_plugin
 from .plugin_onboarding import plugin_needs_setup
 from .plugin_health import health_badge, health_summary
 from .diagnostics import write_diagnostics
+from .responsiveness import UiResponsivenessMonitor
 from .library_browser import LibraryBrowser
 from .library_scan_process import LibraryScanProcess
 from .ux_components import (
@@ -165,7 +166,11 @@ class MainWindow(QMainWindow):
         self.player.manualAdvanced.connect(self._on_manual_advance)
 
         self._build_ui()
+        self.responsiveness = UiResponsivenessMonitor(self)
+        self.responsiveness.start()
+        self.responsiveness.mark_action("startup:home")
         self._show_home()
+        self.responsiveness.mark_action("startup:bridge")
         self._start_local_bridge()
         startup_roots=self.providers.local_roots()
         if startup_roots and not self.providers.local_index_ready(startup_roots):
@@ -2155,6 +2160,8 @@ class MainWindow(QMainWindow):
     def open_page(self, name: str):
         if name not in self.pages:
             return
+        if hasattr(self, "responsiveness"):
+            self.responsiveness.mark_action(f"navigate:{name}")
         self.current_page=name
         self.stack.setCurrentWidget(self.pages[name])
         self._update_nav_state(name)
@@ -2597,6 +2604,8 @@ class MainWindow(QMainWindow):
         return not bool(status.get("ready",True))
 
     def _source_selection_changed(self) -> None:
+        if hasattr(self, "responsiveness"):
+            self.responsiveness.mark_action("sources:selection")
         item=self.sources_list.currentItem() if hasattr(self,"sources_list") else None
         key=str(item.data(Qt.UserRole) or "") if item else ""
         enabled=bool(key)
@@ -4047,6 +4056,8 @@ class MainWindow(QMainWindow):
             ui_metrics["library_catalog"] = dict(
                 getattr(self.library_browser, "last_catalog_metrics", {}) or {}
             )
+        if hasattr(self, "responsiveness"):
+            ui_metrics["responsiveness"] = self.responsiveness.summary()
         try:
             write_diagnostics(
                 path,
@@ -4472,6 +4483,8 @@ class MainWindow(QMainWindow):
         dialog.exec()
 
     def _search(self):
+        if hasattr(self, "responsiveness"):
+            self.responsiveness.mark_action("discover:search")
         q=self.search_box.text().strip()
         pid=str(self.search_source.currentData() or "all")
         if not q:
@@ -4582,6 +4595,8 @@ class MainWindow(QMainWindow):
         )
 
     def _play_result(self,item):
+        if hasattr(self, "responsiveness"):
+            self.responsiveness.mark_action("discover:play-result")
         t=dict(item.data(Qt.UserRole) or {}); self.player.set_queue([t],0,True)
 
     def _open_selected_source(self):
@@ -6379,6 +6394,8 @@ class MainWindow(QMainWindow):
     def closeEvent(self,event):
         if self.music_live_active:
             self._journey_live_stop("application closed")
+        if hasattr(self, "responsiveness"):
+            self.responsiveness.stop()
         self._closing = True
         runner=self._local_scan_runner
         if runner is not None:
