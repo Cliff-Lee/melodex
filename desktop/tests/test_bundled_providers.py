@@ -9,7 +9,7 @@ from melodex.provider_manager import ProviderManager
 
 
 EXPECTED = {
-    "org.melodex.internetarchive.audio": "0.1.0",
+    "org.melodex.internetarchive.audio": "0.1.1",
     "org.melodex.librivox": "0.1.4",
     "org.melodex.nichedb.radio": "0.1.2",
     "org.melodex.radiobrowser": "0.1.2",
@@ -32,6 +32,21 @@ def test_every_bundled_provider_has_manifest_and_python_entrypoint():
         assert manifest.get("entrypoints", {}).get("python") == "provider.py"
         with zipfile.ZipFile(package) as archive:
             compile(archive.read("provider.py"), f"{package.name}:provider.py", "exec")
+
+
+def test_internetarchive_bundle_matches_checked_in_source():
+    source = Path(__file__).resolve().parents[1] / "bundled_provider_sources" / "internetarchive_audio"
+    package = next(
+        package
+        for pid, package, _manifest in bundled_packages()
+        if pid == "org.melodex.internetarchive.audio"
+    )
+    with zipfile.ZipFile(package) as archive:
+        packaged_manifest = json.loads(archive.read("manifest.json"))
+        source_manifest = json.loads((source / "manifest.json").read_text("utf-8"))
+        assert packaged_manifest == source_manifest
+        for filename in ("provider.py", "README.md", "SOURCE_POLICY.md"):
+            assert archive.read(filename) == (source / filename).read_bytes()
 
 
 def test_librivox_bundle_matches_checked_in_source():
