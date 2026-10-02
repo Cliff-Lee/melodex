@@ -11,7 +11,7 @@ from melodex.provider_manager import ProviderManager
 EXPECTED = {
     "org.melodex.internetarchive.audio": "0.1.0",
     "org.melodex.librivox": "0.1.4",
-    "org.melodex.nichedb.radio": "0.1.0",
+    "org.melodex.nichedb.radio": "0.1.2",
     "org.melodex.radiobrowser": "0.1.2",
     "org.melodex.somafm": "0.1.1",
     "org.melodex.wikimedia.commons.audio": "0.1.1",
