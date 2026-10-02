@@ -923,6 +923,11 @@ class LibraryBrowser(QWidget):
                 value=max(0,int(change_data.get(key) or 0))
                 if value:
                     parts.append(f"{value:,} {label}")
+            incomplete=max(0,int(change_data.get("incomplete_roots") or 0))
+            if incomplete:
+                parts.append(
+                    f"{incomplete} root{'s' if incomplete != 1 else ''} incomplete · cached copy kept"
+                )
             self.scan_progress_detail.setText(
                 " · ".join(parts) if parts else "Your music index is ready."
             )
