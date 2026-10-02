@@ -356,7 +356,6 @@ def run_soak(
         thread_name_prefix="melodex-soak",
     )
     bridge = SoakCacheBridge(browser, scheduler)
-    del bridge  # Qt/browser signal references keep the bridge methods reachable.
 
     load_started = time.perf_counter()
     browser.set_catalog(catalog, revision=int(track_count))
@@ -490,6 +489,7 @@ def run_soak(
     }
 
     scheduler.shutdown(wait=True, cancel_pending=True)
+    del bridge
     browser.deleteLater()
     app.processEvents()
     return report
