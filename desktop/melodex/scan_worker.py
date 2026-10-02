@@ -56,9 +56,10 @@ def main(argv: list[str] | None = None) -> int:
             for key, value in dict(request.get("overrides") or {}).items()
             if isinstance(value, dict)
         }
-        index_path = Path(str(request.get("index_path") or ""))
-        if not index_path:
+        raw_index_path = str(request.get("index_path") or "").strip()
+        if not raw_index_path:
             raise ValueError("missing library index path")
+        index_path = Path(raw_index_path)
     except Exception as exc:
         _send({"type": "error", "error": f"invalid scan request: {exc}"})
         return 2
