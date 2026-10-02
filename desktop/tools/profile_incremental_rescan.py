@@ -28,6 +28,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--tracks", type=int, default=12_700)
     parser.add_argument("--metadata-delay-ms", type=float, default=0.0)
+    parser.add_argument("--json", action="store_true")
     return parser.parse_args()
 
 
@@ -47,10 +48,9 @@ def metadata(path: Path, delay: float) -> dict[str, object]:
     }
 
 
-def main() -> int:
-    args = parse_args()
-    count = max(0, int(args.tracks))
-    delay = max(0.0, float(args.metadata_delay_ms)) / 1000.0
+def run_probe(*, tracks: int = 12_700, metadata_delay_ms: float = 0.0) -> dict[str, object]:
+    count = max(0, int(tracks))
+    delay = max(0.0, float(metadata_delay_ms)) / 1000.0
 
     with tempfile.TemporaryDirectory(prefix="melodex-incremental-") as temp:
         base = Path(temp)
@@ -93,19 +93,50 @@ def main() -> int:
 
         manager.close()
 
+    return {
+        "tracks": count,
+        "first_scan_seconds": round(first_seconds, 6),
+        "first_metadata_reads": int(first_reads),
+        "unchanged_rescan_seconds": round(second_seconds, 6),
+        "rescan_metadata_reads": int(second_reads),
+        "metadata_reused": int(second["changes"]["unchanged"]),
+        "index_rows_rewritten": int(second_persist["tracks_written"]),
+        "index_rows_reused": int(second_persist["tracks_reused"]),
+        "index_commit_seconds": round(persist_seconds, 6),
+        "rescan_first_ratio": (
+            round(second_seconds / first_seconds, 6)
+            if first_seconds > 0
+            else None
+        ),
+    }
+
+
+def main() -> int:
+    args = parse_args()
+    payload = run_probe(
+        tracks=args.tracks,
+        metadata_delay_ms=args.metadata_delay_ms,
+    )
+
+    if args.json:
+        import json
+        print(json.dumps(payload, indent=2))
+        return 0
+
     print("Melodex incremental library benchmark")
     print("------------------------------------")
-    print(f"Tracks:                  {count:,}")
-    print(f"First scan:              {first_seconds:.3f} s")
-    print(f"First metadata reads:    {first_reads:,}")
-    print(f"Unchanged rescan:        {second_seconds:.3f} s")
-    print(f"Rescan metadata reads:   {second_reads:,}")
-    print(f"Metadata reused:         {int(second['changes']['unchanged']):,}")
-    print(f"Index rows rewritten:    {int(second_persist['tracks_written']):,}")
-    print(f"Index rows reused:       {int(second_persist['tracks_reused']):,}")
-    print(f"Index commit:            {persist_seconds:.3f} s")
-    if first_seconds > 0:
-        print(f"Rescan / first scan:     {second_seconds / first_seconds:.1%}")
+    print(f"Tracks:                  {int(payload['tracks']):,}")
+    print(f"First scan:              {float(payload['first_scan_seconds']):.3f} s")
+    print(f"First metadata reads:    {int(payload['first_metadata_reads']):,}")
+    print(f"Unchanged rescan:        {float(payload['unchanged_rescan_seconds']):.3f} s")
+    print(f"Rescan metadata reads:   {int(payload['rescan_metadata_reads']):,}")
+    print(f"Metadata reused:         {int(payload['metadata_reused']):,}")
+    print(f"Index rows rewritten:    {int(payload['index_rows_rewritten']):,}")
+    print(f"Index rows reused:       {int(payload['index_rows_reused']):,}")
+    print(f"Index commit:            {float(payload['index_commit_seconds']):.3f} s")
+    ratio = payload.get("rescan_first_ratio")
+    if ratio is not None:
+        print(f"Rescan / first scan:     {float(ratio):.1%}")
     return 0
 
 
