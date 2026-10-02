@@ -259,9 +259,19 @@ def test_redesigned_main_window_builds_with_goal_navigation(monkeypatch, tmp_pat
     ]
     assert "now_playing" not in window.nav_buttons
     assert "album_wall" not in window.nav_buttons
+    assert not hasattr(window, "library_browser")
+    assert not hasattr(window, "rich_now")
+    assert window._built_lazy_pages == set()
+
+    window.open_page("library")
+    app.processEvents()
+    app.processEvents()
     assert hasattr(window, "library_browser")
-    assert hasattr(window, "sources_overview")
-    assert hasattr(window, "source_check_all")
+    assert "library" in window._built_lazy_pages
+
+    window.open_page("now_playing")
+    app.processEvents()
+    app.processEvents()
     assert hasattr(window.rich_now, "import_lyrics_button")
     assert hasattr(window.rich_now, "paste_lyrics_button")
     assert hasattr(window.rich_now, "find_lyrics_plugin_button")
@@ -269,6 +279,7 @@ def test_redesigned_main_window_builds_with_goal_navigation(monkeypatch, tmp_pat
     assert window.rich_now.online_lyrics_button.text() == "Refresh lyrics"
     assert hasattr(window.rich_now, "auto_online_lyrics")
     assert window.rich_now.auto_online_lyrics.isChecked() is False
+    assert "now_playing" in window._built_lazy_pages
     assert hasattr(window, "source_summary_library")
     assert hasattr(window, "source_summary_included")
     assert hasattr(window, "source_summary_enhancements")
@@ -779,6 +790,8 @@ def test_plugins_surface_where_their_features_are_used(monkeypatch, tmp_path):
         },
     ]
     monkeypatch.setattr(window.providers, "extensions", lambda: list(extensions))
+    window._ensure_lazy_page_built("library")
+    window._ensure_lazy_page_built("now_playing")
 
     window._refresh_plugin_presence()
     app.processEvents()
@@ -855,6 +868,7 @@ def test_lyrics_lookup_outcomes_are_distinct_in_now_playing(monkeypatch, tmp_pat
     monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
 
     window = main_window.MainWindow()
+    window._ensure_lazy_page_built("now_playing")
     widget = window.rich_now
     widget.track = {
         "artist": "Example Artist",
@@ -935,6 +949,7 @@ def test_synced_lyrics_seek_source_switch_and_editability(monkeypatch, tmp_path)
     monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
 
     window = main_window.MainWindow()
+    window._ensure_lazy_page_built("now_playing")
     widget = window.rich_now
     audio = tmp_path / "song.mp3"
     audio.write_bytes(b"audio")
@@ -1007,6 +1022,7 @@ def test_fullscreen_lyrics_tracks_synced_position(monkeypatch, tmp_path):
     monkeypatch.setattr(QDialog, "showFullScreen", lambda self: self.show())
 
     window = main_window.MainWindow()
+    window._ensure_lazy_page_built("now_playing")
     widget = window.rich_now
     widget.track = {
         "artist": "Example Artist",
@@ -1125,6 +1141,7 @@ def test_online_lyrics_translation_signal_contains_only_current_lyrics(monkeypat
     monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
 
     window = main_window.MainWindow()
+    window._ensure_lazy_page_built("now_playing")
     widget = window.rich_now
     widget.track = {
         "artist": "Artist",
@@ -1173,6 +1190,7 @@ def test_online_lyrics_miss_does_not_replace_existing_local_lyrics(monkeypatch, 
     monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
 
     window = main_window.MainWindow()
+    window._ensure_lazy_page_built("now_playing")
     widget = window.rich_now
     widget.track = {
         "artist": "Example Artist",
@@ -1388,6 +1406,7 @@ def test_native_lyrics_toolbar_hides_plugin_management_chrome(monkeypatch, tmp_p
     monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
 
     window = main_window.MainWindow()
+    window._ensure_lazy_page_built("now_playing")
     widget = window.rich_now
 
     assert not hasattr(widget, "lyrics_plugin_presence")
@@ -1431,6 +1450,7 @@ def test_refresh_lyrics_checks_native_and_installed_sources_before_online(monkey
     monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
 
     window = main_window.MainWindow()
+    window._ensure_lazy_page_built("now_playing")
     widget = window.rich_now
     widget.track = {
         "artist": "Example Artist",
@@ -2169,6 +2189,7 @@ def test_next_track_prefetch_is_local_only_and_consumed_on_advance(monkeypatch, 
     monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
 
     window = main_window.MainWindow()
+    window._ensure_lazy_page_built("now_playing")
     current = _track(
         str(tmp_path / "current.mp3"),
         "Artist",
@@ -2232,8 +2253,6 @@ def test_next_track_prefetch_is_local_only_and_consumed_on_advance(monkeypatch, 
         lambda track, analysis: analysis_calls.append(analysis),
     )
     monkeypatch.setattr(window.living_canvas, "refresh_context", lambda: None)
-    monkeypatch.setattr(window.music_map, "highlight_track", lambda _track: None)
-    monkeypatch.setattr(window.album_wall, "highlight_track", lambda _track: None)
     monkeypatch.setattr(window.rich_now, "set_track", lambda _track: None)
     monkeypatch.setattr(window, "_refresh_home_continue", lambda: None)
 
@@ -2808,6 +2827,7 @@ def test_cancelled_main_window_scan_keeps_existing_catalog(monkeypatch, tmp_path
     monkeypatch.setattr(main_window, "LibraryScanProcess", CancellableRunner)
 
     window = main_window.MainWindow()
+    window._ensure_lazy_page_built("library")
     root = tmp_path / "nas"
     root.mkdir()
     window.providers.configure_local_roots([root])
