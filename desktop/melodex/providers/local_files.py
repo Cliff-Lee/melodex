@@ -485,6 +485,12 @@ class LocalFilesProvider(MusicProvider):
                 "removed": int(removed),
                 "metadata_reads": int(probe.metrics.metadata_attempts),
                 "stat_failures": int(stat_failures),
+                "incomplete_roots": sum(
+                    1
+                    for state in root_states
+                    if bool(state.get("available"))
+                    and not bool(state.get("complete", True))
+                ),
             },
             "cancelled": False,
         }
