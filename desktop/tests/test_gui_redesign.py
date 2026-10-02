@@ -1959,6 +1959,7 @@ def test_next_track_prefetch_is_local_only_and_consumed_on_advance(monkeypatch, 
     monkeypatch.setattr(window.music_map, "highlight_track", lambda _track: None)
     monkeypatch.setattr(window.album_wall, "highlight_track", lambda _track: None)
     monkeypatch.setattr(window.rich_now, "set_track", lambda _track: None)
+    monkeypatch.setattr(window, "_refresh_home_continue", lambda: None)
 
     # If prefetch worked, advancing must not call local_artwork a second time.
     window.player.index = 1
