@@ -1,6 +1,8 @@
 # Openverse Audio Example
 
-A Melodex MPP 1.0 provider that searches Openverse's openly licensed audio index and resolves the media URL returned by Openverse.
+A Melodex MPP 1.0 provider that searches Openverse's openly licensed audio index and resolves media for playback.
+
+Version 0.1.2 follows the upstream media redirect before handing the resource to Melodex. Openverse indexes audio hosted across many independent sites, and some of those URLs redirect to a CDN host; resolving that final URL inside the provider keeps playback compatible with Melodex's guarded playback gateway.
 
 Try searches such as `ambient`, `field recording`, `classical`, or `jazz`.
 
