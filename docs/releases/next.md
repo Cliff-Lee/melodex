@@ -85,3 +85,15 @@ This file tracks changes intended for the next release after **v0.7.4**.
   OpenSSL and native system-keyring discovery before a package is accepted.
 - macOS and Windows artifacts include a non-Qt runtime size audit for the next
   round of evidence-based trimming.
+
+
+## Desktop packaging — size regression protection
+
+- CI now compares macOS app/DMG and Windows portable/installer sizes against the
+  compact post-cleanup baselines.
+- A 12% tolerance absorbs ordinary build variation while catching accidental
+  dependency bloat.
+- Every desktop build publishes baseline, actual size, percentage change and
+  maximum allowed size.
+- Intentional size increases require an explicit baseline update instead of
+  silently becoming permanent.

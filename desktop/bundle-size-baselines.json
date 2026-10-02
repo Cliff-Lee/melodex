@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "tolerance_percent": 12.0,
+  "profiles": {
+    "macOS-intel": {
+      "installed_bytes": 130056122,
+      "archive_bytes": 60231881
+    },
+    "macOS-arm64": {
+      "installed_bytes": 122140360,
+      "archive_bytes": 54751809
+    },
+    "Windows-x64": {
+      "portable_zip_bytes": 77474957,
+      "installer_bytes": 53610895
+    }
+  }
+}

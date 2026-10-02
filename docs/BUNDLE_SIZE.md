@@ -126,3 +126,47 @@ on measured payload rather than disabling features blindly.
 - HTTPS certificate data remains available
 - no Qt changes are made in this campaign
 - any further non-Qt removal must have measurable benefit and a matching feature smoke test
+
+
+## Campaign 8D — size regression protection
+
+The compact 8C builds become the maintained baseline rather than a one-off
+cleanup.
+
+Recorded baselines:
+
+| Profile | Installed / portable | Shipping archive |
+| --- | ---: | ---: |
+| macOS Intel | 130,056,122 bytes | 60,231,881-byte DMG |
+| macOS Apple Silicon | 122,140,360 bytes | 54,751,809-byte DMG |
+| Windows x64 | 77,474,957-byte portable ZIP | 53,610,895-byte installer |
+
+CI allows **12% growth** above these values. This is intentionally large enough
+for ordinary compiler/runtime variation but small enough to catch accidental
+dependency explosions such as restoring the old all-PySide6 bundle.
+
+Every desktop build writes a size-regression report containing:
+
+- accepted baseline
+- current size
+- percentage change
+- maximum allowed size
+- pass/fail result
+
+The build fails when any protected shipping artifact exceeds the allowed limit.
+A deliberate size increase therefore requires an explicit review and baseline
+update rather than silently becoming the new normal.
+
+### Updating a baseline
+
+Only update `desktop/bundle-size-baselines.json` after checking the bundle-size
+and runtime reports and confirming the increase is intentional. Prefer reducing
+the payload or explaining the new dependency before raising a limit.
+
+### 8D acceptance checks
+
+- both macOS architectures are checked using installed `.app` and DMG bytes
+- Windows is checked using the portable ZIP and installer
+- current 8C builds pass comfortably
+- a synthetic >12% increase fails unit tests
+- size regression reports are visible in the GitHub Actions summary and artifacts
