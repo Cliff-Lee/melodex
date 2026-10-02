@@ -1,6 +1,6 @@
 # Start Here
 
-This quick start matches the Melodex desktop v0.7.2 release.
+This quick start is for the current Melodex desktop beta.
 
 You can use Melodex as a music player without setting up AI, audio tools, or advanced controls.
 
