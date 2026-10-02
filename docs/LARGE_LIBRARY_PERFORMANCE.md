@@ -161,6 +161,36 @@ The online **Find missing artwork / Get artist photos** operation remains separa
 is an explicit user-requested long operation with its own bounded queue, progress and
 pause/cancel behaviour.
 
+## P8c result — bounded shared background work
+
+Desktop async work now runs through one shared priority scheduler instead of creating an
+unbounded daemon thread for every request.
+
+The scheduler has five lanes:
+
+- **foreground** — direct user actions such as search, play, resolver choices and prompts;
+- **visible** — work needed to finish the page or current-track presentation;
+- **prefetch** — speculative next-track work;
+- **background** — long analysis, enrichment and online artwork recovery; and
+- **idle** — work that can wait without affecting the current interaction.
+
+The desktop pool is capped at **4 workers** and reserves **1 worker slot for foreground
+work** whenever lower-priority jobs are active. Background, prefetch and idle lanes are
+individually capped so a large analysis/enrichment/artwork burst cannot occupy the
+whole pool. Cached viewport artwork remains in the visible lane, while explicit online
+artwork recovery and library analysis use the background lane.
+
+The scheduler also exports redacted diagnostics for active/pending counts by lane,
+submitted/completed/failed totals, and peak concurrency. Static task names are not
+included in diagnostics.
+
+The Fluid Melodex gate now verifies that:
+
+- visible work overtakes queued idle work;
+- prefetch/background/idle work leaves a foreground slot available;
+- background work is serialized rather than spawning freely; and
+- scheduler diagnostics expose only bounded lane counts.
+
 ## P8 campaign sequence
 
 ### P8a — Synthetic baseline
