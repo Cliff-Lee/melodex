@@ -1270,6 +1270,105 @@ def test_plain_lyrics_html_uses_explicit_dark_theme_contrast():
 
 
 
+def test_slow_source_config_check_keeps_qt_event_loop_responsive(monkeypatch, tmp_path):
+    try:
+        from types import SimpleNamespace
+        from PySide6.QtCore import QTimer
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+
+    window = main_window.MainWindow()
+    plugin_id = "org.example.slow-config"
+    window.providers.providers[plugin_id] = SimpleNamespace(
+        info=SimpleNamespace(
+            id=plugin_id,
+            name="Slow Config Source",
+            version="0.1.0",
+            description="Synthetic source used by the responsiveness test.",
+            capabilities=["search"],
+            configuration=[
+                {
+                    "key": "api_token",
+                    "label": "API token",
+                    "type": "secret",
+                    "required": True,
+                }
+            ],
+            permissions={},
+        )
+    )
+    monkeypatch.setattr(
+        window.providers,
+        "provider_order",
+        lambda: ["local", plugin_id],
+    )
+
+    started = threading.Event()
+    release = threading.Event()
+    worker_threads = []
+
+    def slow_status(requested_id, declarations):
+        if requested_id == plugin_id:
+            worker_threads.append(
+                threading.current_thread() is threading.main_thread()
+            )
+            started.set()
+            release.wait(timeout=2.0)
+        return {
+            "declared": bool(declarations),
+            "configured": {"api_token": True},
+            "ready": True,
+            "pending": False,
+            "pending_required": [],
+            "missing_required": [],
+            "secret_storage": "test",
+        }
+
+    monkeypatch.setattr(window.providers.plugin_config, "status", slow_status)
+
+    timer_fired = []
+    QTimer.singleShot(0, lambda: timer_fired.append(True))
+
+    started_at = time.monotonic()
+    window.open_page("sources")
+    foreground_seconds = time.monotonic() - started_at
+
+    # Opening Sources must not wait for the synthetic Keychain read.
+    assert foreground_seconds < 0.25
+
+    deadline = time.monotonic() + 1.0
+    while time.monotonic() < deadline and (
+        not started.is_set() or not timer_fired
+    ):
+        app.processEvents()
+        time.sleep(0.005)
+
+    assert started.is_set()
+    assert timer_fired == [True]
+    assert worker_threads == [False]
+    assert window._source_config_refresh_in_progress is True
+
+    release.set()
+    deadline = time.monotonic() + 2.0
+    while (
+        time.monotonic() < deadline
+        and window._source_config_refresh_in_progress
+    ):
+        app.processEvents()
+        time.sleep(0.005)
+
+    assert window._source_config_refresh_in_progress is False
+    window.close()
+    app.processEvents()
+
+
 def test_slow_library_scan_keeps_qt_event_loop_responsive(monkeypatch, tmp_path):
     try:
         from PySide6.QtCore import QTimer
