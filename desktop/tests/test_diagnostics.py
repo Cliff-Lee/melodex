@@ -210,11 +210,13 @@ def test_diagnostics_filters_ui_performance_fields():
             "responsiveness": {
                 "interval_ms": 50,
                 "long_task_threshold_ms": 50,
-                "ci_threshold_ms": 250,\n                "serious_threshold_ms": 500,
+                "ci_threshold_ms": 250,
+                "serious_threshold_ms": 500,
                 "blocker_threshold_ms": 1000,
                 "total_stalls": 2,
                 "long_tasks": 1,
-                "ci_violations": 1,\n                "serious_stalls": 0,
+                "ci_violations": 1,
+                "serious_stalls": 0,
                 "release_blockers": 0,
                 "max_delay_ms": 620.0,
                 "recent_stalls": [
