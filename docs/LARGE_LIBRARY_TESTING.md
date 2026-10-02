@@ -279,3 +279,74 @@ normal launches.
 File size/mtime based incremental rescanning is intentionally Campaign 5. The
 schema already reserves nullable `size` and `mtime_ns` columns so that work
 can be added without redesigning the cache format.
+
+
+## Campaign 5 — incremental rescanning
+
+A normal Rescan no longer means reopening every audio file.
+
+For each discovered audio file Melodex compares:
+
+```text
+file size + modification time
+```
+
+with the fingerprint stored in `library-index.sqlite3`.
+
+If both values match, Melodex reuses the previously indexed raw metadata and
+does not reopen the file with Mutagen. Only new or changed files need full tag
+reads.
+
+A completed rescan reports four useful outcomes:
+
+- **unchanged** — fingerprint matched; cached tags reused
+- **new** — file was not present in the previous index
+- **updated** — path existed but its fingerprint changed
+- **removed** — cached file was not found during a successful enumeration
+
+Removal has an important safety condition: a file is only considered removed
+when its root was positively available. An offline NAS is never treated as an
+empty library.
+
+### Upgrade behaviour
+
+Indexes created before Campaign 5 already contain metadata, but their
+`size`/`mtime_ns` fields are null. Those files are deliberately refreshed
+once so Melodex can establish trustworthy fingerprints. Subsequent unchanged
+rescans can then reuse all of their metadata.
+
+### 12,700-track incremental benchmark
+
+From `desktop/`:
+
+```bash
+python tools/profile_incremental_rescan.py --tracks 12700
+```
+
+The benchmark creates tiny placeholder files, performs a full first scan,
+persists the fingerprints, and immediately repeats an unchanged scan. The key
+result is:
+
+```text
+Rescan metadata reads: 0
+Metadata reused:       12,700
+```
+
+Use a simulated tag-read cost to make the avoided work more visible:
+
+```bash
+python tools/profile_incremental_rescan.py \
+  --tracks 12700 \
+  --metadata-delay-ms 1
+```
+
+### Campaign 5 acceptance checks
+
+- an unchanged fingerprinted 12,700-track library performs zero Mutagen tag reads
+- changing one file causes exactly one metadata read
+- adding one file causes exactly one new metadata read
+- files removed from an available root disappear after a successful rescan
+- an unavailable root never loses cached tracks
+- legacy cache rows without fingerprints are refreshed once, then become reusable
+- progress distinguishes files discovered from files whose metadata actually needs reading
+- diagnostics report aggregate incremental counts without exposing filenames or paths
