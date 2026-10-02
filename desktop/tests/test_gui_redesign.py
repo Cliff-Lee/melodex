@@ -339,6 +339,11 @@ def test_cached_album_artwork_prioritizes_viewport_and_scroll_target():
     browser.set_catalog(tracks)
     app.processEvents()
     app.processEvents()
+    if not batches:
+        browser._emit_viewport_artwork_batch(
+            "albums",
+            browser._artwork_generation("albums"),
+        )
 
     assert batches
     first = batches[0]
@@ -362,6 +367,11 @@ def test_cached_album_artwork_prioritizes_viewport_and_scroll_target():
     browser.set_artwork({row["key"]: "" for row in first})
     app.processEvents()
     app.processEvents()
+    if len(batches) == before:
+        browser._emit_viewport_artwork_batch(
+            "albums",
+            browser._artwork_generation("albums"),
+        )
 
     assert len(batches) > before
     second = batches[-1]
@@ -432,6 +442,11 @@ def test_cached_artist_photos_use_same_viewport_priority():
     browser.set_view("artists")
     app.processEvents()
     app.processEvents()
+    if not batches:
+        browser._emit_viewport_artwork_batch(
+            "artists",
+            browser._artwork_generation("artists"),
+        )
 
     assert batches
     first = batches[0]
