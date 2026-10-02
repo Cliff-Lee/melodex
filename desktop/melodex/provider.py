@@ -14,7 +14,7 @@ from collections import deque
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from urllib.parse import urlparse
 
 from .process_env import scrubbed_child_env
@@ -96,6 +96,7 @@ class ExternalProvider(MusicProvider):
             configured_timeout = float(timeout)
         self.timeout = max(3.0, min(60.0, configured_timeout))
         self._config: dict[str, Any] = {}
+        self._config_loader: Callable[[], dict[str, Any]] | None = None
 
     @property
     def info(self) -> ProviderInfo:
@@ -195,6 +196,21 @@ class ExternalProvider(MusicProvider):
     def configure(self, settings: dict[str, Any]) -> None:
         with self._lock:
             self._config = dict(settings or {})
+            self._config_loader = None
+
+    def set_config_loader(
+        self,
+        loader: Callable[[], dict[str, Any]] | None,
+    ) -> None:
+        with self._lock:
+            self._config_loader = loader
+
+    def _ensure_config_loaded(self) -> None:
+        loader = self._config_loader
+        if loader is None:
+            return
+        self._config_loader = None
+        self._config = dict(loader() or {})
 
     def _rpc(
         self,
@@ -203,6 +219,7 @@ class ExternalProvider(MusicProvider):
         timeout: float | None = None,
     ) -> Any:
         with self._lock:
+            self._ensure_config_loaded()
             proc = self._ensure()
             self._seq += 1
             rid = self._seq
