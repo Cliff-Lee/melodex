@@ -2160,11 +2160,16 @@ class MainWindow(QMainWindow):
     def open_page(self, name: str):
         if name not in self.pages:
             return
-        if hasattr(self, "responsiveness"):
-            self.responsiveness.mark_action(f"navigate:{name}")
+        interaction = (
+            self.responsiveness.begin_interaction(f"navigate:{name}")
+            if hasattr(self, "responsiveness")
+            else None
+        )
         self.current_page=name
         self.stack.setCurrentWidget(self.pages[name])
         self._update_nav_state(name)
+        if interaction is not None:
+            self.responsiveness.end_interaction(interaction)
         if name=="home": self._show_home()
         elif name=="library":
             self._refresh_library()
@@ -4483,12 +4488,15 @@ class MainWindow(QMainWindow):
         dialog.exec()
 
     def _search(self):
-        if hasattr(self, "responsiveness"):
-            self.responsiveness.mark_action("discover:search")
         q=self.search_box.text().strip()
         pid=str(self.search_source.currentData() or "all")
         if not q:
             return
+        interaction = (
+            self.responsiveness.begin_interaction("discover:search")
+            if hasattr(self, "responsiveness")
+            else None
+        )
         self.results.clear()
         self.results.addItem("Searching…")
         if hasattr(self,"search_button"):
@@ -4501,6 +4509,8 @@ class MainWindow(QMainWindow):
             )
             self.search_status.setText(f"Searching {target}…")
             self.search_status.setToolTip("")
+        if interaction is not None:
+            self.responsiveness.end_interaction(interaction)
         self._run_async(
             lambda:self.providers.search_report(q,pid,100),
             self._show_search_report,
