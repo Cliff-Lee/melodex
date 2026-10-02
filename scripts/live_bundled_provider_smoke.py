@@ -66,7 +66,13 @@ def _probe(resource: dict, *, timeout: float = 20.0) -> dict:
             content_type = str(response.headers.get("Content-Type") or "")
             final_url = str(response.geturl() or url)
     except urllib.error.HTTPError as exc:
-        raise RuntimeError(f"media probe HTTP {exc.code}") from exc
+        try:
+            detail = exc.read(600).decode("utf-8", errors="replace")
+            detail = " ".join(detail.split())
+        except Exception:
+            detail = ""
+        suffix = f": {detail[:500]}" if detail else ""
+        raise RuntimeError(f"media probe HTTP {exc.code}{suffix}") from exc
     except Exception as exc:
         raise RuntimeError(f"media probe failed: {exc}") from exc
 
