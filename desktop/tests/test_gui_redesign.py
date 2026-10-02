@@ -1529,7 +1529,7 @@ def test_search_keeps_previous_results_visible_while_refreshing(monkeypatch, tmp
 
     callbacks = {}
 
-    def hold_async(fn, done, on_error=None):
+    def hold_async(fn, done, on_error=None, **_kwargs):
         callbacks["done"] = done
         callbacks["error"] = on_error
 
@@ -1593,7 +1593,7 @@ def test_fast_search_never_flashes_delayed_loading_placeholder(monkeypatch, tmp_
     window.search_box.setText("fast query")
     callbacks = {}
 
-    def hold_async(fn, done, on_error=None):
+    def hold_async(fn, done, on_error=None, **_kwargs):
         callbacks["done"] = done
 
     monkeypatch.setattr(window, "_run_async", hold_async)
@@ -1659,7 +1659,7 @@ def test_search_failure_preserves_stale_useful_results(monkeypatch, tmp_path):
 
     callbacks = {}
 
-    def hold_async(fn, done, on_error=None):
+    def hold_async(fn, done, on_error=None, **_kwargs):
         callbacks["error"] = on_error
 
     monkeypatch.setattr(window, "_run_async", hold_async)
@@ -1692,7 +1692,7 @@ def test_stale_search_response_cannot_replace_newer_request(monkeypatch, tmp_pat
     window.search_source.addItem("All sources", "all")
     calls = []
 
-    def hold_async(fn, done, on_error=None):
+    def hold_async(fn, done, on_error=None, **_kwargs):
         calls.append((done, on_error))
 
     monkeypatch.setattr(window, "_run_async", hold_async)
@@ -1982,7 +1982,7 @@ def test_love_and_keep_acknowledge_before_persistence(monkeypatch, tmp_path):
     window.current_track = dict(track)
     pending = []
 
-    def hold_async(fn, done, on_error=None):
+    def hold_async(fn, done, on_error=None, **_kwargs):
         pending.append((fn, done, on_error))
 
     monkeypatch.setattr(window, "_run_async", hold_async)
@@ -2037,7 +2037,7 @@ def test_optimistic_taste_action_rolls_back_if_persistence_fails(monkeypatch, tm
     )
     pending = []
 
-    def hold_async(fn, done, on_error=None):
+    def hold_async(fn, done, on_error=None, **_kwargs):
         pending.append((fn, done, on_error))
 
     monkeypatch.setattr(window, "_run_async", hold_async)
@@ -2102,7 +2102,7 @@ def test_next_track_prefetch_is_local_only_and_consumed_on_advance(monkeypatch, 
         lambda _path: cached_analysis,
     )
 
-    def immediate_async(fn, done, on_error=None):
+    def immediate_async(fn, done, on_error=None, **_kwargs):
         try:
             done(fn())
         except Exception as exc:
