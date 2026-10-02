@@ -25,7 +25,13 @@ The macOS build has had the most hands-on testing so far. We especially welcome:
 
 You do not need a huge collection. A fresh-user experience with only a few albums is useful too.
 
-## 10-minute test
+## Choose a test path
+
+For most people, use the **10-minute listener test** below. If you have a large
+collection or music on a NAS/network share, use the dedicated
+[large-library/NAS retest](LARGE_LIBRARY_BETA_RETEST.md) as well.
+
+## 10-minute listener test
 
 1. [Download the latest release](https://github.com/Cliff-Lee/melodex/releases/latest).
 2. Launch Melodex.
@@ -56,10 +62,33 @@ If something goes wrong, include:
 - exact steps that caused the problem
 - what you expected instead
 
-For source/plugin issues, Melodex can export redacted diagnostics from **Sources → Show power tools → Export diagnostics…**. Review the file before posting it.
+For source/plugin and large-library issues, Melodex can export redacted diagnostics from **Sources → Show power tools → Export diagnostics…**. Review the file before posting it.
+
+If your music is on a NAS/network share, also tell us the storage type (for
+example Synology/QNAP/server), the protocol if you know it (SMB/NFS), and
+whether the problem happened during first import, restart, rescan or playback.
 
 ## What happens to feedback?
 
 Reports are public on GitHub so other testers can confirm the same problem, add details and follow progress. Small observations are useful; you do not need to write a formal bug report.
 
 Thanks for helping make Melodex better for people who were not involved in building it.
+
+
+## What we are especially validating now
+
+Recent beta work specifically targets:
+
+- very large local/NAS libraries;
+- keeping the UI responsive while indexing;
+- restart from the persistent library index;
+- fast unchanged rescans without rereading every tag;
+- package size and installation reliability across macOS, Windows and Linux;
+- macOS trust/signing readiness.
+
+The permanent automated stress case is **12,700 tracks**. Synthetic CI does not
+replace real collections, so reports from people with messy tags, unusual file
+layouts and network storage remain especially valuable.
+
+For maintainers preparing a beta build, see
+[Public beta release checklist](BETA_RELEASE_CHECKLIST.md).
