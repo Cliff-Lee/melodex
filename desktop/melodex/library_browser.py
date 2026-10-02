@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from collections import defaultdict
+import threading
+import time
 from typing import Any
 
 from PySide6.QtCore import QEvent, QSize, Qt, Signal
@@ -382,6 +384,7 @@ class LibraryBrowser(QWidget):
         self._album_lookup_failures: list[dict[str, Any]] = []
         self._album_lookup_stats = self._new_lookup_stats()
         self._tracks_built = False
+        self.last_catalog_metrics: dict[str, object] = {}
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -586,6 +589,23 @@ class LibraryBrowser(QWidget):
                 widget.setParent(None)
 
     def set_catalog(self, catalog: list[dict[str, Any]]) -> None:
+        started = time.perf_counter()
+        current_thread = threading.current_thread()
+        metrics: dict[str, object] = {
+            "thread_name": current_thread.name,
+            "main_thread": current_thread is threading.main_thread(),
+            "track_count": 0,
+            "album_count": 0,
+            "artist_count": 0,
+            "reset_seconds": 0.0,
+            "copy_catalog_seconds": 0.0,
+            "album_model_seconds": 0.0,
+            "artist_model_seconds": 0.0,
+            "initial_layout_seconds": 0.0,
+            "artwork_request_seconds": 0.0,
+            "total_seconds": 0.0,
+        }
+
         for card in list(self.cards.values()):
             card.setParent(None)
             card.deleteLater()
@@ -600,8 +620,15 @@ class LibraryBrowser(QWidget):
         self._clear_grid(self.artist_grid)
         self.track_list.clear()
         self._tracks_built = False
+        metrics["reset_seconds"] = round(time.perf_counter() - started, 6)
 
+        copy_started = time.perf_counter()
         self.catalog = [dict(item) for item in catalog if isinstance(item, dict)]
+        metrics["copy_catalog_seconds"] = round(
+            time.perf_counter() - copy_started,
+            6,
+        )
+        metrics["track_count"] = len(self.catalog)
         self._art_requested.clear()
         self._artist_art_requested.clear()
         self._last_artwork_kind = ""
@@ -628,14 +655,23 @@ class LibraryBrowser(QWidget):
             self.albums = []
             self.artist_rows = []
             self.stack.setCurrentWidget(self.empty)
+            metrics["total_seconds"] = round(time.perf_counter() - started, 6)
+            self.last_catalog_metrics = metrics
             return
 
+        album_started = time.perf_counter()
         wall = build_album_wall(self.catalog, max_albums=4000)
         self.albums = [
             dict(album)
             for album in list(wall.get("albums") or [])
             if isinstance(album, dict)
         ]
+        metrics["album_model_seconds"] = round(
+            time.perf_counter() - album_started,
+            6,
+        )
+        metrics["album_count"] = len(self.albums)
+
         self.track_album_key = {}
         for album in self.albums:
             album_key = str(album.get("key") or "")
@@ -643,11 +679,31 @@ class LibraryBrowser(QWidget):
                 if isinstance(track, dict):
                     self.track_album_key[_track_key(track)] = album_key
 
+        artist_started = time.perf_counter()
         self._rebuild_artists()
+        metrics["artist_model_seconds"] = round(
+            time.perf_counter() - artist_started,
+            6,
+        )
+        metrics["artist_count"] = len(self.artist_rows)
+
+        layout_started = time.perf_counter()
         self._apply_filter()
         self.set_view(self.current_view())
+        metrics["initial_layout_seconds"] = round(
+            time.perf_counter() - layout_started,
+            6,
+        )
+
+        artwork_started = time.perf_counter()
         self._request_artwork()
         self._request_cached_artist_images()
+        metrics["artwork_request_seconds"] = round(
+            time.perf_counter() - artwork_started,
+            6,
+        )
+        metrics["total_seconds"] = round(time.perf_counter() - started, 6)
+        self.last_catalog_metrics = metrics
 
     def current_view(self) -> str:
         for key, button in self.view_buttons.items():
