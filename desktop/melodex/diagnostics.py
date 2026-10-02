@@ -32,6 +32,7 @@ _CATALOG_METRIC_FIELDS = (
     "track_count",
     "album_count",
     "artist_count",
+    "reset_seconds",
     "copy_catalog_seconds",
     "album_model_seconds",
     "artist_model_seconds",
