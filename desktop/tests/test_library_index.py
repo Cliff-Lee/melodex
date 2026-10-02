@@ -208,3 +208,42 @@ def test_successful_rescan_atomically_replaces_cached_root(tmp_path: Path):
     index.replace_scan([root], _snapshot(root, [new], available=True))
 
     assert [row["title"] for row in index.load_tracks([root])] == ["New"]
+
+
+
+def test_index_round_trip_preserves_file_fingerprint(tmp_path: Path):
+    root = tmp_path / "music"
+    path = root / "song.flac"
+    index = LocalLibraryIndex(tmp_path / "library-index.sqlite3")
+    index.sync_roots([root])
+    track = _track(path, title="Fingerprinted")
+
+    snapshot = _snapshot(root, [track])
+    snapshot["index_records"] = [
+        {
+            "track": dict(track),
+            "size": 123456,
+            "mtime_ns": 987654321,
+        }
+    ]
+    index.replace_scan([root], snapshot)
+
+    cache = index.load_scan_cache([root])
+    entry = cache[str(path.resolve())]
+    assert entry["track"]["title"] == "Fingerprinted"
+    assert entry["size"] == 123456
+    assert entry["mtime_ns"] == 987654321
+    assert entry["root_path"] == str(root)
+
+
+def test_legacy_index_without_fingerprint_is_not_treated_as_unchanged(tmp_path: Path):
+    root = tmp_path / "music"
+    path = root / "legacy.flac"
+    index = LocalLibraryIndex(tmp_path / "library-index.sqlite3")
+    index.sync_roots([root])
+    index.replace_scan([root], _snapshot(root, [_track(path, title="Legacy")]))
+
+    cache = index.load_scan_cache([root])
+    entry = cache[str(path.resolve())]
+    assert entry["size"] is None
+    assert entry["mtime_ns"] is None
