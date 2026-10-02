@@ -356,6 +356,10 @@ class LocalLibraryIndex:
             )
 
         now = datetime.now(timezone.utc).isoformat()
+        tracks_written = 0
+        tracks_reused = 0
+        tracks_deleted = 0
+
         with self._connect() as db:
             db.execute("BEGIN IMMEDIATE")
             try:
@@ -371,20 +375,52 @@ class LocalLibraryIndex:
                         """,
                         (root_id, str(root)),
                     )
-                    db.execute("DELETE FROM tracks WHERE root_id = ?", (root_id,))
-                    rows = grouped.get(root_id, [])
-                    db.executemany(
+
+                    existing_rows = db.execute(
                         """
-                        INSERT INTO tracks(
-                            root_id,
-                            relative_path,
-                            metadata_json,
-                            size,
-                            mtime_ns
-                        )
-                        VALUES(?, ?, ?, ?, ?)
+                        SELECT relative_path, size, mtime_ns
+                        FROM tracks
+                        WHERE root_id = ?
                         """,
-                        [
+                        (root_id,),
+                    ).fetchall()
+                    existing = {
+                        str(row["relative_path"]): (
+                            int(row["size"]) if row["size"] is not None else None,
+                            int(row["mtime_ns"]) if row["mtime_ns"] is not None else None,
+                        )
+                        for row in existing_rows
+                    }
+
+                    rows = grouped.get(root_id, [])
+                    incoming_paths = {relative_path for relative_path, _, _, _ in rows}
+                    removed_paths = set(existing) - incoming_paths
+                    if removed_paths:
+                        db.executemany(
+                            """
+                            DELETE FROM tracks
+                            WHERE root_id = ? AND relative_path = ?
+                            """,
+                            [(root_id, relative_path) for relative_path in removed_paths],
+                        )
+                        tracks_deleted += len(removed_paths)
+
+                    write_rows = []
+                    for relative_path, track, size, mtime_ns in rows:
+                        previous = existing.get(relative_path)
+                        reusable = bool(
+                            previous is not None
+                            and size is not None
+                            and mtime_ns is not None
+                            and previous[0] is not None
+                            and previous[1] is not None
+                            and int(previous[0]) == int(size)
+                            and int(previous[1]) == int(mtime_ns)
+                        )
+                        if reusable:
+                            tracks_reused += 1
+                            continue
+                        write_rows.append(
                             (
                                 root_id,
                                 relative_path,
@@ -397,9 +433,28 @@ class LocalLibraryIndex:
                                 size,
                                 mtime_ns,
                             )
-                            for relative_path, track, size, mtime_ns in rows
-                        ],
-                    )
+                        )
+
+                    if write_rows:
+                        db.executemany(
+                            """
+                            INSERT INTO tracks(
+                                root_id,
+                                relative_path,
+                                metadata_json,
+                                size,
+                                mtime_ns
+                            )
+                            VALUES(?, ?, ?, ?, ?)
+                            ON CONFLICT(root_id, relative_path) DO UPDATE SET
+                                metadata_json=excluded.metadata_json,
+                                size=excluded.size,
+                                mtime_ns=excluded.mtime_ns
+                            """,
+                            write_rows,
+                        )
+                        tracks_written += len(write_rows)
+
                     db.execute(
                         """
                         UPDATE roots
@@ -419,6 +474,9 @@ class LocalLibraryIndex:
                 len(rows) for root_id, rows in grouped.items()
                 if root_id in available_ids
             ),
+            "tracks_written": tracks_written,
+            "tracks_reused": tracks_reused,
+            "tracks_deleted": tracks_deleted,
             "roots_unavailable": sum(
                 1 for row in state_rows
                 if not bool(row.get("available"))
