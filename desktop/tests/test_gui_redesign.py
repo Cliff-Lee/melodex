@@ -414,6 +414,64 @@ def test_cached_album_artwork_prioritizes_viewport_and_scroll_target():
     app.processEvents()
 
 
+def test_catalog_replacement_invalidates_inflight_cached_artwork():
+    try:
+        from PySide6.QtWidgets import QApplication
+        from melodex.library_browser import LibraryBrowser
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    browser = LibraryBrowser()
+    browser.resize(1000, 700)
+    browser.show()
+
+    batches = []
+    invalidations = []
+    browser.artworkRequested.connect(
+        lambda rows: batches.append([dict(row) for row in rows])
+    )
+    browser.cachedArtworkInvalidated.connect(invalidations.append)
+
+    first_catalog = [
+        _track(
+            f"/catalog/first/{index:03d}.flac",
+            f"Artist {index:03d}",
+            f"Album {index:03d}",
+            f"Track {index:03d}",
+            1,
+        )
+        for index in range(40)
+    ]
+    browser.set_catalog(first_catalog, revision=1)
+    app.processEvents()
+    app.processEvents()
+    if not batches:
+        browser._emit_viewport_artwork_batch(
+            "albums",
+            browser._artwork_generation("albums"),
+        )
+    assert browser._album_cache_inflight is True
+
+    second_catalog = [
+        _track(
+            f"/catalog/second/{index:03d}.flac",
+            f"New Artist {index:03d}",
+            f"New Album {index:03d}",
+            f"New Track {index:03d}",
+            1,
+        )
+        for index in range(20)
+    ]
+    browser.set_catalog(second_catalog, revision=2)
+
+    assert "albums" in invalidations
+    assert browser._catalog_revision == 2
+    browser.deleteLater()
+    app.processEvents()
+
+
 def test_cached_artist_photos_use_same_viewport_priority():
     try:
         from PySide6.QtWidgets import QApplication
@@ -1748,6 +1806,42 @@ def test_stale_search_response_cannot_replace_newer_request(monkeypatch, tmp_pat
     app.processEvents()
 
 
+def test_navigation_invalidates_offscreen_background_models(monkeypatch, tmp_path):
+    try:
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+
+    window = main_window.MainWindow()
+    cancelled = []
+    monkeypatch.setattr(
+        window.background,
+        "cancel_key",
+        lambda key: cancelled.append(str(key)) or 0,
+    )
+
+    window.open_page("library")
+
+    assert "album-wall-model" in cancelled
+    assert "music-map-model" in cancelled
+    assert "visual-context" in cancelled
+
+    cancelled.clear()
+    window.open_page("album_wall")
+    assert "album-wall-model" not in cancelled
+    assert "music-map-model" in cancelled
+    assert "visual-context" in cancelled
+
+    window.close()
+    app.processEvents()
+
+
 def test_navigation_motion_happens_after_immediate_shell_change(monkeypatch, tmp_path):
     try:
         from PySide6.QtWidgets import QApplication, QGraphicsOpacityEffect
@@ -2160,6 +2254,36 @@ def test_next_track_prefetch_is_local_only_and_consumed_on_advance(monkeypatch, 
     assert cover_calls[-1] == str(tmp_path / "next-cover.jpg")
     assert analysis_calls[-1] is cached_analysis
     assert token not in window._prefetched_track_assets
+
+    window.close()
+    app.processEvents()
+
+
+def test_rescheduling_prefetch_invalidates_previous_prefetch_immediately(monkeypatch, tmp_path):
+    try:
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+
+    window = main_window.MainWindow()
+    cancelled = []
+    monkeypatch.setattr(
+        window.background,
+        "cancel_key",
+        lambda key: cancelled.append(str(key)) or 0,
+    )
+
+    before = window._prefetch_sequence
+    window._schedule_next_track_prefetch()
+
+    assert window._prefetch_sequence == before + 1
+    assert cancelled == ["next-track-prefetch"]
 
     window.close()
     app.processEvents()
