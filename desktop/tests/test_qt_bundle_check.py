@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import importlib.util
 from pathlib import Path
 
@@ -62,3 +63,22 @@ def test_qt_bundle_rejects_missing_required_module(tmp_path: Path):
     errors, _ = checker.validate_bundle(root)
 
     assert "required PySide6 module missing: qtmultimedia" in errors
+
+
+
+def test_melodex_source_only_imports_expected_qt_families():
+    root = Path(__file__).resolve().parents[1] / "melodex"
+    families = set()
+    for path in root.rglob("*.py"):
+        tree = ast.parse(path.read_text("utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module:
+                if node.module.startswith("PySide6.Qt"):
+                    families.add(node.module.split(".", 1)[0].removeprefix("PySide6."))
+
+    assert families <= {
+        "QtCore",
+        "QtGui",
+        "QtWidgets",
+        "QtMultimedia",
+    }, f"Unexpected Qt families imported: {sorted(families)}"
