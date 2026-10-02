@@ -116,3 +116,12 @@ This file tracks changes intended for the next release after **v0.7.4**.
 - The distribution path signs Melodex with hardened runtime, signs the DMG, submits it with Apple's `notarytool`, staples the ticket, and verifies the result.
 - Every macOS artifact now includes a trust report that distinguishes ad-hoc preview builds from Developer ID/notarized distributions.
 - Normal pull-request builds remain credential-free; requiring notarization for public releases is reserved for Campaign 9B after live Apple credentials are configured.
+
+
+## Large-library reliability — permanent acceptance gate
+
+- CI now exercises Melodex at the original 12,700-track stress scale.
+- The gate verifies complete initial scanning, persistent-index reload, zero tag rereads and zero SQLite row rewrites on an unchanged rescan.
+- My Music must retain the full 12,700-track model while keeping the initial Albums and Tracks widget windows bounded.
+- The acceptance workflow also reruns hard-cancellation coverage for a deliberately hung scan worker.
+- A tester-facing Synology/NAS retest checklist now covers first import, restart, unchanged rescan, cancel, offline NAS startup and redacted diagnostics export.
