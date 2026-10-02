@@ -76,3 +76,12 @@ This file tracks changes intended for the next release after **v0.7.4**.
 - Frozen builds now keep only the Qt families Melodex imports plus required runtime dependencies.
 - A bundle guard prevents heavyweight unused Qt payload such as WebEngine, QML/Quick3D, Designer, PDF and Charts from silently returning.
 - The 8A bundle report remains in place so installed-app size can be compared directly against the 669.4 MB macOS baseline.
+
+
+## Desktop packaging — non-Qt runtime audit
+
+- Desktop builds no longer blanket-collect every keyring file.
+- Frozen-build smoke tests now exercise NumPy analysis operations, HTTPS CA data,
+  OpenSSL and native system-keyring discovery before a package is accepted.
+- macOS and Windows artifacts include a non-Qt runtime size audit for the next
+  round of evidence-based trimming.
