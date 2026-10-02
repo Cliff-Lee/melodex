@@ -16,6 +16,8 @@ def test_soak_report_budget_evaluator_flags_regressions():
             "ci_violations": 1,
             "serious_stalls": 0,
             "release_blockers": 0,
+            "interaction_p95_ms": 125.0,
+            "interactions_over_100_ms": 3,
         },
         "memory": {
             "rss_growth_mib": 4.0,
@@ -39,6 +41,8 @@ def test_soak_report_budget_evaluator_flags_regressions():
     passed, failures = evaluate_report(report)
     assert passed is False
     assert "event-loop CI violations" in failures
+    assert "interaction p95 latency" in failures
+    assert "interactions over 100 ms" in failures
 
 
 def test_small_soak_smoke_run_stays_bounded():
