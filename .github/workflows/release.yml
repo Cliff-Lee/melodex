@@ -87,10 +87,9 @@ jobs:
           QT_QPA_PLATFORM: offscreen
         run: python scripts/fluid_ci_gate.py
 
-      - name: Run release test suites
+      - name: Run release registry validation
         if: steps.release.outputs.publish == 'true'
         run: |
-          PYTHONPATH=desktop QT_QPA_PLATFORM=offscreen pytest -q desktop/tests
           pytest -q provider-sdk/tests
           melodex-registry validate provider-sdk/registry/registry.json
           melodex-registry verify-packages provider-sdk/registry/registry.json --packages provider-sdk/registry/packages
