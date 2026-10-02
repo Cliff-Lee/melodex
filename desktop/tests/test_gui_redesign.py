@@ -1327,6 +1327,144 @@ def test_plain_lyrics_html_uses_explicit_dark_theme_contrast():
 
 
 
+def test_search_keeps_previous_results_visible_while_refreshing(
+    monkeypatch,
+    tmp_path,
+):
+    try:
+        from PySide6.QtCore import Qt
+        from PySide6.QtWidgets import QApplication, QListWidgetItem
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+
+    window = main_window.MainWindow()
+    window._refresh_source_combo()
+    existing = QListWidgetItem("Existing Artist — Existing Track")
+    existing.setData(
+        Qt.UserRole,
+        {"artist": "Existing Artist", "title": "Existing Track"},
+    )
+    window.results.addItem(existing)
+    window.search_box.setText("new query")
+
+    started = threading.Event()
+    release = threading.Event()
+
+    def slow_search(_query, _provider_id, _limit):
+        started.set()
+        release.wait(timeout=2.0)
+        return {
+            "items": [{"artist": "New Artist", "title": "New Track"}],
+            "failures": [],
+            "searched": 1,
+            "available": 1,
+        }
+
+    monkeypatch.setattr(window.providers, "search_report", slow_search)
+    window._search()
+
+    assert window.results.count() == 1
+    assert "Existing Track" in window.results.item(0).text()
+    assert "showing previous results" in window.search_status.text()
+
+    deadline = time.monotonic() + 1.0
+    while time.monotonic() < deadline and not started.is_set():
+        time.sleep(0.005)
+    assert started.is_set()
+
+    release.set()
+    deadline = time.monotonic() + 2.0
+    while time.monotonic() < deadline and window._search_in_progress:
+        app.processEvents()
+        time.sleep(0.005)
+
+    assert window._search_in_progress is False
+    assert window.results.count() == 1
+    assert "New Track" in window.results.item(0).text()
+    assert window.search_button.text() == "Search"
+
+    window.close()
+    app.processEvents()
+
+
+def test_newer_search_result_wins_over_slower_older_search(monkeypatch, tmp_path):
+    try:
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+
+    window = main_window.MainWindow()
+    window._refresh_source_combo()
+
+    first_started = threading.Event()
+    release_first = threading.Event()
+
+    def ordered_search(query, _provider_id, _limit):
+        if query == "first":
+            first_started.set()
+            release_first.wait(timeout=2.0)
+            title = "Old Result"
+        else:
+            title = "New Result"
+        return {
+            "items": [{"artist": "Artist", "title": title}],
+            "failures": [],
+            "searched": 1,
+            "available": 1,
+        }
+
+    monkeypatch.setattr(window.providers, "search_report", ordered_search)
+
+    window.search_box.setText("first")
+    window._search()
+
+    deadline = time.monotonic() + 1.0
+    while time.monotonic() < deadline and not first_started.is_set():
+        time.sleep(0.005)
+    assert first_started.is_set()
+
+    window.search_box.setText("second")
+    window._search()
+
+    deadline = time.monotonic() + 2.0
+    while time.monotonic() < deadline:
+        app.processEvents()
+        if (
+            window.results.count() == 1
+            and "New Result" in window.results.item(0).text()
+            and not window._search_in_progress
+        ):
+            break
+        time.sleep(0.005)
+
+    assert window.results.count() == 1
+    assert "New Result" in window.results.item(0).text()
+
+    release_first.set()
+    deadline = time.monotonic() + 0.3
+    while time.monotonic() < deadline:
+        app.processEvents()
+        time.sleep(0.005)
+
+    assert window.results.count() == 1
+    assert "New Result" in window.results.item(0).text()
+
+    window.close()
+    app.processEvents()
+
+
 def test_navigation_shell_precedes_page_population(monkeypatch, tmp_path):
     try:
         from PySide6.QtCore import QTimer
