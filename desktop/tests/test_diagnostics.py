@@ -259,6 +259,31 @@ def test_diagnostics_filters_ui_performance_fields():
                 "private_album": "Secret Album",
                 "private_path": "/Users/example/Music/Secret.flac",
             },
+            "background_scheduler": {
+                "max_workers": 4,
+                "reserved_foreground_slots": 1,
+                "active_total": 3,
+                "peak_active": 4,
+                "submitted": 42,
+                "completed": 37,
+                "failed": 1,
+                "pending_total": 2,
+                "active_by_priority": {
+                    "foreground": 0,
+                    "visible": 1,
+                    "prefetch": 1,
+                    "background": 1,
+                    "idle": 0,
+                },
+                "pending_by_priority": {
+                    "foreground": 0,
+                    "visible": 0,
+                    "prefetch": 0,
+                    "background": 1,
+                    "idle": 1,
+                },
+                "private_task_name": "Secret Song",
+            },
             "responsiveness": {
                 "interval_ms": 50,
                 "long_task_threshold_ms": 50,
@@ -305,6 +330,11 @@ def test_diagnostics_filters_ui_performance_fields():
     assert artwork["kind"] == "albums"
     assert artwork["requested_now"] == 12
     assert artwork["distant_candidates"] == 82
+    scheduler = payload["performance"]["background_scheduler"]
+    assert scheduler["max_workers"] == 4
+    assert scheduler["reserved_foreground_slots"] == 1
+    assert scheduler["active_by_priority"]["background"] == 1
+    assert scheduler["pending_by_priority"]["idle"] == 1
     responsiveness = payload["performance"]["ui_responsiveness"]
     assert responsiveness["total_stalls"] == 2
     assert responsiveness["max_delay_ms"] == 620.0
@@ -317,6 +347,7 @@ def test_diagnostics_filters_ui_performance_fields():
     assert '"query"' not in text
     assert "private_track" not in text
     assert "private_album" not in text
+    assert "private_task_name" not in text
     assert "private_path" not in text
 
 
