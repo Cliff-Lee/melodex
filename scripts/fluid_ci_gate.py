@@ -14,6 +14,7 @@ FLUID_GATE_TESTS = [
     "desktop/tests/test_responsiveness.py",
     "desktop/tests/test_responsiveness_gate.py",
     "desktop/tests/test_motion.py",
+    "desktop/tests/test_fluid_soak_probe.py",
     "desktop/tests/test_gui_redesign.py::test_slow_source_config_check_keeps_qt_event_loop_responsive",
     "desktop/tests/test_gui_redesign.py::test_navigation_shell_changes_before_slow_page_population",
     "desktop/tests/test_gui_redesign.py::test_rapid_navigation_drops_stale_page_population",

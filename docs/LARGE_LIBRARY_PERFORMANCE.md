@@ -226,6 +226,47 @@ instead of creating their own daemon threads.
 The Fluid gate verifies both sides of the contract: queued work is genuinely cancelled,
 and already-running stale work cannot apply its completion to the current UI.
 
+## P8e result — repeatable mixed-workload soak gate
+
+P8e adds a deterministic, offline soak workload instead of relying on one-shot timing
+measurements.
+
+The probe warms Albums, Artists and Tracks, then repeatedly cycles a large synthetic
+library through:
+
+- view switches;
+- scrollbar movement across different parts of the collection;
+- broad and narrow search/filter changes;
+- viewport-bounded track hydration;
+- replaceable background-model churn;
+- prefetch churn; and
+- foreground scheduler work.
+
+During the run it records:
+
+- event-loop p99 gaps and stall severity;
+- maximum active and pending scheduler work;
+- cancelled stale scheduler work;
+- maximum Album/Artist cards and hydrated Track rows;
+- total Qt child-widget growth;
+- retained and peak Python memory growth; and
+- per-cycle duration statistics.
+
+The release contract fails if the soak produces a release-blocking or serious event-loop
+stall, the scheduler queue or worker count escapes its bounds, rendered widgets grow
+without limit, hydrated Track rows exceed the viewport/overscan contract, or retained
+Python memory grows beyond the configured budget.
+
+CI now runs two levels:
+
+- a small soak regression inside the normal Fluid release gate; and
+- a dedicated **12,700-track / 80-cycle** soak job that uploads its complete JSON
+  measurements as an artifact.
+
+This deliberately tests sustained behaviour. P8a-P8d can make an individual interaction
+fast; P8e verifies that repeating those interactions does not gradually make Melodex
+slower or heavier.
+
 ## P8 campaign sequence
 
 ### P8a — Synthetic baseline
