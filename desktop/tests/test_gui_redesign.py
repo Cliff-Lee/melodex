@@ -235,6 +235,7 @@ def test_large_library_progressively_renders_widgets():
 
 def test_redesigned_main_window_builds_with_goal_navigation(monkeypatch, tmp_path):
     try:
+        from PySide6.QtTest import QTest
         from PySide6.QtWidgets import QApplication, QLabel
         import melodex.main_window as main_window
     except ImportError as exc:
@@ -265,12 +266,16 @@ def test_redesigned_main_window_builds_with_goal_navigation(monkeypatch, tmp_pat
 
     window.open_page("library")
     app.processEvents()
+    assert not hasattr(window, "library_browser")
+    QTest.qWait(window._page_refresh_delay_ms + 10)
     app.processEvents()
     assert hasattr(window, "library_browser")
     assert "library" in window._built_lazy_pages
 
     window.open_page("now_playing")
     app.processEvents()
+    assert not hasattr(window, "rich_now")
+    QTest.qWait(window._page_refresh_delay_ms + 10)
     app.processEvents()
     assert hasattr(window.rich_now, "import_lyrics_button")
     assert hasattr(window.rich_now, "paste_lyrics_button")
@@ -727,6 +732,51 @@ def test_plugin_centre_is_outcome_and_management_focused(monkeypatch, tmp_path):
     window.close()
     app.processEvents()
 
+
+
+
+def test_heavy_pages_build_once_after_navigation_shell(monkeypatch, tmp_path):
+    try:
+        from PySide6.QtTest import QTest
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+
+    window = main_window.MainWindow()
+    window.show()
+    app.processEvents()
+
+    assert not hasattr(window, "library_browser")
+    assert "library" not in window._built_lazy_pages
+
+    window.open_page("library")
+    app.processEvents()
+    assert window.stack.currentWidget() is window.pages["library"]
+    assert not hasattr(window, "library_browser")
+
+    QTest.qWait(window._page_refresh_delay_ms + 10)
+    app.processEvents()
+    first_browser = window.library_browser
+    first_metric = window.lazy_page_build_metrics["library"]
+    assert first_metric >= 0.0
+
+    window.open_page("home")
+    app.processEvents()
+    window.open_page("library")
+    QTest.qWait(window._page_refresh_delay_ms + 10)
+    app.processEvents()
+
+    assert window.library_browser is first_browser
+    assert window.lazy_page_build_metrics["library"] == first_metric
+
+    window.close()
+    app.processEvents()
 
 
 def test_plugins_surface_where_their_features_are_used(monkeypatch, tmp_path):
