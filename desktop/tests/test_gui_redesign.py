@@ -1213,7 +1213,7 @@ def test_slow_library_scan_keeps_qt_event_loop_responsive(monkeypatch, tmp_path)
     release = threading.Event()
     worker_thread = {}
 
-    def slow_snapshot(roots=None):
+    def slow_snapshot(roots=None, **kwargs):
         worker_thread["name"] = threading.current_thread().name
         worker_thread["main"] = threading.current_thread() is threading.main_thread()
         started.set()
@@ -1298,7 +1298,7 @@ def test_root_change_during_scan_discards_stale_snapshot(monkeypatch, tmp_path):
     release_first = threading.Event()
     calls = []
 
-    def scan_snapshot(roots=None):
+    def scan_snapshot(roots=None, **kwargs):
         roots = [Path(x) for x in (roots or [])]
         calls.append(tuple(str(x) for x in roots))
         if len(calls) == 1:
@@ -1354,6 +1354,142 @@ def test_root_change_during_scan_discards_stale_snapshot(monkeypatch, tmp_path):
     assert len(calls) == 2
     assert len(catalog) == 1
     assert catalog[0]["title"] == "Fresh"
+
+    window.close()
+    app.processEvents()
+
+
+
+def test_library_scan_progress_panel_is_clear_and_reassuring():
+    try:
+        from PySide6.QtWidgets import QApplication
+        from melodex.library_browser import LibraryBrowser
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    browser = LibraryBrowser()
+    browser.show()
+
+    browser.begin_scan("test")
+    app.processEvents()
+
+    assert browser.scan_progress_panel.isVisible()
+    assert browser.scan_progress.maximum() == 0
+    assert "never copied" in browser.scan_safety_note.text().lower()
+    assert browser.scan_pause_button.text() == "Pause"
+    assert browser.scan_cancel_button.text() == "Cancel"
+
+    browser.set_scan_progress(
+        {
+            "phase": "discovering",
+            "audio_files_seen": 12700,
+            "completed": 0,
+            "total": 0,
+            "current": "Massive Attack",
+        }
+    )
+    assert "12,700" in browser.scan_progress_summary.text()
+    assert "Massive Attack" in browser.scan_progress_detail.text()
+
+    browser.set_scan_progress(
+        {
+            "phase": "metadata",
+            "audio_files_seen": 12700,
+            "completed": 6350,
+            "total": 12700,
+            "current": "Teardrop.flac",
+        }
+    )
+    assert browser.scan_progress.maximum() == 12700
+    assert browser.scan_progress.value() == 6350
+    assert "6,350" in browser.scan_progress_summary.text()
+    assert browser.scan_progress_detail.text() == "Teardrop.flac"
+
+    browser.set_scan_paused(True)
+    assert browser.scan_pause_button.text() == "Resume"
+    assert "paused" in browser.scan_progress_title.text().lower()
+
+    browser.set_scan_cancelling()
+    assert not browser.scan_pause_button.isEnabled()
+    assert not browser.scan_cancel_button.isEnabled()
+
+    browser.finish_scan("cancelled")
+    assert "cancelled" in browser.scan_progress_title.text().lower()
+    assert "existing library" in browser.scan_progress_summary.text().lower()
+
+    browser.deleteLater()
+    app.processEvents()
+
+
+def test_cancelled_main_window_scan_keeps_existing_catalog(monkeypatch, tmp_path):
+    try:
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+
+    window = main_window.MainWindow()
+    root = tmp_path / "nas"
+    root.mkdir()
+    window.providers.configure_local_roots([root])
+
+    existing = {
+        "provider_id": "local",
+        "track_id": "/existing.flac",
+        "local_path": "/existing.flac",
+        "title": "Existing",
+        "artist": "Existing Artist",
+        "album": "Existing Album",
+    }
+    window.providers.apply_local_scan_snapshot(
+        {"tracks": [existing], "metrics": {"tracks_indexed": 1}}
+    )
+    window._refresh_library()
+
+    worker_started = threading.Event()
+
+    def cancellable_snapshot(roots=None, *, progress=None, control=None):
+        worker_started.set()
+        while control is not None and not control.cancelled:
+            time.sleep(0.005)
+        return {
+            "tracks": [],
+            "metrics": {"tracks_indexed": 0, "main_thread": False},
+            "cancelled": True,
+        }
+
+    monkeypatch.setattr(
+        window.providers,
+        "scan_local_roots_snapshot",
+        cancellable_snapshot,
+    )
+
+    window._start_local_scan("cancel test")
+    deadline = time.monotonic() + 1.0
+    while time.monotonic() < deadline and not worker_started.is_set():
+        app.processEvents()
+        time.sleep(0.005)
+    assert worker_started.is_set()
+
+    window._cancel_local_scan()
+
+    deadline = time.monotonic() + 2.0
+    while time.monotonic() < deadline and window._local_scan_in_progress:
+        app.processEvents()
+        time.sleep(0.005)
+
+    assert window._local_scan_in_progress is False
+    catalog = window.providers.local_catalog()
+    assert len(catalog) == 1
+    assert catalog[0]["title"] == "Existing"
+    assert "cancelled" in window.library_browser.scan_progress_title.text().lower()
 
     window.close()
     app.processEvents()

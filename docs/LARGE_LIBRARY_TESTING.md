@@ -161,3 +161,38 @@ Persistent startup indexing is intentionally left to Campaign 4.
 - completed worker results are applied only after the scan finishes
 - a root change during an active scan must discard the stale snapshot and scan the new roots
 - scan metrics from application-initiated scans must report `main_thread: false`
+
+
+## Campaign 3 — visible, controllable indexing
+
+Long scans must now look like deliberate background work rather than a frozen
+application.
+
+The My Music panel has two stages:
+
+1. **Discovering files** — the total is not known yet, so progress is
+   indeterminate while Melodex counts audio files.
+2. **Reading metadata** — once discovery completes, the panel shows an exact
+   `completed / total` count.
+
+The panel also states explicitly:
+
+> Melodex indexes music where it already lives. Audio files are never copied.
+
+Pause and Cancel are cooperative. The scanner checks them between directory,
+file and metadata operations. Cancelling never applies a partial catalog: the
+previous library remains active.
+
+A network filesystem call that is already blocked inside the operating system
+cannot always be interrupted by a Python thread. Hard cancellation of that
+pathological case is deliberately reserved for the later NAS-hardening campaign,
+where scanning can be isolated in a killable worker process.
+
+### Campaign 3 acceptance checks
+
+- discovery shows a live count without inventing a percentage
+- metadata parsing shows an exact count once the denominator is known
+- Pause stops new scan work and Resume continues it
+- Cancel discards partial results and preserves the previous catalog
+- only a filename/basename may appear in progress events, never a full library path
+- the panel always explains that Melodex does not copy the user's audio

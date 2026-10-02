@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from ..provider import MusicProvider, ProviderInfo
+from ..library_scan import ProgressThrottle, ScanCancelled, ScanControl
 from ..scan_metrics import ScanProbe
 
 AUDIO_EXTS = {".mp3", ".flac", ".m4a", ".aac", ".ogg", ".opus", ".wav", ".aiff", ".wma"}
@@ -175,11 +176,16 @@ class LocalFilesProvider(MusicProvider):
     def scan_snapshot(
         self,
         roots: list[Path] | None = None,
+        *,
+        progress: Callable[[dict[str, Any]], None] | None = None,
+        control: ScanControl | None = None,
     ) -> dict[str, Any]:
         """Scan roots without mutating the live provider catalog.
 
-        This is safe to run on a worker thread. The caller applies the completed
-        snapshot on the UI thread with :meth:`apply_scan_snapshot`.
+        Filesystem traversal and metadata reads may run on a worker thread. A
+        cooperative control object provides pause/cancel checkpoints between
+        filesystem operations; Campaign 6 will harden cancellation of an OS call
+        that is already blocked inside a network filesystem.
         """
         scan_roots = [Path(x) for x in (self.roots if roots is None else roots)]
         overrides = {
@@ -187,44 +193,120 @@ class LocalFilesProvider(MusicProvider):
             for key, value in self.overrides.items()
             if isinstance(value, dict)
         }
+        control = control or ScanControl()
+        throttle = ProgressThrottle()
+        audio_paths: list[Path] = []
         tracks: list[dict[str, Any]] = []
         probe = ScanProbe(len(scan_roots))
+
+        def emit(
+            phase: str,
+            *,
+            force: bool = False,
+            current: str = "",
+            completed: int = 0,
+            total: int = 0,
+        ) -> None:
+            if progress is None or not throttle.ready(force=force):
+                return
+            progress(
+                {
+                    "phase": phase,
+                    "files_seen": probe.metrics.files_seen,
+                    "audio_files_seen": probe.metrics.audio_files_seen,
+                    "directories_seen": probe.metrics.directories_seen,
+                    "completed": max(0, int(completed)),
+                    "total": max(0, int(total)),
+                    # Only a basename is exposed to the UI; never a private path.
+                    "current": Path(current).name if current else "",
+                    "paused": control.paused,
+                    "cancelled": control.cancelled,
+                }
+            )
+
+        cancelled = False
+        emit("discovering", force=True)
         try:
             for root in scan_roots:
+                control.checkpoint()
                 exists = root.exists()
                 probe.root_checked(exists=exists)
                 if not exists:
                     continue
                 for base, _, files in os.walk(root):
+                    control.checkpoint()
                     probe.directory_seen()
                     for name in files:
+                        control.checkpoint()
                         p = Path(base) / name
                         is_audio = p.suffix.lower() in AUDIO_EXTS
                         probe.file_seen(audio=is_audio)
-                        if not is_audio:
-                            continue
-                        with probe.metadata_read():
-                            metadata = self._metadata(p)
-                        local_path = str(
-                            metadata.get("local_path")
-                            or metadata.get("track_id")
-                            or ""
+                        if is_audio:
+                            audio_paths.append(p)
+                        emit(
+                            "discovering",
+                            current=Path(base).name,
                         )
-                        override = overrides.get(
-                            self._override_key(local_path),
-                            {},
-                        )
-                        if override:
-                            metadata = dict(metadata)
-                            for key, value in override.items():
-                                if key in self.EDITABLE_METADATA_FIELDS:
-                                    metadata[key] = value
-                        tracks.append(metadata)
+
+            emit(
+                "metadata",
+                force=True,
+                completed=0,
+                total=len(audio_paths),
+            )
+            for index, p in enumerate(audio_paths, start=1):
+                control.checkpoint()
+                with probe.metadata_read():
+                    metadata = self._metadata(p)
+                local_path = str(
+                    metadata.get("local_path")
+                    or metadata.get("track_id")
+                    or ""
+                )
+                override = overrides.get(
+                    self._override_key(local_path),
+                    {},
+                )
+                if override:
+                    metadata = dict(metadata)
+                    for key, value in override.items():
+                        if key in self.EDITABLE_METADATA_FIELDS:
+                            metadata[key] = value
+                tracks.append(metadata)
+                emit(
+                    "metadata",
+                    current=p.name,
+                    completed=index,
+                    total=len(audio_paths),
+                )
+        except ScanCancelled:
+            cancelled = True
         finally:
             metrics = probe.finish(tracks_indexed=len(tracks))
+
+        if cancelled:
+            emit(
+                "cancelled",
+                force=True,
+                completed=len(tracks),
+                total=len(audio_paths),
+            )
+            return {
+                "tracks": [],
+                "metrics": metrics,
+                "cancelled": True,
+            }
+
+        emit(
+            "complete",
+            force=True,
+            completed=len(tracks),
+            total=len(audio_paths),
+        )
         return {
             "tracks": tracks,
             "metrics": metrics,
+            "cancelled": False,
         }
 
     def apply_scan_snapshot(self, snapshot: dict[str, Any]) -> int:
