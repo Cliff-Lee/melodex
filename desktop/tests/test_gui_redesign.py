@@ -1747,6 +1747,119 @@ def test_slow_source_config_check_keeps_qt_event_loop_responsive(monkeypatch, tm
     app.processEvents()
 
 
+def test_global_scan_activity_persists_across_navigation(monkeypatch, tmp_path):
+    try:
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+
+    release = threading.Event()
+
+    class HoldingRunner:
+        def __init__(
+            self,
+            data_dir,
+            roots,
+            *,
+            on_progress,
+            on_done,
+            on_error,
+            **_kwargs,
+        ):
+            self.roots = [Path(x) for x in roots]
+            self.on_progress = on_progress
+            self.on_done = on_done
+            self.on_error = on_error
+            self.paused = False
+
+        def start(self):
+            self.on_progress(
+                {
+                    "phase": "discovering",
+                    "audio_files_seen": 120,
+                }
+            )
+
+        def pause(self):
+            self.paused = True
+
+        def resume(self):
+            self.paused = False
+
+        def cancel(self, **_kwargs):
+            release.set()
+            self.on_done({"tracks": [], "cancelled": True})
+
+        def shutdown(self, **_kwargs):
+            release.set()
+
+    monkeypatch.setattr(main_window, "LibraryScanProcess", HoldingRunner)
+
+    window = main_window.MainWindow()
+    window.show()
+    root = tmp_path / "large-library"
+    root.mkdir()
+    window.providers.configure_local_roots([root])
+
+    window._start_local_scan("test")
+    app.processEvents()
+
+    assert window.background_activity.isVisible()
+    assert "120 found" in window.background_activity_label.text()
+    assert "You can keep using Melodex" in window.background_activity_label.text()
+    assert window.background_activity_progress.minimum() == 0
+    assert window.background_activity_progress.maximum() == 0
+    assert window.background_activity_pause.isEnabled()
+    assert window.background_activity_cancel.isEnabled()
+
+    # Progress follows the job rather than disappearing with My Music.
+    window.open_page("playlists")
+    app.processEvents()
+    assert window.current_page == "playlists"
+    assert window.background_activity.isVisible()
+    assert "You can keep using Melodex" in window.background_activity_label.text()
+
+    window._local_scan_progress(
+        {
+            "phase": "metadata",
+            "audio_files_seen": 120,
+            "completed": 30,
+            "total": 120,
+            "unchanged": 20,
+            "added": 10,
+        }
+    )
+    app.processEvents()
+    assert window.background_activity_progress.minimum() == 0
+    assert window.background_activity_progress.maximum() == 120
+    assert window.background_activity_progress.value() == 30
+    assert "Reading tags" in window.background_activity_label.text()
+
+    window._toggle_local_scan_pause()
+    app.processEvents()
+    assert window.background_activity_pause.text() == "Resume"
+    assert "Paused" in window.background_activity_label.text()
+
+    window._toggle_local_scan_pause()
+    app.processEvents()
+    assert window.background_activity_pause.text() == "Pause"
+
+    window._cancel_local_scan()
+    app.processEvents()
+    assert release.is_set()
+    assert window._local_scan_in_progress is False
+    assert window.background_activity.isHidden()
+
+    window.close()
+    app.processEvents()
+
+
 def test_slow_library_scan_keeps_qt_event_loop_responsive(monkeypatch, tmp_path):
     try:
         from PySide6.QtCore import QTimer

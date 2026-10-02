@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QListWidget,
     QListWidgetItem, QStackedWidget, QLineEdit, QComboBox, QFileDialog, QMessageBox,
     QSlider, QTextEdit, QInputDialog, QDialog, QFormLayout, QDialogButtonBox, QCheckBox,
-    QTabWidget, QApplication, QPlainTextEdit, QFrame,
+    QTabWidget, QApplication, QPlainTextEdit, QFrame, QProgressBar,
 )
 
 from .paths import app_data_dir
@@ -151,6 +151,8 @@ class MainWindow(QMainWindow):
         self._local_scan_in_progress = False
         self._local_scan_pending = False
         self._local_scan_sequence = 0
+        self._local_scan_started_at = 0.0
+        self._local_scan_last_progress: dict[str, Any] = {}
         self._local_scan_runner: LibraryScanProcess | None = None
         self._local_scan_signals: WorkerSignals | None = None
         self._source_config_refresh_in_progress = False
@@ -333,6 +335,55 @@ class MainWindow(QMainWindow):
         ql.addWidget(self.queue_list, 1)
         self.queue_panel.hide()
         body_l.addWidget(self.queue_panel)
+
+        # ------------------------------------------------------------------
+        # Long-running background work stays visible without taking over the UI.
+        self.background_activity = QFrame()
+        self.background_activity.setObjectName("artworkProgressPanel")
+        activity_l = QHBoxLayout(self.background_activity)
+        activity_l.setContentsMargins(14, 7, 14, 7)
+        activity_l.setSpacing(10)
+
+        self.background_activity_label = QLabel("")
+        self.background_activity_label.setObjectName("artworkProgressDetail")
+        self.background_activity_label.setWordWrap(False)
+        activity_l.addWidget(self.background_activity_label, 1)
+
+        self.background_activity_progress = QProgressBar()
+        self.background_activity_progress.setFixedWidth(180)
+        self.background_activity_progress.setTextVisible(True)
+        self.background_activity_progress.setRange(0, 0)
+        activity_l.addWidget(self.background_activity_progress)
+
+        self.background_activity_view = QPushButton("View")
+        self.background_activity_view.setObjectName("quietButton")
+        self.background_activity_view.clicked.connect(
+            lambda: self.open_page("library")
+        )
+        activity_l.addWidget(self.background_activity_view)
+
+        self.background_activity_pause = QPushButton("Pause")
+        self.background_activity_pause.setObjectName("quietButton")
+        self.background_activity_pause.clicked.connect(
+            self._toggle_local_scan_pause
+        )
+        activity_l.addWidget(self.background_activity_pause)
+
+        self.background_activity_cancel = QPushButton("Cancel")
+        self.background_activity_cancel.setObjectName("quietButton")
+        self.background_activity_cancel.clicked.connect(
+            self._cancel_local_scan
+        )
+        activity_l.addWidget(self.background_activity_cancel)
+
+        self.background_activity.hide()
+        outer.addWidget(self.background_activity)
+
+        self._background_activity_timer = QTimer(self)
+        self._background_activity_timer.setInterval(1000)
+        self._background_activity_timer.timeout.connect(
+            self._refresh_background_scan_activity
+        )
 
         # ------------------------------------------------------------------
         # Persistent player. It behaves as the gateway to Now Playing rather
@@ -3836,9 +3887,68 @@ class MainWindow(QMainWindow):
     def _local_roots_key(roots: list[Path]) -> tuple[str, ...]:
         return tuple(str(Path(root)) for root in roots)
 
+    @staticmethod
+    def _format_elapsed(seconds: float) -> str:
+        total=max(0,int(seconds))
+        minutes,seconds=divmod(total,60)
+        hours,minutes=divmod(minutes,60)
+        if hours:
+            return f"{hours:d}:{minutes:02d}:{seconds:02d}"
+        return f"{minutes:d}:{seconds:02d}"
+
+    def _refresh_background_scan_activity(self) -> None:
+        if not self._local_scan_in_progress:
+            self.background_activity.hide()
+            self._background_activity_timer.stop()
+            return
+
+        payload=dict(self._local_scan_last_progress or {})
+        phase=str(payload.get("phase") or "discovering")
+        found=max(0,int(payload.get("audio_files_seen") or 0))
+        completed=max(0,int(payload.get("completed") or 0))
+        total=max(0,int(payload.get("total") or 0))
+        elapsed=self._format_elapsed(
+            time.monotonic() - self._local_scan_started_at
+            if self._local_scan_started_at
+            else 0.0
+        )
+
+        if phase=="metadata" and total:
+            stage=f"Reading tags · {completed:,}/{total:,}"
+            self.background_activity_progress.setRange(0,total)
+            self.background_activity_progress.setValue(min(completed,total))
+            self.background_activity_progress.setFormat("%v / %m")
+        elif phase=="saving":
+            stage="Saving library index"
+            self.background_activity_progress.setRange(0,0)
+            self.background_activity_progress.setFormat("")
+        else:
+            stage=(
+                f"Discovering files · {found:,} found"
+                if found
+                else "Discovering files"
+            )
+            self.background_activity_progress.setRange(0,0)
+            self.background_activity_progress.setFormat("")
+
+        runner=self._local_scan_runner
+        paused=bool(runner is not None and runner.paused)
+        if paused:
+            stage="Paused · " + stage
+        self.background_activity_label.setText(
+            f"Indexing music · {stage} · {elapsed} elapsed · "
+            "You can keep using Melodex"
+        )
+        self.background_activity_pause.setText("Resume" if paused else "Pause")
+        self.background_activity_pause.setEnabled(runner is not None)
+        self.background_activity_cancel.setEnabled(runner is not None)
+        self.background_activity.show()
+
     def _local_scan_progress(self, payload: object) -> None:
         if not isinstance(payload,dict) or not self._local_scan_in_progress:
             return
+        self._local_scan_last_progress=dict(payload)
+        self._refresh_background_scan_activity()
         if hasattr(self,"library_browser"):
             self.library_browser.set_scan_progress(payload)
         phase=str(payload.get("phase") or "")
@@ -3877,11 +3987,13 @@ class MainWindow(QMainWindow):
             runner.resume()
             if hasattr(self,"library_browser"):
                 self.library_browser.set_scan_paused(False)
+            self._refresh_background_scan_activity()
             self.statusBar().showMessage("Music indexing resumed",3000)
         else:
             runner.pause()
             if hasattr(self,"library_browser"):
                 self.library_browser.set_scan_paused(True)
+            self._refresh_background_scan_activity()
             self.statusBar().showMessage("Music indexing paused",3000)
 
     def _cancel_local_scan(self) -> None:
@@ -3892,6 +4004,11 @@ class MainWindow(QMainWindow):
         runner.cancel()
         if hasattr(self,"library_browser"):
             self.library_browser.set_scan_cancelling()
+        self.background_activity_pause.setEnabled(False)
+        self.background_activity_cancel.setEnabled(False)
+        self.background_activity_label.setText(
+            "Indexing music · Stopping safely… · existing library remains usable"
+        )
         self.statusBar().showMessage(
             "Stopping music indexing… a stuck NAS scanner will be terminated automatically"
         )
@@ -3927,11 +4044,15 @@ class MainWindow(QMainWindow):
         self._local_scan_in_progress=True
         self._local_scan_pending=False
         self._local_scan_sequence += 1
+        self._local_scan_started_at=time.monotonic()
+        self._local_scan_last_progress={"phase":"discovering","audio_files_seen":0}
         sequence=self._local_scan_sequence
         roots_snapshot=[Path(root) for root in roots]
         roots_key=self._local_roots_key(roots_snapshot)
         if hasattr(self,"library_browser"):
             self.library_browser.begin_scan(reason)
+        self._refresh_background_scan_activity()
+        self._background_activity_timer.start()
         self.statusBar().showMessage(
             "Indexing your music in an isolated background scanner…"
         )
@@ -3953,6 +4074,8 @@ class MainWindow(QMainWindow):
                 return
             self._local_scan_in_progress=False
             self._local_scan_runner=None
+            self._background_activity_timer.stop()
+            self.background_activity.hide()
             current_key=self._local_roots_key(self.providers.local_roots())
             result=dict(snapshot or {})
 
@@ -4033,6 +4156,8 @@ class MainWindow(QMainWindow):
                 return
             self._local_scan_in_progress=False
             self._local_scan_runner=None
+            self._background_activity_timer.stop()
+            self.background_activity.hide()
             if hasattr(self,"library_browser"):
                 self.library_browser.finish_scan("error",error=str(error))
             self._show_home()
@@ -4062,6 +4187,7 @@ class MainWindow(QMainWindow):
             on_error=sig.error.emit,
         )
         self._local_scan_runner=runner
+        self._refresh_background_scan_activity()
         try:
             runner.start()
         except Exception as exc:
