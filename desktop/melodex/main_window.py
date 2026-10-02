@@ -167,9 +167,12 @@ class MainWindow(QMainWindow):
         self._build_ui()
         self._show_home()
         self._start_local_bridge()
-        if self.providers.local_roots():
-            # Let Qt paint the window before any saved library scan begins.
-            QTimer.singleShot(0, lambda: self._start_local_scan("startup"))
+        startup_roots=self.providers.local_roots()
+        if startup_roots and not self.providers.local_index_ready(startup_roots):
+            # One-time migration for existing users who have configured roots
+            # but no persistent index yet. Once indexed, later launches load the
+            # cache immediately and do not walk the NAS automatically.
+            QTimer.singleShot(0, lambda: self._start_local_scan("initial index"))
 
     # ------------------------------- UI
     def _build_ui(self):
@@ -3710,6 +3713,11 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage(message)
             if hasattr(self,"home_status"):
                 self.home_status.setText(message)
+        elif phase=="saving":
+            message="Indexing music · saving local library index…"
+            self.statusBar().showMessage(message)
+            if hasattr(self,"home_status"):
+                self.home_status.setText(message)
 
     def _toggle_local_scan_pause(self) -> None:
         control=self._local_scan_control
@@ -3846,6 +3854,21 @@ class MainWindow(QMainWindow):
                     progress=sig.progress.emit,
                     control=control,
                 )
+                if not bool(result.get("cancelled")):
+                    sig.progress.emit({
+                        "phase":"saving",
+                        "audio_files_seen":int(
+                            (result.get("metrics") or {}).get("audio_files_seen") or 0
+                        ),
+                    })
+                    self.providers.persist_local_scan_snapshot(
+                        roots_snapshot,
+                        result,
+                    )
+                    result=self.providers.indexed_scan_result(
+                        roots_snapshot,
+                        result,
+                    )
                 sig.done.emit(result)
             except Exception as exc:
                 sig.error.emit(str(exc))
