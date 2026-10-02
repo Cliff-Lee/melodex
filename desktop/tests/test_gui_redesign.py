@@ -2241,6 +2241,69 @@ def test_main_window_async_work_uses_bounded_scheduler(monkeypatch, tmp_path):
     app.processEvents()
 
 
+def test_main_window_latest_wins_suppresses_running_stale_callback(monkeypatch, tmp_path):
+    try:
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+
+    window = main_window.MainWindow()
+    old_started = threading.Event()
+    release_old = threading.Event()
+    delivered = []
+    stale = []
+
+    def old_work():
+        old_started.set()
+        release_old.wait(2)
+        return "old"
+
+    old_future = window._run_async(
+        old_work,
+        delivered.append,
+        priority="foreground",
+        lane="network",
+        label="old-search",
+        latest_key="synthetic-latest",
+        on_stale=lambda: stale.append("old"),
+    )
+    assert old_started.wait(1)
+
+    new_future = window._run_async(
+        lambda: "new",
+        delivered.append,
+        priority="foreground",
+        lane="network",
+        label="new-search",
+        latest_key="synthetic-latest",
+    )
+    assert new_future.result(timeout=1) == "new"
+    app.processEvents()
+    assert delivered == ["new"]
+
+    release_old.set()
+    try:
+        old_future.result(timeout=1)
+        raise AssertionError("old keyed task should have become stale")
+    except main_window.StaleTaskError:
+        pass
+
+    assert window.background.wait_for_idle(2)
+    app.processEvents()
+    assert delivered == ["new"]
+    assert stale == ["old"]
+    assert window.background.snapshot()["stale_results_suppressed"] >= 1
+
+    window.close()
+    app.processEvents()
+
+
 def test_global_scan_activity_persists_across_navigation(monkeypatch, tmp_path):
     try:
         from PySide6.QtWidgets import QApplication
