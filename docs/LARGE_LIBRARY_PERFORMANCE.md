@@ -83,6 +83,31 @@ P8a intentionally records rather than hides several likely scaling constraints:
 
 P8a should establish which costs dominate before P8b changes architecture.
 
+## First CI baseline
+
+The first Ubuntu 22.04 offscreen Qt run is a directional baseline, not a
+cross-machine benchmark.
+
+For the 12,700-track profile (1,270 albums / 318 artists):
+
+- LibraryBrowser catalog setup: about **0.31 s**.
+- album model: about **0.12 s**.
+- artist model: about **0.04 s**.
+- initial layout: about **0.14 s**.
+- switching to Artists: about **0.16 s** total.
+- switching to Tracks: about **0.70 s** total.
+- full 12,700-track filter/sort during the Tracks switch: about **0.017 s**.
+- creating/layout of the first 300 TrackRow widgets: about **0.687 s**.
+- no albums or tracks were truncated at this realistic 12,700-track shape.
+
+The important finding is that the first Tracks view is dominated by heavyweight Qt row
+creation rather than sorting the 12,700-track metadata. The 1,000-track profile showed
+a similarly large fixed cost for creating 300 TrackRow widgets, reinforcing that this is
+primarily a rendering-granularity problem.
+
+Therefore P8b should begin with viewport-sized/virtualized Track rendering before
+spending effort micro-optimising metadata sorting.
+
 ## P8 campaign sequence
 
 ### P8a — Synthetic baseline
