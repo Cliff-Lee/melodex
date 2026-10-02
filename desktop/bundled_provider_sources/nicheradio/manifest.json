@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "id": "org.melodex.nicheradio",
+  "name": "24-7 Niche Radio",
+  "version": "0.1.0",
+  "publisher": "Melodex",
+  "protocol_version": "1.0",
+  "description": "Curated 24-7 Niche Radio stations, discovered through the open Radio Browser directory and played from each station's live stream.",
+  "capabilities": [
+    "search",
+    "track",
+    "playback"
+  ],
+  "permissions": {
+    "network_hosts": [
+      "all.api.radio-browser.info",
+      "*.api.radio-browser.info"
+    ],
+    "offline_downloads": false,
+    "local_files": false,
+    "browser_auth": false,
+    "lan_discovery": false
+  },
+  "entrypoints": {
+    "python": "provider.py"
+  }
+}
