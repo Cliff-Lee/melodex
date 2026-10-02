@@ -24,8 +24,6 @@ from melodex.background_scheduler import (  # noqa: E402
     BackgroundScheduler,
     StaleTaskError,
 )
-from melodex.library_browser import LibraryBrowser  # noqa: E402
-from melodex.responsiveness import UiResponsivenessMonitor  # noqa: E402
 
 
 DEFAULT_BUDGETS = {
@@ -86,7 +84,7 @@ def _quarter_median(values: list[float], *, tail: bool = False) -> float:
 class SoakCacheBridge:
     """Synthetic cache bridge that still uses the real scheduler/invalidation path."""
 
-    def __init__(self, browser: LibraryBrowser, scheduler: BackgroundScheduler):
+    def __init__(self, browser: Any, scheduler: BackgroundScheduler):
         from PySide6.QtCore import QObject, Signal
 
         class _Signals(QObject):
@@ -194,7 +192,7 @@ def _submit_latest_wins_churn(
 
 def _run_interaction_cycle(
     app,
-    browser: LibraryBrowser,
+    browser: Any,
     scheduler: BackgroundScheduler,
     catalog: list[dict[str, Any]],
     cycle: int,
@@ -334,6 +332,8 @@ def run_soak(
 ) -> dict[str, Any]:
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtWidgets import QApplication
+    from melodex.library_browser import LibraryBrowser
+    from melodex.responsiveness import UiResponsivenessMonitor
 
     app = QApplication.instance() or QApplication([])
     catalog = synthetic_catalog(int(track_count))
