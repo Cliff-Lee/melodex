@@ -343,3 +343,27 @@ def test_cancelled_index_commit_rolls_back_partial_changes(tmp_path: Path):
     stored = index.load_tracks([root])
     assert len(stored) == 1
     assert stored[0]["title"] == "Old"
+
+
+def test_local_catalog_revision_changes_only_when_catalog_changes(tmp_path: Path):
+    provider = LocalFilesProvider(scan_on_init=False)
+    path = tmp_path / "song.flac"
+    first = _track(path, title="First")
+
+    assert provider.catalog_revision == 0
+
+    provider.load_cached_tracks([first])
+    assert provider.catalog_revision == 1
+
+    provider.set_metadata_override(path, {"title": "Corrected"})
+    assert provider.catalog_revision == 2
+    assert provider.tracks[0]["title"] == "Corrected"
+
+    provider.apply_scan_snapshot(
+        {
+            "tracks": [_track(path, title="Rescanned")],
+            "metrics": {"tracks_indexed": 1},
+        }
+    )
+    assert provider.catalog_revision == 3
+    assert provider.tracks[0]["title"] == "Rescanned"
