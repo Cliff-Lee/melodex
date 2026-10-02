@@ -36,6 +36,8 @@ DEFAULT_BUDGETS = {
     "max_scheduler_active_end": 0,
     "max_scheduler_queue_high_water": 32,
     "max_cycle_median_growth_ratio": 2.5,
+    "max_interaction_p95_ms": 100.0,
+    "max_interactions_over_100_ms": 0,
 }
 
 
@@ -350,6 +352,16 @@ def evaluate_report(
             int(responsiveness.get("release_blockers") or 0)
             <= int(limits["max_release_blockers"]),
             "release-blocker stalls",
+        ),
+        (
+            float(responsiveness.get("interaction_p95_ms") or 0.0)
+            <= float(limits["max_interaction_p95_ms"]),
+            "interaction p95 latency",
+        ),
+        (
+            int(responsiveness.get("interactions_over_100_ms") or 0)
+            <= int(limits["max_interactions_over_100_ms"]),
+            "interactions over 100 ms",
         ),
         (
             float(memory.get("rss_growth_mib") or 0.0)
