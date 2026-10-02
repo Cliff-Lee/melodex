@@ -58,6 +58,22 @@ class IsolatedLibraryScanRunner:
         except (BrokenPipeError, OSError, ValueError):
             return False
 
+    def _safe_error_detail(
+        self,
+        detail: str,
+        roots: list[Path],
+    ) -> str:
+        """Remove private library/index paths before surfacing worker errors."""
+        value = str(detail or "")
+        replacements = [
+            (str(self.index_path), "<library-index>"),
+            *[(str(Path(root)), "<music-root>") for root in roots],
+        ]
+        for private, replacement in replacements:
+            if private:
+                value = value.replace(private, replacement)
+        return value.strip()
+
     @staticmethod
     def _stop_process(process: subprocess.Popen[str]) -> None:
         if process.poll() is not None:
@@ -216,8 +232,10 @@ class IsolatedLibraryScanRunner:
                     if cancel_sent:
                         return self._cancelled_snapshot(hard_cancelled=False)
                     detail = error or "\n".join(stderr_lines[-8:]).strip()
+                    safe_detail = self._safe_error_detail(detail, roots)
                     raise IsolatedScanError(
-                        detail or f"library scan worker exited with code {returncode}"
+                        safe_detail
+                        or f"library scan worker exited with code {returncode}"
                     )
         finally:
             if process.poll() is None:
