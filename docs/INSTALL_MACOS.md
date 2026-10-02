@@ -29,7 +29,7 @@ Choose **Apple menu → About This Mac**.
 
 ## 3. If macOS blocks the first launch
 
-Public preview builds may not yet be Apple-notarized. macOS may therefore warn that it cannot verify the developer.
+A Developer ID signed and Apple-notarized release should open normally after download. Public preview builds may not yet be notarized, so macOS can still warn that it cannot verify the developer.
 
 Try this first:
 
@@ -47,6 +47,8 @@ If macOS still blocks it:
 5. Confirm the launch.
 
 Only bypass this warning for a Melodex build you downloaded from the official GitHub repository/release page.
+
+Release engineering details are documented in [macOS signing and notarization](MACOS_SIGNING.md).
 
 ## 4. Add your music
 
