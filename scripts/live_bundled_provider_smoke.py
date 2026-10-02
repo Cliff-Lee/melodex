@@ -132,15 +132,25 @@ def main() -> int:
         description="Live smoke test the provider packages bundled with Melodex."
     )
     parser.add_argument("--json", type=Path, help="Optional output report path.")
+    parser.add_argument(
+        "--provider",
+        choices=sorted(CASES),
+        help="Verify only one bundled provider. Useful for CI matrix jobs.",
+    )
     args = parser.parse_args()
 
+    selected_cases = (
+        {args.provider: CASES[args.provider]}
+        if args.provider
+        else CASES
+    )
     results = []
     failures = []
 
     with tempfile.TemporaryDirectory(prefix="melodex-live-provider-") as tmp:
         manager = ProviderManager(Path(tmp))
         try:
-            for provider_id, query in CASES.items():
+            for provider_id, query in selected_cases.items():
                 try:
                     result = _verify_provider(manager, provider_id, query)
                     results.append(result)
@@ -168,7 +178,7 @@ def main() -> int:
     report = {
         "schema_version": 1,
         "purpose": "live bundled-provider search/resolve/playback reachability",
-        "providers_expected": len(CASES),
+        "providers_expected": len(selected_cases),
         "providers_passed": sum(1 for row in results if row.get("status") == "pass"),
         "providers_failed": len(failures),
         "results": results,
