@@ -12,6 +12,8 @@ DESKTOP = ROOT / "desktop"
 FLUID_GATE_TESTS = [
     "desktop/tests/test_responsiveness.py",
     "desktop/tests/test_responsiveness_gate.py",
+    "desktop/tests/test_background_scheduler.py",
+    "desktop/tests/test_gui_redesign.py::test_main_window_async_work_uses_bounded_scheduler",
     "desktop/tests/test_motion.py",
     "desktop/tests/test_gui_redesign.py::test_slow_source_config_check_keeps_qt_event_loop_responsive",
     "desktop/tests/test_gui_redesign.py::test_navigation_shell_changes_before_slow_page_population",
