@@ -82,6 +82,57 @@ def test_visual_library_defaults_to_album_cards_and_filters():
 
 
 
+def test_library_reuses_rendered_state_for_same_catalog_revision():
+    try:
+        from PySide6.QtWidgets import QApplication
+        from melodex.library_browser import LibraryBrowser
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    browser = LibraryBrowser()
+    browser.resize(1000, 700)
+    browser.show()
+
+    catalog = [
+        _track("/a/01.mp3", "Artist A", "Album A", "One", 1, 2001),
+        _track("/b/01.mp3", "Artist B", "Album B", "Two", 1, 2002),
+    ]
+    browser.set_catalog(catalog, revision=7)
+    app.processEvents()
+
+    first_cards = list(browser.cards.values())
+    assert len(first_cards) == 2
+    preserved_card = first_cards[0]
+
+    browser.search.setText("Album A")
+    app.processEvents()
+    assert len(browser._visible_albums) == 1
+
+    # Reopening My Music with the same provider revision must retain the
+    # existing rendered widgets and user state rather than clearing/rebuilding.
+    browser.set_catalog(catalog, revision=7)
+    app.processEvents()
+
+    assert preserved_card in browser.cards.values()
+    assert browser.search.text() == "Album A"
+    assert len(browser._visible_albums) == 1
+
+    # A real catalog revision must still rebuild the visible model.
+    changed = catalog + [
+        _track("/c/01.mp3", "Artist C", "Album C", "Three", 1, 2003),
+    ]
+    browser.set_catalog(changed, revision=8)
+    app.processEvents()
+
+    assert len(browser.albums) == 3
+    assert preserved_card not in browser.cards.values()
+
+    browser.deleteLater()
+    app.processEvents()
+
+
 def test_large_library_progressively_renders_widgets():
     try:
         from PySide6.QtWidgets import QApplication
