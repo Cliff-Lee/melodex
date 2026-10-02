@@ -79,6 +79,19 @@ _ARTWORK_PRIORITY_METRIC_FIELDS = (
     "requested_total",
 )
 
+_BACKGROUND_SCHEDULER_METRIC_FIELDS = (
+    "max_workers",
+    "reserved_foreground_slots",
+    "active_total",
+    "peak_active",
+    "submitted",
+    "completed",
+    "failed",
+    "pending_total",
+    "active_by_priority",
+    "pending_by_priority",
+)
+
 _TRACK_VIRTUALIZATION_METRIC_FIELDS = (
     "model_row_count",
     "window_start",
@@ -322,6 +335,13 @@ def build_diagnostics(
     )
     if artwork_priority:
         performance["artwork_priority"] = artwork_priority
+
+    background_scheduler = _metric_summary(
+        supplied_ui.get("background_scheduler"),
+        _BACKGROUND_SCHEDULER_METRIC_FIELDS,
+    )
+    if background_scheduler:
+        performance["background_scheduler"] = background_scheduler
 
     ui_responsiveness = _responsiveness_summary(
         supplied_ui.get("responsiveness")
