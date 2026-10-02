@@ -27,16 +27,24 @@ def _scroll_to_fraction(scrollbar: Any, fraction: float) -> None:
     scrollbar.setValue(value)
 
 
+def _pump_events(app: Any) -> None:
+    from PySide6.QtCore import QCoreApplication, QEvent
+
+    app.processEvents()
+    QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+    app.processEvents()
+
+
 def _wait_scheduler_idle(app: Any, scheduler: Any, timeout: float = 5.0) -> bool:
     deadline = time.monotonic() + max(0.1, float(timeout))
     while time.monotonic() < deadline:
-        app.processEvents()
+        _pump_events(app)
         if int(scheduler.snapshot().get("pending_total") or 0) == 0 and int(
             scheduler.snapshot().get("active_total") or 0
         ) == 0:
             return True
         time.sleep(0.005)
-    app.processEvents()
+    _pump_events(app)
     snapshot = scheduler.snapshot()
     return (
         int(snapshot.get("pending_total") or 0) == 0
@@ -55,9 +63,9 @@ def run_soak(
 ) -> dict[str, Any]:
     """Exercise a large synthetic library through repeated mixed UI workloads.
 
-    The probe is intentionally deterministic and offline. It stresses the same
-    browse/filter/scroll paths that previously froze large collections while
-    simultaneously churning the shared background scheduler.
+    Responsiveness and retained-memory phases are deliberately separated.
+    tracemalloc is valuable for leak detection but adds substantial allocation
+    overhead, so it must not distort the event-loop latency contract.
     """
 
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -79,26 +87,33 @@ def run_soak(
     browser.show()
 
     browser.set_catalog(catalog, revision=track_count)
-    app.processEvents()
+    _pump_events(app)
 
-    # Warm all three presentations before taking memory/widget baselines. This
-    # means the measured growth is repeated-use growth, not legitimate lazy
-    # construction of Artists/Tracks the first time they are visited.
+    # Warm every presentation plus representative filter/clear transitions
+    # before taking stability baselines. This excludes legitimate one-time Qt
+    # construction and deferred-delete churn from the leak signal.
     for view in ("albums", "artists", "tracks", "albums"):
         browser.set_view(view)
-        app.processEvents()
+        _pump_events(app)
+    for view, query in (
+        ("tracks", "Genre 03"),
+        ("artists", "Artist 00042"),
+        ("albums", "Album 000123"),
+    ):
+        browser.set_view(view)
+        browser.search.setText(query)
+        _pump_events(app)
+        browser.search.clear()
+        _pump_events(app)
+    browser.set_view("albums")
     browser.search.clear()
-    app.processEvents()
     QTest.qWait(20)
+    _pump_events(app)
     gc.collect()
-    app.processEvents()
+    _pump_events(app)
 
     baseline_widget_count = len(browser.findChildren(QWidget))
     baseline_track_rows = len(browser.track_rows)
-
-    tracemalloc.start()
-    gc.collect()
-    baseline_memory, _ = tracemalloc.get_traced_memory()
 
     monitor = UiResponsivenessMonitor(
         browser,
@@ -131,16 +146,14 @@ def run_soak(
     max_album_cards = len(browser.cards)
     max_artist_cards = len(browser.artist_cards)
     max_track_rows = baseline_track_rows
-    max_python_mib = 0.0
     cycle_durations_ms: list[float] = []
 
-    started = time.perf_counter()
-    for cycle in range(cycles):
-        cycle_started = time.perf_counter()
+    def exercise_ui(cycle: int, *, record_action: bool) -> None:
         view = views[cycle % len(views)]
-        monitor.mark_action(f"soak:view:{view}")
+        if record_action:
+            monitor.mark_action(f"soak:view:{view}")
         browser.set_view(view)
-        app.processEvents()
+        _pump_events(app)
 
         fraction = ((cycle * 37) % 101) / 100.0
         if view == "albums":
@@ -149,16 +162,24 @@ def run_soak(
             _scroll_to_fraction(browser.artist_scroll.verticalScrollBar(), fraction)
         else:
             _scroll_to_fraction(browser.track_list.verticalScrollBar(), fraction)
-        app.processEvents()
+        _pump_events(app)
 
         query = queries[cycle % len(queries)]
-        monitor.mark_action("soak:filter")
+        if record_action:
+            monitor.mark_action("soak:filter")
         browser.search.setText(query)
-        app.processEvents()
+        _pump_events(app)
 
-        # Simulate replaceable background work arriving faster than it can
-        # complete. A healthy scheduler should retain at most the newest queued
-        # request for each replace_key rather than growing without bound.
+    started = time.perf_counter()
+
+    # Phase 1: latency/scheduler soak without tracemalloc overhead.
+    for cycle in range(cycles):
+        cycle_started = time.perf_counter()
+        exercise_ui(cycle, record_action=True)
+
+        # Two same-scope submissions deliberately create stale queued work.
+        # Replacement must keep the queue bounded while foreground work can
+        # still enter immediately.
         scheduler.submit(
             lambda: time.sleep(0.008),
             priority="background",
@@ -186,7 +207,8 @@ def run_soak(
         if pause_ms:
             QTest.qWait(pause_ms)
         else:
-            app.processEvents()
+            _pump_events(app)
+        _pump_events(app)
 
         scheduler_snapshot = scheduler.snapshot()
         max_pending = max(
@@ -201,33 +223,56 @@ def run_soak(
         max_album_cards = max(max_album_cards, len(browser.cards))
         max_artist_cards = max(max_artist_cards, len(browser.artist_cards))
         max_track_rows = max(max_track_rows, len(browser.track_rows))
-        current_memory, peak_memory = tracemalloc.get_traced_memory()
-        max_python_mib = max(
-            max_python_mib,
-            current_memory / (1024 * 1024),
-            peak_memory / (1024 * 1024),
-        )
         cycle_durations_ms.append(
             (time.perf_counter() - cycle_started) * 1000.0
         )
 
     browser.search.clear()
     browser.set_view("albums")
-    app.processEvents()
+    _pump_events(app)
     scheduler_idle = _wait_scheduler_idle(app, scheduler)
     QTest.qWait(40)
+    _pump_events(app)
     monitor.stop()
-    app.processEvents()
-    gc.collect()
-    app.processEvents()
+    responsiveness = monitor.summary()
+    final_scheduler = scheduler.snapshot()
+    scheduler.shutdown(wait=True)
 
+    # Phase 2: retained-memory soak. It uses a smaller repeat count because
+    # tracemalloc intentionally slows allocation-heavy Qt/Python paths.
+    gc.collect()
+    _pump_events(app)
+    tracemalloc.start()
+    gc.collect()
+    baseline_memory, _ = tracemalloc.get_traced_memory()
+    max_python_mib = baseline_memory / (1024 * 1024)
+    memory_cycles = max(8, min(24, int(math.ceil(cycles / 4))))
+
+    for offset in range(memory_cycles):
+        exercise_ui(cycles + offset, record_action=False)
+        QTest.qWait(1)
+        _pump_events(app)
+        current_memory, peak_memory = tracemalloc.get_traced_memory()
+        max_python_mib = max(
+            max_python_mib,
+            current_memory / (1024 * 1024),
+            peak_memory / (1024 * 1024),
+        )
+        max_widgets = max(max_widgets, len(browser.findChildren(QWidget)))
+        max_album_cards = max(max_album_cards, len(browser.cards))
+        max_artist_cards = max(max_artist_cards, len(browser.artist_cards))
+        max_track_rows = max(max_track_rows, len(browser.track_rows))
+
+    browser.search.clear()
+    browser.set_view("albums")
+    QTest.qWait(30)
+    _pump_events(app)
+    gc.collect()
+    _pump_events(app)
     final_memory, peak_memory = tracemalloc.get_traced_memory()
     tracemalloc.stop()
 
     final_widget_count = len(browser.findChildren(QWidget))
-    final_scheduler = scheduler.snapshot()
-    responsiveness = monitor.summary()
-    scheduler.shutdown(wait=True)
 
     viewport_rows = max(
         1,
@@ -267,6 +312,7 @@ def run_soak(
         "schema": 1,
         "track_count": track_count,
         "cycles": cycles,
+        "memory_cycles": memory_cycles,
         "duration_seconds": round(time.perf_counter() - started, 3),
         "passed": all(checks.values()),
         "checks": checks,
@@ -305,7 +351,7 @@ def run_soak(
     }
 
     browser.deleteLater()
-    app.processEvents()
+    _pump_events(app)
     del catalog
     gc.collect()
     return result
