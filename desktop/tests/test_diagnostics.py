@@ -56,6 +56,7 @@ class FakeManager:
                     "removed_files": 2,
                     "stat_failures": 0,
                     "metadata_reused": 12690,
+                    "incomplete_roots": 1,
                     "private_path": "/Volumes/SecretNAS/Music",
                 },
             ),
@@ -177,6 +178,7 @@ def test_diagnostics_excludes_secret_values_and_private_paths():
     assert payload["performance"]["local_scan"]["metadata_reused"] == 12690
     assert payload["performance"]["local_scan"]["changed_files"] == 5
     assert payload["performance"]["local_scan"]["removed_files"] == 2
+    assert payload["performance"]["local_scan"]["incomplete_roots"] == 1
     assert payload["performance"]["local_scan"]["main_thread"] is True
     assert payload["library_index"] == {
         "root_count": 1,
