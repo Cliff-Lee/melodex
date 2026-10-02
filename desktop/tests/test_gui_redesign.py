@@ -1234,6 +1234,20 @@ def test_slow_library_scan_keeps_qt_event_loop_responsive(monkeypatch, tmp_path)
         "scan_local_roots_snapshot",
         slow_snapshot,
     )
+    apply_threads = []
+    original_apply = window.providers.apply_local_scan_snapshot
+
+    def record_apply(snapshot):
+        apply_threads.append(
+            threading.current_thread() is threading.main_thread()
+        )
+        return original_apply(snapshot)
+
+    monkeypatch.setattr(
+        window.providers,
+        "apply_local_scan_snapshot",
+        record_apply,
+    )
 
     timer_fired = []
     QTimer.singleShot(0, lambda: timer_fired.append(True))
@@ -1256,6 +1270,7 @@ def test_slow_library_scan_keeps_qt_event_loop_responsive(monkeypatch, tmp_path)
         time.sleep(0.005)
 
     assert window._local_scan_in_progress is False
+    assert apply_threads == [True]
     window.close()
     app.processEvents()
 
