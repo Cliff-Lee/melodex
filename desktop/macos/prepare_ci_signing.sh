@@ -41,8 +41,12 @@ CERT_FILE="$RUNNER_TEMP/melodex-signing.p12"
 NOTARY_KEY_FILE="$RUNNER_TEMP/AuthKey_$NOTARY_KEY_ID.p8"
 KEYCHAIN_PASSWORD="$(openssl rand -hex 24)"
 
-printf '%s' "$CERT_B64" | base64 --decode > "$CERT_FILE"
-printf '%s' "$NOTARY_KEY_B64" | base64 --decode > "$NOTARY_KEY_FILE"
+decode_base64() {
+  python3 -c 'import base64,sys; sys.stdout.buffer.write(base64.b64decode(sys.stdin.buffer.read()))'
+}
+
+printf '%s' "$CERT_B64" | decode_base64 > "$CERT_FILE"
+printf '%s' "$NOTARY_KEY_B64" | decode_base64 > "$NOTARY_KEY_FILE"
 
 security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
 security set-keychain-settings -lut 21600 "$KEYCHAIN"
