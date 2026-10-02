@@ -39,6 +39,10 @@ _CATALOG_METRIC_FIELDS = (
     "main_thread",
     "track_count",
     "album_count",
+    "input_album_count",
+    "albums_truncated",
+    "tracks_truncated",
+    "album_limit",
     "artist_count",
     "reset_seconds",
     "copy_catalog_seconds",
@@ -50,11 +54,145 @@ _CATALOG_METRIC_FIELDS = (
     "total_seconds",
 )
 
+_LIBRARY_FILTER_METRIC_FIELDS = (
+    "query_length",
+    "view",
+    "visible_album_count",
+    "visible_artist_count",
+    "visible_track_count",
+    "album_filter_seconds",
+    "artist_filter_seconds",
+    "track_filter_sort_seconds",
+    "layout_seconds",
+    "total_seconds",
+)
+
+_ARTWORK_PRIORITY_METRIC_FIELDS = (
+    "kind",
+    "tier",
+    "scroll_value",
+    "direction",
+    "visible_candidates",
+    "near_candidates",
+    "distant_candidates",
+    "requested_now",
+    "requested_total",
+)
+
+_BACKGROUND_SCHEDULER_METRIC_FIELDS = (
+    "max_workers",
+    "reserved_foreground_slots",
+    "active_total",
+    "peak_active",
+    "submitted",
+    "completed",
+    "failed",
+    "cancelled_pending",
+    "async_invalidations",
+    "stale_results_dropped",
+    "pending_total",
+    "active_by_priority",
+    "pending_by_priority",
+)
+
+_TRACK_VIRTUALIZATION_METRIC_FIELDS = (
+    "model_row_count",
+    "window_start",
+    "window_stop",
+    "hydrated_row_count",
+    "created_rows",
+    "removed_rows",
+    "hydrate_seconds",
+)
+
+_LIBRARY_VIEW_METRIC_FIELDS = (
+    "view",
+    "shell_seconds",
+    "filter_seconds",
+    "total_seconds",
+    "rendered_album_count",
+    "rendered_artist_count",
+    "rendered_track_count",
+    "empty",
+)
+
+_RESPONSIVENESS_FIELDS = (
+    "interval_ms",
+    "long_task_threshold_ms",
+    "ci_threshold_ms",
+    "serious_threshold_ms",
+    "blocker_threshold_ms",
+    "total_stalls",
+    "long_tasks",
+    "ci_violations",
+    "serious_stalls",
+    "release_blockers",
+    "event_loop_sample_count",
+    "p99_event_loop_gap_ms",
+    "max_gap_ms",
+    "max_delay_ms",
+    "interaction_count",
+    "interaction_p95_ms",
+    "interaction_max_ms",
+    "interactions_over_50_ms",
+    "interactions_over_100_ms",
+)
+
+_RESPONSIVENESS_EVENT_FIELDS = (
+    "recorded_at",
+    "severity",
+    "delay_ms",
+    "gap_ms",
+    "action",
+)
+
+_RESPONSIVENESS_INTERACTION_FIELDS = (
+    "label",
+    "duration_ms",
+)
+
 
 def _metric_summary(raw: Any, allowed: tuple[str, ...]) -> dict[str, Any]:
     if not isinstance(raw, dict):
         return {}
     return {key: raw.get(key) for key in allowed if key in raw}
+
+
+def _responsiveness_summary(raw: Any) -> dict[str, Any]:
+    summary = _metric_summary(raw, _RESPONSIVENESS_FIELDS)
+    if not isinstance(raw, dict):
+        return summary
+
+    events: list[dict[str, Any]] = []
+    for event in list(raw.get("recent_stalls") or [])[-50:]:
+        if not isinstance(event, dict):
+            continue
+        clean = {
+            key: event.get(key)
+            for key in _RESPONSIVENESS_EVENT_FIELDS
+            if key in event
+        }
+        if "action" in clean:
+            clean["action"] = str(clean["action"] or "")[:80]
+        events.append(clean)
+    if events:
+        summary["recent_stalls"] = events
+
+    interactions: list[dict[str, Any]] = []
+    for event in list(raw.get("recent_interactions") or [])[-50:]:
+        if not isinstance(event, dict):
+            continue
+        clean = {
+            key: event.get(key)
+            for key in _RESPONSIVENESS_INTERACTION_FIELDS
+            if key in event
+        }
+        if "label" in clean:
+            clean["label"] = str(clean["label"] or "")[:80]
+        interactions.append(clean)
+    if interactions:
+        summary["recent_interactions"] = interactions
+    return summary
 
 
 
@@ -172,6 +310,47 @@ def build_diagnostics(
     )
     if library_catalog:
         performance["library_catalog"] = library_catalog
+
+    library_filter = _metric_summary(
+        supplied_ui.get("library_filter"),
+        _LIBRARY_FILTER_METRIC_FIELDS,
+    )
+    if library_filter:
+        performance["library_filter"] = library_filter
+
+    library_view = _metric_summary(
+        supplied_ui.get("library_view"),
+        _LIBRARY_VIEW_METRIC_FIELDS,
+    )
+    if library_view:
+        performance["library_view"] = library_view
+
+    track_virtualization = _metric_summary(
+        supplied_ui.get("track_virtualization"),
+        _TRACK_VIRTUALIZATION_METRIC_FIELDS,
+    )
+    if track_virtualization:
+        performance["track_virtualization"] = track_virtualization
+
+    artwork_priority = _metric_summary(
+        supplied_ui.get("artwork_priority"),
+        _ARTWORK_PRIORITY_METRIC_FIELDS,
+    )
+    if artwork_priority:
+        performance["artwork_priority"] = artwork_priority
+
+    background_scheduler = _metric_summary(
+        supplied_ui.get("background_scheduler"),
+        _BACKGROUND_SCHEDULER_METRIC_FIELDS,
+    )
+    if background_scheduler:
+        performance["background_scheduler"] = background_scheduler
+
+    ui_responsiveness = _responsiveness_summary(
+        supplied_ui.get("responsiveness")
+    )
+    if ui_responsiveness:
+        performance["ui_responsiveness"] = ui_responsiveness
 
     library_index: dict[str, Any] = {}
     summary_fn = getattr(manager, "local_index_summary", None)

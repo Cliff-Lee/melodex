@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import threading
 from pathlib import Path
 from typing import Any, Callable
 
@@ -31,7 +32,10 @@ class LocalFilesProvider(MusicProvider):
             if isinstance(value, dict)
         }
         self._tracks: list[dict[str, Any]] = []
+        self._catalog_revision = 0
         self._last_scan_metrics: dict[str, object] = {}
+        self._cached_loader: Callable[[], list[dict[str, Any]]] | None = None
+        self._cached_loader_lock = threading.RLock()
         if self.roots and scan_on_init:
             self.scan()
 
@@ -73,6 +77,7 @@ class LocalFilesProvider(MusicProvider):
         for index, track in enumerate(self._tracks):
             if self._override_key(str(track.get("local_path") or "")) == key:
                 self._tracks[index] = self._apply_override(track)
+                self._catalog_revision += 1
                 return dict(self._tracks[index])
         return {}
 
@@ -495,6 +500,32 @@ class LocalFilesProvider(MusicProvider):
             "cancelled": False,
         }
 
+    def set_cached_loader(
+        self,
+        loader: Callable[[], list[dict[str, Any]]] | None,
+    ) -> None:
+        """Install a one-shot metadata loader without touching audio paths.
+
+        Used at process startup so a large cached library can stay on disk until
+        a feature actually needs the full catalog.
+        """
+        with self._cached_loader_lock:
+            self._cached_loader = loader
+
+    def _ensure_cached_loaded(self) -> None:
+        loader = self._cached_loader
+        if loader is None:
+            return
+        with self._cached_loader_lock:
+            loader = self._cached_loader
+            if loader is None:
+                return
+            # Clear before invoking so failures cannot recursively re-enter.
+            self._cached_loader = None
+            tracks = loader()
+            self._tracks = self.prepare_cached_tracks(tracks)
+            self._catalog_revision += 1
+
     def prepare_cached_tracks(
         self,
         tracks: list[dict[str, Any]],
@@ -508,7 +539,10 @@ class LocalFilesProvider(MusicProvider):
 
     def load_cached_tracks(self, tracks: list[dict[str, Any]]) -> int:
         """Load persisted metadata without probing the underlying audio files."""
+        with self._cached_loader_lock:
+            self._cached_loader = None
         self._tracks = self.prepare_cached_tracks(tracks)
+        self._catalog_revision += 1
         return len(self._tracks)
 
     def apply_scan_snapshot(self, snapshot: dict[str, Any]) -> int:
@@ -519,7 +553,10 @@ class LocalFilesProvider(MusicProvider):
             if isinstance(item, dict)
         ]
         metrics = dict((snapshot or {}).get("metrics") or {})
+        with self._cached_loader_lock:
+            self._cached_loader = None
         self._tracks = tracks
+        self._catalog_revision += 1
         self._last_scan_metrics = metrics
         return len(tracks)
 
@@ -528,10 +565,20 @@ class LocalFilesProvider(MusicProvider):
         return self.apply_scan_snapshot(snapshot)
 
     @property
+    def catalog_loaded(self) -> bool:
+        return self._cached_loader is None
+
+    @property
+    def catalog_revision(self) -> int:
+        self._ensure_cached_loaded()
+        return int(self._catalog_revision)
+
+    @property
     def last_scan_metrics(self) -> dict[str, object]:
         return dict(self._last_scan_metrics)
 
     def search(self, query: str, limit: int = 50) -> list[dict[str, Any]]:
+        self._ensure_cached_loaded()
         q = query.casefold().strip()
         if not q:
             return self._tracks[:limit]
@@ -545,11 +592,13 @@ class LocalFilesProvider(MusicProvider):
         return [dict(t) for _, t in scored[:limit]]
 
     def browse(self, kind: str = "featured", limit: int = 50) -> list[dict[str, Any]]:
+        self._ensure_cached_loaded()
         return [dict(x) for x in self._tracks[:limit]]
 
     def resolve(self, track: dict[str, Any]) -> dict[str, Any]:
         if track.get("local_path"):
             return dict(track)
+        self._ensure_cached_loaded()
         tid = str(track.get("track_id") or "")
         for item in self._tracks:
             if str(item.get("track_id") or "") == tid:
@@ -558,4 +607,5 @@ class LocalFilesProvider(MusicProvider):
 
     @property
     def tracks(self) -> list[dict[str, Any]]:
+        self._ensure_cached_loaded()
         return [dict(x) for x in self._tracks]

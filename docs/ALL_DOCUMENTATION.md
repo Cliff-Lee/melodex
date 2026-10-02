@@ -100,6 +100,11 @@ This page is intentionally exhaustive. For a shorter route by goal, use the [doc
 - [Plugin review checklist](developers/12_PLUGIN_REVIEW_CHECKLIST.md)
 - [Glossary](developers/15_GLOSSARY.md)
 
+## Performance and responsiveness
+
+- [Large-library performance](LARGE_LIBRARY_PERFORMANCE.md)
+- [Startup performance](STARTUP_PERFORMANCE.md)
+
 ## Build and release
 
 - [Build from source](BUILD_FROM_SOURCE.md)

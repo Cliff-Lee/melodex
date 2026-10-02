@@ -197,6 +197,10 @@ def test_diagnostics_filters_ui_performance_fields():
                 "main_thread": True,
                 "track_count": 12700,
                 "album_count": 954,
+                "input_album_count": 954,
+                "albums_truncated": 0,
+                "tracks_truncated": 0,
+                "album_limit": 4000,
                 "artist_count": 612,
                 "reset_seconds": 0.1,
                 "copy_catalog_seconds": 0.02,
@@ -206,14 +210,150 @@ def test_diagnostics_filters_ui_performance_fields():
                 "artwork_request_seconds": 0.1,
                 "total_seconds": 5.22,
                 "private_path": "/Volumes/AnotherSecret/Music",
-            }
+            },
+            "library_filter": {
+                "query_length": 12,
+                "view": "albums",
+                "visible_album_count": 1,
+                "visible_artist_count": 1,
+                "visible_track_count": 10,
+                "album_filter_seconds": 0.004,
+                "artist_filter_seconds": 0.006,
+                "track_filter_sort_seconds": 0.081,
+                "layout_seconds": 0.012,
+                "total_seconds": 0.103,
+                "query": "Private Album Name",
+                "private_path": "/Volumes/AnotherSecret/Music",
+            },
+            "library_view": {
+                "view": "tracks",
+                "shell_seconds": 0.002,
+                "filter_seconds": 0.095,
+                "total_seconds": 0.101,
+                "rendered_album_count": 120,
+                "rendered_artist_count": 0,
+                "rendered_track_count": 300,
+                "private_path": "/Users/example/Music",
+            },
+            "track_virtualization": {
+                "model_row_count": 12700,
+                "window_start": 420,
+                "window_stop": 441,
+                "hydrated_row_count": 21,
+                "created_rows": 7,
+                "removed_rows": 7,
+                "hydrate_seconds": 0.041,
+                "private_track": "Secret Song",
+                "private_path": "/Users/example/Music/Secret.flac",
+            },
+            "artwork_priority": {
+                "kind": "albums",
+                "tier": "visible",
+                "scroll_value": 480,
+                "direction": 1,
+                "visible_candidates": 18,
+                "near_candidates": 20,
+                "distant_candidates": 82,
+                "requested_now": 12,
+                "requested_total": 24,
+                "private_album": "Secret Album",
+                "private_path": "/Users/example/Music/Secret.flac",
+            },
+            "background_scheduler": {
+                "max_workers": 4,
+                "reserved_foreground_slots": 1,
+                "active_total": 3,
+                "peak_active": 4,
+                "submitted": 42,
+                "completed": 37,
+                "failed": 1,
+                "cancelled_pending": 5,
+                "async_invalidations": 7,
+                "stale_results_dropped": 2,
+                "pending_total": 2,
+                "active_by_priority": {
+                    "foreground": 0,
+                    "visible": 1,
+                    "prefetch": 1,
+                    "background": 1,
+                    "idle": 0,
+                },
+                "pending_by_priority": {
+                    "foreground": 0,
+                    "visible": 0,
+                    "prefetch": 0,
+                    "background": 1,
+                    "idle": 1,
+                },
+                "private_task_name": "Secret Song",
+            },
+            "responsiveness": {
+                "interval_ms": 50,
+                "long_task_threshold_ms": 50,
+                "ci_threshold_ms": 250,
+                "serious_threshold_ms": 500,
+                "blocker_threshold_ms": 1000,
+                "total_stalls": 2,
+                "long_tasks": 1,
+                "ci_violations": 1,
+                "serious_stalls": 0,
+                "release_blockers": 0,
+                "max_delay_ms": 620.0,
+                "recent_stalls": [
+                    {
+                        "recorded_at": "2026-10-02T00:00:00+00:00",
+                        "severity": "ci_violation",
+                        "delay_ms": 620.0,
+                        "gap_ms": 670.0,
+                        "action": "sources:selection",
+                        "private_path": "/Users/example/Music",
+                    }
+                ],
+                "private_path": "/Volumes/AnotherSecret/Music",
+            },
         },
     )
     text = json.dumps(payload)
     metrics = payload["performance"]["library_catalog"]
     assert metrics["track_count"] == 12700
     assert metrics["initial_layout_seconds"] == 4.5
+    assert metrics["input_album_count"] == 954
+    assert metrics["albums_truncated"] == 0
+    filter_metrics = payload["performance"]["library_filter"]
+    assert filter_metrics["query_length"] == 12
+    assert filter_metrics["track_filter_sort_seconds"] == 0.081
+    view_metrics = payload["performance"]["library_view"]
+    assert view_metrics["view"] == "tracks"
+    assert view_metrics["rendered_track_count"] == 300
+    virtual = payload["performance"]["track_virtualization"]
+    assert virtual["model_row_count"] == 12700
+    assert virtual["hydrated_row_count"] == 21
+    assert virtual["hydrate_seconds"] == 0.041
+    artwork = payload["performance"]["artwork_priority"]
+    assert artwork["kind"] == "albums"
+    assert artwork["requested_now"] == 12
+    assert artwork["distant_candidates"] == 82
+    scheduler = payload["performance"]["background_scheduler"]
+    assert scheduler["max_workers"] == 4
+    assert scheduler["reserved_foreground_slots"] == 1
+    assert scheduler["cancelled_pending"] == 5
+    assert scheduler["async_invalidations"] == 7
+    assert scheduler["stale_results_dropped"] == 2
+    assert scheduler["active_by_priority"]["background"] == 1
+    assert scheduler["pending_by_priority"]["idle"] == 1
+    responsiveness = payload["performance"]["ui_responsiveness"]
+    assert responsiveness["total_stalls"] == 2
+    assert responsiveness["max_delay_ms"] == 620.0
+    assert responsiveness["recent_stalls"][0]["action"] == "sources:selection"
     assert "/Volumes/AnotherSecret/Music" not in text
+    assert "/Users/example/Music" not in text
+    assert "Private Album Name" not in text
+    assert "Secret Song" not in text
+    assert "Secret Album" not in text
+    assert '"query"' not in text
+    assert "private_track" not in text
+    assert "private_album" not in text
+    assert "private_task_name" not in text
     assert "private_path" not in text
 
 

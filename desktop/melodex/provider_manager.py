@@ -7,14 +7,13 @@ import zipfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
 from .library_index import LocalLibraryIndex
 from .provider import MusicProvider, ProviderInstaller
 from .providers import JamendoProvider, LocalFilesProvider, UserStreamsProvider
 from .resolver import UniversalResolver
 from .capabilities import CapabilityBroker, ExtensionInfo
-from .plugin_registry import PluginRegistryClient, RegistryResult
 from .plugin_config import PluginConfigBroker
 from .bundled_sources import (
     bundled_packages,
@@ -23,6 +22,9 @@ from .bundled_sources import (
     set_bundled_provider_disabled,
     version_key,
 )
+if TYPE_CHECKING:
+    from .plugin_registry import PluginRegistryClient, RegistryResult
+
 from .plugin_health import (
     health_summary,
     normalise_health_status,
@@ -37,8 +39,9 @@ SUPERSEDED_PROVIDER_REPLACEMENTS = {
 
 
 class ProviderManager:
-    def __init__(self, data_dir: Path):
+    def __init__(self, data_dir: Path, *, startup_timeline=None):
         self.data_dir = Path(data_dir)
+        self._startup_timeline = startup_timeline
         self.settings_path = self.data_dir / "sources.json"
         self.installations_path = self.data_dir / "plugin-installations.json"
         self.local_metadata_path = self.data_dir / "local-metadata-overrides.json"
@@ -47,21 +50,31 @@ class ProviderManager:
         self.settings = self._load_settings()
         self._installations = self._load_installations()
         self._local_metadata_overrides = self._load_local_metadata_overrides()
+        self._startup_mark("providers:settings_ready")
+
         bundled_ids = set(ensure_bundled_providers(self.installer, self.settings))
         self._record_bundled_installations(bundled_ids)
+        self._startup_mark("providers:bundled_ready")
+
         local_roots = [Path(x) for x in self.settings.get("local_roots", [])]
         self.library_index = LocalLibraryIndex(
             self.data_dir / "library-index.sqlite3"
         )
-        self.library_index.sync_roots(local_roots)
+        self.library_index.sync_roots_if_needed(local_roots)
+        self._local_index_summary = self.library_index.summary(local_roots)
         local_provider = LocalFilesProvider(
             local_roots,
             self._local_metadata_overrides,
             scan_on_init=False,
         )
-        local_provider.load_cached_tracks(
-            self.library_index.load_tracks(local_roots)
-        )
+        if local_roots and int(self._local_index_summary.get("track_count") or 0):
+            local_provider.set_cached_loader(
+                lambda roots=tuple(local_roots): self.library_index.load_tracks(
+                    [Path(root) for root in roots]
+                )
+            )
+        self._startup_mark("providers:local_index_ready")
+
         self.providers: dict[str, MusicProvider] = {
             "local": local_provider,
             "jamendo": JamendoProvider(str(self.settings.get("jamendo_client_id", ""))),
@@ -96,18 +109,38 @@ class ProviderManager:
                 if callable(close):
                     close()
                 continue
-            provider.configure(
-                self.plugin_config.values(
-                    provider.info.id, provider.info.configuration
+            declarations = list(provider.info.configuration or [])
+            if declarations:
+                provider.set_config_loader(
+                    lambda item=provider, fields=declarations: self.plugin_config.values(
+                        item.info.id,
+                        fields,
+                    )
                 )
-            )
             self.providers[provider.info.id] = provider
+        self._startup_mark("providers:installed_ready")
+
         self.resolver = UniversalResolver(self)
         self.capabilities = CapabilityBroker(
             self.data_dir, config_broker=self.plugin_config
         )
-        self.registry = PluginRegistryClient(self.data_dir)
+        self._startup_mark("providers:capabilities_ready")
+        self._registry: PluginRegistryClient | None = None
         self._plugin_health_cache: dict[str, dict[str, Any]] = {}
+        self._startup_mark("providers:ready")
+
+    def _startup_mark(self, phase: str) -> None:
+        timeline = getattr(self, "_startup_timeline", None)
+        if timeline is not None:
+            timeline.mark(phase)
+
+    @property
+    def registry(self) -> PluginRegistryClient:
+        if self._registry is None:
+            from .plugin_registry import PluginRegistryClient
+
+            self._registry = PluginRegistryClient(self.data_dir)
+        return self._registry
 
     @staticmethod
     def _is_legacy_private_provider(provider: MusicProvider) -> bool:
@@ -299,8 +332,10 @@ class ProviderManager:
         provider = self.providers["local"]
         assert isinstance(provider, LocalFilesProvider)
         provider.configure_roots(clean)
+        provider.set_cached_loader(None)
         self.settings["local_roots"] = [str(x) for x in clean]
         self.library_index.sync_roots(clean)
+        self._local_index_summary=self.library_index.summary(clean)
         self.save()
         return clean
 
@@ -312,7 +347,16 @@ class ProviderManager:
         return self.library_index.roots_ready(selected)
 
     def local_index_summary(self) -> dict[str, Any]:
-        return self.library_index.summary(self.local_roots())
+        roots=self.local_roots()
+        summary=self.library_index.summary(roots)
+        self._local_index_summary=dict(summary)
+        return summary
+
+    def local_catalog_count(self) -> int:
+        provider=self.providers.get("local")
+        if isinstance(provider,LocalFilesProvider) and provider.catalog_loaded:
+            return len(provider.tracks)
+        return int(dict(getattr(self,"_local_index_summary",{}) or {}).get("track_count") or 0)
 
     def load_indexed_local_tracks(
         self,
@@ -365,7 +409,9 @@ class ProviderManager:
     def apply_local_scan_snapshot(self, snapshot: dict[str, Any]) -> int:
         provider = self.providers["local"]
         assert isinstance(provider, LocalFilesProvider)
-        return provider.apply_scan_snapshot(snapshot)
+        count=provider.apply_scan_snapshot(snapshot)
+        self._local_index_summary=self.library_index.summary(self.local_roots())
+        return count
 
     def set_local_roots(self, roots: list[Path]) -> int:
         """Compatibility API for synchronous/non-GUI callers."""
@@ -868,7 +914,12 @@ class ProviderManager:
         )
         return info
 
-    def plugin_configuration(self, plugin_id: str) -> dict[str, Any]:
+    def plugin_configuration(
+        self,
+        plugin_id: str,
+        *,
+        cached_status: bool = False,
+    ) -> dict[str, Any]:
         plugin_id = str(plugin_id or "").strip()
         provider = self.providers.get(plugin_id)
         if provider is not None and plugin_id not in {"local", "jamendo", "streams"}:
@@ -881,7 +932,11 @@ class ProviderManager:
                 "values": self.plugin_config.editable_values(
                     plugin_id, declarations
                 ),
-                "status": self.plugin_config.status(plugin_id, declarations),
+                "status": (
+                    self.plugin_config.cached_status(plugin_id, declarations)
+                    if cached_status
+                    else self.plugin_config.status(plugin_id, declarations)
+                ),
             }
 
         extension = self.capabilities.extensions.get(plugin_id)
@@ -895,7 +950,11 @@ class ProviderManager:
                 "values": self.plugin_config.editable_values(
                     plugin_id, declarations
                 ),
-                "status": self.plugin_config.status(plugin_id, declarations),
+                "status": (
+                    self.plugin_config.cached_status(plugin_id, declarations)
+                    if cached_status
+                    else self.plugin_config.status(plugin_id, declarations)
+                ),
             }
         raise KeyError(f"Unknown configurable plugin: {plugin_id}")
 
@@ -946,17 +1005,25 @@ class ProviderManager:
         result["summary"] = health_summary(result)
         return result
 
-    def plugin_health(self, plugin_id: str) -> dict[str, Any]:
+    def plugin_health(
+        self,
+        plugin_id: str,
+        *,
+        cached_config: bool = False,
+    ) -> dict[str, Any]:
         plugin_id = str(plugin_id or "").strip()
         if not plugin_id:
             raise KeyError("Missing plugin id")
 
         try:
-            config = self.plugin_configuration(plugin_id)
+            config = self.plugin_configuration(
+                plugin_id,
+                cached_status=cached_config,
+            )
         except KeyError:
             config = {}
         status = dict(config.get("status") or {})
-        if status.get("declared") and not status.get("ready", True):
+        if status.get("declared") and status.get("ready") is False:
             return self._health_result(
                 plugin_id=plugin_id,
                 name=str(config.get("name") or plugin_id),
@@ -1202,8 +1269,12 @@ class ProviderManager:
             self._plugin_health_cache.pop(str(extension_id), None)
         return changed
 
-    def extensions(self) -> list[dict[str, Any]]:
-        return self.capabilities.list_extensions()
+    def extensions(
+        self,
+        *,
+        cached_config: bool = False,
+    ) -> list[dict[str, Any]]:
+        return self.capabilities.list_extensions(cached_config=cached_config)
 
     def set_extension_enabled(self, extension_id: str, enabled: bool) -> None:
         self.capabilities.set_enabled(extension_id, enabled)
@@ -1217,6 +1288,10 @@ class ProviderManager:
     def local_catalog(self) -> list[dict[str, Any]]:
         provider = self.providers["local"]
         return provider.tracks if isinstance(provider, LocalFilesProvider) else []
+
+    def local_catalog_revision(self) -> int:
+        provider = self.providers["local"]
+        return provider.catalog_revision if isinstance(provider, LocalFilesProvider) else 0
 
     def close(self) -> None:
         self.capabilities.close()

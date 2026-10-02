@@ -343,3 +343,82 @@ def test_cancelled_index_commit_rolls_back_partial_changes(tmp_path: Path):
     stored = index.load_tracks([root])
     assert len(stored) == 1
     assert stored[0]["title"] == "Old"
+
+
+def test_local_catalog_revision_changes_only_when_catalog_changes(tmp_path: Path):
+    provider = LocalFilesProvider(scan_on_init=False)
+    path = tmp_path / "song.flac"
+    first = _track(path, title="First")
+
+    assert provider.catalog_revision == 0
+
+    provider.load_cached_tracks([first])
+    assert provider.catalog_revision == 1
+
+    provider.set_metadata_override(path, {"title": "Corrected"})
+    assert provider.catalog_revision == 2
+    assert provider.tracks[0]["title"] == "Corrected"
+
+    provider.apply_scan_snapshot(
+        {
+            "tracks": [_track(path, title="Rescanned")],
+            "metrics": {"tracks_indexed": 1},
+        }
+    )
+    assert provider.catalog_revision == 3
+    assert provider.tracks[0]["title"] == "Rescanned"
+
+
+def test_provider_manager_defers_cached_catalog_hydration_until_first_use(
+    monkeypatch,
+    tmp_path: Path,
+):
+    root = tmp_path / "music"
+    (tmp_path / "sources.json").write_text(
+        json.dumps({"local_roots": [str(root)]}),
+        encoding="utf-8",
+    )
+    index = LocalLibraryIndex(tmp_path / "library-index.sqlite3")
+    index.sync_roots([root])
+    cached = _track(root / "Artist" / "Album" / "song.flac", title="Lazy Song")
+    index.replace_scan([root], _snapshot(root, [cached], available=True))
+
+    calls = {"load_tracks": 0}
+    original = LocalLibraryIndex.load_tracks
+
+    def counted(self, roots):
+        calls["load_tracks"] += 1
+        return original(self, roots)
+
+    monkeypatch.setattr(LocalLibraryIndex, "load_tracks", counted)
+
+    manager = ProviderManager(tmp_path)
+    try:
+        provider = manager.providers["local"]
+        assert isinstance(provider, LocalFilesProvider)
+        assert provider.catalog_loaded is False
+        assert calls["load_tracks"] == 0
+        assert manager.local_catalog_count() == 1
+        assert calls["load_tracks"] == 0
+
+        catalog = manager.local_catalog()
+        assert calls["load_tracks"] == 1
+        assert provider.catalog_loaded is True
+        assert [row["title"] for row in catalog] == ["Lazy Song"]
+
+        # One-shot loader: repeated catalog reads stay in memory.
+        assert manager.local_catalog()[0]["title"] == "Lazy Song"
+        assert calls["load_tracks"] == 1
+    finally:
+        manager.close()
+
+
+def test_sync_roots_if_needed_skips_unchanged_root_writes(tmp_path: Path):
+    root = tmp_path / "music"
+    index = LocalLibraryIndex(tmp_path / "library-index.sqlite3")
+    index.sync_roots([root])
+
+    assert index.sync_roots_if_needed([root]) is False
+    other = tmp_path / "other"
+    assert index.sync_roots_if_needed([other]) is True
+    assert index.sync_roots_if_needed([other]) is False

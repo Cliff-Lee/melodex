@@ -129,3 +129,67 @@ def test_remove_clears_plain_and_secret_config(tmp_path: Path):
     assert broker.values("org.example.provider", FIELDS) == {}
     stored = json.loads((tmp_path / "plugin-config.json").read_text("utf-8"))
     assert "org.example.provider" not in stored
+
+
+def test_cached_status_never_reads_secret_store_and_reports_pending(tmp_path: Path):
+    class CountingSecretStore(FakeSecretStore):
+        def __init__(self):
+            super().__init__()
+            self.get_calls = 0
+
+        def get(self, plugin_id: str, key: str) -> str | None:
+            self.get_calls += 1
+            return super().get(plugin_id, key)
+
+    fields = [
+        {
+            "key": "api_token",
+            "label": "API token",
+            "type": "secret",
+            "required": True,
+        }
+    ]
+    secrets = CountingSecretStore()
+    secrets.values[("org.example.provider", "api_token")] = "secret"
+    broker = PluginConfigBroker(tmp_path, secret_store=secrets)
+
+    cached = broker.cached_status("org.example.provider", fields)
+    assert secrets.get_calls == 0
+    assert cached["ready"] is None
+    assert cached["pending"] is True
+    assert cached["pending_required"] == ["api_token"]
+
+    resolved = broker.status("org.example.provider", fields)
+    assert secrets.get_calls == 1
+    assert resolved["ready"] is True
+
+    cached_again = broker.cached_status("org.example.provider", fields)
+    assert secrets.get_calls == 1
+    assert cached_again["ready"] is True
+    assert cached_again["pending"] is False
+
+
+def test_default_secret_store_is_deferred_until_secret_access(
+    monkeypatch,
+    tmp_path: Path,
+):
+    import melodex.plugin_config as plugin_config
+
+    calls = {"created": 0}
+
+    def make_store():
+        calls["created"] += 1
+        return FakeSecretStore()
+
+    monkeypatch.setattr(plugin_config, "_default_secret_store", make_store)
+    broker = PluginConfigBroker(tmp_path)
+
+    assert calls["created"] == 0
+    assert broker.secret_storage == "deferred"
+
+    cached = broker.cached_status("org.example.provider", FIELDS)
+    assert cached["pending"] is True
+    assert calls["created"] == 0
+
+    broker.values("org.example.provider", FIELDS)
+    assert calls["created"] == 1

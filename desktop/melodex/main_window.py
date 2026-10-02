@@ -15,49 +15,19 @@ from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QListWidget,
     QListWidgetItem, QStackedWidget, QLineEdit, QComboBox, QFileDialog, QMessageBox,
     QSlider, QTextEdit, QInputDialog, QDialog, QFormLayout, QDialogButtonBox, QCheckBox,
-    QTabWidget, QApplication, QPlainTextEdit, QFrame,
+    QTabWidget, QApplication, QPlainTextEdit, QFrame, QProgressBar,
 )
 
 from .paths import app_data_dir
 from .provider_manager import ProviderManager
 from .flow import FlowEngine
-from .mind import MindEngine
-from .local_intelligence import LocalIntelligenceService
-from .music_map import MusicMapWidget
-from .music_map_model import build_music_map
-from .album_wall import AlbumWallWidget
-from .album_wall_model import build_album_wall
-from .music_knowledge import MusicKnowledgeStore, build_knowledge_graph
-from .music_pathfinder import find_music_path
-from .music_journey import STAGE_LABELS, build_music_journey
-from .music_journey_live import replan_live_journey
-from .journey_recipe import (
-    load_journey_recipe,
-    make_journey_recipe,
-    materialize_recipe_stages,
-    save_journey_recipe,
-)
-from .journey_replay import (
-    materialize_route_snapshot,
-    portable_route_snapshot,
-    summarize_journey_run,
-)
 from .user_state import UserState
 from .player import FlowPlayer
-from .llm_bridge import LLMClient, LLMSettings, llm_track_summary
 from .bridge_server import ProviderBridge
-from .playlist_io import load_playlist, parse_playlist_text, save_playlist
-from .metadata import RichMetadataService
-from .rich_now_playing import RichNowPlayingWidget
-from .living_canvas import LivingCanvasView
-from .visualization_models import build_constellation, build_visual_memory
-from .plugin_directory import PluginDirectoryDialog
-from .plugin_configuration_dialog import configure_plugin
-from .plugin_onboarding import plugin_needs_setup
 from .plugin_health import health_badge, health_summary
-from .diagnostics import write_diagnostics
-from .library_browser import LibraryBrowser
-from .library_scan_process import LibraryScanProcess
+from .responsiveness import UiResponsivenessMonitor
+from .background_scheduler import BackgroundScheduler
+from .motion import MotionController, FAST_MOTION_MS, STANDARD_MOTION_MS
 from .ux_components import (
     ActionCard,
     CommandPaletteDialog,
@@ -99,24 +69,96 @@ def _track_text(t: dict[str, Any]) -> str:
 class MainWindow(QMainWindow):
     externalCommand = Signal(str, object, object)
 
-    def __init__(self):
+    def _startup_mark(self, phase: str) -> None:
+        timeline = getattr(self, "_startup_timeline", None)
+        if timeline is not None:
+            timeline.mark(phase)
+
+    @property
+    def mind(self):
+        if self._mind is None:
+            from .mind import MindEngine
+
+            self._mind = MindEngine(self.state, self.flow)
+            self._startup_mark("lazy_service:mind")
+        return self._mind
+
+    @property
+    def local_intelligence(self):
+        if self._local_intelligence is None:
+            from .local_intelligence import LocalIntelligenceService
+
+            self._local_intelligence = LocalIntelligenceService(
+                self.state,
+                self.flow,
+                self.providers.capabilities,
+            )
+            self._startup_mark("lazy_service:local_intelligence")
+        return self._local_intelligence
+
+    @property
+    def knowledge(self):
+        if self._knowledge is None:
+            from .music_knowledge import MusicKnowledgeStore
+
+            self._knowledge = MusicKnowledgeStore(
+                self.data_dir / "music-knowledge.sqlite3"
+            )
+            self._startup_mark("lazy_service:music_knowledge")
+        return self._knowledge
+
+    @property
+    def llm(self):
+        if self._llm is None:
+            from .llm_bridge import LLMClient
+
+            self._llm = LLMClient()
+            self._startup_mark("lazy_service:llm")
+        return self._llm
+
+    @property
+    def metadata(self):
+        if self._metadata is None:
+            from .metadata import RichMetadataService
+
+            self._metadata = RichMetadataService(
+                self.data_dir,
+                capability_broker=self.providers.capabilities,
+            )
+            self._startup_mark("lazy_service:metadata")
+        return self._metadata
+
+    def __init__(self, *, startup_timeline=None):
         super().__init__()
+        self._startup_timeline = startup_timeline
+        self._startup_mark("main_window_init_enter")
         self.setWindowTitle("Melodex")
         self.resize(1280, 800)
         self.data_dir = app_data_dir()
-        self.providers = ProviderManager(self.data_dir)
+        self.providers = ProviderManager(
+            self.data_dir,
+            startup_timeline=self._startup_timeline,
+        )
+        self._startup_mark("providers_ready")
         self.state = UserState(self.data_dir / "taste.sqlite3")
+        self._startup_mark("user_state_ready")
+        self.motion = MotionController(
+            self,
+            reduced=self.state.get_bool("reduce_motion", False),
+        )
+        self.page_titles: dict[str, QLabel] = {}
         self.flow = FlowEngine(self.data_dir / "flow.sqlite3")
-        self.mind = MindEngine(self.state, self.flow)
-        self.local_intelligence = LocalIntelligenceService(
-            self.state, self.flow, self.providers.capabilities
-        )
-        self.knowledge = MusicKnowledgeStore(
-            self.data_dir / "music-knowledge.sqlite3"
-        )
-        self.llm = LLMClient()
-        self.metadata = RichMetadataService(self.data_dir, capability_broker=self.providers.capabilities)
+        # Cold launch only constructs services needed to render Home and play
+        # audio.  Intelligence, metadata/network enrichment and the optional
+        # LLM are instantiated on first real use.
+        self._mind = None
+        self._local_intelligence = None
+        self._knowledge = None
+        self._llm = None
+        self._metadata = None
+        self._startup_mark("core_services_ready")
         self.bridge: ProviderBridge | None = None
+        self._bridge_start_pending = False
         self.current_history_id = 0
         self.current_track_started = 0.0
         self.current_track: dict[str, Any] | None = None
@@ -150,8 +192,26 @@ class MainWindow(QMainWindow):
         self._local_scan_in_progress = False
         self._local_scan_pending = False
         self._local_scan_sequence = 0
+        self._local_scan_started_at = 0.0
+        self._local_scan_last_progress: dict[str, Any] = {}
+        self._prefetched_track_assets: dict[str, dict[str, Any]] = {}
+        self._prefetch_sequence = 0
+        self._prefetch_delay_ms = 350
         self._local_scan_runner: LibraryScanProcess | None = None
         self._local_scan_signals: WorkerSignals | None = None
+        self._source_config_refresh_in_progress = False
+        self._navigation_generation = 0
+        self._page_refresh_delay_ms = 16
+        self._search_sequence = 0
+        self._search_pending_sequence = 0
+        self._search_loading_delay_ms = 220
+        self.background_scheduler = BackgroundScheduler(
+            max_workers=4,
+            reserved_foreground_slots=1,
+        )
+        self._async_generations: dict[str, int] = {}
+        self._async_invalidations = 0
+        self._async_stale_results_dropped = 0
         self.externalCommand.connect(self._on_external_command)
 
         self.player = FlowPlayer(
@@ -162,10 +222,24 @@ class MainWindow(QMainWindow):
         self.player.positionChanged.connect(self._on_position)
         self.player.error.connect(lambda s: self.statusBar().showMessage(s, 7000))
         self.player.queueChanged.connect(self._refresh_queue)
+        self.player.queueChanged.connect(
+            lambda _queue: self._schedule_next_track_prefetch()
+        )
         self.player.manualAdvanced.connect(self._on_manual_advance)
+        self._startup_mark("player_ready")
 
         self._build_ui()
+        self._startup_mark("ui_built")
+        self.responsiveness = UiResponsivenessMonitor(self)
+        self.responsiveness.start()
+        self.responsiveness.mark_action("startup:home")
         self._show_home()
+        self._startup_mark("home_ready")
+        # The local AI/control bridge is useful, but it is not part of the
+        # first-screen contract. Some platform networking stacks can block
+        # socket setup for many seconds, so never bind it on the Qt UI thread.
+        self.responsiveness.mark_action("startup:bridge")
+        self._startup_mark("bridge_start_scheduled")
         self._start_local_bridge()
         startup_roots=self.providers.local_roots()
         if startup_roots and not self.providers.local_index_ready(startup_roots):
@@ -173,6 +247,7 @@ class MainWindow(QMainWindow):
             # but no persistent index yet. Once indexed, later launches load the
             # cache immediately and do not walk the NAS automatically.
             QTimer.singleShot(0, lambda: self._start_local_scan("initial index"))
+        self._startup_mark("main_window_init_ready")
 
     # ------------------------------- UI
     def _build_ui(self):
@@ -282,14 +357,28 @@ class MainWindow(QMainWindow):
             self.pages[name] = page
             self.stack.addWidget(page)
 
+        # Heavy surfaces get only a tiny first-paint shell at startup. Their
+        # modules and widgets are constructed on the first navigation to them.
+        self._lazy_page_builders = {
+            "library": self._build_library,
+            "now_playing": self._build_now_playing,
+            "album_wall": self._build_album_wall,
+            "music_map": self._build_music_map,
+        }
+        self._built_lazy_pages: set[str] = set()
+        self.lazy_page_build_metrics: dict[str, float] = {}
+        for page, title, subtitle in (
+            ("library", "My Music", "Preparing your collection…"),
+            ("now_playing", "Now playing", "Preparing lyrics, artwork and visuals…"),
+            ("album_wall", "Album Wall", "Preparing your visual collection…"),
+            ("music_map", "Music Map", "Preparing your music landscape…"),
+        ):
+            self._prepare_lazy_page_shell(page, title, subtitle)
+
         self._build_home()
-        self._build_library()
         self._build_explore()
-        self._build_now_playing()
         self._build_for_you()
         self._build_discover()
-        self._build_album_wall()
-        self._build_music_map()
         self._build_journeys()
         self._build_playlists()
         self._build_moments()
@@ -322,6 +411,55 @@ class MainWindow(QMainWindow):
         ql.addWidget(self.queue_list, 1)
         self.queue_panel.hide()
         body_l.addWidget(self.queue_panel)
+
+        # ------------------------------------------------------------------
+        # Long-running background work stays visible without taking over the UI.
+        self.background_activity = QFrame()
+        self.background_activity.setObjectName("artworkProgressPanel")
+        activity_l = QHBoxLayout(self.background_activity)
+        activity_l.setContentsMargins(14, 7, 14, 7)
+        activity_l.setSpacing(10)
+
+        self.background_activity_label = QLabel("")
+        self.background_activity_label.setObjectName("artworkProgressDetail")
+        self.background_activity_label.setWordWrap(False)
+        activity_l.addWidget(self.background_activity_label, 1)
+
+        self.background_activity_progress = QProgressBar()
+        self.background_activity_progress.setFixedWidth(180)
+        self.background_activity_progress.setTextVisible(True)
+        self.background_activity_progress.setRange(0, 0)
+        activity_l.addWidget(self.background_activity_progress)
+
+        self.background_activity_view = QPushButton("View")
+        self.background_activity_view.setObjectName("quietButton")
+        self.background_activity_view.clicked.connect(
+            lambda: self.open_page("library")
+        )
+        activity_l.addWidget(self.background_activity_view)
+
+        self.background_activity_pause = QPushButton("Pause")
+        self.background_activity_pause.setObjectName("quietButton")
+        self.background_activity_pause.clicked.connect(
+            self._toggle_local_scan_pause
+        )
+        activity_l.addWidget(self.background_activity_pause)
+
+        self.background_activity_cancel = QPushButton("Cancel")
+        self.background_activity_cancel.setObjectName("quietButton")
+        self.background_activity_cancel.clicked.connect(
+            self._cancel_local_scan
+        )
+        activity_l.addWidget(self.background_activity_cancel)
+
+        self.background_activity.hide()
+        outer.addWidget(self.background_activity)
+
+        self._background_activity_timer = QTimer(self)
+        self._background_activity_timer.setInterval(1000)
+        self._background_activity_timer.timeout.connect(
+            self._refresh_background_scan_activity
+        )
 
         # ------------------------------------------------------------------
         # Persistent player. It behaves as the gateway to Now Playing rather
@@ -376,22 +514,22 @@ class MainWindow(QMainWindow):
         text_col.addWidget(self.seek)
         bl.addLayout(text_col, 1)
 
-        keep = QPushButton("Keep")
-        keep.setObjectName("playerAction")
-        keep.clicked.connect(self._keep)
-        love = QPushButton("♥")
-        love.setObjectName("playerAction")
-        love.clicked.connect(lambda: self._feedback(True))
+        self.keep_button = QPushButton("Keep")
+        self.keep_button.setObjectName("playerAction")
+        self.keep_button.clicked.connect(self._keep)
+        self.love_button = QPushButton("♥")
+        self.love_button.setObjectName("playerAction")
+        self.love_button.clicked.connect(lambda: self._feedback(True))
         queue = QPushButton("Queue")
         queue.setObjectName("playerAction")
         queue.clicked.connect(
             lambda: self.queue_panel.setVisible(not self.queue_panel.isVisible())
         )
-        set_help(keep, "Keep", "Teach Melodex that this track is worth keeping around in future listening.")
-        set_help(love, "Love", "Mark this as a strong positive preference.")
+        set_help(self.keep_button, "Keep", "Teach Melodex that this track is worth keeping around in future listening.")
+        set_help(self.love_button, "Love", "Mark this as a strong positive preference.")
         set_help(queue, "Queue", "Show or hide the music that is coming next.")
-        bl.addWidget(keep)
-        bl.addWidget(love)
+        bl.addWidget(self.keep_button)
+        bl.addWidget(self.love_button)
         bl.addWidget(queue)
 
         self.player_power_actions = QWidget()
@@ -590,17 +728,17 @@ class MainWindow(QMainWindow):
             }
             QLabel#albumCardTitle{font-weight:700;font-size:12px}
             QLabel#albumCardMeta{color:#8995a7;font-size:11px}
-            QListWidget#visualTrackList{
+            QListView#visualTrackList{
                 background:transparent;
                 border:0;
                 padding:0;
             }
-            QListWidget#visualTrackList::item{
+            QListView#visualTrackList::item{
                 background:transparent;
                 border:0;
                 padding:0;
             }
-            QListWidget#visualTrackList::item:selected{
+            QListView#visualTrackList::item:selected{
                 background:transparent;
             }
             QFrame#trackRow{
@@ -881,12 +1019,76 @@ class MainWindow(QMainWindow):
         if hasattr(self,"play_button"):
             self.play_button.setText("❚❚" if playing else "▶")
 
+    @staticmethod
+    def _clear_layout_items(layout) -> None:
+        while layout.count():
+            item=layout.takeAt(0)
+            child=item.layout()
+            if child is not None:
+                MainWindow._clear_layout_items(child)
+                child.deleteLater()
+            widget=item.widget()
+            if widget is not None:
+                widget.deleteLater()
+
     def _page_layout(self, page: str, title: str, subtitle: str=""):
-        lay=QVBoxLayout(self.pages[page]); lay.setContentsMargins(28,24,28,24)
+        existing=self.pages[page].layout()
+        if existing is None:
+            lay=QVBoxLayout(self.pages[page])
+        else:
+            lay=existing
+            self._clear_layout_items(lay)
+        lay.setContentsMargins(28,24,28,24)
+        lay.setSpacing(6)
         t=QLabel(title); t.setStyleSheet("font-size:28px;font-weight:700"); lay.addWidget(t)
+        self.page_titles[page]=t
         if subtitle:
-            s=QLabel(subtitle); s.setWordWrap(True); s.setStyleSheet("color:#aab0ba"); lay.addWidget(s)
+            subtitle_label=QLabel(subtitle)
+            subtitle_label.setWordWrap(True)
+            subtitle_label.setStyleSheet("color:#aab0ba")
+            lay.addWidget(subtitle_label)
         return lay
+
+    def _prepare_lazy_page_shell(
+        self,
+        page: str,
+        title: str,
+        subtitle: str,
+    ) -> None:
+        lay=self._page_layout(page,title,subtitle)
+        hint=QLabel("Opening…")
+        hint.setStyleSheet("color:#758297;margin-top:8px")
+        lay.addWidget(hint)
+        lay.addStretch(1)
+
+    def _ensure_lazy_page_built(self, name: str) -> bool:
+        builder=self._lazy_page_builders.get(name)
+        if builder is None or name in self._built_lazy_pages:
+            return False
+        started=time.perf_counter()
+        builder()
+        elapsed_ms=(time.perf_counter()-started)*1000.0
+        self._built_lazy_pages.add(name)
+        self.lazy_page_build_metrics[name]=round(elapsed_ms,3)
+        self._startup_mark(f"lazy_page_ready:{name}")
+        return True
+
+    def _build_lazy_page_if_current(self, name: str, generation: int) -> None:
+        if (
+            self._closing
+            or generation != self._navigation_generation
+            or name != self.current_page
+        ):
+            return
+        self._ensure_lazy_page_built(name)
+        self.pages[name].update()
+        QTimer.singleShot(
+            0,
+            lambda page=name, token=generation: self._populate_page_if_current(
+                page,
+                token,
+            ),
+        )
 
     def _build_home(self):
         l=self._page_layout(
@@ -1015,6 +1217,9 @@ class MainWindow(QMainWindow):
 
 
     def _build_now_playing(self):
+        from .living_canvas import LivingCanvasView
+        from .rich_now_playing import RichNowPlayingWidget
+
         l=self._page_layout(
             "now_playing",
             "Now playing",
@@ -1231,6 +1436,8 @@ class MainWindow(QMainWindow):
         l.addLayout(row2)
 
     def _build_library(self):
+        from .library_browser import LibraryBrowser
+
         l=self._page_layout(
             "library",
             "My Music",
@@ -1329,6 +1536,8 @@ class MainWindow(QMainWindow):
         l.addStretch(1)
 
     def _build_album_wall(self):
+        from .album_wall import AlbumWallWidget
+
         l=self._page_layout(
             "album_wall",
             "Album Wall",
@@ -1400,6 +1609,9 @@ class MainWindow(QMainWindow):
 
 
     def _build_music_map(self):
+        from .music_journey import STAGE_LABELS
+        from .music_map import MusicMapWidget
+
         l=self._page_layout(
             "music_map",
             "Music Map",
@@ -2155,19 +2367,87 @@ class MainWindow(QMainWindow):
     def open_page(self, name: str):
         if name not in self.pages:
             return
+        previous_page = self.current_page
+        if previous_page != name:
+            stale_page_scopes = {
+                "album_wall": ("page:album-wall-model",),
+                "music_map": ("page:music-map-model",),
+                "now_playing": (
+                    "now-playing-visual-analysis",
+                    "now-playing-visual-context",
+                ),
+            }
+            for scope in stale_page_scopes.get(previous_page, ()):
+                self._invalidate_async(scope)
+        interaction = (
+            self.responsiveness.begin_interaction(f"navigate:{name}")
+            if hasattr(self, "responsiveness")
+            else None
+        )
+        self._navigation_generation += 1
+        generation = self._navigation_generation
         self.current_page=name
         self.stack.setCurrentWidget(self.pages[name])
         self._update_nav_state(name)
-        if name=="home": self._show_home()
+        self.pages[name].update()
+        self.motion.settle(
+            self.page_titles.get(name),
+            duration_ms=FAST_MOTION_MS,
+            start_opacity=0.88,
+        )
+        if interaction is not None:
+            self.responsiveness.end_interaction(interaction)
+
+        if (
+            name in self._lazy_page_builders
+            and name not in self._built_lazy_pages
+        ):
+            QTimer.singleShot(
+                self._page_refresh_delay_ms,
+                lambda page=name, token=generation: self._build_lazy_page_if_current(
+                    page,
+                    token,
+                ),
+            )
+            return
+
+        # Navigation acknowledgement and page population are separate phases.
+        # Give Qt one short frame to paint the destination shell before any
+        # refresh work starts. Rapid navigation invalidates stale callbacks.
+        QTimer.singleShot(
+            self._page_refresh_delay_ms,
+            lambda page=name, token=generation: self._populate_page_if_current(
+                page,
+                token,
+            ),
+        )
+
+    def _populate_page_if_current(self, name: str, generation: int) -> None:
+        if (
+            self._closing
+            or generation != self._navigation_generation
+            or name != self.current_page
+        ):
+            return
+
+        if name=="home":
+            self._show_home()
         elif name=="library":
             self._refresh_library()
             self._refresh_plugin_presence()
-        elif name=="album_wall": self._refresh_album_wall()
-        elif name=="music_map": self._refresh_music_map()
-        elif name=="sources": self._refresh_sources()
-        elif name=="moments": self._refresh_moments()
-        elif name=="journeys": self._refresh_journeys()
-        elif name=="playlists": self._refresh_playlists()
+        elif name=="album_wall":
+            self._refresh_album_wall()
+        elif name=="music_map":
+            self._refresh_music_map()
+        elif name=="sources":
+            self._refresh_sources()
+            QTimer.singleShot(0, self._refresh_source_config_statuses_async)
+        elif name=="moments":
+            self._refresh_moments()
+        elif name=="journeys":
+            self._refresh_journeys()
+        elif name=="playlists":
+            self._refresh_playlists()
         elif name=="for_you":
             self._refresh_taste()
             self._refresh_plugin_presence()
@@ -2204,9 +2484,9 @@ class MainWindow(QMainWindow):
 
     def _show_home(self):
         self._refresh_taste()
-        count=len(self.providers.local_catalog())
+        count=self.providers.local_catalog_count()
         src=len(self.providers.providers)
-        ext=len(self.providers.extensions())
+        ext=len(self.providers.extensions(cached_config=True))
         flow_text = (
             "Flow analysis ready"
             if self.flow.analysis_available
@@ -2234,7 +2514,7 @@ class MainWindow(QMainWindow):
         self._refresh_home_continue()
 
     def _home_primary_action(self) -> None:
-        if self.providers.local_catalog():
+        if self.providers.local_catalog_count():
             self._play_for_me("balanced",60,0.35)
         else:
             self._choose_music_folder()
@@ -2264,7 +2544,7 @@ class MainWindow(QMainWindow):
         self._run_async(
             lambda:self.metadata.local_artwork(track),
             lambda result:self._home_continue_art_loaded(token,result),
-        )
+        priority="visible", task_name="home-artwork", replace_key="home-artwork")
 
     def _home_continue_art_loaded(self, token: str, result: object) -> None:
         current=UserState.track_key(dict(getattr(self,"home_recent_track",{}) or {}))
@@ -2359,12 +2639,17 @@ class MainWindow(QMainWindow):
             else:
                 installation=self.providers.installation_record(pid)
                 config_status=(
-                    self.providers.plugin_config.status(pid,p.info.configuration)
+                    self.providers.plugin_config.cached_status(
+                        pid, p.info.configuration
+                    )
                     if p.info.configuration else {"ready":True}
                 )
-                health=self.providers.plugin_health(pid)
+                health=self.providers.plugin_health(pid, cached_config=True)
                 health_state=str(health.get("status") or "untested")
-                if not config_status.get("ready",True):
+                config_ready=config_status.get("ready",True)
+                if config_ready is None:
+                    status="Checking…"
+                elif config_ready is False:
                     status="Setup needed"
                 elif health_state in {"error","stopped","unhealthy","unavailable"}:
                     status="Needs attention"
@@ -2463,7 +2748,7 @@ class MainWindow(QMainWindow):
                 f"{len(bundled)} source{'s' if len(bundled) != 1 else ''}"
             )
 
-        extensions=self.providers.extensions()
+        extensions=self.providers.extensions(cached_config=True)
         if hasattr(self,"source_summary_enhancements"):
             self.source_summary_enhancements.setText(
                 f"{len(extensions)} installed" if extensions else "None installed"
@@ -2475,11 +2760,17 @@ class MainWindow(QMainWindow):
                 extension_id=str(extension.get("id") or "")
                 enabled=bool(extension.get("enabled",True))
                 config_status=dict(extension.get("configuration_status") or {})
-                health=self.providers.plugin_health(extension_id)
+                health=self.providers.plugin_health(
+                    extension_id,
+                    cached_config=True,
+                )
                 health_state=str(health.get("status") or "untested")
+                config_ready=config_status.get("ready",True)
                 if not enabled:
                     status="Disabled"
-                elif config_status.get("declared") and not config_status.get("ready",True):
+                elif config_status.get("declared") and config_ready is None:
+                    status="Checking…"
+                elif config_status.get("declared") and config_ready is False:
                     status="Setup needed"
                 elif health_state in {"error","stopped","unhealthy","unavailable"}:
                     status="Needs attention"
@@ -2529,11 +2820,15 @@ class MainWindow(QMainWindow):
             for pid in optional+bundled:
                 provider=self.providers.providers.get(pid)
                 if provider is not None and provider.info.configuration:
-                    if not self.providers.plugin_config.status(pid,provider.info.configuration).get("ready",True):
+                    state=self.providers.plugin_config.cached_status(
+                        pid,
+                        provider.info.configuration,
+                    )
+                    if state.get("ready") is False:
                         setup_needed+=1
             for extension in extensions:
                 state=dict(extension.get("configuration_status") or {})
-                if state.get("declared") and not state.get("ready",True):
+                if state.get("declared") and state.get("ready") is False:
                     setup_needed+=1
             summary=(
                 f"{len(builtins)} built-in connections · "
@@ -2562,6 +2857,44 @@ class MainWindow(QMainWindow):
         self._source_selection_changed()
 
 
+    def _refresh_source_config_statuses_async(self) -> None:
+        """Validate plugin configuration off the Qt thread, then refresh badges."""
+        if self._source_config_refresh_in_progress or self._closing:
+            return
+        self._source_config_refresh_in_progress = True
+
+        def load() -> None:
+            for pid in self.providers.provider_order():
+                provider=self.providers.providers.get(pid)
+                if (
+                    provider is not None
+                    and pid not in {"local","jamendo","streams"}
+                    and provider.info.configuration
+                ):
+                    self.providers.plugin_config.status(
+                        pid,
+                        provider.info.configuration,
+                    )
+            # Extensions share the same configuration broker. Calling the full
+            # status path here warms secret-presence state without blocking Qt.
+            self.providers.extensions(cached_config=False)
+
+        def done(_result) -> None:
+            self._source_config_refresh_in_progress = False
+            if self.current_page == "sources":
+                self._refresh_sources()
+                self._refresh_plugin_presence()
+
+        def failed(_error: str) -> None:
+            self._source_config_refresh_in_progress = False
+            if self.current_page == "sources":
+                self.statusBar().showMessage(
+                    "Some source configuration checks are still unavailable",
+                    4000,
+                )
+
+        self._run_async(load, done, failed, priority="visible", task_name="source-config-status")
+
     @staticmethod
     def _capability_label(capability: str) -> str:
         return {
@@ -2574,10 +2907,11 @@ class MainWindow(QMainWindow):
         }.get(str(capability or ""), str(capability or "").replace("_"," "))
 
     def _extension_record(self, extension_id: str) -> dict[str,Any]:
+        from .plugin_onboarding import plugin_needs_setup
         return next(
             (
                 dict(row)
-                for row in self.providers.extensions()
+                for row in self.providers.extensions(cached_config=True)
                 if str(row.get("id") or "") == str(extension_id or "")
             ),
             {},
@@ -2589,14 +2923,23 @@ class MainWindow(QMainWindow):
         if plugin_id.startswith("extension:"):
             row=self._extension_record(plugin_id.split(":",1)[1])
             status=dict(row.get("configuration_status") or {})
-            return bool(status.get("declared") and not status.get("ready",True))
+            return bool(
+                status.get("declared")
+                and status.get("ready") is False
+            )
         provider=self.providers.providers.get(plugin_id)
         if provider is None or not provider.info.configuration:
             return False
-        status=self.providers.plugin_config.status(plugin_id,provider.info.configuration)
-        return not bool(status.get("ready",True))
+        status=self.providers.plugin_config.cached_status(
+            plugin_id,
+            provider.info.configuration,
+        )
+        return status.get("ready") is False
 
     def _source_selection_changed(self) -> None:
+        from .plugin_onboarding import plugin_needs_setup
+        if hasattr(self, "responsiveness"):
+            self.responsiveness.mark_action("sources:selection")
         item=self.sources_list.currentItem() if hasattr(self,"sources_list") else None
         key=str(item.data(Qt.UserRole) or "") if item else ""
         enabled=bool(key)
@@ -2719,6 +3062,7 @@ class MainWindow(QMainWindow):
         )
 
     def _source_primary_action(self) -> None:
+        from .plugin_onboarding import plugin_needs_setup
         item=self.sources_list.currentItem() if hasattr(self,"sources_list") else None
         key=str(item.data(Qt.UserRole) or "") if item else ""
         if not key:
@@ -2764,7 +3108,10 @@ class MainWindow(QMainWindow):
 
     def _refresh_library(self):
         if hasattr(self,"library_browser"):
-            self.library_browser.set_catalog(self.providers.local_catalog())
+            self.library_browser.set_catalog(
+                self.providers.local_catalog(),
+                revision=self.providers.local_catalog_revision(),
+            )
 
     def _play_library_track(self, track: object) -> None:
         if not isinstance(track,dict):
@@ -2918,6 +3265,7 @@ class MainWindow(QMainWindow):
         rows=[dict(x) for x in list(requests or []) if isinstance(x,dict)]
         if not rows:
             return
+        keys=[str(row.get("key") or "") for row in rows if str(row.get("key") or "")]
         def load():
             result={}
             for row in rows:
@@ -2927,7 +3275,13 @@ class MainWindow(QMainWindow):
                     info=self.metadata.local_artwork(track)
                     result[key]=str(info.get("path") or "")
             return result
-        self._run_async(load,self.library_browser.set_artwork)
+        def failed(error: str) -> None:
+            self.library_browser.cached_artwork_batch_failed("albums",keys)
+            self.statusBar().showMessage(
+                f"Cached artwork refresh paused · {error}",
+                3500,
+            )
+        self._run_async(load,self.library_browser.set_artwork,failed, priority="visible", task_name="library-cached-artwork")
 
     def _library_online_artwork_requested(self, requests: object) -> None:
         rows=[dict(x) for x in list(requests or []) if isinstance(x,dict)]
@@ -3027,7 +3381,7 @@ class MainWindow(QMainWindow):
                 5000,
             )
 
-        self._run_async(load,apply,failed)
+        self._run_async(load,apply,failed, priority="background", task_name="library-online-artwork")
 
     def _choose_artist_photo_file(self, artist: object) -> None:
         if not isinstance(artist,dict):
@@ -3066,6 +3420,7 @@ class MainWindow(QMainWindow):
         if not rows:
             return
 
+        keys=[str(row.get("key") or "") for row in rows if str(row.get("key") or "")]
         def load():
             result={}
             for row in rows:
@@ -3076,7 +3431,14 @@ class MainWindow(QMainWindow):
                     result[key]=str(cached.get("path") or "")
             return result
 
-        self._run_async(load,self.library_browser.set_artist_images)
+        def failed(error: str) -> None:
+            self.library_browser.cached_artwork_batch_failed("artists",keys)
+            self.statusBar().showMessage(
+                f"Cached artist-photo refresh paused · {error}",
+                3500,
+            )
+
+        self._run_async(load,self.library_browser.set_artist_images,failed, priority="visible", task_name="library-cached-artist-photo")
 
     def _library_artist_images_requested(self, requests: object) -> None:
         rows=[dict(x) for x in list(requests or []) if isinstance(x,dict)]
@@ -3159,9 +3521,10 @@ class MainWindow(QMainWindow):
                 5000,
             )
 
-        self._run_async(load,apply,failed)
+        self._run_async(load,apply,failed, priority="background", task_name="library-online-artist-photo")
 
     def _refresh_journeys(self):
+        from .journey_replay import summarize_journey_run
         if not hasattr(self,"journey_recipes_list") or not hasattr(self,"journey_runs_list"):
             return
         self.journey_recipes_list.clear()
@@ -3220,6 +3583,7 @@ class MainWindow(QMainWindow):
         return dict(data or {}) if isinstance(data,dict) else {}
 
     def _journey_recipe_save_current(self):
+        from .journey_recipe import make_journey_recipe, save_journey_recipe
         if not self.music_journey_stages_data:
             self.statusBar().showMessage(
                 "Add Journey Designer stages before saving a recipe",3500
@@ -3278,6 +3642,7 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Refreshing Music Map before loading recipe…",3500)
 
     def _journey_recipe_import(self):
+        from .journey_recipe import load_journey_recipe, save_journey_recipe
         filename,_=QFileDialog.getOpenFileName(
             self,
             "Import journey recipe",
@@ -3302,6 +3667,7 @@ class MainWindow(QMainWindow):
         )
 
     def _journey_recipe_export(self):
+        from .journey_recipe import save_journey_recipe
         record=self._selected_journey_recipe_record()
         if not record:
             self.statusBar().showMessage("Select a journey recipe first",3000); return
@@ -3346,6 +3712,7 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Journey recipe deleted",3000)
 
     def _apply_pending_journey_recipe(self):
+        from .journey_recipe import materialize_recipe_stages
         pending=self.pending_journey_recipe
         self.pending_journey_recipe=None
         if not isinstance(pending,dict):
@@ -3392,6 +3759,7 @@ class MainWindow(QMainWindow):
         )
 
     def _journey_run_inspect(self):
+        from .journey_replay import summarize_journey_run
         run=self._selected_journey_run_record()
         if not run:
             self.statusBar().showMessage("Select a journey run first",3000); return
@@ -3458,6 +3826,7 @@ class MainWindow(QMainWindow):
         )
 
     def _apply_pending_journey_replay(self):
+        from .journey_replay import materialize_route_snapshot
         pending=self.pending_journey_replay
         self.pending_journey_replay=None
         if not pending:
@@ -3544,7 +3913,7 @@ class MainWindow(QMainWindow):
         if not tracks:
             self.statusBar().showMessage("This playlist has no tracks",3000); return
         self.statusBar().showMessage("Resolving playlist across connected sources…")
-        self._run_async(lambda:self.providers.resolve_playlist(tracks),self._start_resolved_playlist)
+        self._run_async(lambda:self.providers.resolve_playlist(tracks),self._start_resolved_playlist, priority="foreground", task_name="playlist-resolve")
 
     def _start_resolved_playlist(self,result):
         tracks=list(result.get("tracks") or []); unresolved=list(result.get("unresolved") or [])
@@ -3554,6 +3923,7 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(msg,6000)
 
     def _import_playlist_file(self):
+        from .playlist_io import load_playlist
         filename,_=QFileDialog.getOpenFileName(self,"Import playlist",filter="Playlists (*.xspf *.m3u *.m3u8);;XSPF (*.xspf);;M3U/M3U8 (*.m3u *.m3u8)")
         if not filename:return
         try:data=load_playlist(Path(filename))
@@ -3562,9 +3932,10 @@ class MainWindow(QMainWindow):
         if not requested:QMessageBox.information(self,"Empty playlist","No tracks were found in this playlist."); return
         playlist_id=str(uuid.uuid4()); name=str(data.get("name") or Path(filename).stem); description=str(data.get("description") or "")
         self.statusBar().showMessage(f"Importing and matching {len(requested)} tracks…")
-        self._run_async(lambda:self.providers.resolve_playlist(requested),lambda result:self._finish_playlist_file_import(playlist_id,name,description,str(data.get("format") or "playlist"),requested,result))
+        self._run_async(lambda:self.providers.resolve_playlist(requested),lambda result:self._finish_playlist_file_import(playlist_id,name,description,str(data.get("format") or "playlist"),requested,result), priority="foreground", task_name="playlist-import-resolve")
 
     def _finish_playlist_file_import(self,playlist_id,name,description,fmt,requested,result):
+        from .playlist_io import save_playlist
         tracks=list(result.get("tracks") or []); unresolved=list(result.get("unresolved") or [])
         payload={"tracks":tracks,"unresolved":unresolved,"requested_tracks":requested,"format":fmt}
         self.state.save_playlist(playlist_id,name,description,f"import:{fmt}",payload); self._refresh_playlists()
@@ -3573,6 +3944,7 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(msg,7000)
 
     def _open_ai_playlist_import(self):
+        from .playlist_io import load_playlist, parse_playlist_text
         dialog=QDialog(self); dialog.setWindowTitle("Import an AI playlist"); dialog.resize(900,650)
         layout=QVBoxLayout(dialog); layout.setContentsMargins(24,22,24,20); layout.setSpacing(14)
         title=QLabel("Import an AI playlist"); title.setStyleSheet("font-size: 25px; font-weight: 700;")
@@ -3650,6 +4022,7 @@ class MainWindow(QMainWindow):
         return p
 
     def _export_selected_playlist(self):
+        from .playlist_io import save_playlist
         item=self.playlists_list.currentItem()
         if not item:self.statusBar().showMessage("Select a playlist first",3000); return
         record=dict(item.data(Qt.UserRole) or {}); tracks=self._playlist_tracks(record)
@@ -3660,6 +4033,7 @@ class MainWindow(QMainWindow):
         except Exception as exc:QMessageBox.warning(self,"Could not export playlist",str(exc))
 
     def _export_queue(self):
+        from .playlist_io import save_playlist
         tracks=[dict(x) for x in self.player.queue if isinstance(x,dict)]
         if not tracks:self.statusBar().showMessage("The queue is empty",3000); return
         path=self._playlist_export_path("Export queue")
@@ -3702,6 +4076,8 @@ class MainWindow(QMainWindow):
             QTimer.singleShot(700,lambda:self.player.seek(position))
 
     def _refresh_taste(self):
+        if not hasattr(self,"taste_label"):
+            return
         s=self.state.taste_summary(); self.taste_label.setText(f"Taste memory: {s.get('tracks',0)} tracks learned · {s.get('artists',0)} artists · completion rate {float(s.get('completion_rate',0))*100:.0f}%")
 
     # ------------------------------- sources/search
@@ -3723,9 +4099,68 @@ class MainWindow(QMainWindow):
     def _local_roots_key(roots: list[Path]) -> tuple[str, ...]:
         return tuple(str(Path(root)) for root in roots)
 
+    @staticmethod
+    def _format_elapsed(seconds: float) -> str:
+        total=max(0,int(seconds))
+        minutes,seconds=divmod(total,60)
+        hours,minutes=divmod(minutes,60)
+        if hours:
+            return f"{hours:d}:{minutes:02d}:{seconds:02d}"
+        return f"{minutes:d}:{seconds:02d}"
+
+    def _refresh_background_scan_activity(self) -> None:
+        if not self._local_scan_in_progress:
+            self.background_activity.hide()
+            self._background_activity_timer.stop()
+            return
+
+        payload=dict(self._local_scan_last_progress or {})
+        phase=str(payload.get("phase") or "discovering")
+        found=max(0,int(payload.get("audio_files_seen") or 0))
+        completed=max(0,int(payload.get("completed") or 0))
+        total=max(0,int(payload.get("total") or 0))
+        elapsed=self._format_elapsed(
+            time.monotonic() - self._local_scan_started_at
+            if self._local_scan_started_at
+            else 0.0
+        )
+
+        if phase=="metadata" and total:
+            stage=f"Reading tags · {completed:,}/{total:,}"
+            self.background_activity_progress.setRange(0,total)
+            self.background_activity_progress.setValue(min(completed,total))
+            self.background_activity_progress.setFormat("%v / %m")
+        elif phase=="saving":
+            stage="Saving library index"
+            self.background_activity_progress.setRange(0,0)
+            self.background_activity_progress.setFormat("")
+        else:
+            stage=(
+                f"Discovering files · {found:,} found"
+                if found
+                else "Discovering files"
+            )
+            self.background_activity_progress.setRange(0,0)
+            self.background_activity_progress.setFormat("")
+
+        runner=self._local_scan_runner
+        paused=bool(runner is not None and runner.paused)
+        if paused:
+            stage="Paused · " + stage
+        self.background_activity_label.setText(
+            f"Indexing music · {stage} · {elapsed} elapsed · "
+            "You can keep using Melodex"
+        )
+        self.background_activity_pause.setText("Resume" if paused else "Pause")
+        self.background_activity_pause.setEnabled(runner is not None)
+        self.background_activity_cancel.setEnabled(runner is not None)
+        self.background_activity.show()
+
     def _local_scan_progress(self, payload: object) -> None:
         if not isinstance(payload,dict) or not self._local_scan_in_progress:
             return
+        self._local_scan_last_progress=dict(payload)
+        self._refresh_background_scan_activity()
         if hasattr(self,"library_browser"):
             self.library_browser.set_scan_progress(payload)
         phase=str(payload.get("phase") or "")
@@ -3764,11 +4199,13 @@ class MainWindow(QMainWindow):
             runner.resume()
             if hasattr(self,"library_browser"):
                 self.library_browser.set_scan_paused(False)
+            self._refresh_background_scan_activity()
             self.statusBar().showMessage("Music indexing resumed",3000)
         else:
             runner.pause()
             if hasattr(self,"library_browser"):
                 self.library_browser.set_scan_paused(True)
+            self._refresh_background_scan_activity()
             self.statusBar().showMessage("Music indexing paused",3000)
 
     def _cancel_local_scan(self) -> None:
@@ -3779,11 +4216,17 @@ class MainWindow(QMainWindow):
         runner.cancel()
         if hasattr(self,"library_browser"):
             self.library_browser.set_scan_cancelling()
+        self.background_activity_pause.setEnabled(False)
+        self.background_activity_cancel.setEnabled(False)
+        self.background_activity_label.setText(
+            "Indexing music · Stopping safely… · existing library remains usable"
+        )
         self.statusBar().showMessage(
             "Stopping music indexing… a stuck NAS scanner will be terminated automatically"
         )
 
     def _start_local_scan(self, reason: str = "scan") -> None:
+        from .library_scan_process import LibraryScanProcess
         roots=self.providers.local_roots()
         if not roots:
             self.statusBar().showMessage("Add a music folder first",3000)
@@ -3814,11 +4257,15 @@ class MainWindow(QMainWindow):
         self._local_scan_in_progress=True
         self._local_scan_pending=False
         self._local_scan_sequence += 1
+        self._local_scan_started_at=time.monotonic()
+        self._local_scan_last_progress={"phase":"discovering","audio_files_seen":0}
         sequence=self._local_scan_sequence
         roots_snapshot=[Path(root) for root in roots]
         roots_key=self._local_roots_key(roots_snapshot)
         if hasattr(self,"library_browser"):
             self.library_browser.begin_scan(reason)
+        self._refresh_background_scan_activity()
+        self._background_activity_timer.start()
         self.statusBar().showMessage(
             "Indexing your music in an isolated background scanner…"
         )
@@ -3840,6 +4287,8 @@ class MainWindow(QMainWindow):
                 return
             self._local_scan_in_progress=False
             self._local_scan_runner=None
+            self._background_activity_timer.stop()
+            self.background_activity.hide()
             current_key=self._local_roots_key(self.providers.local_roots())
             result=dict(snapshot or {})
 
@@ -3920,6 +4369,8 @@ class MainWindow(QMainWindow):
                 return
             self._local_scan_in_progress=False
             self._local_scan_runner=None
+            self._background_activity_timer.stop()
+            self.background_activity.hide()
             if hasattr(self,"library_browser"):
                 self.library_browser.finish_scan("error",error=str(error))
             self._show_home()
@@ -3949,6 +4400,7 @@ class MainWindow(QMainWindow):
             on_error=sig.error.emit,
         )
         self._local_scan_runner=runner
+        self._refresh_background_scan_activity()
         try:
             runner.start()
         except Exception as exc:
@@ -3963,11 +4415,11 @@ class MainWindow(QMainWindow):
     def _active_extension_names(self, *capabilities: str) -> list[str]:
         wanted={str(value) for value in capabilities if str(value)}
         names=[]
-        for row in self.providers.extensions():
+        for row in self.providers.extensions(cached_config=True):
             if not bool(row.get("enabled",True)):
                 continue
             config=dict(row.get("configuration_status") or {})
-            if config.get("declared") and not config.get("ready",True):
+            if config.get("declared") and config.get("ready") is False:
                 continue
             caps={str(value) for value in list(row.get("capabilities") or []) if value}
             if wanted and not (wanted & caps):
@@ -3978,6 +4430,7 @@ class MainWindow(QMainWindow):
         return names
 
     def _searchable_source_names(self) -> list[str]:
+        from .plugin_onboarding import plugin_needs_setup
         names=[]
         for pid in self.providers.searchable_provider_ids():
             provider=self.providers.providers.get(pid)
@@ -4012,6 +4465,8 @@ class MainWindow(QMainWindow):
         self._refresh_plugin_presence()
 
     def _plugin_directory(self, capability: str = ""):
+        from .plugin_directory import PluginDirectoryDialog
+
         dialog=PluginDirectoryDialog(
             self.providers,
             on_installed=self._refresh_sources_and_plugin_presence,
@@ -4031,6 +4486,7 @@ class MainWindow(QMainWindow):
             self._use_extension(plugin_id)
 
     def _export_diagnostics(self):
+        from .diagnostics import write_diagnostics
         filename,_=QFileDialog.getSaveFileName(
             self,
             "Export redacted diagnostics",
@@ -4047,6 +4503,35 @@ class MainWindow(QMainWindow):
             ui_metrics["library_catalog"] = dict(
                 getattr(self.library_browser, "last_catalog_metrics", {}) or {}
             )
+            ui_metrics["library_filter"] = dict(
+                getattr(self.library_browser, "last_filter_metrics", {}) or {}
+            )
+            ui_metrics["library_view"] = dict(
+                getattr(self.library_browser, "last_view_metrics", {}) or {}
+            )
+            ui_metrics["track_virtualization"] = dict(
+                getattr(
+                    self.library_browser,
+                    "last_track_virtualization_metrics",
+                    {},
+                ) or {}
+            )
+            ui_metrics["artwork_priority"] = dict(
+                getattr(
+                    self.library_browser,
+                    "last_artwork_priority_metrics",
+                    {},
+                ) or {}
+            )
+        if hasattr(self, "background_scheduler"):
+            scheduler_metrics = self.background_scheduler.snapshot()
+            scheduler_metrics["async_invalidations"] = self._async_invalidations
+            scheduler_metrics["stale_results_dropped"] = (
+                self._async_stale_results_dropped
+            )
+            ui_metrics["background_scheduler"] = scheduler_metrics
+        if hasattr(self, "responsiveness"):
+            ui_metrics["responsiveness"] = self.responsiveness.summary()
         try:
             write_diagnostics(
                 path,
@@ -4066,6 +4551,8 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(f"Exported {path.name}",4000)
 
     def _install_provider(self):
+        from .plugin_configuration_dialog import configure_plugin
+        from .plugin_onboarding import plugin_needs_setup
         path,_=QFileDialog.getOpenFileName(self,"Install provider",filter="Melodex Provider (*.mdxprovider *.zip)")
         if not path:return
         try:
@@ -4086,6 +4573,8 @@ class MainWindow(QMainWindow):
         except Exception as exc: QMessageBox.critical(self,"Could not install provider",str(exc))
 
     def _install_extension(self):
+        from .plugin_configuration_dialog import configure_plugin
+        from .plugin_onboarding import plugin_needs_setup
         path,_=QFileDialog.getOpenFileName(
             self,
             "Install capability extension",
@@ -4194,7 +4683,7 @@ class MainWindow(QMainWindow):
             self.source_check_all.setText("Check installed")
             self.statusBar().showMessage(f"Plugin check stopped: {error}",5000)
 
-        self._run_async(work,done,failed)
+        self._run_async(work,done,failed, priority="background", task_name="plugin-health-all")
 
     def _test_selected_plugin(self):
         plugin_id=self._selected_plugin_id()
@@ -4207,9 +4696,10 @@ class MainWindow(QMainWindow):
         self._run_async(
             lambda:self.providers.test_plugin_health(plugin_id),
             lambda result:self._finish_plugin_health_test(plugin_id,result),
-        )
+        priority="foreground", task_name="plugin-health-selected")
 
     def _finish_plugin_health_test(self,plugin_id,result):
+        from .plugin_configuration_dialog import configure_plugin
         result=dict(result or {})
         self._refresh_sources()
         self.statusBar().showMessage(health_summary(result),6000)
@@ -4232,6 +4722,7 @@ class MainWindow(QMainWindow):
         )
 
     def _configure_selected_plugin(self):
+        from .plugin_configuration_dialog import configure_plugin
         plugin_id=self._selected_plugin_id()
         if not plugin_id:
             self.statusBar().showMessage("Select an installed provider or extension first",3000)
@@ -4471,32 +4962,110 @@ class MainWindow(QMainWindow):
         refresh()
         dialog.exec()
 
+    def _search_has_useful_results(self) -> bool:
+        if not hasattr(self, "results"):
+            return False
+        for index in range(self.results.count()):
+            data=self.results.item(index).data(Qt.UserRole)
+            if isinstance(data,dict) and data:
+                return True
+        return False
+
+    def _show_delayed_search_loading(self, sequence: int, target: str) -> None:
+        if (
+            sequence != self._search_sequence
+            or sequence != self._search_pending_sequence
+            or self._closing
+        ):
+            return
+        # Preserve stale-but-useful results while revalidating.
+        if self._search_has_useful_results():
+            return
+        self.results.clear()
+        item=QListWidgetItem(f"Searching {target}…")
+        item.setFlags(item.flags() & ~Qt.ItemIsSelectable)
+        item.setForeground(QColor("#8793a4"))
+        self.results.addItem(item)
+
     def _search(self):
         q=self.search_box.text().strip()
         pid=str(self.search_source.currentData() or "all")
         if not q:
             return
-        self.results.clear()
-        self.results.addItem("Searching…")
+
+        interaction = (
+            self.responsiveness.begin_interaction("discover:search")
+            if hasattr(self, "responsiveness")
+            else None
+        )
+        self._search_sequence += 1
+        sequence=self._search_sequence
+        self._search_pending_sequence=sequence
+        had_results=self._search_has_useful_results()
+
+        target=(
+            self.search_source.currentText()
+            if pid!="all"
+            else "your connected sources"
+        )
         if hasattr(self,"search_button"):
+            self.search_button.setText("Searching…")
             self.search_button.setEnabled(False)
         if hasattr(self,"search_status"):
-            target=(
-                self.search_source.currentText()
-                if pid!="all"
-                else "your connected sources"
-            )
-            self.search_status.setText(f"Searching {target}…")
+            if had_results:
+                self.search_status.setText(
+                    f"Updating {target}… · showing previous results"
+                )
+            else:
+                self.search_status.setText(f"Searching {target}…")
             self.search_status.setToolTip("")
-        self._run_async(
-            lambda:self.providers.search_report(q,pid,100),
-            self._show_search_report,
-            self._search_report_failed,
+
+        # Avoid a loading-state flash for fast searches. If useful results are
+        # already visible, keep them in place throughout the refresh.
+        QTimer.singleShot(
+            self._search_loading_delay_ms,
+            lambda token=sequence, label=target: self._show_delayed_search_loading(
+                token,
+                label,
+            ),
         )
 
-    def _search_report_failed(self, error: str) -> None:
+        if interaction is not None:
+            self.responsiveness.end_interaction(interaction)
+
+        self._run_async(
+            lambda:self.providers.search_report(q,pid,100),
+            lambda report, token=sequence: self._show_search_report(
+                report,
+                token,
+            ),
+            lambda error, token=sequence: self._search_report_failed(
+                error,
+                token,
+            ),
+        priority="foreground", task_name="search", replace_key="search")
+
+    def _search_report_failed(
+        self,
+        error: str,
+        sequence: int | None = None,
+    ) -> None:
+        if sequence is not None and sequence != self._search_sequence:
+            return
+        if sequence is not None and self._search_pending_sequence == sequence:
+            self._search_pending_sequence=0
         if hasattr(self,"search_button"):
+            self.search_button.setText("Search")
             self.search_button.setEnabled(True)
+
+        if self._search_has_useful_results():
+            if hasattr(self,"search_status"):
+                self.search_status.setText(
+                    "Search refresh failed · showing previous results"
+                )
+                self.search_status.setToolTip(str(error or ""))
+            return
+
         self.results.clear()
         item=QListWidgetItem("Search could not be completed. Try again in a moment.")
         item.setFlags(item.flags() & ~Qt.ItemIsSelectable)
@@ -4506,8 +5075,17 @@ class MainWindow(QMainWindow):
             self.search_status.setText("Search temporarily unavailable")
             self.search_status.setToolTip(str(error or ""))
 
-    def _show_search_report(self, report):
+    def _show_search_report(
+        self,
+        report,
+        sequence: int | None = None,
+    ):
+        if sequence is not None and sequence != self._search_sequence:
+            return
+        if sequence is not None and self._search_pending_sequence == sequence:
+            self._search_pending_sequence=0
         if hasattr(self,"search_button"):
+            self.search_button.setText("Search")
             self.search_button.setEnabled(True)
 
         data=dict(report or {})
@@ -4582,6 +5160,8 @@ class MainWindow(QMainWindow):
         )
 
     def _play_result(self,item):
+        if hasattr(self, "responsiveness"):
+            self.responsiveness.mark_action("discover:play-result")
         t=dict(item.data(Qt.UserRole) or {}); self.player.set_queue([t],0,True)
 
     def _open_selected_source(self):
@@ -4653,7 +5233,7 @@ class MainWindow(QMainWindow):
                 intent, catalog, seeds, limit=16, adventure=adventure
             ),
             self._show_intelligence_results,
-        )
+        priority="foreground", task_name="local-intelligence", replace_key="local-intelligence")
 
     def _show_intelligence_results(self, result: dict[str, Any]) -> None:
         self.intelligence_results.clear()
@@ -4727,7 +5307,7 @@ class MainWindow(QMainWindow):
         self._run_async(
             lambda: self.local_intelligence.analyse_catalog(catalog),
             self._library_analysis_finished,
-        )
+        priority="background", task_name="library-analysis")
 
     def _library_analysis_finished(self, result: dict[str, Any]) -> None:
         self.statusBar().showMessage(
@@ -4737,6 +5317,9 @@ class MainWindow(QMainWindow):
 
     # ------------------------------- Music Map
     def _build_album_wall_payload(self):
+        from .album_wall_model import build_album_wall
+        from .music_map_model import build_music_map
+
         catalog=self.providers.local_catalog()
         profiles, _seed_refs, ref_map, _analysed = self.local_intelligence.build_snapshot(
             catalog,
@@ -4769,7 +5352,7 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("Add local music to build an Album Wall",4000)
             return
         self.statusBar().showMessage("Building Album Wall from local metadata and cached Flow analysis…")
-        self._run_async(self._build_album_wall_payload,self._apply_album_wall_payload)
+        self._run_async(self._build_album_wall_payload,self._apply_album_wall_payload, priority="visible", task_name="album-wall-model", replace_key="page:album-wall-model")
 
     def _apply_album_wall_payload(self,payload):
         payload=dict(payload or {})
@@ -4798,7 +5381,7 @@ class MainWindow(QMainWindow):
         self._run_async(
             lambda:self.local_intelligence.analyse_catalog(catalog),
             self._album_wall_analysis_finished,
-        )
+        priority="background", task_name="album-wall-analysis")
 
     def _album_wall_analysis_finished(self,result):
         self.statusBar().showMessage(
@@ -4850,7 +5433,7 @@ class MainWindow(QMainWindow):
                 info=self.metadata.local_artwork(track)
                 result[key]=str(info.get("path") or "")
             return result
-        self._run_async(load,self.album_wall.set_artwork)
+        self._run_async(load,self.album_wall.set_artwork, priority="visible", task_name="album-wall-cached-artwork")
 
     def _album_wall_online_artwork_requested(self,requests):
         rows=[dict(x) for x in list(requests or []) if isinstance(x,dict)]
@@ -4877,9 +5460,12 @@ class MainWindow(QMainWindow):
                 result[key]=path
             return result
 
-        self._run_async(load,self.album_wall.set_artwork)
+        self._run_async(load,self.album_wall.set_artwork, priority="background", task_name="album-wall-online-artwork")
 
     def _build_music_map_payload(self):
+        from .music_knowledge import build_knowledge_graph
+        from .music_map_model import build_music_map
+
         catalog=self.providers.local_catalog()
         profiles, _seed_refs, ref_map, _analysed = self.local_intelligence.build_snapshot(
             catalog,
@@ -4913,7 +5499,7 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("Add local music to build a Music Map",4000)
             return
         self.statusBar().showMessage("Building Music Map from cached Flow analysis…")
-        self._run_async(self._build_music_map_payload,self._apply_music_map_payload)
+        self._run_async(self._build_music_map_payload,self._apply_music_map_payload, priority="visible", task_name="music-map-model", replace_key="page:music-map-model")
 
     def _apply_music_map_payload(self,payload):
         payload=dict(payload or {})
@@ -4949,6 +5535,7 @@ class MainWindow(QMainWindow):
             self._apply_pending_journey_replay()
 
     def _remember_now_playing_knowledge(self,track,bundle):
+        from .music_knowledge import build_knowledge_graph
         if not isinstance(track,dict) or not isinstance(bundle,dict):
             return
         kwargs={}
@@ -5045,7 +5632,7 @@ class MainWindow(QMainWindow):
         self._run_async(
             lambda:self._knowledge_bundle_for_track(track),
             self._knowledge_enrichment_finished,
-        )
+        priority="background", task_name="knowledge-enrich-selected")
 
     def _knowledge_needs_enrichment(self,track):
         payload=self.knowledge.get(dict(track or {}))
@@ -5079,7 +5666,7 @@ class MainWindow(QMainWindow):
                 except Exception as exc:
                     rows.append({"track":track,"matched":False,"credits":0,"context_cards":0,"errors":[str(exc)]})
             return rows
-        self._run_async(work,self._knowledge_batch_finished)
+        self._run_async(work,self._knowledge_batch_finished, priority="background", task_name="knowledge-enrich-batch")
 
     def _knowledge_enrichment_finished(self,result):
         errors=[str(x) for x in list((result or {}).get("errors") or []) if x]
@@ -5141,6 +5728,7 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Pathfinder destination set",2500)
 
     def _music_path_find(self):
+        from .music_pathfinder import find_music_path
         if not self.music_path_start_ref or not self.music_path_end_ref:
             self.statusBar().showMessage("Set both Pathfinder start and destination",3500); return
         mode=str(self.music_path_mode.currentData() or "balanced")
@@ -5223,6 +5811,7 @@ class MainWindow(QMainWindow):
 
     # ------------------------------- Music Map Journey Designer
     def _music_journey_render_stages(self):
+        from .music_journey import STAGE_LABELS
         if not hasattr(self,"music_journey_stages"):return
         self.music_journey_stages.clear()
         if not self.music_journey_stages_data:
@@ -5242,6 +5831,7 @@ class MainWindow(QMainWindow):
             self.music_journey_stages.addItem(item)
 
     def _music_journey_load_preset(self):
+        from .music_journey import STAGE_LABELS
         self.music_active_recipe_id=""
         self.music_active_recipe={}
         raw=self.music_journey_preset.currentData() if hasattr(self,"music_journey_preset") else []
@@ -5253,6 +5843,7 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Journey preset loaded",2500)
 
     def _music_journey_add_constraint(self):
+        from .music_journey import STAGE_LABELS
         self.music_active_recipe_id=""
         self.music_active_recipe={}
         key=str(self.music_journey_constraint.currentData() or "") if hasattr(self,"music_journey_constraint") else ""
@@ -5291,6 +5882,7 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Journey stages cleared",2500)
 
     def _music_journey_build(self):
+        from .music_journey import build_music_journey
         if self.music_live_active:
             self._journey_live_stop("design changed")
         if not self.music_path_start_ref or not self.music_path_end_ref:
@@ -5410,6 +6002,7 @@ class MainWindow(QMainWindow):
             pass
 
     def _journey_live_recipe_snapshot(self):
+        from .journey_recipe import make_journey_recipe
         name=str(self.music_active_recipe.get("name") or "Unsaved journey")
         description=str(self.music_active_recipe.get("description") or "")
         try:
@@ -5430,6 +6023,7 @@ class MainWindow(QMainWindow):
             }
 
     def _journey_live_final_snapshot(self):
+        from .journey_replay import portable_route_snapshot
         route=dict(self.music_live_route or self.music_path_result or {})
         played=[str(ref) for ref in list(self.music_live_played_refs or []) if str(ref)]
         tail=[str(ref) for ref in list(route.get("path_refs") or []) if str(ref)]
@@ -5446,6 +6040,7 @@ class MainWindow(QMainWindow):
         return portable_route_snapshot(route,dict(self.music_map.ref_map or {}))
 
     def _journey_live_start(self):
+        from .journey_replay import portable_route_snapshot
         route=dict(self.music_path_result or {})
         if not route.get("found") or not route.get("journey"):
             self.statusBar().showMessage(
@@ -5575,6 +6170,7 @@ class MainWindow(QMainWindow):
         base_route=None,
         reason="",
     ):
+        from .music_journey_live import replan_live_journey
         if not self.music_live_active:
             self.statusBar().showMessage("Start Journey Live first",3000); return
         if self.music_live_replanning:
@@ -5614,7 +6210,7 @@ class MainWindow(QMainWindow):
             result["_live_from_ref"]=current_ref
             result["_live_request_reason"]=request_reason
             return result
-        self._run_async(work,self._journey_live_apply_result)
+        self._run_async(work,self._journey_live_apply_result, priority="foreground", task_name="journey-live-replan", replace_key="journey-live-replan")
 
     def _journey_live_apply_result(self,result):
         self.music_live_replanning=False
@@ -5746,7 +6342,7 @@ class MainWindow(QMainWindow):
         self._run_async(
             lambda:self.local_intelligence.analyse_catalog(catalog),
             self._music_map_analysis_finished,
-        )
+        priority="background", task_name="music-map-analysis")
 
     def _music_map_analysis_finished(self,result):
         self.statusBar().showMessage(
@@ -5790,7 +6386,7 @@ class MainWindow(QMainWindow):
                 start_track=track,
             ),
             lambda plan:self._apply_mind(plan),
-        )
+        priority="foreground", task_name="journey-build", replace_key="journey-build")
 
     # ------------------------------- Flow / Mind
     def _path_for(self,t):
@@ -5803,7 +6399,7 @@ class MainWindow(QMainWindow):
         q=list(self.player.queue)
         if len(q)<2:return
         self.statusBar().showMessage("Planning Flow…")
-        self._run_async(lambda:self.flow.plan_order(q,self._path_for,start_index=max(0,self.player.index),adventurous=0.35),lambda plan:self._apply_flow(plan))
+        self._run_async(lambda:self.flow.plan_order(q,self._path_for,start_index=max(0,self.player.index),adventurous=0.35),lambda plan:self._apply_flow(plan), priority="foreground", task_name="flow-plan", replace_key="flow-plan")
 
     def _apply_flow(self,plan):
         tracks=list(plan.get("tracks",[])); self.player.set_queue(tracks,0,True); self.statusBar().showMessage(f"Flow ready · {plan.get('analysed',0)} tracks audio-analysed",5000)
@@ -5813,25 +6409,121 @@ class MainWindow(QMainWindow):
         if not catalog:
             QMessageBox.information(self,"Add music first","Play for Me needs at least some local music. Add a folder, then try again."); return
         self.statusBar().showMessage("Building your journey…")
-        self._run_async(lambda:self.mind.build_session(catalog,self._path_for,minutes=minutes,adventure=adventure,mode=mode),lambda plan:self._apply_mind(plan))
+        self._run_async(lambda:self.mind.build_session(catalog,self._path_for,minutes=minutes,adventure=adventure,mode=mode),lambda plan:self._apply_mind(plan), priority="foreground", task_name="play-for-me", replace_key="play-for-me")
 
     def _apply_mind(self,plan):
         tracks=list(plan.get("tracks",[]));
         if tracks:self.player.set_queue(tracks,0,True)
         self.statusBar().showMessage(f"Journey ready · {len(tracks)} tracks · {plan.get('new_to_you',0)} new to you",6000)
 
+    def _next_queue_track(self) -> dict[str, Any]:
+        queue=list(getattr(self.player,"queue",[]) or [])
+        index=int(getattr(self.player,"index",-1))
+        next_index=index+1
+        if next_index < 0 or next_index >= len(queue):
+            return {}
+        row=queue[next_index]
+        return dict(row) if isinstance(row,dict) else {}
+
+    def _schedule_next_track_prefetch(self) -> None:
+        if self._closing:
+            return
+        self._invalidate_async("next-track-prefetch")
+        self._prefetch_sequence += 1
+        sequence=self._prefetch_sequence
+        QTimer.singleShot(
+            self._prefetch_delay_ms,
+            lambda token=sequence:self._prefetch_next_track_assets(token),
+        )
+
+    def _prefetch_next_track_assets(self, sequence: int) -> None:
+        if (
+            self._closing
+            or sequence != self._prefetch_sequence
+            or self._local_scan_in_progress
+        ):
+            return
+        track=self._next_queue_track()
+        token=UserState.track_key(track) if track else ""
+        if not token or token in self._prefetched_track_assets:
+            return
+
+        def load() -> dict[str, Any]:
+            payload: dict[str, Any] = {
+                "token": token,
+                "artwork_loaded": True,
+                "artwork": {},
+                "analysis_loaded": False,
+                "analysis": None,
+                "local_path": str(track.get("local_path") or "").strip(),
+            }
+            try:
+                payload["artwork"]=dict(
+                    self.metadata.local_artwork(dict(track)) or {}
+                )
+            except Exception:
+                payload["artwork"]={}
+            local_path=str(payload["local_path"] or "")
+            if local_path:
+                payload["analysis_loaded"]=True
+                try:
+                    payload["analysis"]=self.flow.cached_analysis_for(
+                        Path(local_path)
+                    )
+                except Exception:
+                    payload["analysis"]=None
+            return payload
+
+        def apply(payload: object) -> None:
+            if (
+                sequence != self._prefetch_sequence
+                or not isinstance(payload,dict)
+            ):
+                return
+            current_next=self._next_queue_track()
+            if token != UserState.track_key(current_next):
+                return
+            self._prefetched_track_assets[token]=dict(payload)
+            # Keep this deliberately tiny: prediction must never become a
+            # competing cache of the whole queue.
+            while len(self._prefetched_track_assets) > 3:
+                oldest=next(iter(self._prefetched_track_assets))
+                self._prefetched_track_assets.pop(oldest,None)
+
+        self._run_async(load,apply, priority="prefetch", task_name="next-track-prefetch", replace_key="next-track-prefetch")
+
     # ------------------------------- player/taste
     def _on_track_changed(self,t):
         if self._closing:
             return
+        for scope in (
+            "now-playing-artwork",
+            "taste-action-state",
+            "now-playing-visual-analysis",
+        ):
+            self._invalidate_async(scope)
         if self.current_track and self.current_track_started and time.time()-self.current_track_started<30:
             self.state.record_skip(self.current_track)
         self.current_track=dict(t); self.current_track_started=time.time(); self.current_history_id=self.state.record_play(t)
+        token=UserState.track_key(self.current_track)
+        prefetched=dict(self._prefetched_track_assets.pop(token,{}) or {})
+        self._set_taste_action_state()
+        self._load_taste_action_state(self.current_track)
         self._visual_position_ms = 0
         self._visual_duration_ms = 0
         if hasattr(self, "living_canvas"):
-            self.living_canvas.set_track(self.current_track, None)
-            self._request_cached_visual_analysis(self.current_track)
+            local_path=str(self.current_track.get("local_path") or "").strip()
+            if (
+                prefetched.get("analysis_loaded")
+                and str(prefetched.get("local_path") or "") == local_path
+            ):
+                self.living_canvas.set_track(
+                    self.current_track,
+                    prefetched.get("analysis"),
+                )
+            else:
+                self.living_canvas.set_track(self.current_track, None)
+                self._request_cached_visual_analysis(self.current_track)
         if hasattr(self,"music_map"):
             self.music_map.highlight_track(t)
         if hasattr(self,"album_wall"):
@@ -5863,22 +6555,30 @@ class MainWindow(QMainWindow):
             base + ((f"   ·   <a href=\"{src}\">{attr or 'Source'}</a>") if src else "")
         )
         if hasattr(self,"player_cover"):
-            token=UserState.track_key(t)
+            artwork=dict(prefetched.get("artwork") or {})
+            artwork_path=str(artwork.get("path") or "")
             self.player_cover.set_cover(
-                "",
+                artwork_path,
                 title=album or str(t.get("title") or ""),
                 key=token,
             )
-            self._run_async(
-                lambda:self.metadata.local_artwork(dict(t)),
-                lambda result:self._player_artwork_loaded(token,result),
+            self.motion.settle(
+                self.player_cover,
+                duration_ms=STANDARD_MOTION_MS,
+                start_opacity=0.84,
             )
+            if not prefetched.get("artwork_loaded"):
+                self._run_async(
+                    lambda:self.metadata.local_artwork(dict(t)),
+                    lambda result:self._player_artwork_loaded(token,result),
+                priority="visible", task_name="now-playing-artwork", replace_key="now-playing-artwork")
         if hasattr(self,"rich_now"):
             self.rich_now.set_track(dict(t))
         if hasattr(self, "living_canvas"):
             self.living_canvas.refresh_context()
         if self.current_page=="home":
             self._refresh_home_continue()
+        self._schedule_next_track_prefetch()
 
     def _player_artwork_loaded(self, token: str, result: object) -> None:
         if not isinstance(result,dict):
@@ -5891,20 +6591,33 @@ class MainWindow(QMainWindow):
             title=str(current.get("album") or current.get("title") or ""),
             key=token,
         )
+        self.motion.settle(
+            self.player_cover,
+            duration_ms=STANDARD_MOTION_MS,
+            start_opacity=0.84,
+        )
 
     def _request_cached_visual_analysis(self, track: dict[str, Any]) -> None:
         local_path = str(track.get("local_path") or "").strip()
         if not local_path:
             return
 
-        def lookup() -> None:
+        def lookup() -> object:
             try:
-                analysis = self.flow.cached_analysis_for(Path(local_path))
+                return self.flow.cached_analysis_for(Path(local_path))
             except Exception:
-                analysis = None
-            self._visual_analysis_signals.ready.emit(local_path, analysis)
+                return None
 
-        threading.Thread(target=lookup, daemon=True).start()
+        self._run_async(
+            lookup,
+            lambda analysis, path=local_path: self._visual_analysis_loaded(
+                path,
+                analysis,
+            ),
+            priority="visible",
+            task_name="now-playing-visual-analysis",
+            replace_key="now-playing-visual-analysis",
+        )
 
     def _visual_analysis_loaded(self, local_path: str, analysis: object) -> None:
         current_path = str((self.current_track or {}).get("local_path") or "")
@@ -5914,6 +6627,8 @@ class MainWindow(QMainWindow):
         self.living_canvas.set_position(self._visual_position_ms, self._visual_duration_ms)
 
     def _request_visual_mode_data(self, request: str) -> None:
+        from .visualization_models import build_visual_memory
+
         if self._closing or not hasattr(self, "living_canvas"):
             return
         mode, _, scale = str(request or "").partition(":")
@@ -5939,23 +6654,34 @@ class MainWindow(QMainWindow):
                 })
         limit = 2000 if mode == "memory" else 120
 
-        def load_context() -> None:
+        def load_context() -> object:
             try:
                 recent = self.state.recent_tracks(limit)
                 if mode == "memory":
-                    payload: object = {
+                    return {
                         "scale": scale,
                         "marks": build_visual_memory(recent, scale),
                     }
-                else:
-                    payload = {"queue": queue_candidates, "recent": recent}
+                return {"queue": queue_candidates, "recent": recent}
             except Exception:
-                payload = {"scale": scale, "marks": ()} if mode == "memory" else {"queue": queue_candidates, "recent": []}
-            self._visual_context_signals.ready.emit(sequence, mode, payload)
+                return (
+                    {"scale": scale, "marks": ()}
+                    if mode == "memory"
+                    else {"queue": queue_candidates, "recent": []}
+                )
 
-        threading.Thread(target=load_context, daemon=True).start()
+        self._run_async(
+            load_context,
+            lambda payload, token=sequence, mode_name=mode:
+                self._visual_context_loaded(token, mode_name, payload),
+            priority="visible",
+            task_name="now-playing-visual-context",
+            replace_key="now-playing-visual-context",
+        )
 
     def _visual_context_loaded(self, sequence: int, mode: str, payload: object) -> None:
+        from .visualization_models import build_constellation
+
         if self._closing or sequence != self._visual_context_sequence:
             return
         if not hasattr(self, "living_canvas") or self.living_canvas.active_mode != mode:
@@ -6025,11 +6751,109 @@ class MainWindow(QMainWindow):
         p=self.player.players[self.player.active]; dur=p.duration()
         if dur>0:self.player.seek(int(dur*self.seek.value()/1000))
 
+    def _set_taste_action_state(
+        self,
+        *,
+        loved: bool = False,
+        kept: bool = False,
+    ) -> None:
+        if hasattr(self, "love_button"):
+            self.love_button.setText("♥ Loved" if loved else "♥")
+            self.love_button.setEnabled(not loved)
+        if hasattr(self, "keep_button"):
+            self.keep_button.setText("✓ Kept" if kept else "Keep")
+            self.keep_button.setEnabled(not kept)
+
+    def _load_taste_action_state(self, track: dict[str, Any]) -> None:
+        token=UserState.track_key(track)
+        if not token:
+            self._set_taste_action_state()
+            return
+
+        def apply(signal: object) -> None:
+            if token != UserState.track_key(dict(self.current_track or {})):
+                return
+            row=dict(signal or {}) if isinstance(signal,dict) else {}
+            self._set_taste_action_state(
+                loved=bool(int(row.get("loves") or 0)),
+                kept=bool(int(row.get("keeps") or 0)),
+            )
+
+        self._run_async(
+            lambda:self.state.track_signal(dict(track)),
+            apply,
+        priority="visible", task_name="taste-action-state", replace_key="taste-action-state")
+
     def _feedback(self,positive):
-        if self.current_track:self.state.record_feedback(self.current_track,positive); self.statusBar().showMessage("Loved" if positive else "Not for me",2500)
+        if not self.current_track:
+            return
+        track=dict(self.current_track)
+        token=UserState.track_key(track)
+        if positive and hasattr(self,"love_button"):
+            previous_text=self.love_button.text()
+            previous_enabled=self.love_button.isEnabled()
+            self.love_button.setText("♥ Loved")
+            self.love_button.setEnabled(False)
+            self.motion.settle(
+                self.love_button,
+                duration_ms=FAST_MOTION_MS,
+                start_opacity=0.82,
+            )
+            self.statusBar().showMessage("Loved",2500)
+        else:
+            previous_text=""
+            previous_enabled=True
+            self.statusBar().showMessage(
+                "Loved" if positive else "Not for me",
+                2500,
+            )
+
+        def persist() -> bool:
+            self.state.record_feedback(track,positive)
+            return True
+
+        def failed(error: str) -> None:
+            if positive and token == UserState.track_key(dict(self.current_track or {})):
+                self.love_button.setText(previous_text)
+                self.love_button.setEnabled(previous_enabled)
+            self.statusBar().showMessage(
+                f"Could not save preference · {error}",
+                5000,
+            )
+
+        self._run_async(persist,lambda _result:None,failed, priority="foreground", task_name="taste-feedback-save")
 
     def _keep(self):
-        if self.current_track:self.state.record_keep(self.current_track); self.statusBar().showMessage("Kept in taste memory",2500)
+        if not self.current_track:
+            return
+        track=dict(self.current_track)
+        token=UserState.track_key(track)
+        previous_text=self.keep_button.text() if hasattr(self,"keep_button") else "Keep"
+        previous_enabled=self.keep_button.isEnabled() if hasattr(self,"keep_button") else True
+        if hasattr(self,"keep_button"):
+            self.keep_button.setText("✓ Kept")
+            self.keep_button.setEnabled(False)
+            self.motion.settle(
+                self.keep_button,
+                duration_ms=FAST_MOTION_MS,
+                start_opacity=0.82,
+            )
+        self.statusBar().showMessage("Kept in taste memory",2500)
+
+        def persist() -> bool:
+            self.state.record_keep(track)
+            return True
+
+        def failed(error: str) -> None:
+            if token == UserState.track_key(dict(self.current_track or {})) and hasattr(self,"keep_button"):
+                self.keep_button.setText(previous_text)
+                self.keep_button.setEnabled(previous_enabled)
+            self.statusBar().showMessage(
+                f"Could not save Keep · {error}",
+                5000,
+            )
+
+        self._run_async(persist,lambda _result:None,failed, priority="foreground", task_name="keep-save")
 
     def _more_actions(self):
         if not self.current_track:return
@@ -6050,7 +6874,7 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("Play a track first, then inspect its source match",3500); return
         target=self._resolver_target(self.current_track)
         self.statusBar().showMessage("Checking resolver candidates…")
-        self._run_async(lambda:self.providers.inspect_resolution(target,24),lambda info:self._show_resolver_inspector(target,info))
+        self._run_async(lambda:self.providers.inspect_resolution(target,24),lambda info:self._show_resolver_inspector(target,info), priority="foreground", task_name="resolver-inspect")
 
     def _show_resolver_inspector(self,target,info):
         d=QDialog(self); d.setWindowTitle("Resolver Inspector"); d.resize(760,560); lay=QVBoxLayout(d)
@@ -6094,18 +6918,18 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("Select a resolver candidate first",3000); return
         if remember:self.providers.prefer_resolution(target,candidate)
         dialog.accept(); self.statusBar().showMessage("Using preferred match…" if remember else "Loading selected match…")
-        self._run_async(lambda:self.providers.resolve_exact(candidate,target),self._apply_resolver_match)
+        self._run_async(lambda:self.providers.resolve_exact(candidate,target),self._apply_resolver_match, priority="foreground", task_name="resolver-use")
 
     def _resolver_wrong_candidate(self,target,row,dialog):
         candidate=dict(row.get("track") or {}) if isinstance(row,dict) else {}
         if not candidate:
             self.statusBar().showMessage("Select a resolver candidate first",3000); return
         self.providers.block_resolution(target,candidate); dialog.accept(); self.statusBar().showMessage("Wrong match remembered · trying the next candidate…")
-        self._run_async(lambda:self.providers.resolve(target),self._apply_resolver_match)
+        self._run_async(lambda:self.providers.resolve(target),self._apply_resolver_match, priority="foreground", task_name="resolver-retry")
 
     def _resolver_reset_memory(self,target,dialog):
         self.providers.clear_resolution_preference(target); self.providers.clear_resolution_blocks(target); dialog.accept(); self.statusBar().showMessage("Match memory reset for this song",3500)
-        self._run_async(lambda:self.providers.inspect_resolution(target,24),lambda info:self._show_resolver_inspector(target,info))
+        self._run_async(lambda:self.providers.inspect_resolution(target,24),lambda info:self._show_resolver_inspector(target,info), priority="foreground", task_name="resolver-reset")
 
     def _apply_resolver_match(self,resolved):
         if not isinstance(resolved,dict):return
@@ -6127,6 +6951,7 @@ class MainWindow(QMainWindow):
 
     # ------------------------------- LLM
     def _llm_settings(self):
+        from .llm_bridge import LLMClient, LLMSettings
         return LLMSettings(
             provider=self.state.get_text("llm_provider","openwebui"),
             endpoint=self.state.get_text("llm_endpoint",LLMClient.default_endpoint(self.state.get_text("llm_provider","openwebui"))),
@@ -6134,6 +6959,7 @@ class MainWindow(QMainWindow):
         )
 
     def _translate_lyrics(self, payload: dict[str,Any]) -> None:
+        from .llm_bridge import LLMClient
         payload=dict(payload or {})
         text=str(payload.get("text") or "").strip()
         if not text:
@@ -6192,7 +7018,7 @@ class MainWindow(QMainWindow):
         self._run_async(
             lambda:self.llm.complete(settings,prompt,{},[]),
             lambda result:self._show_lyrics_translation(target,str(result or "")),
-        )
+        priority="foreground", task_name="lyrics-translate")
 
     def _show_lyrics_translation(self, language: str, text: str) -> None:
         dialog=QDialog(self)
@@ -6222,6 +7048,7 @@ class MainWindow(QMainWindow):
         dialog.exec()
 
     def _llm_settings_dialog(self):
+        from .llm_bridge import LLMClient
         d=QDialog(self); d.setWindowTitle("Connect an LLM"); f=QFormLayout(d)
         provider=QComboBox(); provider.addItems(["openwebui","ollama","openai","custom"]); provider.setCurrentText(self.state.get_text("llm_provider","openwebui"))
         endpoint=QLineEdit(self.state.get_text("llm_endpoint",LLMClient.default_endpoint(provider.currentText()))); model=QLineEdit(self.state.get_text("llm_model","")); key=QLineEdit(self.state.get_text("llm_api_key","")); key.setEchoMode(QLineEdit.Password)
@@ -6232,6 +7059,7 @@ class MainWindow(QMainWindow):
             self.state.set_text("llm_provider",provider.currentText()); self.state.set_text("llm_endpoint",endpoint.text().strip()); self.state.set_text("llm_model",model.text().strip()); self.state.set_text("llm_api_key",key.text().strip())
 
     def _llm_context(self):
+        from .llm_bridge import llm_track_summary
         queue = (
             self.player.queue[self.player.index:self.player.index + 12]
             if self.player.index >= 0
@@ -6253,7 +7081,7 @@ class MainWindow(QMainWindow):
         prompt=self.ask_box.text().strip();
         if not prompt:return
         self.ask_box.clear(); self.chat.append(f"You: {prompt}")
-        settings=self._llm_settings(); self._run_async(lambda:self.llm.complete(settings,prompt,self._llm_context(),[]),lambda text:self._handle_llm(text))
+        settings=self._llm_settings(); self._run_async(lambda:self.llm.complete(settings,prompt,self._llm_context(),[]),lambda text:self._handle_llm(text), priority="foreground", task_name="llm-ask")
 
     def _handle_llm(self,text):
         reply,actions=self.llm.parse_action_response(str(text)); self.chat.append(f"Melodex: {reply}")
@@ -6281,9 +7109,10 @@ class MainWindow(QMainWindow):
         self._run_async(
             lambda:self.providers.resolve_playlist(requested),
             lambda result:self._finish_ai_playlist(playlist_id,name,description,result,requested,source),
-        )
+        priority="foreground", task_name="ai-playlist-resolve")
 
     def _finish_ai_playlist(self,playlist_id,name,description,result,requested=None,source="llm"):
+        from .playlist_io import save_playlist
         tracks=list(result.get("tracks") or []); unresolved=list(result.get("unresolved") or [])
         payload={"tracks":tracks,"unresolved":unresolved,"requested":int(result.get("requested") or len(tracks)+len(unresolved))}
         if requested is not None:payload["requested_tracks"]=[dict(x) for x in requested]
@@ -6334,11 +7163,48 @@ class MainWindow(QMainWindow):
         finally:event.set()
 
     def _start_local_bridge(self):
-        if self.bridge:return
-        try:
-            self.bridge=ProviderBridge(self.providers,"127.0.0.1",0,controller=self._control_request,state_path=self.data_dir/"bridge.json"); self.bridge.start()
-        except Exception as exc:
-            self.bridge=None; self.statusBar().showMessage(f"AI control bridge could not start: {exc}",7000)
+        if self.bridge or self._bridge_start_pending or self._closing:
+            return
+        self._bridge_start_pending = True
+
+        def create_bridge():
+            bridge = ProviderBridge(
+                self.providers,
+                "127.0.0.1",
+                0,
+                controller=self._control_request,
+                state_path=self.data_dir / "bridge.json",
+            )
+            bridge.start()
+            if self._closing:
+                bridge.stop()
+                return None
+            return bridge
+
+        def bridge_ready(result):
+            self._bridge_start_pending = False
+            if result is None or self._closing:
+                return
+            self.bridge = result
+            self._startup_mark("bridge_ready")
+
+        def bridge_failed(error: str):
+            self._bridge_start_pending = False
+            if self._closing:
+                return
+            self.statusBar().showMessage(
+                f"AI control bridge could not start: {error}",
+                7000,
+            )
+
+        self._run_async(
+            create_bridge,
+            bridge_ready,
+            bridge_failed,
+            priority="background",
+            task_name="local-control-bridge",
+            replace_key="local-control-bridge",
+        )
 
     def _restart_bridge(self,host):
         token=self.bridge.token if self.bridge else ""; port=self.bridge.port if self.bridge else 0
@@ -6348,7 +7214,12 @@ class MainWindow(QMainWindow):
     def _bridge_dialog(self):
         if not self.bridge:
             self._start_local_bridge()
-            if not self.bridge:return
+            if self._bridge_start_pending:
+                self.statusBar().showMessage(
+                    "AI control bridge is starting in the background…",
+                    3000,
+                )
+            return
         if self.bridge.host=="127.0.0.1":
             choice=QMessageBox.question(self,"Provider Bridge",f"The private AI control bridge is running locally on port {self.bridge.port}.\n\nAllow phones/computers on your LAN to use the provider bridge too?\n\nChoose No to keep it local-only.",QMessageBox.Yes|QMessageBox.No)
             if choice==QMessageBox.Yes:
@@ -6361,28 +7232,96 @@ class MainWindow(QMainWindow):
                 except Exception as exc:self.statusBar().showMessage(str(exc),7000)
 
     # ------------------------------- helpers
-    def _run_async(self,fn,done,on_error=None):
-        sig=WorkerSignals()
-        sig.done.connect(lambda result: None if self._closing else done(result))
-        if on_error is None:
-            sig.error.connect(
-                lambda e: None if self._closing else QMessageBox.warning(self,"Melodex",e)
+    def _invalidate_async(self, replace_key: str) -> int:
+        key = str(replace_key or "").strip()
+        if not key:
+            return 0
+        self._async_generations[key] = self._async_generations.get(key, 0) + 1
+        self._async_invalidations += 1
+        return self.background_scheduler.cancel_pending(key)
+
+    def _run_async(
+        self,
+        fn,
+        done,
+        on_error=None,
+        *,
+        priority: str = "foreground",
+        task_name: str = "",
+        replace_key: str = "",
+    ):
+        scope = str(replace_key or "").strip()
+        generation = 0
+        if scope:
+            generation = self._async_generations.get(scope, 0) + 1
+            self._async_generations[scope] = generation
+
+        def is_current() -> bool:
+            return (
+                not scope
+                or self._async_generations.get(scope, 0) == generation
             )
-        else:
-            sig.error.connect(lambda e: None if self._closing else on_error(e))
+
+        sig=WorkerSignals()
+
+        def deliver_done(result: object) -> None:
+            if self._closing:
+                return
+            if not is_current():
+                self._async_stale_results_dropped += 1
+                return
+            done(result)
+
+        def deliver_error(error: str) -> None:
+            if self._closing:
+                return
+            if not is_current():
+                self._async_stale_results_dropped += 1
+                return
+            if on_error is None:
+                QMessageBox.warning(self,"Melodex",error)
+            else:
+                on_error(error)
+
+        sig.done.connect(deliver_done)
+        sig.error.connect(deliver_error)
         self._last_worker=sig
+
         def work():
-            try:sig.done.emit(fn())
-            except Exception as exc:sig.error.emit(str(exc))
-        threading.Thread(target=work,daemon=True).start()
+            try:
+                sig.done.emit(fn())
+            except Exception as exc:
+                sig.error.emit(str(exc))
+                raise
+
+        submitted=self.background_scheduler.submit(
+            work,
+            priority=priority,
+            name=task_name,
+            replace_key=scope,
+        )
+        if not submitted and not self._closing:
+            sig.error.emit("Background work is shutting down")
 
     def closeEvent(self,event):
         if self.music_live_active:
             self._journey_live_stop("application closed")
+        if hasattr(self, "responsiveness"):
+            self.responsiveness.stop()
         self._closing = True
+        if hasattr(self, "background_scheduler"):
+            self.background_scheduler.shutdown(wait=False)
         runner=self._local_scan_runner
         if runner is not None:
             runner.shutdown()
             self._local_scan_runner=None
         if self.bridge:self.bridge.stop()
-        self.player.close(); self.metadata.close(); self.providers.close(); self.flow.close(); self.knowledge.close(); self.state.close(); super().closeEvent(event)
+        self.player.close()
+        if self._metadata is not None:
+            self._metadata.close()
+        self.providers.close()
+        self.flow.close()
+        if self._knowledge is not None:
+            self._knowledge.close()
+        self.state.close()
+        super().closeEvent(event)

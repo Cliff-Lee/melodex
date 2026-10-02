@@ -6,7 +6,16 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from urllib.parse import urljoin, urlparse
 
-import requests
+_requests = None
+
+
+def _requests_api():
+    global _requests
+    if _requests is None:
+        import requests as requests_module
+
+        _requests = requests_module
+    return _requests
 
 _FORWARD_RESPONSE_HEADERS = {
     "accept-ranges",
@@ -29,6 +38,7 @@ _DEFAULT_USER_AGENT = (
     "Melodex-Playback-Gateway/1.0 "
     "(+https://github.com/Cliff-Lee/melodex)"
 )
+
 
 
 def _origin_key(url: str) -> tuple[str, str, int]:
@@ -127,7 +137,8 @@ class PlaybackGateway:
         allowed: list[str] | None,
         timeout: float,
         stream: bool,
-    ) -> requests.Response:
+    ) -> Any:
+        requests_api = _requests_api()
         current = url
         current_origin = _origin_key(current)
         headers = dict(headers)
@@ -140,7 +151,7 @@ class PlaybackGateway:
                     f"Provider redirected outside declared hosts: {parsed.hostname}"
                 )
 
-            response = requests.request(
+            response = requests_api.request(
                 method,
                 current,
                 headers=headers,
@@ -173,11 +184,12 @@ class PlaybackGateway:
             current = next_url
             current_origin = next_origin
 
-        raise requests.TooManyRedirects(
+        raise requests_api.TooManyRedirects(
             f"Playback resource exceeded {_MAX_REDIRECTS} redirects"
         )
 
     def _serve(self, handler: BaseHTTPRequestHandler, head_only: bool) -> None:
+        requests_api = _requests_api()
         prefix = "/play/"
         if not handler.path.startswith(prefix):
             handler.send_error(404)
@@ -225,7 +237,7 @@ class PlaybackGateway:
             response.close()
         except PermissionError as exc:
             handler.send_error(502, str(exc))
-        except requests.RequestException as exc:
+        except requests_api.RequestException as exc:
             handler.send_error(502, f"Upstream playback request failed: {exc}")
 
     def close(self) -> None:

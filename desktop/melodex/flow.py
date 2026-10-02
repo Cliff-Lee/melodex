@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import math
 import os
@@ -14,10 +15,25 @@ from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Any, Callable
 
-try:
-    import numpy as np
-except Exception:  # Flow degrades gracefully if numpy is unavailable.
-    np = None  # type: ignore[assignment]
+# NumPy is one of the heaviest imports in the desktop graph.  Merely showing
+# Home only needs to know whether analysis *could* be available, so keep the
+# module cold until an actual audio analysis request arrives.
+_NUMPY_AVAILABLE = importlib.util.find_spec("numpy") is not None
+np = None
+
+
+def _ensure_numpy():
+    global np
+    if np is not None:
+        return np
+    if not _NUMPY_AVAILABLE:
+        return None
+    try:
+        import numpy as numpy_module
+    except Exception:
+        return None
+    np = numpy_module
+    return np
 
 
 # ---------------------------------------------------------------------------
@@ -197,7 +213,7 @@ class LocalAudioAnalyzer:
 
     @property
     def available(self) -> bool:
-        return bool(self.ffmpeg and np is not None)
+        return bool(self.ffmpeg and _NUMPY_AVAILABLE)
 
     def analyse(self, path: Path) -> TrackAnalysis | None:
         path = Path(path)
@@ -205,6 +221,8 @@ class LocalAudioAnalyzer:
         if cached is not None:
             return cached
         if not self.available or not path.exists():
+            return None
+        if _ensure_numpy() is None:
             return None
         samples = self._decode(path)
         if samples is None or samples.size < self.sample_rate * 8:
