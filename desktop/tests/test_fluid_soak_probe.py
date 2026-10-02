@@ -13,6 +13,12 @@ from fluid_soak_probe import run_soak
 
 
 def test_small_fluid_soak_contract() -> None:
+    try:
+        from PySide6.QtWidgets import QApplication  # noqa: F401
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
     result = run_soak(
         track_count=1_000,
         cycles=8,
