@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import queue
 import threading
 from pathlib import Path
 from typing import Any, Callable
@@ -194,17 +195,15 @@ class LocalFilesProvider(MusicProvider):
         control: ScanControl | None = None,
         cached_entries: dict[str, dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
-        """Scan roots while streaming discovered files into final snapshot rows.
+        """Scan roots through a bounded discovery/metadata pipeline.
 
-        P10b removes the separate collection-wide discovered list. Each audio
-        file is fingerprinted and, when necessary, has metadata read as it is
-        encountered. The completed snapshot is still published atomically,
-        preserving the existing correctness model while reducing one O(n) copy
-        of scan state.
+        P10c separates filesystem discovery from metadata consumption with a
+        fixed-size queue. Discovery may run ahead only to the queue capacity;
+        once full, the producer waits for metadata/index work to catch up.
 
-        If a root becomes incomplete during traversal, rows produced for that
-        root are rolled back from the in-memory snapshot and the previously
-        indexed SQLite copy is preserved.
+        The live catalog remains atomic. Final snapshot rows are accumulated
+        until a successful scan completes, and incomplete roots roll back their
+        rows before persistence.
         """
         scan_roots = [Path(x) for x in (self.roots if roots is None else roots)]
         cached = {
@@ -227,6 +226,15 @@ class LocalFilesProvider(MusicProvider):
         changed = 0
         removed = 0
         stat_failures = 0
+
+        queue_capacity = 256
+        work_queue: queue.Queue[dict[str, Any]] = queue.Queue(
+            maxsize=queue_capacity
+        )
+        producer_done = threading.Event()
+        producer_error: list[BaseException] = []
+        max_queue_depth = 0
+        queue_backpressure_events = 0
 
         def emit(
             phase: str,
@@ -258,164 +266,267 @@ class LocalFilesProvider(MusicProvider):
                     "removed": removed,
                     "stat_failures": stat_failures,
                     "streaming": True,
+                    "queue_depth": work_queue.qsize(),
+                    "queue_capacity": queue_capacity,
                 }
             )
 
-        cancelled = False
-        emit("discovering", force=True)
-        try:
-            for root in scan_roots:
+        def put_work(item: dict[str, Any]) -> None:
+            nonlocal max_queue_depth, queue_backpressure_events
+            while True:
                 control.checkpoint()
-                exists = root.exists()
-                probe.root_checked(exists=exists)
-                root_state = {
-                    "path": str(root),
-                    "available": bool(exists),
-                    "complete": False,
-                    "walk_errors": 0,
-                }
-                root_states.append(root_state)
-                if not exists:
-                    continue
-
-                root_key = self._override_key(root)
-                tracks_start = len(tracks)
-                index_tracks_start = len(index_tracks)
-                index_records_start = len(index_records)
-                root_seen: set[str] = set()
-                root_walk_errors = 0
-                root_unchanged = 0
-                root_added = 0
-                root_changed = 0
-
-                def on_walk_error(_error: OSError) -> None:
-                    nonlocal root_walk_errors
-                    root_walk_errors += 1
-
                 try:
-                    walker = os.walk(root, onerror=on_walk_error)
-                except TypeError:
-                    walker = os.walk(root)
+                    work_queue.put(item, timeout=0.05)
+                    max_queue_depth = max(max_queue_depth, work_queue.qsize())
+                    return
+                except queue.Full:
+                    queue_backpressure_events += 1
 
-                for base, _, files in walker:
+        def discover() -> None:
+            nonlocal stat_failures
+            try:
+                for root in scan_roots:
                     control.checkpoint()
-                    probe.directory_seen()
-                    for name in files:
+                    exists = root.exists()
+                    probe.root_checked(exists=exists)
+                    root_key = self._override_key(root)
+                    put_work(
+                        {
+                            "type": "root_start",
+                            "path": str(root),
+                            "root_key": root_key,
+                            "available": bool(exists),
+                        }
+                    )
+                    if not exists:
+                        put_work(
+                            {
+                                "type": "root_end",
+                                "root_key": root_key,
+                                "complete": False,
+                                "walk_errors": 0,
+                            }
+                        )
+                        continue
+
+                    root_walk_errors = 0
+
+                    def on_walk_error(_error: OSError) -> None:
+                        nonlocal root_walk_errors
+                        root_walk_errors += 1
+
+                    try:
+                        walker = os.walk(root, onerror=on_walk_error)
+                    except TypeError:
+                        walker = os.walk(root)
+
+                    for base, _, files in walker:
                         control.checkpoint()
-                        p = Path(base) / name
-                        is_audio = p.suffix.lower() in AUDIO_EXTS
-                        probe.file_seen(audio=is_audio)
-                        if not is_audio:
-                            emit(
-                                "discovering",
-                                current=Path(base).name,
-                                root_unchanged=root_unchanged,
-                                root_added=root_added,
-                                root_changed=root_changed,
-                            )
-                            continue
+                        probe.directory_seen()
+                        for name in files:
+                            control.checkpoint()
+                            p = Path(base) / name
+                            is_audio = p.suffix.lower() in AUDIO_EXTS
+                            probe.file_seen(audio=is_audio)
+                            if not is_audio:
+                                continue
 
-                        key = self._override_key(p)
-                        root_seen.add(key)
-                        size: int | None = None
-                        mtime_ns: int | None = None
-                        try:
-                            file_stat = p.stat()
-                            size = int(file_stat.st_size)
-                            mtime_ns = int(
-                                getattr(
-                                    file_stat,
-                                    "st_mtime_ns",
-                                    int(float(file_stat.st_mtime) * 1_000_000_000),
+                            key = self._override_key(p)
+                            size: int | None = None
+                            mtime_ns: int | None = None
+                            try:
+                                file_stat = p.stat()
+                                size = int(file_stat.st_size)
+                                mtime_ns = int(
+                                    getattr(
+                                        file_stat,
+                                        "st_mtime_ns",
+                                        int(
+                                            float(file_stat.st_mtime)
+                                            * 1_000_000_000
+                                        ),
+                                    )
                                 )
-                            )
-                        except OSError:
-                            stat_failures += 1
+                            except OSError:
+                                stat_failures += 1
 
-                        previous = cached.get(key)
-                        previous_size = (
-                            previous.get("size")
-                            if isinstance(previous, dict)
-                            else None
-                        )
-                        previous_mtime = (
-                            previous.get("mtime_ns")
-                            if isinstance(previous, dict)
-                            else None
-                        )
-                        previous_track = (
-                            dict(previous.get("track") or {})
-                            if isinstance(previous, dict)
-                            else {}
-                        )
-                        reusable = bool(
-                            previous_track
-                            and size is not None
-                            and mtime_ns is not None
-                            and previous_size is not None
-                            and previous_mtime is not None
-                            and int(previous_size) == size
-                            and int(previous_mtime) == mtime_ns
-                        )
-
-                        if reusable:
-                            raw_metadata = previous_track
-                            root_unchanged += 1
-                        else:
-                            if previous is None:
-                                root_added += 1
-                            else:
-                                root_changed += 1
-                            with probe.metadata_read():
-                                raw_metadata = self._metadata(p)
-                            emit(
-                                "metadata",
-                                current=p.name,
-                                completed=probe.metrics.metadata_attempts,
-                                total=0,
-                                root_unchanged=root_unchanged,
-                                root_added=root_added,
-                                root_changed=root_changed,
-                            )
-
-                        if raw_metadata:
-                            index_tracks.append(dict(raw_metadata))
-                            index_records.append(
+                            put_work(
                                 {
-                                    "track": dict(raw_metadata),
+                                    "type": "file",
+                                    "path": p,
+                                    "key": key,
                                     "size": size,
                                     "mtime_ns": mtime_ns,
+                                    "root_key": root_key,
                                 }
                             )
-                            tracks.append(self._apply_override(raw_metadata))
 
+                    put_work(
+                        {
+                            "type": "root_end",
+                            "root_key": root_key,
+                            "complete": root_walk_errors == 0,
+                            "walk_errors": int(root_walk_errors),
+                        }
+                    )
+            except BaseException as exc:
+                producer_error.append(exc)
+            finally:
+                producer_done.set()
+
+        cancelled = False
+        emit("discovering", force=True)
+
+        producer = threading.Thread(
+            target=discover,
+            name="melodex-library-discovery",
+            daemon=True,
+        )
+        producer.start()
+
+        current_root_key = ""
+        current_root_state: dict[str, Any] | None = None
+        current_tracks_start = 0
+        current_index_tracks_start = 0
+        current_index_records_start = 0
+        current_root_seen: set[str] = set()
+        root_unchanged = 0
+        root_added = 0
+        root_changed = 0
+
+        try:
+            while not producer_done.is_set() or not work_queue.empty():
+                control.checkpoint()
+                try:
+                    item = work_queue.get(timeout=0.05)
+                except queue.Empty:
+                    if producer_error:
+                        raise producer_error[0]
+                    continue
+
+                item_type = str(item.get("type") or "")
+                if item_type == "root_start":
+                    current_root_key = str(item.get("root_key") or "")
+                    current_root_state = {
+                        "path": str(item.get("path") or ""),
+                        "available": bool(item.get("available")),
+                        "complete": False,
+                        "walk_errors": 0,
+                    }
+                    root_states.append(current_root_state)
+                    current_tracks_start = len(tracks)
+                    current_index_tracks_start = len(index_tracks)
+                    current_index_records_start = len(index_records)
+                    current_root_seen = set()
+                    root_unchanged = 0
+                    root_added = 0
+                    root_changed = 0
+                    continue
+
+                if item_type == "file":
+                    p = Path(item["path"])
+                    key = str(item.get("key") or "")
+                    current_root_seen.add(key)
+                    size = item.get("size")
+                    mtime_ns = item.get("mtime_ns")
+                    previous = cached.get(key)
+                    previous_size = (
+                        previous.get("size")
+                        if isinstance(previous, dict)
+                        else None
+                    )
+                    previous_mtime = (
+                        previous.get("mtime_ns")
+                        if isinstance(previous, dict)
+                        else None
+                    )
+                    previous_track = (
+                        dict(previous.get("track") or {})
+                        if isinstance(previous, dict)
+                        else {}
+                    )
+                    reusable = bool(
+                        previous_track
+                        and size is not None
+                        and mtime_ns is not None
+                        and previous_size is not None
+                        and previous_mtime is not None
+                        and int(previous_size) == int(size)
+                        and int(previous_mtime) == int(mtime_ns)
+                    )
+
+                    if reusable:
+                        raw_metadata = previous_track
+                        root_unchanged += 1
+                    else:
+                        if previous is None:
+                            root_added += 1
+                        else:
+                            root_changed += 1
+                        with probe.metadata_read():
+                            raw_metadata = self._metadata(p)
                         emit(
-                            "discovering",
-                            current=Path(base).name,
+                            "metadata",
+                            current=p.name,
+                            completed=probe.metrics.metadata_attempts,
+                            total=0,
                             root_unchanged=root_unchanged,
                             root_added=root_added,
                             root_changed=root_changed,
                         )
 
-                root_state["walk_errors"] = int(root_walk_errors)
-                root_state["complete"] = root_walk_errors == 0
-                if root_walk_errors:
-                    del tracks[tracks_start:]
-                    del index_tracks[index_tracks_start:]
-                    del index_records[index_records_start:]
+                    if raw_metadata:
+                        index_tracks.append(dict(raw_metadata))
+                        index_records.append(
+                            {
+                                "track": dict(raw_metadata),
+                                "size": size,
+                                "mtime_ns": mtime_ns,
+                            }
+                        )
+                        tracks.append(self._apply_override(raw_metadata))
+                    emit(
+                        "discovering",
+                        current=p.parent.name,
+                        root_unchanged=root_unchanged,
+                        root_added=root_added,
+                        root_changed=root_changed,
+                    )
                     continue
 
-                unchanged += root_unchanged
-                added += root_added
-                changed += root_changed
-                available_root_keys.add(root_key)
-                seen_keys.update(root_seen)
+                if item_type == "root_end":
+                    if current_root_state is None:
+                        continue
+                    walk_errors = int(item.get("walk_errors") or 0)
+                    complete = bool(item.get("complete"))
+                    current_root_state["walk_errors"] = walk_errors
+                    current_root_state["complete"] = complete
+                    if complete and bool(current_root_state.get("available")):
+                        unchanged += root_unchanged
+                        added += root_added
+                        changed += root_changed
+                        available_root_keys.add(current_root_key)
+                        seen_keys.update(current_root_seen)
+                    else:
+                        del tracks[current_tracks_start:]
+                        del index_tracks[current_index_tracks_start:]
+                        del index_records[current_index_records_start:]
+                    current_root_state = None
+                    current_root_key = ""
+                    current_root_seen = set()
+                    root_unchanged = root_added = root_changed = 0
+
+            if producer_error:
+                raise producer_error[0]
 
             for key, previous in cached.items():
                 if key in seen_keys:
                     continue
                 root_path = str(previous.get("root_path") or "")
-                if root_path and self._override_key(root_path) in available_root_keys:
+                if (
+                    root_path
+                    and self._override_key(root_path) in available_root_keys
+                ):
                     removed += 1
 
             emit(
@@ -427,6 +538,9 @@ class LocalFilesProvider(MusicProvider):
         except ScanCancelled:
             cancelled = True
         finally:
+            if cancelled:
+                control.cancel()
+            producer.join(timeout=1.0)
             metrics = probe.finish(
                 tracks_indexed=0 if cancelled else len(tracks)
             )
@@ -440,6 +554,12 @@ class LocalFilesProvider(MusicProvider):
                     "metadata_reused": int(unchanged),
                     "streaming_discovery": True,
                     "discovery_buffer_rows": 0,
+                    "bounded_pipeline": True,
+                    "pipeline_queue_capacity": int(queue_capacity),
+                    "pipeline_max_queue_depth": int(max_queue_depth),
+                    "pipeline_backpressure_events": int(
+                        queue_backpressure_events
+                    ),
                     "incomplete_roots": sum(
                         1
                         for state in root_states
