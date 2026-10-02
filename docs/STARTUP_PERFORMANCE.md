@@ -165,11 +165,58 @@ plugin registry remains lazy.
 
 ## Planned P9 sequence
 
-### P9d — first-run and cold-profile work
+## P9d — first-run and cold-profile startup
 
-Separate one-time setup from every-launch work. Keep bundled-provider installation,
-migration and other cold-profile tasks visible and safe without making all future
-launches pay their cost.
+P9c made library size almost irrelevant to startup: in the same CI run a cached
+12,700-track profile was only about **6.4 ms** slower than the warm empty profile.
+The remaining startup problem is therefore the genuinely cold process/profile path.
+
+The P9c fresh-profile trace showed the main-window import graph dominating first launch
+on that runner: roughly **2.07 s** for the cold import phase versus roughly **0.31 s**
+after the Python/module/file-system caches were warm. ProviderManager's own measured
+sub-phases were comparatively small.
+
+P9d therefore changes the import boundary rather than adding more SQLite tuning.
+
+### NumPy only when audio analysis starts
+
+Flow no longer imports NumPy merely to render Home or report whether deep analysis is
+available. Startup checks module availability cheaply; the actual NumPy module is loaded
+only immediately before uncached audio analysis.
+
+Cached Flow lookups, transition rules and Home's "analysis available" status stay usable
+without paying NumPy's import cost.
+
+### Optional services only when first used
+
+MainWindow no longer constructs these services during every cold launch:
+
+- Mind session planning;
+- local-intelligence snapshots;
+- Music Knowledge storage/graph enrichment;
+- metadata/network enrichment; and
+- the optional LLM client.
+
+They are exposed through lazy properties and preserve their existing call sites. A
+fresh Home screen therefore constructs only services required for the first screen and
+playback. Shutdown closes a lazy service only if it was actually created.
+
+### Feature modules stay behind their feature boundary
+
+Cold Home startup no longer imports Journey routing/replay/recipe modules, Music Map
+knowledge graph helpers, playlist parsers, plugin setup dialogs/onboarding helpers,
+diagnostics export code or the library scan process. Those imports now live in the
+methods that actually invoke each feature.
+
+Regression tests parse MainWindow's top-level import graph and fail if those optional
+features creep back onto startup. A subprocess regression also verifies that importing
+`melodex.flow` does not import NumPy.
+
+### Measurement
+
+The existing fresh / warm / 12.7k startup probe remains the acceptance measurement for
+P9d. The important comparison is the cold first-event-loop path and especially
+`main_window_import_ready`, measured on the same runner as its warm counterpart.
 
 ### P9e — packaged-app startup regression gate
 
