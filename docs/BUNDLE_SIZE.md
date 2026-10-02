@@ -170,3 +170,36 @@ the payload or explaining the new dependency before raising a limit.
 - current 8C builds pass comfortably
 - a synthetic >12% increase fails unit tests
 - size regression reports are visible in the GitHub Actions summary and artifacts
+
+
+## Campaign 8E — Linux packaging parity
+
+Linux now receives the same packaging discipline as macOS and Windows.
+
+The 8C Linux x86_64 baseline measured:
+
+- frozen installed payload: **304,580,012 bytes**
+- Debian package: **93,208,828 bytes**
+- AppImage: **109,500,920 bytes**
+
+8E removes Linux's remaining blanket `--collect-all keyring`, relies on
+PyInstaller's keyring hooks, and runs the same frozen runtime smoke used by the
+other desktop platforms. The Linux build additionally:
+
+- verifies the minimal Qt bundle guard
+- records a frozen-bundle composition report
+- records the non-Qt runtime audit
+- protects installed, `.deb`, and AppImage sizes with the shared 12% tolerance
+- keeps Ubuntu 22.04 / 24.04 / 26.04 and Debian 12 package smoke tests
+
+This means all three desktop platforms now have explicit packaging-size
+guardrails rather than relying on manual inspection.
+
+### 8E acceptance checks
+
+- Linux frozen runtime smoke passes without blanket keyring collection
+- minimal Qt bundle guard passes
+- `.deb` installs and launches on the Ubuntu smoke matrix and Debian 12
+- AppImage launches in all existing smoke environments
+- frozen bundle, `.deb`, and AppImage remain within the 12% size limits
+- Linux size/runtime reports are published with the CI artifact
