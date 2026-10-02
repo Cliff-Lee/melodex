@@ -22,7 +22,7 @@ If an installed release does not contain something described in current document
 
 This distinction is normal for an actively developed project, but it should be stated rather than left for users to infer.
 
-The current release target is **v0.7.8**, a focused crash hotfix for the PySide queued-callback lifetime race found after v0.7.7. After publication, the next development cycle should use **0.7.9.dev0**.
+The latest published release is **v0.7.8**. Current `main` is the **0.7.9.dev0** development cycle; its final release scope has not yet been fixed.
 
 ## App version policy
 
