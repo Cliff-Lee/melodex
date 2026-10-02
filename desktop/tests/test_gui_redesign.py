@@ -1304,27 +1304,34 @@ def test_root_change_during_scan_discards_stale_snapshot(monkeypatch, tmp_path):
         if len(calls) == 1:
             first_started.set()
             release_first.wait(timeout=2)
+            stale = {
+                "provider_id": "local",
+                "track_id": str(root_a / "stale.flac"),
+                "local_path": str(root_a / "stale.flac"),
+                "title": "Stale",
+                "artist": "Old",
+            }
             return {
-                "tracks": [
-                    {
-                        "provider_id": "local",
-                        "track_id": "/stale.flac",
-                        "local_path": "/stale.flac",
-                        "title": "Stale",
-                        "artist": "Old",
-                    }
+                "tracks": [stale],
+                "index_tracks": [dict(stale)],
+                "root_states": [
+                    {"path": str(root_a), "available": True}
                 ],
                 "metrics": {"tracks_indexed": 1, "main_thread": False},
             }
+        fresh = {
+            "provider_id": "local",
+            "track_id": str(root_b / "fresh.flac"),
+            "local_path": str(root_b / "fresh.flac"),
+            "title": "Fresh",
+            "artist": "New",
+        }
         return {
-            "tracks": [
-                {
-                    "provider_id": "local",
-                    "track_id": "/fresh.flac",
-                    "local_path": "/fresh.flac",
-                    "title": "Fresh",
-                    "artist": "New",
-                }
+            "tracks": [fresh],
+            "index_tracks": [dict(fresh)],
+            "root_states": [
+                {"path": str(root_a), "available": True},
+                {"path": str(root_b), "available": True},
             ],
             "metrics": {"tracks_indexed": 1, "main_thread": False},
         }
