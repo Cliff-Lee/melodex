@@ -11,8 +11,8 @@ android {
         applicationId = "com.melodex.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 705
-        versionName = "0.7.5"
+        versionCode = 706
+        versionName = "0.7.6"
     }
 
     buildFeatures { compose = true }
