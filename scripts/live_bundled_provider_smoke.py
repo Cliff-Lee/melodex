@@ -8,6 +8,7 @@ import urllib.request
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from melodex.playback_gateway import PlaybackGateway
 from melodex.provider_manager import ProviderManager
 
 
@@ -42,32 +43,48 @@ def _compact_url(value: str) -> str:
 
 
 def _probe(resource: dict, *, timeout: float = 20.0) -> dict:
-    url = str(resource.get("stream_url") or resource.get("url") or "").strip()
-    if not url:
+    original_url = str(resource.get("stream_url") or resource.get("url") or "").strip()
+    if not original_url:
         raise RuntimeError("resolved resource has no URL")
 
-    headers = {
-        str(k): str(v)
-        for k, v in dict(resource.get("headers") or {}).items()
-        if str(k).strip()
-    }
-    headers.setdefault(
-        "User-Agent",
-        "Melodex-LiveProvider-Smoke/0.1 (https://github.com/Cliff-Lee/melodex)",
-    )
-    headers.setdefault("Range", "bytes=0-4095")
-
-    req = urllib.request.Request(url, headers=headers, method="GET")
+    kind = str(resource.get("kind") or "http").casefold()
+    gateway = PlaybackGateway()
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as response:
-            body = response.read(4096)
-            status = int(getattr(response, "status", 200) or 200)
-            content_type = str(response.headers.get("Content-Type") or "")
-            final_url = str(response.geturl() or url)
-    except urllib.error.HTTPError as exc:
-        raise RuntimeError(f"media probe HTTP {exc.code}") from exc
-    except Exception as exc:
-        raise RuntimeError(f"media probe failed: {exc}") from exc
+        if kind == "hls":
+            # This mirrors FlowPlayer: HLS can be handed directly to Qt after
+            # the declared-host check when no gateway state is required.
+            url = gateway.validate_resource(resource)
+            headers = {
+                str(k): str(v)
+                for k, v in dict(resource.get("headers") or {}).items()
+                if str(k).strip()
+            }
+        else:
+            # This mirrors normal HTTP playback in FlowPlayer. In particular it
+            # exercises declared-host and redirect validation, which a raw
+            # upstream byte probe cannot catch.
+            url = gateway.register(resource)
+            headers = {}
+
+        headers.setdefault(
+            "User-Agent",
+            "Melodex-LiveProvider-Smoke/0.2 (https://github.com/Cliff-Lee/melodex)",
+        )
+        headers.setdefault("Range", "bytes=0-4095")
+
+        req = urllib.request.Request(url, headers=headers, method="GET")
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as response:
+                body = response.read(4096)
+                status = int(getattr(response, "status", 200) or 200)
+                content_type = str(response.headers.get("Content-Type") or "")
+                final_url = str(response.geturl() or url)
+        except urllib.error.HTTPError as exc:
+            raise RuntimeError(f"media probe HTTP {exc.code}") from exc
+        except Exception as exc:
+            raise RuntimeError(f"media probe failed: {exc}") from exc
+    finally:
+        gateway.close()
 
     if status not in {200, 206}:
         raise RuntimeError(f"media probe returned HTTP {status}")
@@ -193,7 +210,7 @@ def main() -> int:
 
     report = {
         "schema_version": 1,
-        "purpose": "live provider search/resolve/playback reachability",
+        "purpose": "live provider search/resolve/playback-gateway reachability",
         "providers_expected": len(selected_cases),
         "providers_passed": sum(1 for row in results if row.get("status") == "pass"),
         "providers_failed": len(failures),
