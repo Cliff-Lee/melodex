@@ -237,7 +237,11 @@ class LocalLibraryIndex:
             root_id: [] for root_id in available_ids if root_id in root_by_id
         }
 
-        for raw in list((snapshot or {}).get("tracks") or []):
+        stored_tracks = (
+            list((snapshot or {}).get("index_tracks") or [])
+            or list((snapshot or {}).get("tracks") or [])
+        )
+        for raw in stored_tracks:
             if not isinstance(raw, dict):
                 continue
             track = dict(raw)
