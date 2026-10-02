@@ -2832,8 +2832,10 @@ class MainWindow(QMainWindow):
 
     def _reset_local_metadata_dialog(self, dialog: QDialog, track: dict[str,Any]) -> None:
         if self.providers.clear_local_metadata_correction(track):
-            self._refresh_library()
-            self.statusBar().showMessage("Removed Melodex metadata correction",3500)
+            self.statusBar().showMessage(
+                "Removed Melodex metadata correction · refreshing tags in the background…"
+            )
+            self._start_local_scan("metadata reset")
         dialog.reject()
 
     def _apply_local_metadata_update(
