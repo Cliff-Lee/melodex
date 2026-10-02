@@ -2,8 +2,8 @@
 
 Melodex provider for NicheDB's daily-refreshed internet-radio catalogue.
 
-This 0.1.2 test build uses Melodex's bundled `requests`/`certifi` HTTPS stack to
-avoid the macOS packaged-app certificate-chain problem seen with Python `urllib`.
+Version 0.1.2 uses Melodex's bundled `requests`/`certifi` HTTPS stack to avoid
+the packaged macOS certificate-chain problem seen with Python `urllib`.
 
 Search examples:
 
