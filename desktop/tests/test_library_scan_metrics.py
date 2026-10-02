@@ -369,3 +369,207 @@ def test_paused_scan_waits_until_resumed(
     assert not worker.is_alive()
     assert holder["snapshot"]["cancelled"] is False
     assert len(holder["snapshot"]["tracks"]) == 1
+
+
+
+def test_unchanged_rescan_reuses_cached_metadata_without_tag_reads(
+    monkeypatch,
+    tmp_path: Path,
+):
+    root = tmp_path / "music"
+    root.mkdir()
+    paths = [root / "one.flac", root / "two.flac", root / "three.flac"]
+    for index, path in enumerate(paths):
+        path.write_bytes((b"x" * (index + 1)) or b"x")
+
+    manager = ProviderManager(tmp_path)
+    try:
+        manager.configure_local_roots([root])
+        first_calls = []
+
+        def first_metadata(path: Path):
+            first_calls.append(path.name)
+            return _metadata_row(path)
+
+        monkeypatch.setattr(
+            LocalFilesProvider,
+            "_metadata",
+            staticmethod(first_metadata),
+        )
+        first = manager.scan_local_roots_snapshot([root])
+        assert len(first_calls) == 3
+        manager.persist_local_scan_snapshot([root], first)
+
+        def metadata_must_not_run(path: Path):
+            raise AssertionError(f"unchanged file reopened for tags: {path.name}")
+
+        monkeypatch.setattr(
+            LocalFilesProvider,
+            "_metadata",
+            staticmethod(metadata_must_not_run),
+        )
+        second = manager.scan_local_roots_snapshot([root])
+
+        assert second["cancelled"] is False
+        assert second["changes"]["unchanged"] == 3
+        assert second["changes"]["added"] == 0
+        assert second["changes"]["changed"] == 0
+        assert second["changes"]["removed"] == 0
+        assert second["changes"]["metadata_reads"] == 0
+        assert second["metrics"]["metadata_attempts"] == 0
+        assert len(second["index_records"]) == 3
+    finally:
+        manager.close()
+
+
+def test_incremental_rescan_reads_only_changed_file(
+    monkeypatch,
+    tmp_path: Path,
+):
+    root = tmp_path / "music"
+    root.mkdir()
+    stable = root / "stable.flac"
+    changed = root / "changed.flac"
+    stable.write_bytes(b"stable")
+    changed.write_bytes(b"before")
+
+    manager = ProviderManager(tmp_path)
+    try:
+        manager.configure_local_roots([root])
+        monkeypatch.setattr(
+            LocalFilesProvider,
+            "_metadata",
+            staticmethod(_metadata_row),
+        )
+        first = manager.scan_local_roots_snapshot([root])
+        manager.persist_local_scan_snapshot([root], first)
+
+        # Change both size and mtime so the fingerprint definitely differs on
+        # filesystems with coarse timestamp precision.
+        changed.write_bytes(b"after-and-longer")
+        calls = []
+
+        def counted_metadata(path: Path):
+            calls.append(path.name)
+            return _metadata_row(path)
+
+        monkeypatch.setattr(
+            LocalFilesProvider,
+            "_metadata",
+            staticmethod(counted_metadata),
+        )
+        second = manager.scan_local_roots_snapshot([root])
+
+        assert calls == ["changed.flac"]
+        assert second["changes"]["unchanged"] == 1
+        assert second["changes"]["changed"] == 1
+        assert second["changes"]["added"] == 0
+        assert second["changes"]["metadata_reads"] == 1
+    finally:
+        manager.close()
+
+
+def test_incremental_rescan_detects_added_and_removed_files(
+    monkeypatch,
+    tmp_path: Path,
+):
+    root = tmp_path / "music"
+    root.mkdir()
+    keep = root / "keep.flac"
+    remove = root / "remove.flac"
+    keep.write_bytes(b"keep")
+    remove.write_bytes(b"remove")
+
+    manager = ProviderManager(tmp_path)
+    try:
+        manager.configure_local_roots([root])
+        monkeypatch.setattr(
+            LocalFilesProvider,
+            "_metadata",
+            staticmethod(_metadata_row),
+        )
+        first = manager.scan_local_roots_snapshot([root])
+        manager.persist_local_scan_snapshot([root], first)
+
+        remove.unlink()
+        added = root / "added.flac"
+        added.write_bytes(b"added")
+
+        calls = []
+
+        def counted_metadata(path: Path):
+            calls.append(path.name)
+            return _metadata_row(path)
+
+        monkeypatch.setattr(
+            LocalFilesProvider,
+            "_metadata",
+            staticmethod(counted_metadata),
+        )
+        second = manager.scan_local_roots_snapshot([root])
+
+        assert calls == ["added.flac"]
+        assert second["changes"]["unchanged"] == 1
+        assert second["changes"]["added"] == 1
+        assert second["changes"]["removed"] == 1
+        assert second["changes"]["metadata_reads"] == 1
+
+        manager.persist_local_scan_snapshot([root], second)
+        merged = manager.indexed_scan_result([root], second)
+        titles = {
+            Path(track["local_path"]).name
+            for track in merged["tracks"]
+        }
+        assert titles == {"keep.flac", "added.flac"}
+    finally:
+        manager.close()
+
+
+def test_old_index_without_fingerprints_is_refreshed_once(
+    monkeypatch,
+    tmp_path: Path,
+):
+    root = tmp_path / "music"
+    root.mkdir()
+    path = root / "legacy.flac"
+    path.write_bytes(b"legacy")
+
+    manager = ProviderManager(tmp_path)
+    try:
+        manager.configure_local_roots([root])
+        # Simulate a Campaign-4 cache: metadata exists, fingerprints do not.
+        raw = _metadata_row(path)
+        legacy = {
+            "tracks": [dict(raw)],
+            "index_tracks": [dict(raw)],
+            "root_states": [{"path": str(root), "available": True}],
+            "metrics": {"tracks_indexed": 1},
+            "cancelled": False,
+        }
+        manager.persist_local_scan_snapshot([root], legacy)
+
+        calls = []
+        monkeypatch.setattr(
+            LocalFilesProvider,
+            "_metadata",
+            staticmethod(lambda p: calls.append(p.name) or _metadata_row(p)),
+        )
+        refresh = manager.scan_local_roots_snapshot([root])
+        assert calls == ["legacy.flac"]
+        assert refresh["changes"]["changed"] == 1
+        manager.persist_local_scan_snapshot([root], refresh)
+
+        monkeypatch.setattr(
+            LocalFilesProvider,
+            "_metadata",
+            staticmethod(
+                lambda p: (_ for _ in ()).throw(
+                    AssertionError("fingerprinted file should now be reused")
+                )
+            ),
+        )
+        again = manager.scan_local_roots_snapshot([root])
+        assert again["changes"]["unchanged"] == 1
+        assert again["changes"]["metadata_reads"] == 0
+    finally:
+        manager.close()
