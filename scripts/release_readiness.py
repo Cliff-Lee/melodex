@@ -16,6 +16,7 @@ required_files = [
     "docs/INSTALL_WINDOWS.md",
     "docs/INSTALL_ANDROID.md",
     ".github/workflows/release.yml",
+    ".github/workflows/test.yml",
     ".github/workflows/desktop.yml",
     ".github/workflows/linux.yml",
     ".github/workflows/android.yml",
@@ -23,6 +24,9 @@ required_files = [
     "desktop/build_macos.sh",
     "desktop/build_windows.ps1",
     "desktop/linux/build_packages.py",
+    "scripts/fluid_ci_gate.py",
+    "scripts/fluid_gate_check.py",
+    "docs/RESPONSIVENESS.md",
     "android/app/build.gradle.kts",
 ]
 for rel in required_files:
@@ -73,6 +77,18 @@ for workflow in ("desktop.yml", "linux.yml", "android.yml"):
         errors.append(f"{workflow} must verify packaging on pull requests")
     if "version_check.py" not in text:
         errors.append(f"{workflow} does not verify application version")
+
+test_workflow = (ROOT / ".github" / "workflows" / "test.yml").read_text("utf-8")
+if "Fluid Melodex release gates" not in test_workflow:
+    errors.append("test.yml is missing the dedicated Fluid Melodex release-gate job")
+if "python scripts/fluid_ci_gate.py" not in test_workflow:
+    errors.append("test.yml does not execute scripts/fluid_ci_gate.py")
+
+release_workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text("utf-8")
+if release_workflow.count("python scripts/fluid_ci_gate.py") < 2:
+    errors.append(
+        "release.yml must run Fluid Melodex gates for both normal and manual-tag releases"
+    )
 
 bundled = ROOT / "desktop" / "melodex" / "bundled_providers"
 required_bundled = {
