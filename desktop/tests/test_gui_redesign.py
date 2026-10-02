@@ -1561,6 +1561,38 @@ def test_stale_search_response_cannot_replace_newer_request(monkeypatch, tmp_pat
     app.processEvents()
 
 
+def test_navigation_motion_happens_after_immediate_shell_change(monkeypatch, tmp_path):
+    try:
+        from PySide6.QtWidgets import QApplication, QGraphicsOpacityEffect
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+
+    window = main_window.MainWindow()
+    window.open_page("library")
+
+    # Navigation state is already complete; motion is only a short confirmation.
+    assert window.current_page == "library"
+    assert window.stack.currentWidget() is window.pages["library"]
+    assert bool(window.nav_buttons["library"].property("active"))
+
+    title = window.page_titles["library"]
+    animation = window.motion.active_animation(title)
+    assert animation is not None
+    assert animation.duration() == main_window.FAST_MOTION_MS
+    effect = title.graphicsEffect()
+    assert isinstance(effect, QGraphicsOpacityEffect)
+    assert effect.opacity() >= 0.75
+
+    window.close()
+    app.processEvents()
+
+
 def test_navigation_shell_changes_before_slow_page_population(monkeypatch, tmp_path):
     try:
         from PySide6.QtWidgets import QApplication
