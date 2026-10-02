@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "id": "org.melodex.nichedb.radio",
+  "name": "NicheDB Radio",
+  "version": "0.1.0",
+  "publisher": "Melodex",
+  "protocol_version": "1.0",
+  "description": "Search and play NicheDB's daily-refreshed internet-radio catalogue, with genres, countries, languages, codec/bitrate, popularity and station health metadata.",
+  "capabilities": [
+    "search",
+    "track",
+    "playback"
+  ],
+  "permissions": {
+    "network_hosts": [
+      "nichedb.dev",
+      "www.nichedb.dev"
+    ],
+    "offline_downloads": false,
+    "local_files": false,
+    "browser_auth": false,
+    "lan_discovery": false
+  },
+  "entrypoints": {
+    "python": "provider.py"
+  }
+}
