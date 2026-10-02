@@ -2,18 +2,28 @@
   "schema_version": 1,
   "id": "org.melodex.internetarchive.audio",
   "name": "Internet Archive Audio",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "publisher": "Melodex",
   "protocol_version": "1.0",
   "description": "Search publicly accessible audio in the Internet Archive. Search stays lightweight; file metadata is resolved only when a result is opened or played. Rights vary by item.",
   "homepage": "https://archive.org/details/audio",
-  "capabilities": ["search", "track", "playback"],
+  "capabilities": [
+    "search",
+    "track",
+    "playback"
+  ],
   "permissions": {
-    "network_hosts": ["archive.org", "www.archive.org", "*.us.archive.org"],
+    "network_hosts": [
+      "archive.org",
+      "www.archive.org",
+      "*.archive.org"
+    ],
     "offline_downloads": false,
     "local_files": false,
     "browser_auth": false,
     "lan_discovery": false
   },
-  "entrypoints": {"python": "provider.py"}
+  "entrypoints": {
+    "python": "provider.py"
+  }
 }
