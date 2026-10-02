@@ -12,6 +12,7 @@ REQUIRED_PYSIDE_MODULES = (
     "qtgui",
     "qtwidgets",
     "qtmultimedia",
+    "qtnetwork",
 )
 
 FORBIDDEN_MARKERS = (
