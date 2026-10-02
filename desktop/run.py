@@ -1,11 +1,16 @@
 import os
 import sys
 
+from melodex.runtime_smoke import maybe_run_runtime_smoke_from_argv
 from melodex.library_scan_process import maybe_run_library_scan_child_from_argv
 from melodex.child_host import maybe_run_child_from_argv
 
-# Built-in library scanner and provider/plugin workers must be dispatched before
-# Qt imports or GUI startup.
+# Internal smoke probes, library scanner and provider/plugin workers must be
+# dispatched before Qt imports or GUI startup.
+_runtime_smoke_exit = maybe_run_runtime_smoke_from_argv()
+if _runtime_smoke_exit is not None:
+    raise SystemExit(_runtime_smoke_exit)
+
 _scan_exit = maybe_run_library_scan_child_from_argv()
 if _scan_exit is not None:
     raise SystemExit(_scan_exit)

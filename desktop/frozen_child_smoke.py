@@ -8,6 +8,7 @@ from pathlib import Path
 
 CHILD_FLAG = "--melodex-python-child"
 SCAN_CHILD_FLAG = "--melodex-library-scan-child"
+RUNTIME_SMOKE_FLAG = "--melodex-runtime-smoke"
 
 
 def _communicate(
@@ -26,6 +27,34 @@ def _communicate(
             f"{label} did not complete within {timeout:.0f} seconds\n"
             f"stdout: {stdout}\nstderr: {stderr}"
         )
+
+
+def _smoke_runtime_dependencies(executable: Path) -> None:
+    process = subprocess.run(
+        [str(executable), RUNTIME_SMOKE_FLAG],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=20,
+    )
+    lines = [line for line in process.stdout.splitlines() if line.strip()]
+    if process.returncode != 0 or not lines:
+        raise SystemExit(
+            f"frozen runtime smoke failed with exit {process.returncode}\n"
+            f"stdout: {process.stdout}\nstderr: {process.stderr}"
+        )
+    try:
+        report = json.loads(lines[-1])
+    except json.JSONDecodeError as exc:
+        raise SystemExit(
+            f"frozen runtime smoke emitted invalid JSON: {process.stdout}"
+        ) from exc
+    if not bool(report.get("ok")):
+        raise SystemExit(f"frozen runtime smoke reported failure: {report!r}")
+    if int(report.get("numpy_fft_bins") or 0) <= 0:
+        raise SystemExit(f"NumPy FFT smoke did not run: {report!r}")
+    if not bool(report.get("ca_bundle_exists")):
+        raise SystemExit(f"HTTPS CA bundle missing: {report!r}")
 
 
 def _smoke_python_child(executable: Path, temporary: Path) -> None:
@@ -128,10 +157,11 @@ def main() -> int:
 
     with tempfile.TemporaryDirectory(prefix="melodex-child-smoke-") as temporary:
         folder = Path(temporary)
+        _smoke_runtime_dependencies(executable)
         _smoke_python_child(executable, folder)
         _smoke_library_scan_child(executable, folder)
 
-    print(f"Frozen child RPC + library scan smoke passed: {executable}")
+    print(f"Frozen runtime + child RPC + library scan smoke passed: {executable}")
     return 0
 
 
