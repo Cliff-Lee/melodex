@@ -197,6 +197,10 @@ def test_diagnostics_filters_ui_performance_fields():
                 "main_thread": True,
                 "track_count": 12700,
                 "album_count": 954,
+                "input_album_count": 954,
+                "albums_truncated": 0,
+                "tracks_truncated": 0,
+                "album_limit": 4000,
                 "artist_count": 612,
                 "reset_seconds": 0.1,
                 "copy_catalog_seconds": 0.02,
@@ -206,6 +210,30 @@ def test_diagnostics_filters_ui_performance_fields():
                 "artwork_request_seconds": 0.1,
                 "total_seconds": 5.22,
                 "private_path": "/Volumes/AnotherSecret/Music",
+            },
+            "library_filter": {
+                "query_length": 12,
+                "view": "albums",
+                "visible_album_count": 1,
+                "visible_artist_count": 1,
+                "visible_track_count": 10,
+                "album_filter_seconds": 0.004,
+                "artist_filter_seconds": 0.006,
+                "track_filter_sort_seconds": 0.081,
+                "layout_seconds": 0.012,
+                "total_seconds": 0.103,
+                "query": "Private Album Name",
+                "private_path": "/Volumes/AnotherSecret/Music",
+            },
+            "library_view": {
+                "view": "tracks",
+                "shell_seconds": 0.002,
+                "filter_seconds": 0.095,
+                "total_seconds": 0.101,
+                "rendered_album_count": 120,
+                "rendered_artist_count": 0,
+                "rendered_track_count": 300,
+                "private_path": "/Users/example/Music",
             },
             "responsiveness": {
                 "interval_ms": 50,
@@ -237,12 +265,22 @@ def test_diagnostics_filters_ui_performance_fields():
     metrics = payload["performance"]["library_catalog"]
     assert metrics["track_count"] == 12700
     assert metrics["initial_layout_seconds"] == 4.5
+    assert metrics["input_album_count"] == 954
+    assert metrics["albums_truncated"] == 0
+    filter_metrics = payload["performance"]["library_filter"]
+    assert filter_metrics["query_length"] == 12
+    assert filter_metrics["track_filter_sort_seconds"] == 0.081
+    view_metrics = payload["performance"]["library_view"]
+    assert view_metrics["view"] == "tracks"
+    assert view_metrics["rendered_track_count"] == 300
     responsiveness = payload["performance"]["ui_responsiveness"]
     assert responsiveness["total_stalls"] == 2
     assert responsiveness["max_delay_ms"] == 620.0
     assert responsiveness["recent_stalls"][0]["action"] == "sources:selection"
     assert "/Volumes/AnotherSecret/Music" not in text
     assert "/Users/example/Music" not in text
+    assert "Private Album Name" not in text
+    assert '"query"' not in text
     assert "private_path" not in text
 
 
