@@ -600,6 +600,7 @@ class LibraryBrowser(QWidget):
             "reset_seconds": 0.0,
             "copy_catalog_seconds": 0.0,
             "album_model_seconds": 0.0,
+            "album_index_seconds": 0.0,
             "artist_model_seconds": 0.0,
             "initial_layout_seconds": 0.0,
             "artwork_request_seconds": 0.0,
@@ -672,12 +673,17 @@ class LibraryBrowser(QWidget):
         )
         metrics["album_count"] = len(self.albums)
 
+        album_index_started = time.perf_counter()
         self.track_album_key = {}
         for album in self.albums:
             album_key = str(album.get("key") or "")
             for track in list(album.get("tracks") or []):
                 if isinstance(track, dict):
                     self.track_album_key[_track_key(track)] = album_key
+        metrics["album_index_seconds"] = round(
+            time.perf_counter() - album_index_started,
+            6,
+        )
 
         artist_started = time.perf_counter()
         self._rebuild_artists()
