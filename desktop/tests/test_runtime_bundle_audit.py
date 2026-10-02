@@ -3,6 +3,8 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 
+import pytest
+
 from melodex.runtime_smoke import runtime_report
 
 
@@ -22,6 +24,10 @@ def _touch(root: Path, relative: str, size: int) -> None:
 
 
 def test_runtime_report_exercises_core_non_qt_dependencies():
+    # The lightweight unit-test environment intentionally does not install
+    # keyring. Frozen desktop builds do, and frozen_child_smoke.py verifies the
+    # real native backend there.
+    pytest.importorskip("keyring")
     report = runtime_report()
 
     assert int(report["numpy_fft_bins"]) > 0
