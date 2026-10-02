@@ -260,16 +260,33 @@ class LocalFilesProvider(MusicProvider):
                 control.checkpoint()
                 exists = root.exists()
                 probe.root_checked(exists=exists)
-                root_states.append({
+                root_state = {
                     "path": str(root),
                     "available": bool(exists),
-                })
+                    "complete": False,
+                    "walk_errors": 0,
+                }
+                root_states.append(root_state)
                 if not exists:
                     continue
 
                 root_key = self._override_key(root)
-                available_root_keys.add(root_key)
-                for base, _, files in os.walk(root):
+                root_start = len(discovered)
+                root_seen: set[str] = set()
+                root_walk_errors = 0
+
+                def on_walk_error(_error: OSError) -> None:
+                    nonlocal root_walk_errors
+                    root_walk_errors += 1
+
+                try:
+                    walker = os.walk(root, onerror=on_walk_error)
+                except TypeError:
+                    # Keeps simple monkeypatched walkers in unit tests working;
+                    # the real os.walk supports onerror.
+                    walker = os.walk(root)
+
+                for base, _, files in walker:
                     control.checkpoint()
                     probe.directory_seen()
                     for name in files:
@@ -282,7 +299,7 @@ class LocalFilesProvider(MusicProvider):
                             continue
 
                         key = self._override_key(p)
-                        seen_keys.add(key)
+                        root_seen.add(key)
                         size: int | None = None
                         mtime_ns: int | None = None
                         try:
@@ -341,10 +358,31 @@ class LocalFilesProvider(MusicProvider):
                                 "size": size,
                                 "mtime_ns": mtime_ns,
                                 "kind": kind,
+                                "root_key": root_key,
                                 "raw_track": previous_track if reusable else {},
                             }
                         )
                         emit("discovering", current=Path(base).name)
+
+                root_state["walk_errors"] = int(root_walk_errors)
+                root_state["complete"] = root_walk_errors == 0
+                if root_walk_errors:
+                    # Never apply a partial root. Undo its discovery/change
+                    # counters and preserve the root's previous SQLite snapshot.
+                    partial_rows = discovered[root_start:]
+                    for row in partial_rows:
+                        kind = str(row.get("kind") or "")
+                        if kind == "unchanged":
+                            unchanged = max(0, unchanged - 1)
+                        elif kind == "added":
+                            added = max(0, added - 1)
+                        elif kind == "changed":
+                            changed = max(0, changed - 1)
+                    del discovered[root_start:]
+                    continue
+
+                available_root_keys.add(root_key)
+                seen_keys.update(root_seen)
 
             # A cached file is considered removed only when its root was
             # positively available and fully enumerated in this scan.
@@ -404,6 +442,11 @@ class LocalFilesProvider(MusicProvider):
                     "removed_files": int(removed),
                     "stat_failures": int(stat_failures),
                     "metadata_reused": int(unchanged),
+                    "incomplete_roots": sum(
+                        1
+                        for state in root_states
+                        if bool(state.get("available")) and not bool(state.get("complete", True))
+                    ),
                 }
             )
 
