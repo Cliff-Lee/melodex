@@ -25,6 +25,8 @@ _CREDENTIAL_HEADERS = {
     "cookie",
     "cookie2",
 }
+_DEFAULT_USER_AGENT = "Melodex/0.7 (+https://github.com/Cliff-Lee/melodex)"
+_HEAD_GET_FALLBACK_STATUSES = {400, 405, 501}
 
 
 def _origin_key(url: str) -> tuple[str, str, int]:
@@ -190,6 +192,7 @@ class PlaybackGateway:
         cookies = dict(resource.get("cookies") or {})
         if cookies and "Cookie" not in headers:
             headers["Cookie"] = "; ".join(f"{k}={v}" for k, v in cookies.items())
+        headers.setdefault("User-Agent", _DEFAULT_USER_AGENT)
         incoming_range = handler.headers.get("Range")
         if incoming_range and "Range" not in headers:
             headers["Range"] = incoming_range
@@ -197,6 +200,7 @@ class PlaybackGateway:
         timeout = float(resource.get("request_timeout_seconds") or 30.0)
         allowed = _allowed_hosts(resource)
         try:
+            used_get_for_head = False
             response = self._request_upstream(
                 "HEAD" if head_only else "GET",
                 url,
@@ -205,10 +209,31 @@ class PlaybackGateway:
                 timeout,
                 stream=not head_only,
             )
+            if head_only and response.status_code in _HEAD_GET_FALLBACK_STATUSES:
+                response.close()
+                probe_headers = dict(headers)
+                probe_headers.setdefault("Range", "bytes=0-0")
+                response = self._request_upstream(
+                    "GET",
+                    url,
+                    probe_headers,
+                    allowed,
+                    timeout,
+                    stream=True,
+                )
+                used_get_for_head = True
+
             handler.send_response(response.status_code)
             for name, value in response.headers.items():
-                if name.casefold() in _FORWARD_RESPONSE_HEADERS:
-                    handler.send_header(name, value)
+                lowered = name.casefold()
+                if lowered not in _FORWARD_RESPONSE_HEADERS:
+                    continue
+                if used_get_for_head and lowered in {"content-length", "content-range"}:
+                    # A one-byte GET probe is only proving reachability/type.
+                    # Advertising its partial length as the media length would
+                    # confuse QMediaPlayer.
+                    continue
+                handler.send_header(name, value)
             handler.end_headers()
             if not head_only:
                 try:
