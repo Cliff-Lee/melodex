@@ -868,7 +868,12 @@ class ProviderManager:
         )
         return info
 
-    def plugin_configuration(self, plugin_id: str) -> dict[str, Any]:
+    def plugin_configuration(
+        self,
+        plugin_id: str,
+        *,
+        cached_status: bool = False,
+    ) -> dict[str, Any]:
         plugin_id = str(plugin_id or "").strip()
         provider = self.providers.get(plugin_id)
         if provider is not None and plugin_id not in {"local", "jamendo", "streams"}:
@@ -881,7 +886,11 @@ class ProviderManager:
                 "values": self.plugin_config.editable_values(
                     plugin_id, declarations
                 ),
-                "status": self.plugin_config.status(plugin_id, declarations),
+                "status": (
+                    self.plugin_config.cached_status(plugin_id, declarations)
+                    if cached_status
+                    else self.plugin_config.status(plugin_id, declarations)
+                ),
             }
 
         extension = self.capabilities.extensions.get(plugin_id)
@@ -895,7 +904,11 @@ class ProviderManager:
                 "values": self.plugin_config.editable_values(
                     plugin_id, declarations
                 ),
-                "status": self.plugin_config.status(plugin_id, declarations),
+                "status": (
+                    self.plugin_config.cached_status(plugin_id, declarations)
+                    if cached_status
+                    else self.plugin_config.status(plugin_id, declarations)
+                ),
             }
         raise KeyError(f"Unknown configurable plugin: {plugin_id}")
 
@@ -946,17 +959,25 @@ class ProviderManager:
         result["summary"] = health_summary(result)
         return result
 
-    def plugin_health(self, plugin_id: str) -> dict[str, Any]:
+    def plugin_health(
+        self,
+        plugin_id: str,
+        *,
+        cached_config: bool = False,
+    ) -> dict[str, Any]:
         plugin_id = str(plugin_id or "").strip()
         if not plugin_id:
             raise KeyError("Missing plugin id")
 
         try:
-            config = self.plugin_configuration(plugin_id)
+            config = self.plugin_configuration(
+                plugin_id,
+                cached_status=cached_config,
+            )
         except KeyError:
             config = {}
         status = dict(config.get("status") or {})
-        if status.get("declared") and not status.get("ready", True):
+        if status.get("declared") and status.get("ready") is False:
             return self._health_result(
                 plugin_id=plugin_id,
                 name=str(config.get("name") or plugin_id),
@@ -1202,8 +1223,12 @@ class ProviderManager:
             self._plugin_health_cache.pop(str(extension_id), None)
         return changed
 
-    def extensions(self) -> list[dict[str, Any]]:
-        return self.capabilities.list_extensions()
+    def extensions(
+        self,
+        *,
+        cached_config: bool = False,
+    ) -> list[dict[str, Any]]:
+        return self.capabilities.list_extensions(cached_config=cached_config)
 
     def set_extension_enabled(self, extension_id: str, enabled: bool) -> None:
         self.capabilities.set_enabled(extension_id, enabled)

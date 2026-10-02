@@ -153,6 +153,7 @@ class MainWindow(QMainWindow):
         self._local_scan_sequence = 0
         self._local_scan_runner: LibraryScanProcess | None = None
         self._local_scan_signals: WorkerSignals | None = None
+        self._source_config_refresh_in_progress = False
         self.externalCommand.connect(self._on_external_command)
 
         self.player = FlowPlayer(
@@ -2176,7 +2177,9 @@ class MainWindow(QMainWindow):
             self._refresh_plugin_presence()
         elif name=="album_wall": self._refresh_album_wall()
         elif name=="music_map": self._refresh_music_map()
-        elif name=="sources": self._refresh_sources()
+        elif name=="sources":
+            self._refresh_sources()
+            QTimer.singleShot(0, self._refresh_source_config_statuses_async)
         elif name=="moments": self._refresh_moments()
         elif name=="journeys": self._refresh_journeys()
         elif name=="playlists": self._refresh_playlists()
@@ -2371,12 +2374,17 @@ class MainWindow(QMainWindow):
             else:
                 installation=self.providers.installation_record(pid)
                 config_status=(
-                    self.providers.plugin_config.status(pid,p.info.configuration)
+                    self.providers.plugin_config.cached_status(
+                        pid, p.info.configuration
+                    )
                     if p.info.configuration else {"ready":True}
                 )
-                health=self.providers.plugin_health(pid)
+                health=self.providers.plugin_health(pid, cached_config=True)
                 health_state=str(health.get("status") or "untested")
-                if not config_status.get("ready",True):
+                config_ready=config_status.get("ready",True)
+                if config_ready is None:
+                    status="Checking…"
+                elif config_ready is False:
                     status="Setup needed"
                 elif health_state in {"error","stopped","unhealthy","unavailable"}:
                     status="Needs attention"
@@ -2475,7 +2483,7 @@ class MainWindow(QMainWindow):
                 f"{len(bundled)} source{'s' if len(bundled) != 1 else ''}"
             )
 
-        extensions=self.providers.extensions()
+        extensions=self.providers.extensions(cached_config=True)
         if hasattr(self,"source_summary_enhancements"):
             self.source_summary_enhancements.setText(
                 f"{len(extensions)} installed" if extensions else "None installed"
@@ -2487,11 +2495,17 @@ class MainWindow(QMainWindow):
                 extension_id=str(extension.get("id") or "")
                 enabled=bool(extension.get("enabled",True))
                 config_status=dict(extension.get("configuration_status") or {})
-                health=self.providers.plugin_health(extension_id)
+                health=self.providers.plugin_health(
+                    extension_id,
+                    cached_config=True,
+                )
                 health_state=str(health.get("status") or "untested")
+                config_ready=config_status.get("ready",True)
                 if not enabled:
                     status="Disabled"
-                elif config_status.get("declared") and not config_status.get("ready",True):
+                elif config_status.get("declared") and config_ready is None:
+                    status="Checking…"
+                elif config_status.get("declared") and config_ready is False:
                     status="Setup needed"
                 elif health_state in {"error","stopped","unhealthy","unavailable"}:
                     status="Needs attention"
@@ -2541,11 +2555,15 @@ class MainWindow(QMainWindow):
             for pid in optional+bundled:
                 provider=self.providers.providers.get(pid)
                 if provider is not None and provider.info.configuration:
-                    if not self.providers.plugin_config.status(pid,provider.info.configuration).get("ready",True):
+                    state=self.providers.plugin_config.cached_status(
+                        pid,
+                        provider.info.configuration,
+                    )
+                    if state.get("ready") is False:
                         setup_needed+=1
             for extension in extensions:
                 state=dict(extension.get("configuration_status") or {})
-                if state.get("declared") and not state.get("ready",True):
+                if state.get("declared") and state.get("ready") is False:
                     setup_needed+=1
             summary=(
                 f"{len(builtins)} built-in connections · "
@@ -2574,6 +2592,44 @@ class MainWindow(QMainWindow):
         self._source_selection_changed()
 
 
+    def _refresh_source_config_statuses_async(self) -> None:
+        """Validate plugin configuration off the Qt thread, then refresh badges."""
+        if self._source_config_refresh_in_progress or self._closing:
+            return
+        self._source_config_refresh_in_progress = True
+
+        def load() -> None:
+            for pid in self.providers.provider_order():
+                provider=self.providers.providers.get(pid)
+                if (
+                    provider is not None
+                    and pid not in {"local","jamendo","streams"}
+                    and provider.info.configuration
+                ):
+                    self.providers.plugin_config.status(
+                        pid,
+                        provider.info.configuration,
+                    )
+            # Extensions share the same configuration broker. Calling the full
+            # status path here warms secret-presence state without blocking Qt.
+            self.providers.extensions(cached_config=False)
+
+        def done(_result) -> None:
+            self._source_config_refresh_in_progress = False
+            if self.current_page == "sources":
+                self._refresh_sources()
+                self._refresh_plugin_presence()
+
+        def failed(_error: str) -> None:
+            self._source_config_refresh_in_progress = False
+            if self.current_page == "sources":
+                self.statusBar().showMessage(
+                    "Some source configuration checks are still unavailable",
+                    4000,
+                )
+
+        self._run_async(load, done, failed)
+
     @staticmethod
     def _capability_label(capability: str) -> str:
         return {
@@ -2589,7 +2645,7 @@ class MainWindow(QMainWindow):
         return next(
             (
                 dict(row)
-                for row in self.providers.extensions()
+                for row in self.providers.extensions(cached_config=True)
                 if str(row.get("id") or "") == str(extension_id or "")
             ),
             {},
@@ -2601,12 +2657,18 @@ class MainWindow(QMainWindow):
         if plugin_id.startswith("extension:"):
             row=self._extension_record(plugin_id.split(":",1)[1])
             status=dict(row.get("configuration_status") or {})
-            return bool(status.get("declared") and not status.get("ready",True))
+            return bool(
+                status.get("declared")
+                and status.get("ready") is False
+            )
         provider=self.providers.providers.get(plugin_id)
         if provider is None or not provider.info.configuration:
             return False
-        status=self.providers.plugin_config.status(plugin_id,provider.info.configuration)
-        return not bool(status.get("ready",True))
+        status=self.providers.plugin_config.cached_status(
+            plugin_id,
+            provider.info.configuration,
+        )
+        return status.get("ready") is False
 
     def _source_selection_changed(self) -> None:
         if hasattr(self, "responsiveness"):
@@ -3977,11 +4039,11 @@ class MainWindow(QMainWindow):
     def _active_extension_names(self, *capabilities: str) -> list[str]:
         wanted={str(value) for value in capabilities if str(value)}
         names=[]
-        for row in self.providers.extensions():
+        for row in self.providers.extensions(cached_config=True):
             if not bool(row.get("enabled",True)):
                 continue
             config=dict(row.get("configuration_status") or {})
-            if config.get("declared") and not config.get("ready",True):
+            if config.get("declared") and config.get("ready") is False:
                 continue
             caps={str(value) for value in list(row.get("capabilities") or []) if value}
             if wanted and not (wanted & caps):
