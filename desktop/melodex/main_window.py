@@ -1338,6 +1338,7 @@ class MainWindow(QMainWindow):
         self.library_browser.onlineArtworkRequested.connect(self._library_online_artwork_requested)
         self.library_browser.artistImageRequested.connect(self._library_artist_images_requested)
         self.library_browser.artistImageCacheRequested.connect(self._library_cached_artist_images_requested)
+        self.library_browser.cachedArtworkInvalidated.connect(self._library_cached_artwork_invalidated)
         self.library_browser.artistPhotoFileRequested.connect(self._choose_artist_photo_file)
         l.addWidget(self.library_browser,1)
 
@@ -3096,6 +3097,19 @@ class MainWindow(QMainWindow):
             3500,
         )
 
+    def _library_cached_artwork_invalidated(self, kind: str) -> None:
+        kind=str(kind or "")
+        if kind not in {"albums","artists"}:
+            return
+        key=(
+            "viewport-artist-photo"
+            if kind=="artists"
+            else "viewport-album-artwork"
+        )
+        if hasattr(self,"background"):
+            self.background.cancel_key(key)
+        self.library_browser.cached_artwork_batch_cancelled(kind)
+
     def _library_artwork_requested(self, requests: object) -> None:
         rows=[dict(x) for x in list(requests or []) if isinstance(x,dict)]
         if not rows:
@@ -3123,6 +3137,8 @@ class MainWindow(QMainWindow):
             priority="visible",
             lane="disk",
             label="viewport-album-artwork",
+            latest_key="viewport-album-artwork",
+            on_stale=lambda:self.library_browser.cached_artwork_batch_cancelled("albums"),
         )
 
     def _library_online_artwork_requested(self, requests: object) -> None:
@@ -3292,6 +3308,8 @@ class MainWindow(QMainWindow):
             priority="visible",
             lane="disk",
             label="viewport-artist-photo",
+            latest_key="viewport-artist-photo",
+            on_stale=lambda:self.library_browser.cached_artwork_batch_cancelled("artists"),
         )
 
     def _library_artist_images_requested(self, requests: object) -> None:
