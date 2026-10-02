@@ -169,3 +169,42 @@ The remaining large-memory structures are the final atomic snapshot itself
 (`tracks`, `index_tracks`, and `index_records`). Reducing those safely is
 reserved for the bounded-pipeline/database-writer stages rather than combining
 multiple architectural changes into one PR.
+
+
+## P10c — bounded discovery/metadata pipeline
+
+P10c introduces an explicit bounded producer/consumer handoff between
+filesystem discovery and metadata processing.
+
+The scanner now runs discovery in a dedicated producer thread and places
+discovered audio-file work into a fixed-capacity queue. Metadata processing
+consumes from that queue on the scan worker side.
+
+The important invariant is:
+
+```text
+pending discovery work <= queue capacity
+```
+
+When the queue fills, discovery waits. It cannot continue accumulating an
+arbitrarily large backlog in memory.
+
+Current queue capacity is 256 rows. Diagnostics record:
+
+- `bounded_pipeline`
+- `pipeline_queue_capacity`
+- `pipeline_max_queue_depth`
+- `pipeline_backpressure_events`
+
+This stage deliberately keeps the final atomic snapshot model. The bounded
+queue controls in-flight discovery work, while `tracks`, `index_tracks`, and
+`index_records` still grow with the completed library until P10d/P10e move
+persistence/publication further into the pipeline.
+
+Correctness rules are unchanged:
+
+- incomplete roots discard rows produced during the current scan;
+- unavailable roots preserve their previous indexed copy;
+- cancellation publishes no partial catalog;
+- unchanged fingerprints still avoid metadata reads; and
+- live UI/catalog replacement occurs only after a successful completed scan.
