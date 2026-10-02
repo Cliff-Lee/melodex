@@ -15,6 +15,7 @@ from melodex.provider_manager import ProviderManager
 CASES = {
     "org.melodex.internetarchive.audio": "Grateful Dead",
     "org.melodex.librivox": "Odyssey",
+    "org.melodex.nicheradio": "rock",
     "org.melodex.radiobrowser": "jazz",
     "org.melodex.somafm": "Groove Salad",
     "org.melodex.wikimedia.commons.audio": "Beethoven",
@@ -128,7 +129,7 @@ def _verify_provider(manager: ProviderManager, provider_id: str, query: str) -> 
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Live smoke test the six provider packages bundled with Melodex."
+        description="Live smoke test the provider packages bundled with Melodex."
     )
     parser.add_argument("--json", type=Path, help="Optional output report path.")
     args = parser.parse_args()
