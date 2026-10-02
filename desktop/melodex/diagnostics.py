@@ -9,6 +9,46 @@ from typing import Any
 
 from . import __version__
 
+_SCAN_METRIC_FIELDS = (
+    "started_at",
+    "thread_name",
+    "main_thread",
+    "root_count",
+    "roots_checked",
+    "roots_missing",
+    "directories_seen",
+    "files_seen",
+    "audio_files_seen",
+    "metadata_attempts",
+    "metadata_seconds",
+    "non_metadata_seconds",
+    "total_seconds",
+    "tracks_indexed",
+)
+
+_CATALOG_METRIC_FIELDS = (
+    "thread_name",
+    "main_thread",
+    "track_count",
+    "album_count",
+    "artist_count",
+    "reset_seconds",
+    "copy_catalog_seconds",
+    "album_model_seconds",
+    "album_index_seconds",
+    "artist_model_seconds",
+    "initial_layout_seconds",
+    "artwork_request_seconds",
+    "total_seconds",
+)
+
+
+def _metric_summary(raw: Any, allowed: tuple[str, ...]) -> dict[str, Any]:
+    if not isinstance(raw, dict):
+        return {}
+    return {key: raw.get(key) for key in allowed if key in raw}
+
+
 
 def _installation_summary(record: dict[str, Any]) -> dict[str, Any]:
     if not record:
@@ -32,7 +72,10 @@ def _installation_summary(record: dict[str, Any]) -> dict[str, Any]:
     return {key: record.get(key) for key in allowed if key in record}
 
 
-def build_diagnostics(manager: Any) -> dict[str, Any]:
+def build_diagnostics(
+    manager: Any,
+    ui_metrics: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Build a support snapshot that intentionally excludes user secrets and media URLs."""
 
     providers: list[dict[str, Any]] = []
@@ -105,6 +148,23 @@ def build_diagnostics(manager: Any) -> dict[str, Any]:
             }
         )
 
+    performance: dict[str, Any] = {}
+    local_provider = getattr(manager, "providers", {}).get("local")
+    local_scan = _metric_summary(
+        getattr(local_provider, "last_scan_metrics", {}),
+        _SCAN_METRIC_FIELDS,
+    )
+    if local_scan:
+        performance["local_scan"] = local_scan
+
+    supplied_ui = dict(ui_metrics or {})
+    library_catalog = _metric_summary(
+        supplied_ui.get("library_catalog"),
+        _CATALOG_METRIC_FIELDS,
+    )
+    if library_catalog:
+        performance["library_catalog"] = library_catalog
+
     return {
         "schema_version": "0.1",
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -117,20 +177,31 @@ def build_diagnostics(manager: Any) -> dict[str, Any]:
         },
         "sources": providers,
         "extensions": extensions,
+        "performance": performance,
         "notes": [
             "This export omits plugin configuration values, API keys, tokens, "
             "local library paths, user-stream URLs, playback URLs, headers and cookies.",
             "Package SHA-256 values and public source-repository URLs may be included "
             "to help diagnose installation provenance.",
+            "Performance telemetry contains counts, timings and thread information only; "
+            "library root, directory and file names are not included.",
         ],
     }
 
 
-def write_diagnostics(path: Path, manager: Any) -> Path:
+def write_diagnostics(
+    path: Path,
+    manager: Any,
+    ui_metrics: dict[str, Any] | None = None,
+) -> Path:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
-        json.dumps(build_diagnostics(manager), indent=2, ensure_ascii=False) + "\n",
+        json.dumps(
+            build_diagnostics(manager, ui_metrics=ui_metrics),
+            indent=2,
+            ensure_ascii=False,
+        ) + "\n",
         encoding="utf-8",
     )
     return path

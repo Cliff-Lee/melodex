@@ -3758,8 +3758,17 @@ class MainWindow(QMainWindow):
         path=Path(filename)
         if path.suffix.lower() != ".json":
             path=path.with_suffix(".json")
+        ui_metrics = {}
+        if hasattr(self, "library_browser"):
+            ui_metrics["library_catalog"] = dict(
+                getattr(self.library_browser, "last_catalog_metrics", {}) or {}
+            )
         try:
-            write_diagnostics(path,self.providers)
+            write_diagnostics(
+                path,
+                self.providers,
+                ui_metrics=ui_metrics,
+            )
         except Exception as exc:
             QMessageBox.critical(self,"Could not export diagnostics",str(exc))
             return
