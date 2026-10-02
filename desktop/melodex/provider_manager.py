@@ -459,6 +459,9 @@ class ProviderManager:
         "org.melodex.example.radio-browser": "org.melodex.radiobrowser",
         "org.melodex.example.librivox": "org.melodex.librivox",
     }
+    _SEARCH_REFERENCE_ONLY = {
+        "org.melodex.example.openverse-audio",
+    }
 
     def searchable_provider_ids(self) -> list[str]:
         """Return end-user search sources with duplicate examples suppressed.
@@ -473,6 +476,8 @@ class ProviderManager:
             if provider is None:
                 continue
             if "search" not in list(provider.info.capabilities or []):
+                continue
+            if pid in self._SEARCH_REFERENCE_ONLY:
                 continue
             production_id = self._SEARCH_SHADOWS.get(pid)
             if production_id and production_id in self.providers:
