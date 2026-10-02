@@ -78,3 +78,81 @@ def test_pruner_keeps_qtpdf_when_another_binary_depends_on_it(monkeypatch, tmp_p
     assert report["qt_pdf_dependents_after_plugin_removal"] == [
         "Contents/Frameworks/something.dylib"
     ]
+
+
+
+def test_pruner_removes_virtual_keyboard_and_orphaned_qml_family(
+    monkeypatch,
+    tmp_path: Path,
+):
+    pruner = _load_pruner()
+    root = tmp_path / "Melodex.app"
+    plugin = _touch(
+        root,
+        "Contents/Frameworks/PySide6/Qt/plugins/"
+        "platforminputcontexts/libqtvirtualkeyboardplugin.dylib",
+        3,
+    )
+    qml_binary = _touch(
+        root,
+        "Contents/Frameworks/PySide6/Qt/lib/QtQml.framework/Versions/A/QtQml",
+        11,
+    )
+    quick_binary = _touch(
+        root,
+        "Contents/Frameworks/PySide6/Qt/lib/QtQuick.framework/Versions/A/QtQuick",
+        13,
+    )
+    vk_binary = _touch(
+        root,
+        "Contents/Frameworks/PySide6/Qt/lib/"
+        "QtVirtualKeyboard.framework/Versions/A/QtVirtualKeyboard",
+        7,
+    )
+
+    monkeypatch.setattr(pruner.shutil, "which", lambda _name: "/usr/bin/otool")
+    monkeypatch.setattr(pruner, "_dependencies", lambda _path: [])
+
+    report = pruner.prune_bundle(root)
+
+    assert not plugin.exists()
+    assert not qml_binary.exists()
+    assert not quick_binary.exists()
+    assert not vk_binary.exists()
+    assert report["qml_family_pruned"] is True
+    assert report["qml_family_dependents_after_virtual_keyboard_removal"] == []
+
+
+def test_pruner_keeps_qml_family_when_external_binary_depends_on_it(
+    monkeypatch,
+    tmp_path: Path,
+):
+    pruner = _load_pruner()
+    root = tmp_path / "Melodex.app"
+    _touch(
+        root,
+        "Contents/Frameworks/PySide6/Qt/plugins/"
+        "platforminputcontexts/libqtvirtualkeyboardplugin.dylib",
+    )
+    qml_binary = _touch(
+        root,
+        "Contents/Frameworks/PySide6/Qt/lib/QtQml.framework/Versions/A/QtQml",
+    )
+    dependent = _touch(root, "Contents/Frameworks/other.dylib")
+
+    monkeypatch.setattr(pruner.shutil, "which", lambda _name: "/usr/bin/otool")
+    monkeypatch.setattr(
+        pruner,
+        "_dependencies",
+        lambda path: ["@rpath/QtQml.framework/Versions/A/QtQml"]
+        if path == dependent
+        else [],
+    )
+
+    report = pruner.prune_bundle(root)
+
+    assert qml_binary.exists()
+    assert report["qml_family_pruned"] is False
+    assert report["qml_family_dependents_after_virtual_keyboard_removal"] == [
+        "Contents/Frameworks/other.dylib"
+    ]
