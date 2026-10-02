@@ -206,3 +206,41 @@ def test_background_scan_snapshot_records_worker_thread(
     snapshot = snapshot_holder["value"]
     assert snapshot["metrics"]["main_thread"] is False
     assert snapshot["metrics"]["thread_name"] == "library-scan-test"
+
+
+
+def test_manager_clearing_metadata_override_does_not_rescan_synchronously(
+    monkeypatch,
+    tmp_path: Path,
+):
+    root = tmp_path / "music"
+    root.mkdir()
+    track_path = root / "track.flac"
+    track_path.write_bytes(b"not real audio")
+
+    manager = ProviderManager(tmp_path)
+    try:
+        provider = manager.providers["local"]
+        assert isinstance(provider, LocalFilesProvider)
+        provider.configure_roots([root])
+        provider.overrides[provider._override_key(track_path)] = {"artist": "Corrected"}
+        manager._local_metadata_overrides[provider._override_key(track_path)] = {
+            "artist": "Corrected"
+        }
+
+        monkeypatch.setattr(
+            provider,
+            "scan",
+            lambda: (_ for _ in ()).throw(
+                AssertionError("metadata reset must not synchronously rescan the library")
+            ),
+        )
+
+        changed = manager.clear_local_metadata_correction(
+            {"local_path": str(track_path)}
+        )
+
+        assert changed is True
+        assert provider._override_key(track_path) not in provider.overrides
+    finally:
+        manager.close()
