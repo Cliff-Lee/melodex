@@ -1423,6 +1423,20 @@ def test_library_scan_progress_panel_is_clear_and_reassuring():
     assert "6,350" in browser.scan_progress_summary.text()
     assert browser.scan_progress_detail.text() == "Teardrop.flac"
 
+    browser.set_scan_progress(
+        {
+            "phase": "metadata",
+            "audio_files_seen": 12700,
+            "completed": 0,
+            "total": 0,
+            "unchanged": 12700,
+        }
+    )
+    assert browser.scan_progress.value() == 1
+    assert "already up to date" in browser.scan_progress_summary.text().lower()
+    assert "12,700 unchanged" in browser.scan_progress_detail.text()
+    assert "no audio files need reopening" in browser.scan_progress_detail.text()
+
     browser.set_scan_progress({"phase": "saving"})
     assert "saving library index" in browser.scan_progress_summary.text().lower()
     assert "reopen" in browser.scan_progress_detail.text().lower()
@@ -1438,6 +1452,22 @@ def test_library_scan_progress_panel_is_clear_and_reassuring():
     browser.finish_scan("cancelled")
     assert "cancelled" in browser.scan_progress_title.text().lower()
     assert "existing library" in browser.scan_progress_summary.text().lower()
+
+    browser.finish_scan(
+        "complete",
+        count=12700,
+        changes={
+            "unchanged": 12695,
+            "added": 2,
+            "changed": 2,
+            "removed": 1,
+        },
+    )
+    assert "12,700" in browser.scan_progress_summary.text()
+    assert "12,695 unchanged" in browser.scan_progress_detail.text()
+    assert "2 new" in browser.scan_progress_detail.text()
+    assert "2 updated" in browser.scan_progress_detail.text()
+    assert "1 removed" in browser.scan_progress_detail.text()
 
     browser.deleteLater()
     app.processEvents()

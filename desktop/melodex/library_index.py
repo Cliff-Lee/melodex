@@ -178,6 +178,69 @@ class LocalLibraryIndex:
                 tracks.append(value)
         return tracks
 
+    def load_scan_cache(
+        self,
+        roots: list[Path],
+    ) -> dict[str, dict[str, Any]]:
+        """Load cached raw metadata plus cheap file fingerprints.
+
+        Keys are canonical absolute paths so the scanner can compare a newly
+        enumerated file with the previous index without reopening its tags.
+        """
+        if not roots:
+            return {}
+        ids = [_root_id(root) for root in roots]
+        placeholders = ",".join("?" for _ in ids)
+        with self._connect() as db:
+            rows = db.execute(
+                f"""
+                SELECT
+                    t.root_id,
+                    t.relative_path,
+                    t.metadata_json,
+                    t.size,
+                    t.mtime_ns,
+                    r.path AS root_path
+                FROM tracks AS t
+                JOIN roots AS r ON r.root_id = t.root_id
+                WHERE t.root_id IN ({placeholders})
+                """,
+                tuple(ids),
+            ).fetchall()
+
+        cache: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            try:
+                metadata = json.loads(str(row["metadata_json"]))
+            except Exception:
+                continue
+            if not isinstance(metadata, dict):
+                continue
+            root_path = str(row["root_path"] or "")
+            relative = str(row["relative_path"] or "")
+            local_path = str(
+                metadata.get("local_path")
+                or metadata.get("track_id")
+                or (Path(root_path) / relative)
+            )
+            cache[_canonical_path(local_path)] = {
+                "track": metadata,
+                "size": (
+                    int(row["size"])
+                    if row["size"] is not None
+                    else None
+                ),
+                "mtime_ns": (
+                    int(row["mtime_ns"])
+                    if row["mtime_ns"] is not None
+                    else None
+                ),
+                "root_id": str(row["root_id"]),
+                "root_path": root_path,
+                "relative_path": relative,
+            }
+        return cache
+
     @staticmethod
     def _matching_root(
         local_path: str | Path,
@@ -232,6 +295,10 @@ class LocalLibraryIndex:
             for row in state_rows:
                 if not bool(row.get("available")):
                     continue
+                # Older snapshots have no "complete" field and are treated as
+                # complete for compatibility. New scans explicitly set it.
+                if "complete" in row and not bool(row.get("complete")):
+                    continue
                 path = str(row.get("path") or "")
                 if path:
                     available_ids.add(_root_id(path))
@@ -241,18 +308,33 @@ class LocalLibraryIndex:
             available_ids = {_root_id(root) for root in clean_roots}
 
         root_by_id = {_root_id(root): root for root in clean_roots}
-        grouped: dict[str, list[tuple[str, dict[str, Any]]]] = {
+        grouped: dict[
+            str,
+            list[tuple[str, dict[str, Any], int | None, int | None]],
+        ] = {
             root_id: [] for root_id in available_ids if root_id in root_by_id
         }
 
-        stored_tracks = (
-            list((snapshot or {}).get("index_tracks") or [])
-            or list((snapshot or {}).get("tracks") or [])
-        )
-        for raw in stored_tracks:
-            if not isinstance(raw, dict):
-                continue
-            track = dict(raw)
+        index_records = [
+            dict(row)
+            for row in list((snapshot or {}).get("index_records") or [])
+            if isinstance(row, dict) and isinstance(row.get("track"), dict)
+        ]
+        if index_records:
+            stored_records = index_records
+        else:
+            stored_tracks = (
+                list((snapshot or {}).get("index_tracks") or [])
+                or list((snapshot or {}).get("tracks") or [])
+            )
+            stored_records = [
+                {"track": dict(raw), "size": None, "mtime_ns": None}
+                for raw in stored_tracks
+                if isinstance(raw, dict)
+            ]
+
+        for record in stored_records:
+            track = dict(record.get("track") or {})
             local_path = str(track.get("local_path") or track.get("track_id") or "")
             if not local_path:
                 continue
@@ -262,11 +344,22 @@ class LocalLibraryIndex:
             root_id = _root_id(root)
             if root_id not in available_ids:
                 continue
+            size = record.get("size")
+            mtime_ns = record.get("mtime_ns")
             grouped.setdefault(root_id, []).append(
-                (self._relative_path(local_path, root), track)
+                (
+                    self._relative_path(local_path, root),
+                    track,
+                    int(size) if size is not None else None,
+                    int(mtime_ns) if mtime_ns is not None else None,
+                )
             )
 
         now = datetime.now(timezone.utc).isoformat()
+        tracks_written = 0
+        tracks_reused = 0
+        tracks_deleted = 0
+
         with self._connect() as db:
             db.execute("BEGIN IMMEDIATE")
             try:
@@ -282,20 +375,52 @@ class LocalLibraryIndex:
                         """,
                         (root_id, str(root)),
                     )
-                    db.execute("DELETE FROM tracks WHERE root_id = ?", (root_id,))
-                    rows = grouped.get(root_id, [])
-                    db.executemany(
+
+                    existing_rows = db.execute(
                         """
-                        INSERT INTO tracks(
-                            root_id,
-                            relative_path,
-                            metadata_json,
-                            size,
-                            mtime_ns
-                        )
-                        VALUES(?, ?, ?, NULL, NULL)
+                        SELECT relative_path, size, mtime_ns
+                        FROM tracks
+                        WHERE root_id = ?
                         """,
-                        [
+                        (root_id,),
+                    ).fetchall()
+                    existing = {
+                        str(row["relative_path"]): (
+                            int(row["size"]) if row["size"] is not None else None,
+                            int(row["mtime_ns"]) if row["mtime_ns"] is not None else None,
+                        )
+                        for row in existing_rows
+                    }
+
+                    rows = grouped.get(root_id, [])
+                    incoming_paths = {relative_path for relative_path, _, _, _ in rows}
+                    removed_paths = set(existing) - incoming_paths
+                    if removed_paths:
+                        db.executemany(
+                            """
+                            DELETE FROM tracks
+                            WHERE root_id = ? AND relative_path = ?
+                            """,
+                            [(root_id, relative_path) for relative_path in removed_paths],
+                        )
+                        tracks_deleted += len(removed_paths)
+
+                    write_rows = []
+                    for relative_path, track, size, mtime_ns in rows:
+                        previous = existing.get(relative_path)
+                        reusable = bool(
+                            previous is not None
+                            and size is not None
+                            and mtime_ns is not None
+                            and previous[0] is not None
+                            and previous[1] is not None
+                            and int(previous[0]) == int(size)
+                            and int(previous[1]) == int(mtime_ns)
+                        )
+                        if reusable:
+                            tracks_reused += 1
+                            continue
+                        write_rows.append(
                             (
                                 root_id,
                                 relative_path,
@@ -305,10 +430,31 @@ class LocalLibraryIndex:
                                     separators=(",", ":"),
                                     default=str,
                                 ),
+                                size,
+                                mtime_ns,
                             )
-                            for relative_path, track in rows
-                        ],
-                    )
+                        )
+
+                    if write_rows:
+                        db.executemany(
+                            """
+                            INSERT INTO tracks(
+                                root_id,
+                                relative_path,
+                                metadata_json,
+                                size,
+                                mtime_ns
+                            )
+                            VALUES(?, ?, ?, ?, ?)
+                            ON CONFLICT(root_id, relative_path) DO UPDATE SET
+                                metadata_json=excluded.metadata_json,
+                                size=excluded.size,
+                                mtime_ns=excluded.mtime_ns
+                            """,
+                            write_rows,
+                        )
+                        tracks_written += len(write_rows)
+
                     db.execute(
                         """
                         UPDATE roots
@@ -328,7 +474,19 @@ class LocalLibraryIndex:
                 len(rows) for root_id, rows in grouped.items()
                 if root_id in available_ids
             ),
-            "roots_unavailable": max(0, len(clean_roots) - len(available_ids)),
+            "tracks_written": tracks_written,
+            "tracks_reused": tracks_reused,
+            "tracks_deleted": tracks_deleted,
+            "roots_unavailable": sum(
+                1 for row in state_rows
+                if not bool(row.get("available"))
+            ) if state_rows else 0,
+            "roots_incomplete": sum(
+                1 for row in state_rows
+                if bool(row.get("available"))
+                and "complete" in row
+                and not bool(row.get("complete"))
+            ),
         }
 
     def summary(self, roots: list[Path]) -> dict[str, Any]:
