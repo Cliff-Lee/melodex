@@ -979,6 +979,25 @@ class LibraryBrowser(QWidget):
                     if current or detail_parts
                     else "Reading track information…"
                 )
+            elif completed:
+                self.scan_progress.setRange(0,0)
+                self.scan_progress.setFormat("")
+                self.scan_progress_summary.setText(
+                    f"Reading metadata · {completed:,} read so far"
+                )
+                detail_parts=[]
+                if unchanged:
+                    detail_parts.append(f"{unchanged:,} unchanged")
+                if added:
+                    detail_parts.append(f"{added:,} new")
+                if changed:
+                    detail_parts.append(f"{changed:,} changed")
+                self.scan_progress_detail.setText(
+                    (current + (" · " if detail_parts else "") if current else "")
+                    + " · ".join(detail_parts)
+                    if current or detail_parts
+                    else "Discovering and reading track information…"
+                )
             elif found:
                 self.scan_progress.setRange(0,1)
                 self.scan_progress.setValue(1)
