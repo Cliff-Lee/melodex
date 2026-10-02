@@ -15,3 +15,14 @@ if command -v hdiutil >/dev/null && [ -d dist/Melodex.app ]; then
   rm -f dist/Melodex.dmg
   hdiutil create -volname Melodex -srcfolder dist/Melodex.app -ov -format UDZO dist/Melodex.dmg
 fi
+
+if [ -f dist/Melodex.dmg ]; then
+  python tools/report_bundle_size.py dist/Melodex.app \
+    --archive dist/Melodex.dmg \
+    --json-out dist/Melodex-bundle-size.json \
+    --markdown-out dist/Melodex-bundle-size.md
+else
+  python tools/report_bundle_size.py dist/Melodex.app \
+    --json-out dist/Melodex-bundle-size.json \
+    --markdown-out dist/Melodex-bundle-size.md
+fi
