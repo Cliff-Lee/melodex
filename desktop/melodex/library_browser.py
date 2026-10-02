@@ -396,6 +396,8 @@ class LibraryBrowser(QWidget):
         self._album_lookup_stats = self._new_lookup_stats()
         self._tracks_built = False
         self.last_catalog_metrics: dict[str, object] = {}
+        self.last_filter_metrics: dict[str, object] = {}
+        self.last_view_metrics: dict[str, object] = {}
         self._scan_active = False
         self._scan_paused = False
 
@@ -686,6 +688,9 @@ class LibraryBrowser(QWidget):
             "main_thread": current_thread is threading.main_thread(),
             "track_count": 0,
             "album_count": 0,
+            "input_album_count": 0,
+            "albums_truncated": 0,
+            "tracks_truncated": 0,
             "artist_count": 0,
             "rendered_album_count": 0,
             "rendered_artist_count": 0,
@@ -770,6 +775,12 @@ class LibraryBrowser(QWidget):
             6,
         )
         metrics["album_count"] = len(self.albums)
+        metrics["input_album_count"] = int(
+            wall.get("input_album_count") or len(self.albums)
+        )
+        metrics["albums_truncated"] = int(wall.get("albums_truncated") or 0)
+        metrics["tracks_truncated"] = int(wall.get("tracks_truncated") or 0)
+        metrics["album_limit"] = int(wall.get("album_limit") or 4000)
 
         album_index_started = time.perf_counter()
         self.track_album_key = {}
@@ -986,8 +997,14 @@ class LibraryBrowser(QWidget):
         return "albums"
 
     def set_view(self, name: str) -> None:
+        started = time.perf_counter()
         if not self.catalog:
             self.stack.setCurrentWidget(self.empty)
+            self.last_view_metrics = {
+                "view": str(name or "albums"),
+                "total_seconds": round(time.perf_counter() - started, 6),
+                "empty": True,
+            }
             return
         name = str(name or "albums")
         if name not in self.view_buttons:
@@ -999,6 +1016,7 @@ class LibraryBrowser(QWidget):
             "tracks": self.track_list,
         }[name]
         self.stack.setCurrentWidget(target)
+        shell_seconds = time.perf_counter() - started
         if name == "artists":
             self.images_button.setObjectName("primaryButton")
         else:
@@ -1007,7 +1025,17 @@ class LibraryBrowser(QWidget):
         self.images_button.style().unpolish(self.images_button)
         self.images_button.style().polish(self.images_button)
         self.images_button.update()
+        filter_started = time.perf_counter()
         self._apply_filter()
+        self.last_view_metrics = {
+            "view": name,
+            "shell_seconds": round(shell_seconds, 6),
+            "filter_seconds": round(time.perf_counter() - filter_started, 6),
+            "total_seconds": round(time.perf_counter() - started, 6),
+            "rendered_album_count": len(self.cards),
+            "rendered_artist_count": len(self.artist_cards),
+            "rendered_track_count": len(self.track_rows),
+        }
 
     @staticmethod
     def _new_lookup_stats(total: int = 0) -> dict[str,int]:
@@ -1334,8 +1362,13 @@ class LibraryBrowser(QWidget):
 
     def _apply_filter(self) -> None:
         if not self.catalog:
+            self.last_filter_metrics = {}
             return
+
+        started = time.perf_counter()
         query = _norm(self.search.text())
+
+        album_started = time.perf_counter()
         self._visible_albums = [
             album
             for album in self.albums
@@ -1346,6 +1379,9 @@ class LibraryBrowser(QWidget):
                 + " ".join(str(x) for x in list(album.get("genres") or []))
             )
         ]
+        album_filter_seconds = time.perf_counter() - album_started
+
+        artist_started = time.perf_counter()
         self._visible_artists = [
             artist
             for artist in self.artist_rows
@@ -1356,6 +1392,9 @@ class LibraryBrowser(QWidget):
                 + " ".join(str(x.get('album') or '') for x in artist.get('tracks',[]))
             )
         ]
+        artist_filter_seconds = time.perf_counter() - artist_started
+
+        track_started = time.perf_counter()
         self._visible_tracks = sorted(
             [
                 track
@@ -1375,13 +1414,29 @@ class LibraryBrowser(QWidget):
                 _norm(item.get("title")),
             ),
         )
+        track_filter_sort_seconds = time.perf_counter() - track_started
 
+        layout_started = time.perf_counter()
         self._layout_album_cards()
         if self.current_view() == "artists" or self.artist_cards:
             self._layout_artist_cards()
         if self.current_view() == "tracks":
             self._rebuild_tracks()
             self._tracks_built = True
+        layout_seconds = time.perf_counter() - layout_started
+
+        self.last_filter_metrics = {
+            "query_length": len(query),
+            "view": self.current_view(),
+            "visible_album_count": len(self._visible_albums),
+            "visible_artist_count": len(self._visible_artists),
+            "visible_track_count": len(self._visible_tracks),
+            "album_filter_seconds": round(album_filter_seconds, 6),
+            "artist_filter_seconds": round(artist_filter_seconds, 6),
+            "track_filter_sort_seconds": round(track_filter_sort_seconds, 6),
+            "layout_seconds": round(layout_seconds, 6),
+            "total_seconds": round(time.perf_counter() - started, 6),
+        }
 
     def _layout_album_cards(self) -> None:
         self._clear_grid(self.album_grid)

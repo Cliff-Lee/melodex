@@ -4304,6 +4304,12 @@ class MainWindow(QMainWindow):
             ui_metrics["library_catalog"] = dict(
                 getattr(self.library_browser, "last_catalog_metrics", {}) or {}
             )
+            ui_metrics["library_filter"] = dict(
+                getattr(self.library_browser, "last_filter_metrics", {}) or {}
+            )
+            ui_metrics["library_view"] = dict(
+                getattr(self.library_browser, "last_view_metrics", {}) or {}
+            )
         if hasattr(self, "responsiveness"):
             ui_metrics["responsiveness"] = self.responsiveness.summary()
         try:

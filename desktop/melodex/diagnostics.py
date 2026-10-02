@@ -39,6 +39,10 @@ _CATALOG_METRIC_FIELDS = (
     "main_thread",
     "track_count",
     "album_count",
+    "input_album_count",
+    "albums_truncated",
+    "tracks_truncated",
+    "album_limit",
     "artist_count",
     "reset_seconds",
     "copy_catalog_seconds",
@@ -48,6 +52,30 @@ _CATALOG_METRIC_FIELDS = (
     "initial_layout_seconds",
     "artwork_request_seconds",
     "total_seconds",
+)
+
+_LIBRARY_FILTER_METRIC_FIELDS = (
+    "query_length",
+    "view",
+    "visible_album_count",
+    "visible_artist_count",
+    "visible_track_count",
+    "album_filter_seconds",
+    "artist_filter_seconds",
+    "track_filter_sort_seconds",
+    "layout_seconds",
+    "total_seconds",
+)
+
+_LIBRARY_VIEW_METRIC_FIELDS = (
+    "view",
+    "shell_seconds",
+    "filter_seconds",
+    "total_seconds",
+    "rendered_album_count",
+    "rendered_artist_count",
+    "rendered_track_count",
+    "empty",
 )
 
 _RESPONSIVENESS_FIELDS = (
@@ -244,6 +272,20 @@ def build_diagnostics(
     )
     if library_catalog:
         performance["library_catalog"] = library_catalog
+
+    library_filter = _metric_summary(
+        supplied_ui.get("library_filter"),
+        _LIBRARY_FILTER_METRIC_FIELDS,
+    )
+    if library_filter:
+        performance["library_filter"] = library_filter
+
+    library_view = _metric_summary(
+        supplied_ui.get("library_view"),
+        _LIBRARY_VIEW_METRIC_FIELDS,
+    )
+    if library_view:
+        performance["library_view"] = library_view
 
     ui_responsiveness = _responsiveness_summary(
         supplied_ui.get("responsiveness")

@@ -213,6 +213,7 @@ def build_album_wall(
         })
 
     albums.sort(key=lambda a: (_norm(a["artist"]), _norm(a["title"]), a["key"]))
+    input_album_count = len(albums)
     max_albums = max(1, int(max_albums))
     if len(albums) > max_albums:
         ranked = sorted(albums, key=lambda a: (
@@ -243,10 +244,15 @@ def build_album_wall(
         )
         album["time_y"] = float(album["sound_y"])
 
+    retained_track_count = sum(int(a["track_count"]) for a in albums)
     return {
         "albums": albums,
         "album_count": len(albums),
-        "track_count": sum(int(a["track_count"]) for a in albums),
+        "input_album_count": input_album_count,
+        "albums_truncated": max(0, input_album_count - len(albums)),
+        "album_limit": max_albums,
+        "track_count": retained_track_count,
+        "tracks_truncated": max(0, len(catalog) - retained_track_count),
         "analysed_albums": sum(1 for a in albums if int(a["analysed_tracks"]) > 0),
         "analysed_tracks": sum(int(a["analysed_tracks"]) for a in albums),
         "input_tracks": len(catalog),
