@@ -102,13 +102,22 @@ def _track_text(t: dict[str, Any]) -> str:
 class MainWindow(QMainWindow):
     externalCommand = Signal(str, object, object)
 
-    def __init__(self):
+    def _startup_mark(self, phase: str) -> None:
+        timeline = getattr(self, "_startup_timeline", None)
+        if timeline is not None:
+            timeline.mark(phase)
+
+    def __init__(self, *, startup_timeline=None):
         super().__init__()
+        self._startup_timeline = startup_timeline
+        self._startup_mark("main_window_init_enter")
         self.setWindowTitle("Melodex")
         self.resize(1280, 800)
         self.data_dir = app_data_dir()
         self.providers = ProviderManager(self.data_dir)
+        self._startup_mark("providers_ready")
         self.state = UserState(self.data_dir / "taste.sqlite3")
+        self._startup_mark("user_state_ready")
         self.motion = MotionController(
             self,
             reduced=self.state.get_bool("reduce_motion", False),
@@ -124,6 +133,7 @@ class MainWindow(QMainWindow):
         )
         self.llm = LLMClient()
         self.metadata = RichMetadataService(self.data_dir, capability_broker=self.providers.capabilities)
+        self._startup_mark("core_services_ready")
         self.bridge: ProviderBridge | None = None
         self.current_history_id = 0
         self.current_track_started = 0.0
@@ -192,20 +202,25 @@ class MainWindow(QMainWindow):
             lambda _queue: self._schedule_next_track_prefetch()
         )
         self.player.manualAdvanced.connect(self._on_manual_advance)
+        self._startup_mark("player_ready")
 
         self._build_ui()
+        self._startup_mark("ui_built")
         self.responsiveness = UiResponsivenessMonitor(self)
         self.responsiveness.start()
         self.responsiveness.mark_action("startup:home")
         self._show_home()
+        self._startup_mark("home_ready")
         self.responsiveness.mark_action("startup:bridge")
         self._start_local_bridge()
+        self._startup_mark("bridge_ready")
         startup_roots=self.providers.local_roots()
         if startup_roots and not self.providers.local_index_ready(startup_roots):
             # One-time migration for existing users who have configured roots
             # but no persistent index yet. Once indexed, later launches load the
             # cache immediately and do not walk the NAS automatically.
             QTimer.singleShot(0, lambda: self._start_local_scan("initial index"))
+        self._startup_mark("main_window_init_ready")
 
     # ------------------------------- UI
     def _build_ui(self):
