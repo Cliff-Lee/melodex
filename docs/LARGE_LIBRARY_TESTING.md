@@ -403,3 +403,48 @@ executable in scan-worker mode before Qt starts.
 - changing roots stops the stale scan and queues the new root set
 - closing Melodex terminates a live scan worker
 - packaged macOS and Windows builds pass the frozen scan-child smoke test
+
+
+## Campaign 7 — progressive My Music rendering
+
+Indexing 12,700 tracks is not enough if the GUI then creates thousands of Qt
+widgets in one pass. My Music now keeps the complete album/artist/track models
+in memory while rendering only a bounded working set.
+
+Initial render windows are:
+
+- 120 album cards
+- 120 artist cards
+- 300 track rows
+
+Albums and Artists expose **Show more** controls. Tracks add a lightweight
+footer row that loads the next batch without rebuilding the rows already on
+screen. Search resets the working window and filters the complete model, so a
+track outside the first 300 results is still immediately searchable.
+
+Card widgets that fall outside the current filtered render window are destroyed
+rather than accumulating invisibly. Artwork/cache work is also limited to the
+currently rendered album/artist window.
+
+The existing synthetic UI benchmark exercises this directly:
+
+```bash
+cd desktop
+python tools/profile_library_catalog.py --tracks 12700
+python tools/profile_library_catalog.py --tracks 12700 --view artists
+python tools/profile_library_catalog.py --tracks 12700 --view tracks
+```
+
+The important distinction is between the full model counts and the widget
+counts. A 12,700-track catalog should still report all tracks in the model while
+the initial widget counts remain bounded.
+
+### Campaign 7 acceptance checks
+
+- the Albums model may contain thousands of albums while at most 120 cards are created initially
+- Artist cards are not created until the user opens Artists, then start at 120
+- opening Tracks creates at most 300 `TrackRow` widgets initially
+- **Show more** expands only on explicit user request
+- searching the full catalog works even when the match was outside the original render window
+- changing a search drops no-longer-visible card widgets instead of retaining them indefinitely
+- artwork/cache requests are scoped to rendered albums/artists rather than the whole library
