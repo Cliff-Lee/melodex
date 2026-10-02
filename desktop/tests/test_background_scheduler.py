@@ -153,3 +153,84 @@ def test_scheduler_rejects_unknown_priority() -> None:
             scheduler.submit(lambda: None, priority="urgent")
     finally:
         scheduler.shutdown(wait=True)
+
+
+def test_replacement_key_cancels_queued_stale_work() -> None:
+    scheduler = BackgroundScheduler(
+        max_workers=1,
+        reserved_foreground_slots=0,
+    )
+    release = threading.Event()
+    blocker_started = threading.Event()
+    new_done = threading.Event()
+    ran: list[str] = []
+
+    def blocker() -> None:
+        blocker_started.set()
+        release.wait(2.0)
+
+    try:
+        scheduler.submit(blocker, priority="foreground", name="blocker")
+        assert blocker_started.wait(1.0)
+
+        scheduler.submit(
+            lambda: ran.append("old"),
+            priority="visible",
+            name="old",
+            replace_key="search",
+        )
+        scheduler.submit(
+            lambda: (ran.append("new"), new_done.set()),
+            priority="visible",
+            name="new",
+            replace_key="search",
+        )
+
+        snapshot = scheduler.snapshot()
+        assert snapshot["cancelled_pending"] == 1
+        assert snapshot["pending_total"] == 1
+
+        release.set()
+        assert new_done.wait(1.0)
+        assert ran == ["new"]
+    finally:
+        release.set()
+        scheduler.shutdown(wait=True)
+
+
+def test_cancel_pending_removes_named_scope_only() -> None:
+    scheduler = BackgroundScheduler(
+        max_workers=1,
+        reserved_foreground_slots=0,
+    )
+    release = threading.Event()
+    blocker_started = threading.Event()
+
+    def blocker() -> None:
+        blocker_started.set()
+        release.wait(2.0)
+
+    try:
+        scheduler.submit(blocker, priority="foreground", name="blocker")
+        assert blocker_started.wait(1.0)
+
+        scheduler.submit(
+            lambda: None,
+            priority="visible",
+            name="album-wall",
+            replace_key="page:album-wall-model",
+        )
+        scheduler.submit(
+            lambda: None,
+            priority="visible",
+            name="music-map",
+            replace_key="page:music-map-model",
+        )
+
+        assert scheduler.cancel_pending("page:album-wall-model") == 1
+        snapshot = scheduler.snapshot()
+        assert snapshot["pending_total"] == 1
+        assert snapshot["cancelled_pending"] == 1
+    finally:
+        release.set()
+        scheduler.shutdown(wait=True)
