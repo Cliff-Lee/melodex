@@ -173,6 +173,11 @@ def profile_gui(
     app.processEvents()
     browser.set_view("artists")
     app.processEvents()
+    if browser.last_artwork_priority_metrics.get("kind") != "artists":
+        browser._emit_viewport_artwork_batch(
+            "artists",
+            browser._artwork_generation("artists"),
+        )
     artist_view_metrics = dict(browser.last_view_metrics)
     artist_filter_metrics = dict(browser.last_filter_metrics)
     artist_artwork_priority = dict(browser.last_artwork_priority_metrics)
