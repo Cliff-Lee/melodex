@@ -122,3 +122,50 @@ The design rule for the whole campaign is:
 
 > Library size may change how long background completion takes; it should not
 > fundamentally change how Melodex feels to use.
+
+
+## P10b — streaming discovery result
+
+P10b removes the collection-wide discovery list from the local scanner.
+
+Before P10b, a scan first accumulated every discovered audio file and its
+fingerprint into a `discovered` list. Only after traversal completed did
+Melodex read changed metadata and construct the final snapshot structures.
+
+P10b changes that flow to:
+
+```text
+walk filesystem
+  ↓
+fingerprint one audio file
+  ↓
+reuse cached metadata or read tags immediately
+  ↓
+append final snapshot row
+  ↓
+continue walking
+```
+
+This removes one complete O(n) copy of per-file discovery state and starts
+metadata work before traversal finishes.
+
+The completed scan is still atomic. Melodex does **not** progressively mutate
+the live catalog in P10b. If a root reports a traversal error, all rows produced
+for that root during the current scan are discarded and its previously indexed
+SQLite snapshot is preserved.
+
+Streaming progress now supports an unknown denominator while discovery is
+still running. The UI reports tags read so far rather than falsely claiming
+metadata is already up to date.
+
+P10b also records:
+
+- `streaming_discovery: true`
+- `discovery_buffer_rows: 0`
+
+in scan metrics, making the new invariant testable.
+
+The remaining large-memory structures are the final atomic snapshot itself
+(`tracks`, `index_tracks`, and `index_records`). Reducing those safely is
+reserved for the bounded-pipeline/database-writer stages rather than combining
+multiple architectural changes into one PR.
