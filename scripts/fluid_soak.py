@@ -7,7 +7,6 @@ import os
 import statistics
 import sys
 import time
-import tracemalloc
 from concurrent.futures import CancelledError
 from pathlib import Path
 from typing import Any
@@ -31,7 +30,8 @@ DEFAULT_BUDGETS = {
     "max_serious_stalls": 0,
     "max_release_blockers": 0,
     "max_rss_growth_mib": 128.0,
-    "max_python_growth_mib": 32.0,
+    "max_gc_object_growth": 5000,
+    "max_allocated_block_growth": 50000,
     "max_scheduler_pending_end": 0,
     "max_scheduler_active_end": 0,
     "max_scheduler_queue_high_water": 32,
@@ -63,6 +63,16 @@ def current_rss_mib() -> float:
         return round(rss, 3)
     except Exception:
         return 0.0
+
+
+def _drain_qt(app, *, turns: int = 1) -> None:
+    """Process normal events and DeferredDelete events like the real Qt loop."""
+    from PySide6.QtCore import QCoreApplication, QEvent
+
+    for _ in range(max(1, int(turns))):
+        app.processEvents()
+        QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+        app.processEvents()
 
 
 def _percentile(values: list[float], percentile: float) -> float:
@@ -229,11 +239,10 @@ def _run_interaction_cycle(
 
     # Process multiple turns so zero-delay viewport hydration and monitor timers
     # get a chance to run even under sustained churn.
-    app.processEvents()
-    app.processEvents()
+    _drain_qt(app, turns=2)
     if pace_ms > 0:
         time.sleep(float(pace_ms) / 1000.0)
-    app.processEvents()
+    _drain_qt(app)
 
     return (time.perf_counter() - started) * 1000.0
 
@@ -275,9 +284,14 @@ def evaluate_report(
             "RSS growth",
         ),
         (
-            float(memory.get("python_growth_mib") or 0.0)
-            <= float(limits["max_python_growth_mib"]),
-            "Python heap growth",
+            int(memory.get("gc_object_growth") or 0)
+            <= int(limits["max_gc_object_growth"]),
+            "retained GC object growth",
+        ),
+        (
+            int(memory.get("allocated_block_growth") or 0)
+            <= int(limits["max_allocated_block_growth"]),
+            "allocated Python block growth",
         ),
         (
             int(scheduler.get("pending_total") or 0)
@@ -359,8 +373,7 @@ def run_soak(
 
     load_started = time.perf_counter()
     browser.set_catalog(catalog, revision=int(track_count))
-    app.processEvents()
-    app.processEvents()
+    _drain_qt(app, turns=2)
     catalog_load_seconds = time.perf_counter() - load_started
 
     for cycle in range(max(0, int(warmup_cycles))):
@@ -373,13 +386,17 @@ def run_soak(
             pace_ms=max(0, int(pace_ms)),
         )
     scheduler.wait_for_idle(5.0)
-    for _ in range(3):
-        app.processEvents()
+    _drain_qt(app, turns=3)
     gc.collect()
+    _drain_qt(app)
 
     rss_start = current_rss_mib()
-    tracemalloc.start()
-    python_start, _python_peak = tracemalloc.get_traced_memory()
+    gc_objects_start = len(gc.get_objects())
+    allocated_blocks_start = (
+        int(sys.getallocatedblocks())
+        if hasattr(sys, "getallocatedblocks")
+        else 0
+    )
 
     monitor = UiResponsivenessMonitor(browser)
     monitor.start()
@@ -416,18 +433,22 @@ def run_soak(
 
     scheduler.wait_for_idle(10.0)
     for _ in range(5):
-        app.processEvents()
+        _drain_qt(app)
         time.sleep(0.001)
     monitor.stop()
     gc.collect()
-    app.processEvents()
+    _drain_qt(app, turns=2)
 
     responsiveness = monitor.summary()
     scheduler_summary = scheduler.snapshot()
 
-    python_current, python_peak = tracemalloc.get_traced_memory()
-    tracemalloc.stop()
     rss_end = current_rss_mib()
+    gc_objects_end = len(gc.get_objects())
+    allocated_blocks_end = (
+        int(sys.getallocatedblocks())
+        if hasattr(sys, "getallocatedblocks")
+        else 0
+    )
 
     first_median = _quarter_median(cycle_ms)
     last_median = _quarter_median(cycle_ms, tail=True)
@@ -462,12 +483,14 @@ def run_soak(
             "rss_start_mib": round(rss_start, 3),
             "rss_end_mib": round(rss_end, 3),
             "rss_growth_mib": round(max(0.0, rss_end - rss_start), 3),
-            "python_start_mib": round(python_start / (1024 * 1024), 3),
-            "python_end_mib": round(python_current / (1024 * 1024), 3),
-            "python_peak_mib": round(python_peak / (1024 * 1024), 3),
-            "python_growth_mib": round(
-                max(0.0, python_current - python_start) / (1024 * 1024),
-                3,
+            "gc_objects_start": int(gc_objects_start),
+            "gc_objects_end": int(gc_objects_end),
+            "gc_object_growth": max(0, int(gc_objects_end - gc_objects_start)),
+            "allocated_blocks_start": int(allocated_blocks_start),
+            "allocated_blocks_end": int(allocated_blocks_end),
+            "allocated_block_growth": max(
+                0,
+                int(allocated_blocks_end - allocated_blocks_start),
             ),
         },
         "responsiveness": responsiveness,
@@ -493,7 +516,7 @@ def run_soak(
     scheduler.shutdown(wait=True, cancel_pending=True)
     del bridge
     browser.deleteLater()
-    app.processEvents()
+    _drain_qt(app, turns=2)
     return report
 
 
