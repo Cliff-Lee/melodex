@@ -190,22 +190,41 @@ def test_large_library_progressively_renders_widgets():
     app.processEvents()
     assert len(browser.artist_cards) == 240
 
-    # Tracks use the same progressive policy; only the requested rows become
-    # TrackRow widgets, rather than all 12,700 in a large real library.
+    # Tracks expose the whole model immediately, but rich TrackRow widgets
+    # exist only for the viewport plus a small overscan window.
     browser.set_view("tracks")
     app.processEvents()
-    assert browser.stack.currentWidget() is browser.track_list
-    assert len(browser.track_rows) == browser._track_batch_size == 300
-    assert browser._track_more_item is not None
-
-    browser._show_more_tracks()
     app.processEvents()
-    assert len(browser.track_rows) == 350
-    assert browser._track_more_item is None
+    assert browser.stack.currentWidget() is browser.track_list
+    assert browser.track_model.rowCount() == 350
+    assert len(browser._visible_tracks) == 350
+    initial_keys = set(browser.track_rows)
+    assert initial_keys
+    viewport_rows = max(
+        1,
+        browser.track_list.viewport().height() // browser._track_row_height + 3,
+    )
+    max_hydrated = viewport_rows + browser._track_overscan_rows * 2
+    assert len(browser.track_rows) <= max_hydrated
+    assert browser.last_track_virtualization_metrics["model_row_count"] == 350
+    assert browser.last_track_virtualization_metrics["hydrated_row_count"] == len(
+        browser.track_rows
+    )
+
+    # Scrolling moves the hydration window instead of accumulating hundreds
+    # or thousands of TrackRow widgets.
+    browser.track_list.scrollToBottom()
+    app.processEvents()
+    app.processEvents()
+    assert browser.last_track_virtualization_metrics["window_start"] > 0
+    assert len(browser.track_rows) <= max_hydrated
+    assert set(browser.track_rows) != initial_keys
 
     browser.search.setText("Track 0349")
     app.processEvents()
+    app.processEvents()
     assert len(browser._visible_tracks) == 1
+    assert browser.track_model.rowCount() == 1
     assert len(browser.track_rows) == 1
 
     browser.deleteLater()
