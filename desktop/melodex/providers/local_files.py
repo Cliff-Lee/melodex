@@ -74,11 +74,18 @@ class LocalFilesProvider(MusicProvider):
                 return dict(self._tracks[index])
         return {}
 
-    def clear_metadata_override(self, local_path: str | Path) -> bool:
+    def clear_metadata_override(
+        self,
+        local_path: str | Path,
+        *,
+        rescan: bool = True,
+    ) -> bool:
         key = self._override_key(local_path)
         changed = key in self.overrides
         self.overrides.pop(key, None)
-        if changed:
+        if changed and rescan:
+            # Compatibility for non-GUI callers. The desktop manager passes
+            # rescan=False and schedules the filesystem work asynchronously.
             self.scan()
         return changed
 
