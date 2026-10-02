@@ -11,6 +11,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+import melodex.library_scan_process as library_scan_process
+
 
 def _track(path: str, artist: str, album: str, title: str, number: int, year: int = 2000):
     return {
@@ -2410,7 +2412,7 @@ def test_global_scan_activity_persists_across_navigation(monkeypatch, tmp_path):
         def shutdown(self, **_kwargs):
             release.set()
 
-    monkeypatch.setattr(main_window, "LibraryScanProcess", HoldingRunner)
+    monkeypatch.setattr(library_scan_process, "LibraryScanProcess", HoldingRunner)
 
     window = main_window.MainWindow()
     window.show()
@@ -2542,7 +2544,7 @@ def test_slow_library_scan_keeps_qt_event_loop_responsive(monkeypatch, tmp_path)
         def shutdown(self, **_kwargs):
             release.set()
 
-    monkeypatch.setattr(main_window, "LibraryScanProcess", SlowRunner)
+    monkeypatch.setattr(library_scan_process, "LibraryScanProcess", SlowRunner)
 
     window = main_window.MainWindow()
     root = tmp_path / "slow-nas"
@@ -2678,7 +2680,7 @@ def test_root_change_during_scan_discards_stale_snapshot(monkeypatch, tmp_path):
         def shutdown(self, **_kwargs):
             self.cancel_event.set()
 
-    monkeypatch.setattr(main_window, "LibraryScanProcess", RestartingRunner)
+    monkeypatch.setattr(library_scan_process, "LibraryScanProcess", RestartingRunner)
 
     window = main_window.MainWindow()
     window.providers.configure_local_roots([root_a])
@@ -2874,7 +2876,7 @@ def test_cancelled_main_window_scan_keeps_existing_catalog(monkeypatch, tmp_path
         def shutdown(self, **_kwargs):
             pass
 
-    monkeypatch.setattr(main_window, "LibraryScanProcess", CancellableRunner)
+    monkeypatch.setattr(library_scan_process, "LibraryScanProcess", CancellableRunner)
 
     window = main_window.MainWindow()
     window._ensure_lazy_page_built("library")
@@ -3082,7 +3084,7 @@ def test_gui_library_scan_uses_isolated_runner_not_provider_thread(
         def shutdown(self, **_kwargs):
             pass
 
-    monkeypatch.setattr(main_window, "LibraryScanProcess", ImmediateRunner)
+    monkeypatch.setattr(library_scan_process, "LibraryScanProcess", ImmediateRunner)
 
     window = main_window.MainWindow()
     root = tmp_path / "nas"
