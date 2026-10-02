@@ -250,6 +250,20 @@ Melodex metadata corrections remain separate from the raw indexed file tags.
 That means a correction can be removed later without having permanently baked
 it into the cached file metadata.
 
+### Persistent-index benchmark
+
+The synthetic benchmark writes and reopens the permanent 12,700-track stress
+case without touching a real music collection:
+
+```bash
+cd desktop
+python tools/profile_library_index.py --tracks 12700
+```
+
+Use `--json` for machine-readable timings. The important startup number is
+`read_seconds`: this is the metadata load that replaces a NAS traversal on
+normal launches.
+
 ### Campaign 4 acceptance checks
 
 - a previously indexed 12,700-track library opens from SQLite without walking the NAS
