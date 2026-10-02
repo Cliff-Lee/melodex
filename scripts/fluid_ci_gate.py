@@ -15,6 +15,8 @@ FLUID_GATE_TESTS = [
     "desktop/tests/test_responsiveness_gate.py",
     "desktop/tests/test_motion.py",
     "desktop/tests/test_fluid_soak_probe.py",
+    "desktop/tests/test_library_index.py::test_provider_manager_defers_cached_catalog_hydration_until_first_use",
+    "desktop/tests/test_plugin_config.py::test_default_secret_store_is_deferred_until_secret_access",
     "desktop/tests/test_gui_redesign.py::test_slow_source_config_check_keeps_qt_event_loop_responsive",
     "desktop/tests/test_gui_redesign.py::test_navigation_shell_changes_before_slow_page_population",
     "desktop/tests/test_gui_redesign.py::test_heavy_pages_build_once_after_navigation_shell",
