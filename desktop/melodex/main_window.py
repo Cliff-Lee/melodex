@@ -4,7 +4,6 @@ import json
 import threading
 import time
 import uuid
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -58,6 +57,7 @@ from .plugin_health import health_badge, health_summary
 from .diagnostics import write_diagnostics
 from .responsiveness import UiResponsivenessMonitor
 from .motion import MotionController, FAST_MOTION_MS, STANDARD_MOTION_MS
+from .background_scheduler import BackgroundScheduler
 from .library_browser import LibraryBrowser
 from .library_scan_process import LibraryScanProcess
 from .ux_components import (
@@ -75,15 +75,6 @@ class WorkerSignals(QObject):
     done = Signal(object)
     error = Signal(str)
     progress = Signal(object)
-
-
-class _VisualAnalysisSignals(QObject):
-    ready = Signal(str, object)
-
-
-class _VisualContextSignals(QObject):
-    ready = Signal(int, str, object)
-
 
 def _escape_html(value: Any) -> str:
     import html
@@ -113,6 +104,17 @@ class MainWindow(QMainWindow):
             reduced=self.state.get_bool("reduce_motion", False),
         )
         self.page_titles: dict[str, QLabel] = {}
+        self.background = BackgroundScheduler(
+            max_workers=4,
+            lane_limits={
+                "default": 4,
+                "disk": 2,
+                "network": 2,
+                "analysis": 1,
+                "prefetch": 1,
+                "idle": 1,
+            },
+        )
         self.flow = FlowEngine(self.data_dir / "flow.sqlite3")
         self.mind = MindEngine(self.state, self.flow)
         self.local_intelligence = LocalIntelligenceService(
@@ -129,10 +131,6 @@ class MainWindow(QMainWindow):
         self.current_track: dict[str, Any] | None = None
         self._visual_position_ms = 0
         self._visual_duration_ms = 0
-        self._visual_analysis_signals = _VisualAnalysisSignals(self)
-        self._visual_analysis_signals.ready.connect(self._visual_analysis_loaded)
-        self._visual_context_signals = _VisualContextSignals(self)
-        self._visual_context_signals.ready.connect(self._visual_context_loaded)
         self._visual_context_sequence = 0
         self._visual_neighbour_tracks: dict[int, dict[str, Any]] = {}
         self.music_path_start_ref = ""
@@ -3116,7 +3114,14 @@ class MainWindow(QMainWindow):
                 f"Cached artwork refresh paused · {error}",
                 3500,
             )
-        self._run_async(load,self.library_browser.set_artwork,failed)
+        self._run_async(
+            load,
+            self.library_browser.set_artwork,
+            failed,
+            priority="visible",
+            lane="disk",
+            label="viewport-album-artwork",
+        )
 
     def _library_online_artwork_requested(self, requests: object) -> None:
         rows=[dict(x) for x in list(requests or []) if isinstance(x,dict)]
@@ -3178,9 +3183,7 @@ class MainWindow(QMainWindow):
                 return {"key":key,"path":"","status":"error","error":str(exc)}
 
         def load():
-            workers=max(1,min(4,len(rows)))
-            with ThreadPoolExecutor(max_workers=workers) as pool:
-                return list(pool.map(lookup_one,rows))
+            return [lookup_one(row) for row in rows]
 
         def apply(result):
             outcomes=[dict(x) for x in list(result or []) if isinstance(x,dict)]
@@ -3216,7 +3219,14 @@ class MainWindow(QMainWindow):
                 5000,
             )
 
-        self._run_async(load,apply,failed)
+        self._run_async(
+            load,
+            apply,
+            failed,
+            priority="background",
+            lane="network",
+            label="online-album-artwork",
+        )
 
     def _choose_artist_photo_file(self, artist: object) -> None:
         if not isinstance(artist,dict):
@@ -3273,7 +3283,14 @@ class MainWindow(QMainWindow):
                 3500,
             )
 
-        self._run_async(load,self.library_browser.set_artist_images,failed)
+        self._run_async(
+            load,
+            self.library_browser.set_artist_images,
+            failed,
+            priority="visible",
+            lane="disk",
+            label="viewport-artist-photo",
+        )
 
     def _library_artist_images_requested(self, requests: object) -> None:
         rows=[dict(x) for x in list(requests or []) if isinstance(x,dict)]
@@ -3318,9 +3335,7 @@ class MainWindow(QMainWindow):
                 return {"key":key,"path":"","status":"error","error":str(exc)}
 
         def load():
-            workers=max(1,min(4,len(rows)))
-            with ThreadPoolExecutor(max_workers=workers) as pool:
-                return list(pool.map(lookup_one,rows))
+            return [lookup_one(row) for row in rows]
 
         def apply(result):
             outcomes=[dict(x) for x in list(result or []) if isinstance(x,dict)]
@@ -3356,7 +3371,14 @@ class MainWindow(QMainWindow):
                 5000,
             )
 
-        self._run_async(load,apply,failed)
+        self._run_async(
+            load,
+            apply,
+            failed,
+            priority="background",
+            lane="network",
+            label="online-artist-photo",
+        )
 
     def _refresh_journeys(self):
         if not hasattr(self,"journey_recipes_list") or not hasattr(self,"journey_runs_list"):
@@ -3759,7 +3781,20 @@ class MainWindow(QMainWindow):
         if not requested:QMessageBox.information(self,"Empty playlist","No tracks were found in this playlist."); return
         playlist_id=str(uuid.uuid4()); name=str(data.get("name") or Path(filename).stem); description=str(data.get("description") or "")
         self.statusBar().showMessage(f"Importing and matching {len(requested)} tracks…")
-        self._run_async(lambda:self.providers.resolve_playlist(requested),lambda result:self._finish_playlist_file_import(playlist_id,name,description,str(data.get("format") or "playlist"),requested,result))
+        self._run_async(
+            lambda:self.providers.resolve_playlist(requested),
+            lambda result:self._finish_playlist_file_import(
+                playlist_id,
+                name,
+                description,
+                str(data.get("format") or "playlist"),
+                requested,
+                result,
+            ),
+            priority="foreground",
+            lane="network",
+            label="playlist-file-resolution",
+        )
 
     def _finish_playlist_file_import(self,playlist_id,name,description,fmt,requested,result):
         tracks=list(result.get("tracks") or []); unresolved=list(result.get("unresolved") or [])
@@ -4339,6 +4374,8 @@ class MainWindow(QMainWindow):
                     {},
                 ) or {}
             )
+        if hasattr(self, "background"):
+            ui_metrics["background_scheduler"] = self.background.snapshot()
         if hasattr(self, "responsiveness"):
             ui_metrics["responsiveness"] = self.responsiveness.summary()
         try:
@@ -4846,6 +4883,9 @@ class MainWindow(QMainWindow):
                 error,
                 token,
             ),
+            priority="foreground",
+            lane="network",
+            label="discover-search",
         )
 
     def _search_report_failed(
@@ -5152,7 +5192,13 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("Add local music to build an Album Wall",4000)
             return
         self.statusBar().showMessage("Building Album Wall from local metadata and cached Flow analysis…")
-        self._run_async(self._build_album_wall_payload,self._apply_album_wall_payload)
+        self._run_async(
+            self._build_album_wall_payload,
+            self._apply_album_wall_payload,
+            priority="visible",
+            lane="default",
+            label="album-wall-model",
+        )
 
     def _apply_album_wall_payload(self,payload):
         payload=dict(payload or {})
@@ -5181,6 +5227,9 @@ class MainWindow(QMainWindow):
         self._run_async(
             lambda:self.local_intelligence.analyse_catalog(catalog),
             self._album_wall_analysis_finished,
+            priority="background",
+            lane="analysis",
+            label="album-wall-analysis",
         )
 
     def _album_wall_analysis_finished(self,result):
@@ -5233,7 +5282,13 @@ class MainWindow(QMainWindow):
                 info=self.metadata.local_artwork(track)
                 result[key]=str(info.get("path") or "")
             return result
-        self._run_async(load,self.album_wall.set_artwork)
+        self._run_async(
+            load,
+            self.album_wall.set_artwork,
+            priority="visible",
+            lane="disk",
+            label="album-wall-cache",
+        )
 
     def _album_wall_online_artwork_requested(self,requests):
         rows=[dict(x) for x in list(requests or []) if isinstance(x,dict)]
@@ -5260,7 +5315,13 @@ class MainWindow(QMainWindow):
                 result[key]=path
             return result
 
-        self._run_async(load,self.album_wall.set_artwork)
+        self._run_async(
+            load,
+            self.album_wall.set_artwork,
+            priority="background",
+            lane="network",
+            label="album-wall-online-artwork",
+        )
 
     def _build_music_map_payload(self):
         catalog=self.providers.local_catalog()
@@ -5296,7 +5357,13 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("Add local music to build a Music Map",4000)
             return
         self.statusBar().showMessage("Building Music Map from cached Flow analysis…")
-        self._run_async(self._build_music_map_payload,self._apply_music_map_payload)
+        self._run_async(
+            self._build_music_map_payload,
+            self._apply_music_map_payload,
+            priority="visible",
+            lane="default",
+            label="music-map-model",
+        )
 
     def _apply_music_map_payload(self,payload):
         payload=dict(payload or {})
@@ -5428,6 +5495,9 @@ class MainWindow(QMainWindow):
         self._run_async(
             lambda:self._knowledge_bundle_for_track(track),
             self._knowledge_enrichment_finished,
+            priority="background",
+            lane="network",
+            label="knowledge-enrichment",
         )
 
     def _knowledge_needs_enrichment(self,track):
@@ -5462,7 +5532,13 @@ class MainWindow(QMainWindow):
                 except Exception as exc:
                     rows.append({"track":track,"matched":False,"credits":0,"context_cards":0,"errors":[str(exc)]})
             return rows
-        self._run_async(work,self._knowledge_batch_finished)
+        self._run_async(
+            work,
+            self._knowledge_batch_finished,
+            priority="background",
+            lane="network",
+            label="knowledge-batch",
+        )
 
     def _knowledge_enrichment_finished(self,result):
         errors=[str(x) for x in list((result or {}).get("errors") or []) if x]
@@ -6276,7 +6352,13 @@ class MainWindow(QMainWindow):
                 oldest=next(iter(self._prefetched_track_assets))
                 self._prefetched_track_assets.pop(oldest,None)
 
-        self._run_async(load,apply)
+        self._run_async(
+            load,
+            apply,
+            priority="prefetch",
+            lane="prefetch",
+            label="next-track-prefetch",
+        )
 
     # ------------------------------- player/taste
     def _on_track_changed(self,t):
@@ -6351,6 +6433,9 @@ class MainWindow(QMainWindow):
                 self._run_async(
                     lambda:self.metadata.local_artwork(dict(t)),
                     lambda result:self._player_artwork_loaded(token,result),
+                    priority="foreground",
+                    lane="disk",
+                    label="current-track-artwork",
                 )
         if hasattr(self,"rich_now"):
             self.rich_now.set_track(dict(t))
@@ -6382,14 +6467,19 @@ class MainWindow(QMainWindow):
         if not local_path:
             return
 
-        def lookup() -> None:
+        def lookup():
             try:
-                analysis = self.flow.cached_analysis_for(Path(local_path))
+                return self.flow.cached_analysis_for(Path(local_path))
             except Exception:
-                analysis = None
-            self._visual_analysis_signals.ready.emit(local_path, analysis)
+                return None
 
-        threading.Thread(target=lookup, daemon=True).start()
+        self._run_async(
+            lookup,
+            lambda analysis:self._visual_analysis_loaded(local_path,analysis),
+            priority="foreground",
+            lane="analysis",
+            label="current-track-analysis",
+        )
 
     def _visual_analysis_loaded(self, local_path: str, analysis: object) -> None:
         current_path = str((self.current_track or {}).get("local_path") or "")
@@ -6424,21 +6514,29 @@ class MainWindow(QMainWindow):
                 })
         limit = 2000 if mode == "memory" else 120
 
-        def load_context() -> None:
+        def load_context():
             try:
                 recent = self.state.recent_tracks(limit)
                 if mode == "memory":
-                    payload: object = {
+                    return {
                         "scale": scale,
                         "marks": build_visual_memory(recent, scale),
                     }
-                else:
-                    payload = {"queue": queue_candidates, "recent": recent}
+                return {"queue": queue_candidates, "recent": recent}
             except Exception:
-                payload = {"scale": scale, "marks": ()} if mode == "memory" else {"queue": queue_candidates, "recent": []}
-            self._visual_context_signals.ready.emit(sequence, mode, payload)
+                return (
+                    {"scale": scale, "marks": ()}
+                    if mode == "memory"
+                    else {"queue": queue_candidates, "recent": []}
+                )
 
-        threading.Thread(target=load_context, daemon=True).start()
+        self._run_async(
+            load_context,
+            lambda payload:self._visual_context_loaded(sequence,mode,payload),
+            priority="visible",
+            lane="disk",
+            label=f"visual-context:{mode}",
+        )
 
     def _visual_context_loaded(self, sequence: int, mode: str, payload: object) -> None:
         if self._closing or sequence != self._visual_context_sequence:
@@ -6775,6 +6873,9 @@ class MainWindow(QMainWindow):
         self._run_async(
             lambda:self.llm.complete(settings,prompt,{},[]),
             lambda result:self._show_lyrics_translation(target,str(result or "")),
+            priority="foreground",
+            lane="network",
+            label="lyrics-translation",
         )
 
     def _show_lyrics_translation(self, language: str, text: str) -> None:
@@ -6836,7 +6937,13 @@ class MainWindow(QMainWindow):
         prompt=self.ask_box.text().strip();
         if not prompt:return
         self.ask_box.clear(); self.chat.append(f"You: {prompt}")
-        settings=self._llm_settings(); self._run_async(lambda:self.llm.complete(settings,prompt,self._llm_context(),[]),lambda text:self._handle_llm(text))
+        settings=self._llm_settings(); self._run_async(
+            lambda:self.llm.complete(settings,prompt,self._llm_context(),[]),
+            lambda text:self._handle_llm(text),
+            priority="foreground",
+            lane="network",
+            label="llm-chat",
+        )
 
     def _handle_llm(self,text):
         reply,actions=self.llm.parse_action_response(str(text)); self.chat.append(f"Melodex: {reply}")
@@ -6864,6 +6971,9 @@ class MainWindow(QMainWindow):
         self._run_async(
             lambda:self.providers.resolve_playlist(requested),
             lambda result:self._finish_ai_playlist(playlist_id,name,description,result,requested,source),
+            priority="foreground",
+            lane="network",
+            label="playlist-resolution",
         )
 
     def _finish_ai_playlist(self,playlist_id,name,description,result,requested=None,source="llm"):
@@ -6944,7 +7054,16 @@ class MainWindow(QMainWindow):
                 except Exception as exc:self.statusBar().showMessage(str(exc),7000)
 
     # ------------------------------- helpers
-    def _run_async(self,fn,done,on_error=None):
+    def _run_async(
+        self,
+        fn,
+        done,
+        on_error=None,
+        *,
+        priority="foreground",
+        lane="default",
+        label="",
+    ):
         sig=WorkerSignals()
         sig.done.connect(lambda result: None if self._closing else done(result))
         if on_error is None:
@@ -6954,10 +7073,19 @@ class MainWindow(QMainWindow):
         else:
             sig.error.connect(lambda e: None if self._closing else on_error(e))
         self._last_worker=sig
+
         def work():
-            try:sig.done.emit(fn())
-            except Exception as exc:sig.error.emit(str(exc))
-        threading.Thread(target=work,daemon=True).start()
+            try:
+                sig.done.emit(fn())
+            except Exception as exc:
+                sig.error.emit(str(exc))
+
+        return self.background.submit(
+            work,
+            priority=priority,
+            lane=lane,
+            label=label,
+        )
 
     def closeEvent(self,event):
         if self.music_live_active:
@@ -6970,4 +7098,6 @@ class MainWindow(QMainWindow):
             runner.shutdown()
             self._local_scan_runner=None
         if self.bridge:self.bridge.stop()
+        if hasattr(self,"background"):
+            self.background.shutdown(wait=False,cancel_pending=True)
         self.player.close(); self.metadata.close(); self.providers.close(); self.flow.close(); self.knowledge.close(); self.state.close(); super().closeEvent(event)

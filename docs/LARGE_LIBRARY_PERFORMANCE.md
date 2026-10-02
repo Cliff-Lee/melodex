@@ -161,6 +161,56 @@ The online **Find missing artwork / Get artist photos** operation remains separa
 is an explicit user-requested long operation with its own bounded queue, progress and
 pause/cancel behaviour.
 
+## P8c result — bounded background scheduler
+
+P8c replaces Melodex's ad-hoc desktop worker creation with one shared priority scheduler.
+
+The scheduler has **4 total worker slots** with one slot reserved for
+foreground/visible work. Low-priority background, prefetch and idle tasks can therefore
+occupy at most three slots at once.
+
+Priority order:
+
+1. foreground;
+2. visible;
+3. background;
+4. prefetch;
+5. idle.
+
+Lane limits further bound resource contention:
+
+- default: 4;
+- disk/cache: 2;
+- network: 2;
+- analysis: 1;
+- prefetch: 1;
+- idle: 1.
+
+The reserve is based on active low-priority jobs rather than total active jobs. If a
+foreground job is already running, background work may still use otherwise free
+capacity without counting the reserve twice.
+
+P8c routes the generic async path, viewport artwork/photo cache reads, current-track
+artwork, cached visual analysis/context, next-track prefetch and explicit online
+artwork/photo recovery through this scheduler. The previous nested online artwork/photo
+ThreadPoolExecutor paths and direct visual-analysis/context daemon threads are removed.
+
+Library scanning remains process-isolated and independent.
+
+The scheduler is observable through redacted diagnostics:
+
+- active and pending job counts;
+- active/pending jobs by lane and priority;
+- submitted/completed/cancelled totals;
+- queue high-water mark;
+- maximum observed concurrency;
+- configured lane limits and foreground reserve.
+
+Task labels and user content are deliberately excluded from diagnostics.
+
+The Fluid Melodex release gate verifies priority ordering, total worker bounds, lane
+bounds, foreground-reserved capacity, cross-lane progress and MainWindow integration.
+
 ## P8 campaign sequence
 
 ### P8a — Synthetic baseline

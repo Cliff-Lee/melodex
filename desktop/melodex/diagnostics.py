@@ -67,6 +67,18 @@ _LIBRARY_FILTER_METRIC_FIELDS = (
     "total_seconds",
 )
 
+_BACKGROUND_SCHEDULER_FIELDS = (
+    "max_workers",
+    "foreground_reserve",
+    "active_total",
+    "pending_total",
+    "submitted",
+    "completed",
+    "cancelled",
+    "queue_high_water",
+    "max_active_observed",
+)
+
 _ARTWORK_PRIORITY_METRIC_FIELDS = (
     "kind",
     "tier",
@@ -322,6 +334,28 @@ def build_diagnostics(
     )
     if artwork_priority:
         performance["artwork_priority"] = artwork_priority
+
+    scheduler = _metric_summary(
+        supplied_ui.get("background_scheduler"),
+        _BACKGROUND_SCHEDULER_FIELDS,
+    )
+    raw_scheduler = supplied_ui.get("background_scheduler")
+    if scheduler and isinstance(raw_scheduler,dict):
+        for key in (
+            "active_by_lane",
+            "active_by_priority",
+            "pending_by_priority",
+            "pending_by_lane",
+            "lane_limits",
+        ):
+            value=raw_scheduler.get(key)
+            if isinstance(value,dict):
+                scheduler[key]={
+                    str(name)[:40]: int(count)
+                    for name,count in value.items()
+                    if isinstance(count,(int,float))
+                }
+        performance["background_scheduler"] = scheduler
 
     ui_responsiveness = _responsiveness_summary(
         supplied_ui.get("responsiveness")

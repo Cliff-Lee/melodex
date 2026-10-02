@@ -259,6 +259,38 @@ def test_diagnostics_filters_ui_performance_fields():
                 "private_album": "Secret Album",
                 "private_path": "/Users/example/Music/Secret.flac",
             },
+            "background_scheduler": {
+                "max_workers": 4,
+                "foreground_reserve": 1,
+                "active_total": 3,
+                "active_by_lane": {"disk": 1, "network": 2},
+                "active_by_priority": {"visible": 1, "background": 2},
+                "pending_total": 5,
+                "pending_by_priority": {
+                    "foreground": 1,
+                    "prefetch": 2,
+                    "idle": 2,
+                },
+                "pending_by_lane": {
+                    "default": 1,
+                    "prefetch": 2,
+                    "idle": 2,
+                },
+                "lane_limits": {
+                    "default": 4,
+                    "disk": 2,
+                    "network": 2,
+                    "analysis": 1,
+                    "prefetch": 1,
+                    "idle": 1,
+                },
+                "submitted": 42,
+                "completed": 34,
+                "cancelled": 0,
+                "queue_high_water": 8,
+                "max_active_observed": 4,
+                "private_label": "Secret Album",
+            },
             "responsiveness": {
                 "interval_ms": 50,
                 "long_task_threshold_ms": 50,
@@ -305,6 +337,15 @@ def test_diagnostics_filters_ui_performance_fields():
     assert artwork["kind"] == "albums"
     assert artwork["requested_now"] == 12
     assert artwork["distant_candidates"] == 82
+    scheduler = payload["performance"]["background_scheduler"]
+    assert scheduler["max_workers"] == 4
+    assert scheduler["foreground_reserve"] == 1
+    assert scheduler["active_total"] == 3
+    assert scheduler["pending_total"] == 5
+    assert scheduler["active_by_lane"]["network"] == 2
+    assert scheduler["active_by_priority"]["background"] == 2
+    assert scheduler["pending_by_priority"]["prefetch"] == 2
+    assert scheduler["queue_high_water"] == 8
     responsiveness = payload["performance"]["ui_responsiveness"]
     assert responsiveness["total_stalls"] == 2
     assert responsiveness["max_delay_ms"] == 620.0
@@ -317,6 +358,7 @@ def test_diagnostics_filters_ui_performance_fields():
     assert '"query"' not in text
     assert "private_track" not in text
     assert "private_album" not in text
+    assert "private_label" not in text
     assert "private_path" not in text
 
 

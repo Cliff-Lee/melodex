@@ -1529,7 +1529,7 @@ def test_search_keeps_previous_results_visible_while_refreshing(monkeypatch, tmp
 
     callbacks = {}
 
-    def hold_async(fn, done, on_error=None):
+    def hold_async(fn, done, on_error=None, **_kwargs):
         callbacks["done"] = done
         callbacks["error"] = on_error
 
@@ -1593,7 +1593,7 @@ def test_fast_search_never_flashes_delayed_loading_placeholder(monkeypatch, tmp_
     window.search_box.setText("fast query")
     callbacks = {}
 
-    def hold_async(fn, done, on_error=None):
+    def hold_async(fn, done, on_error=None, **_kwargs):
         callbacks["done"] = done
 
     monkeypatch.setattr(window, "_run_async", hold_async)
@@ -1659,7 +1659,7 @@ def test_search_failure_preserves_stale_useful_results(monkeypatch, tmp_path):
 
     callbacks = {}
 
-    def hold_async(fn, done, on_error=None):
+    def hold_async(fn, done, on_error=None, **_kwargs):
         callbacks["error"] = on_error
 
     monkeypatch.setattr(window, "_run_async", hold_async)
@@ -1692,7 +1692,7 @@ def test_stale_search_response_cannot_replace_newer_request(monkeypatch, tmp_pat
     window.search_source.addItem("All sources", "all")
     calls = []
 
-    def hold_async(fn, done, on_error=None):
+    def hold_async(fn, done, on_error=None, **_kwargs):
         calls.append((done, on_error))
 
     monkeypatch.setattr(window, "_run_async", hold_async)
@@ -1982,7 +1982,7 @@ def test_love_and_keep_acknowledge_before_persistence(monkeypatch, tmp_path):
     window.current_track = dict(track)
     pending = []
 
-    def hold_async(fn, done, on_error=None):
+    def hold_async(fn, done, on_error=None, **_kwargs):
         pending.append((fn, done, on_error))
 
     monkeypatch.setattr(window, "_run_async", hold_async)
@@ -2037,7 +2037,7 @@ def test_optimistic_taste_action_rolls_back_if_persistence_fails(monkeypatch, tm
     )
     pending = []
 
-    def hold_async(fn, done, on_error=None):
+    def hold_async(fn, done, on_error=None, **_kwargs):
         pending.append((fn, done, on_error))
 
     monkeypatch.setattr(window, "_run_async", hold_async)
@@ -2102,7 +2102,7 @@ def test_next_track_prefetch_is_local_only_and_consumed_on_advance(monkeypatch, 
         lambda _path: cached_analysis,
     )
 
-    def immediate_async(fn, done, on_error=None):
+    def immediate_async(fn, done, on_error=None, **_kwargs):
         try:
             done(fn())
         except Exception as exc:
@@ -2187,6 +2187,52 @@ def test_next_track_prefetch_yields_to_large_library_scan(monkeypatch, tmp_path)
     assert window._prefetched_track_assets == {}
 
     window._local_scan_in_progress = False
+    window.close()
+    app.processEvents()
+
+
+def test_main_window_async_work_uses_bounded_scheduler(monkeypatch, tmp_path):
+    try:
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+
+    window = main_window.MainWindow()
+    release = threading.Event()
+    started = threading.Event()
+    finished = []
+
+    def slow():
+        started.set()
+        release.wait(2)
+        return "done"
+
+    future = window._run_async(
+        slow,
+        lambda result: finished.append(result),
+        priority="prefetch",
+        lane="prefetch",
+        label="synthetic-prefetch",
+    )
+
+    assert started.wait(1)
+    snapshot = window.background.snapshot()
+    assert snapshot["max_workers"] == 4
+    assert snapshot["foreground_reserve"] == 1
+    assert snapshot["active_by_lane"]["prefetch"] == 1
+    assert future.done() is False
+
+    release.set()
+    assert window.background.wait_for_idle(2)
+    app.processEvents()
+    assert finished == ["done"]
+
     window.close()
     app.processEvents()
 
