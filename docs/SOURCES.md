@@ -9,7 +9,7 @@ Melodex now presents sources by origin rather than as one technical list:
 - **Installed music plugins** — providers you separately installed from the registry or a local package.
 - **Installed enhancements** — artwork, lyrics, metadata, context or recommendation extensions.
 
-The included providers are carried with the desktop app and installed automatically on first run unless you explicitly remove/disable one. Registry examples are optional and are not preinstalled.
+The included providers are carried with the desktop app and installed automatically on first run unless you explicitly remove/disable one. Registry examples are optional and are not preinstalled. If an older Radio Browser Example or LibriVox Example is already installed, Melodex automatically ignores that reference copy while the audited bundled replacement is available, preventing duplicate Search entries.
 
 Use **Check connections** for a bounded live health check on the current computer/network. A package passing repository tests does not by itself prove its upstream service is currently reachable.
 
