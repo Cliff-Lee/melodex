@@ -67,6 +67,16 @@ _LIBRARY_FILTER_METRIC_FIELDS = (
     "total_seconds",
 )
 
+_TRACK_VIRTUALIZATION_METRIC_FIELDS = (
+    "model_row_count",
+    "window_start",
+    "window_stop",
+    "hydrated_row_count",
+    "created_rows",
+    "removed_rows",
+    "hydrate_seconds",
+)
+
 _LIBRARY_VIEW_METRIC_FIELDS = (
     "view",
     "shell_seconds",
@@ -286,6 +296,13 @@ def build_diagnostics(
     )
     if library_view:
         performance["library_view"] = library_view
+
+    track_virtualization = _metric_summary(
+        supplied_ui.get("track_virtualization"),
+        _TRACK_VIRTUALIZATION_METRIC_FIELDS,
+    )
+    if track_virtualization:
+        performance["track_virtualization"] = track_virtualization
 
     ui_responsiveness = _responsiveness_summary(
         supplied_ui.get("responsiveness")

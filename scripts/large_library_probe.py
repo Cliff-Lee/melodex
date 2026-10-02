@@ -184,9 +184,11 @@ def profile_gui(
         "artist_filter": artist_filter_metrics,
         "track_view": track_view_metrics,
         "track_filter": track_filter_metrics,
+        "track_virtualization": dict(browser.last_track_virtualization_metrics),
         "album_batch_size": int(browser._album_batch_size),
         "artist_batch_size": int(browser._artist_batch_size),
-        "track_batch_size": int(browser._track_batch_size),
+        "track_row_height": int(browser._track_row_height),
+        "track_overscan_rows": int(browser._track_overscan_rows),
     }
 
     browser.deleteLater()

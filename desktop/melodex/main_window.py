@@ -664,17 +664,17 @@ class MainWindow(QMainWindow):
             }
             QLabel#albumCardTitle{font-weight:700;font-size:12px}
             QLabel#albumCardMeta{color:#8995a7;font-size:11px}
-            QListWidget#visualTrackList{
+            QListView#visualTrackList{
                 background:transparent;
                 border:0;
                 padding:0;
             }
-            QListWidget#visualTrackList::item{
+            QListView#visualTrackList::item{
                 background:transparent;
                 border:0;
                 padding:0;
             }
-            QListWidget#visualTrackList::item:selected{
+            QListView#visualTrackList::item:selected{
                 background:transparent;
             }
             QFrame#trackRow{
@@ -4309,6 +4309,13 @@ class MainWindow(QMainWindow):
             )
             ui_metrics["library_view"] = dict(
                 getattr(self.library_browser, "last_view_metrics", {}) or {}
+            )
+            ui_metrics["track_virtualization"] = dict(
+                getattr(
+                    self.library_browser,
+                    "last_track_virtualization_metrics",
+                    {},
+                ) or {}
             )
         if hasattr(self, "responsiveness"):
             ui_metrics["responsiveness"] = self.responsiveness.summary()

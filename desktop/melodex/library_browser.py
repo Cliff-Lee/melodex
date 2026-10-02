@@ -5,16 +5,25 @@ import threading
 import time
 from typing import Any
 
-from PySide6.QtCore import QEvent, QSize, Qt, Signal
+from PySide6.QtCore import (
+    QAbstractListModel,
+    QEvent,
+    QModelIndex,
+    QPoint,
+    QSize,
+    Qt,
+    QTimer,
+    Signal,
+)
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QButtonGroup,
     QFrame,
     QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QListWidget,
-    QListWidgetItem,
+    QListView,
     QPushButton,
     QProgressBar,
     QScrollArea,
@@ -259,6 +268,49 @@ class ArtistCard(QFrame):
         super().mouseDoubleClickEvent(event)
 
 
+class TrackListModel(QAbstractListModel):
+    """Cheap metadata model for the full filtered Tracks collection."""
+
+    TrackRole = int(Qt.UserRole) + 1
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._tracks: list[dict[str, Any]] = []
+
+    def set_tracks(self, tracks: list[dict[str, Any]]) -> None:
+        self.beginResetModel()
+        self._tracks = list(tracks)
+        self.endResetModel()
+
+    def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:
+        return 0 if parent.isValid() else len(self._tracks)
+
+    def data(self, index: QModelIndex, role: int = int(Qt.DisplayRole)):
+        if not index.isValid() or index.row() < 0 or index.row() >= len(self._tracks):
+            return None
+        track = self._tracks[index.row()]
+        if role in (int(Qt.UserRole), self.TrackRole):
+            return dict(track)
+        if role == int(Qt.DisplayRole):
+            title = str(track.get("title") or "Unknown track")
+            artist = str(track.get("artist") or "Unknown artist")
+            album = str(track.get("album") or "")
+            return f"{title}  ·  {artist}" + (f"  ·  {album}" if album else "")
+        if role == int(Qt.ToolTipRole):
+            title = str(track.get("title") or "Unknown track")
+            artist = str(track.get("artist") or "Unknown artist")
+            album = str(track.get("album") or "")
+            return "\n".join(part for part in (title, artist, album) if part)
+        if role == int(Qt.SizeHintRole):
+            return QSize(100, 82)
+        return None
+
+    def track_at(self, row: int) -> dict[str, Any]:
+        if 0 <= int(row) < len(self._tracks):
+            return dict(self._tracks[int(row)])
+        return {}
+
+
 class TrackRow(QFrame):
     playRequested = Signal(object)
     queueRequested = Signal(object)
@@ -358,7 +410,7 @@ class LibraryBrowser(QWidget):
         self.artist_rows: list[dict[str, Any]] = []
         self.artist_cards: dict[str, ArtistCard] = {}
         self.track_rows: dict[str, TrackRow] = {}
-        self.track_items: dict[str, QListWidgetItem] = {}
+        self._track_widget_rows: dict[int, str] = {}
         self.track_album_key: dict[str, str] = {}
         self.artwork_paths: dict[str, str] = {}
         self.artist_image_paths: dict[str, str] = {}
@@ -367,11 +419,13 @@ class LibraryBrowser(QWidget):
         self._visible_tracks: list[dict[str, Any]] = []
         self._album_batch_size = 120
         self._artist_batch_size = 120
-        self._track_batch_size = 300
         self._album_render_limit = self._album_batch_size
         self._artist_render_limit = self._artist_batch_size
-        self._track_render_limit = self._track_batch_size
-        self._track_more_item: QListWidgetItem | None = None
+        self._track_row_height = 82
+        self._track_overscan_rows = 6
+        self._track_hydration_scheduled = False
+        self._track_hydrated_range: tuple[int, int] = (0, 0)
+        self.last_track_virtualization_metrics: dict[str, object] = {}
         self._art_requested: set[str] = set()
         self._artist_art_requested: set[str] = set()
         self._artwork_batch_size = 4
@@ -639,10 +693,18 @@ class LibraryBrowser(QWidget):
         self.stack.addWidget(self.artist_page)
 
         # Tracks
-        self.track_list = QListWidget()
+        self.track_model = TrackListModel(self)
+        self.track_list = QListView()
         self.track_list.setObjectName("visualTrackList")
+        self.track_list.setModel(self.track_model)
         self.track_list.setSpacing(4)
-        self.track_list.itemDoubleClicked.connect(self._track_activated)
+        self.track_list.setUniformItemSizes(True)
+        self.track_list.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
+        self.track_list.doubleClicked.connect(self._track_index_activated)
+        self.track_list.verticalScrollBar().valueChanged.connect(
+            lambda _value: self._schedule_track_hydration()
+        )
+        self.track_list.viewport().installEventFilter(self)
         self.stack.addWidget(self.track_list)
 
         self.empty = EmptyState(
@@ -659,6 +721,8 @@ class LibraryBrowser(QWidget):
                 self._layout_album_cards()
             elif watched is self.artist_scroll.viewport():
                 self._layout_artist_cards()
+            elif watched is self.track_list.viewport():
+                self._schedule_track_hydration()
         return super().eventFilter(watched, event)
 
     def _clear_grid(self, grid: QGridLayout) -> None:
@@ -713,16 +777,13 @@ class LibraryBrowser(QWidget):
             card.deleteLater()
         self.cards.clear()
         self.artist_cards.clear()
-        self.track_rows.clear()
-        self.track_items.clear()
+        self._clear_track_widgets()
+        self.track_model.set_tracks([])
         self._clear_grid(self.album_grid)
         self._clear_grid(self.artist_grid)
-        self.track_list.clear()
-        self._track_more_item = None
         self._tracks_built = False
         self._album_render_limit = self._album_batch_size
         self._artist_render_limit = self._artist_batch_size
-        self._track_render_limit = self._track_batch_size
         metrics["reset_seconds"] = round(time.perf_counter() - started, 6)
 
         copy_started = time.perf_counter()
@@ -1356,7 +1417,6 @@ class LibraryBrowser(QWidget):
         """Reset progressive windows so a new search starts small and fast."""
         self._album_render_limit = self._album_batch_size
         self._artist_render_limit = self._artist_batch_size
-        self._track_render_limit = self._track_batch_size
         self._tracks_built = False
         self._apply_filter()
 
@@ -1565,17 +1625,83 @@ class LibraryBrowser(QWidget):
             })
         self.artist_rows = sorted(rows, key=lambda row: _norm(row.get("name")))
 
-    def _append_track_rows(self, tracks: list[dict[str, Any]]) -> None:
-        for track in tracks:
-            key = _track_key(track)
-            item = QListWidgetItem()
-            item.setData(Qt.UserRole, dict(track))
-            item.setText(
-                f"{track.get('title') or 'Unknown track'} "
-                f"{track.get('artist') or 'Unknown artist'} "
-                f"{track.get('album') or ''}"
+    def _clear_track_widgets(self) -> None:
+        for row_index, key in list(self._track_widget_rows.items()):
+            index = self.track_model.index(row_index, 0)
+            widget = self.track_list.indexWidget(index)
+            if widget is not None:
+                self.track_list.setIndexWidget(index, None)
+                widget.deleteLater()
+            self.track_rows.pop(key, None)
+        self._track_widget_rows.clear()
+        self._track_hydrated_range = (0, 0)
+
+    def _track_viewport_window(self) -> tuple[int, int]:
+        total = self.track_model.rowCount()
+        if total <= 0:
+            return (0, 0)
+
+        viewport = self.track_list.viewport()
+        height = max(self._track_row_height, viewport.height())
+        top_index = self.track_list.indexAt(QPoint(4, 4))
+        if top_index.isValid():
+            first = top_index.row()
+        else:
+            stride = self._track_row_height + max(0, self.track_list.spacing())
+            first = max(0, int(self.track_list.verticalScrollBar().value() / max(1, stride)))
+
+        bottom_index = self.track_list.indexAt(QPoint(4, max(4, height - 4)))
+        if bottom_index.isValid():
+            last = bottom_index.row()
+        else:
+            visible_guess = max(
+                1,
+                int(height / max(1, self._track_row_height + self.track_list.spacing())) + 1,
             )
-            item.setSizeHint(QSize(100, 82))
+            last = min(total - 1, first + visible_guess - 1)
+
+        start = max(0, first - self._track_overscan_rows)
+        stop = min(total, last + self._track_overscan_rows + 1)
+        return start, stop
+
+    def _schedule_track_hydration(self) -> None:
+        if self.current_view() != "tracks" or self.track_model.rowCount() <= 0:
+            return
+        if self._track_hydration_scheduled:
+            return
+        self._track_hydration_scheduled = True
+        QTimer.singleShot(0, self._hydrate_visible_track_rows)
+
+    def _hydrate_visible_track_rows(self) -> None:
+        self._track_hydration_scheduled = False
+        if self.current_view() != "tracks":
+            return
+
+        started = time.perf_counter()
+        start, stop = self._track_viewport_window()
+        target = set(range(start, stop))
+
+        removed = 0
+        for row_index, key in list(self._track_widget_rows.items()):
+            if row_index in target:
+                continue
+            index = self.track_model.index(row_index, 0)
+            widget = self.track_list.indexWidget(index)
+            if widget is not None:
+                self.track_list.setIndexWidget(index, None)
+                widget.deleteLater()
+            self._track_widget_rows.pop(row_index, None)
+            self.track_rows.pop(key, None)
+            removed += 1
+
+        created = 0
+        for row_index in range(start, stop):
+            if row_index in self._track_widget_rows:
+                continue
+            track = self.track_model.track_at(row_index)
+            if not track:
+                continue
+            key = _track_key(track)
             row = TrackRow(track)
             row.playRequested.connect(self.playTrackRequested)
             row.queueRequested.connect(self.queueTrackRequested)
@@ -1584,77 +1710,51 @@ class LibraryBrowser(QWidget):
             path = self.artwork_paths.get(album_key, "")
             if path:
                 row.set_cover(path)
-            self.track_list.addItem(item)
-            self.track_list.setItemWidget(item, row)
-            self.track_items[key] = item
+            self.track_list.setIndexWidget(self.track_model.index(row_index, 0), row)
+            self._track_widget_rows[row_index] = key
             self.track_rows[key] = row
+            created += 1
 
-    def _remove_track_more_footer(self) -> None:
-        item = self._track_more_item
-        if item is None:
-            return
-        row_index = self.track_list.row(item)
-        if row_index >= 0:
-            widget = self.track_list.itemWidget(item)
-            if widget is not None:
-                self.track_list.removeItemWidget(item)
-                widget.deleteLater()
-            self.track_list.takeItem(row_index)
-        self._track_more_item = None
-
-    def _update_track_more_footer(self) -> None:
-        self._remove_track_more_footer()
-        total = len(self._visible_tracks)
-        shown = min(self._track_render_limit, total)
-        remaining = max(0, total - shown)
-        if not remaining:
-            return
-
-        item = QListWidgetItem()
-        item.setData(Qt.UserRole, {"__melodex_load_more__": True})
-        item.setSizeHint(QSize(100, 58))
-
-        footer = QFrame()
-        row = QHBoxLayout(footer)
-        row.setContentsMargins(10, 8, 10, 8)
-        summary = QLabel(f"Showing {shown:,} of {total:,} tracks")
-        summary.setObjectName("trackMeta")
-        row.addWidget(summary)
-        row.addStretch(1)
-        step = min(self._track_batch_size, remaining)
-        button = QPushButton(f"Show {step:,} more")
-        button.setObjectName("quietButton")
-        button.clicked.connect(self._show_more_tracks)
-        row.addWidget(button)
-
-        self.track_list.addItem(item)
-        self.track_list.setItemWidget(item, footer)
-        self._track_more_item = item
+        self._track_hydrated_range = (start, stop)
+        elapsed = time.perf_counter() - started
+        self.last_track_virtualization_metrics = {
+            "model_row_count": self.track_model.rowCount(),
+            "window_start": start,
+            "window_stop": stop,
+            "hydrated_row_count": len(self.track_rows),
+            "created_rows": created,
+            "removed_rows": removed,
+            "hydrate_seconds": round(elapsed, 6),
+        }
+        if self.last_catalog_metrics:
+            self.last_catalog_metrics["rendered_track_count"] = len(self.track_rows)
 
     def _rebuild_tracks(self) -> None:
-        self.track_list.clear()
-        self._track_more_item = None
-        self.track_rows.clear()
-        self.track_items.clear()
-        shown = self._visible_tracks[: self._track_render_limit]
-        self._append_track_rows(shown)
-        self._update_track_more_footer()
+        self._clear_track_widgets()
+        self.track_model.set_tracks(self._visible_tracks)
         self._tracks_built = True
+        self.last_track_virtualization_metrics = {
+            "model_row_count": self.track_model.rowCount(),
+            "window_start": 0,
+            "window_stop": 0,
+            "hydrated_row_count": 0,
+            "created_rows": 0,
+            "removed_rows": 0,
+            "hydrate_seconds": 0.0,
+        }
         if self.last_catalog_metrics:
-            self.last_catalog_metrics["rendered_track_count"] = len(self.track_rows)
+            self.last_catalog_metrics["rendered_track_count"] = 0
+        self._schedule_track_hydration()
 
     def _show_more_tracks(self) -> None:
-        total = len(self._visible_tracks)
-        previous = min(self._track_render_limit, total)
-        if previous >= total:
-            return
-        self._track_render_limit += self._track_batch_size
-        current = min(self._track_render_limit, total)
-        self._remove_track_more_footer()
-        self._append_track_rows(self._visible_tracks[previous:current])
-        self._update_track_more_footer()
-        if self.last_catalog_metrics:
-            self.last_catalog_metrics["rendered_track_count"] = len(self.track_rows)
+        # Kept as a compatibility hook for older callers. Tracks are now
+        # represented by the full model immediately and hydrated by viewport.
+        self._schedule_track_hydration()
+
+    def _track_index_activated(self, index: QModelIndex) -> None:
+        track = self.track_model.data(index, TrackListModel.TrackRole)
+        if isinstance(track, dict):
+            self.playTrackRequested.emit(dict(track))
 
     def _artist_opened(self, artist: object) -> None:
         if not isinstance(artist, dict):
@@ -1664,14 +1764,6 @@ class LibraryBrowser(QWidget):
             return
         self.search.setText(name)
         self.set_view("albums")
-
-    def _track_activated(self, item: QListWidgetItem) -> None:
-        track = item.data(Qt.UserRole)
-        if isinstance(track, dict) and track.get("__melodex_load_more__"):
-            self._show_more_tracks()
-            return
-        if isinstance(track, dict):
-            self.playTrackRequested.emit(dict(track))
 
     def _request_artwork(self) -> None:
         batch = []
