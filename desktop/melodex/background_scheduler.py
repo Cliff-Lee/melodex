@@ -26,6 +26,14 @@ DEFAULT_LANE_LIMITS = {
 }
 
 
+class StaleTaskError(RuntimeError):
+    """A task finished after newer work replaced its logical key."""
+
+    def __init__(self, key: str):
+        super().__init__("Background task result is stale")
+        self.key = str(key or "")
+
+
 @dataclass(order=True)
 class _QueuedTask:
     priority_value: int
@@ -36,6 +44,8 @@ class _QueuedTask:
     lane: str = field(compare=False)
     label: str = field(compare=False)
     priority_name: str = field(compare=False)
+    key: str = field(compare=False, default="")
+    key_generation: int = field(compare=False, default=0)
 
 
 class BackgroundScheduler:
@@ -78,6 +88,10 @@ class BackgroundScheduler:
         self._cancelled = 0
         self._queue_high_water = 0
         self._max_active_observed = 0
+        self._key_generations: dict[str, int] = {}
+        self._stale_queued_cancelled = 0
+        self._stale_results_suppressed = 0
+        self._invalidations = 0
 
         self._executor = ThreadPoolExecutor(
             max_workers=self.max_workers,
@@ -109,6 +123,8 @@ class BackgroundScheduler:
         priority: str = "background",
         lane: str = "default",
         label: str = "",
+        key: str = "",
+        replace: bool = False,
     ) -> Future:
         if not callable(fn):
             raise TypeError("fn must be callable")
@@ -121,6 +137,13 @@ class BackgroundScheduler:
             if self._closing:
                 future.set_exception(RuntimeError("Background scheduler is closed"))
                 return future
+
+            key_name = str(key or "").strip()
+            key_generation = 0
+            if key_name:
+                if replace:
+                    self._invalidate_key_locked(key_name)
+                key_generation = self._key_generations.get(key_name, 0)
 
             self._sequence += 1
             self._submitted += 1
@@ -135,11 +158,68 @@ class BackgroundScheduler:
                     lane=lane_name,
                     label=str(label or ""),
                     priority_name=priority_name,
+                    key=key_name,
+                    key_generation=key_generation,
                 ),
             )
             self._queue_high_water = max(self._queue_high_water, len(self._queue))
             self._condition.notify_all()
         return future
+
+    def _cancel_task_locked(
+        self,
+        task: _QueuedTask,
+        *,
+        stale: bool = False,
+    ) -> bool:
+        cancelled = task.future.cancel()
+        if cancelled:
+            self._cancelled += 1
+            if stale:
+                self._stale_queued_cancelled += 1
+        return cancelled
+
+    def _prune_cancelled_locked(self) -> None:
+        if not self._queue:
+            return
+        if not any(task.future.cancelled() for task in self._queue):
+            return
+        self._queue = [
+            task for task in self._queue
+            if not task.future.cancelled()
+        ]
+        heapq.heapify(self._queue)
+
+    def _invalidate_key_locked(self, key: str) -> int:
+        key_name = str(key or "").strip()
+        if not key_name:
+            return 0
+        self._invalidations += 1
+        self._key_generations[key_name] = (
+            self._key_generations.get(key_name, 0) + 1
+        )
+        cancelled = 0
+        for task in self._queue:
+            if task.key == key_name and self._cancel_task_locked(task, stale=True):
+                cancelled += 1
+        if cancelled:
+            self._prune_cancelled_locked()
+        self._condition.notify_all()
+        return cancelled
+
+    def cancel_key(self, key: str) -> int:
+        """Invalidate queued/running work for a logical key.
+
+        Queued work is actually cancelled. Running work cannot be killed safely,
+        but its eventual result is marked stale and suppressed.
+        """
+        with self._condition:
+            return self._invalidate_key_locked(key)
+
+    def _task_is_stale_locked(self, task: _QueuedTask) -> bool:
+        if not task.key:
+            return False
+        return task.key_generation != self._key_generations.get(task.key, 0)
 
     def _pop_runnable_locked(self) -> _QueuedTask | None:
         if self._active_total >= self.max_workers or not self._queue:
@@ -150,7 +230,6 @@ class BackgroundScheduler:
         while self._queue:
             task = heapq.heappop(self._queue)
             if task.future.cancelled():
-                self._cancelled += 1
                 continue
 
             lane_active = self._active_by_lane.get(task.lane, 0)
@@ -213,10 +292,20 @@ class BackgroundScheduler:
     def _task_completed(self, task: _QueuedTask, completed: Future) -> None:
         try:
             if not task.future.cancelled():
-                try:
-                    task.future.set_result(completed.result())
-                except Exception as exc:
-                    task.future.set_exception(exc)
+                with self._condition:
+                    stale = self._task_is_stale_locked(task)
+                    if stale:
+                        self._stale_results_suppressed += 1
+                if stale:
+                    # Once work is obsolete, suppress both its value and any
+                    # late error. The newer keyed task owns the user-facing
+                    # outcome.
+                    task.future.set_exception(StaleTaskError(task.key))
+                else:
+                    try:
+                        task.future.set_result(completed.result())
+                    except Exception as exc:
+                        task.future.set_exception(exc)
         finally:
             with self._condition:
                 self._active_total = max(0, self._active_total - 1)
@@ -273,6 +362,9 @@ class BackgroundScheduler:
                 "cancelled": self._cancelled,
                 "queue_high_water": self._queue_high_water,
                 "max_active_observed": self._max_active_observed,
+                "invalidations": self._invalidations,
+                "stale_queued_cancelled": self._stale_queued_cancelled,
+                "stale_results_suppressed": self._stale_results_suppressed,
             }
 
     def shutdown(
@@ -288,8 +380,7 @@ class BackgroundScheduler:
             if cancel_pending:
                 while self._queue:
                     task = heapq.heappop(self._queue)
-                    if task.future.cancel():
-                        self._cancelled += 1
+                    self._cancel_task_locked(task)
             self._condition.notify_all()
 
         if wait:

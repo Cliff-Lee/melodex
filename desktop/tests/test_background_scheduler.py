@@ -215,6 +215,205 @@ def test_lane_limit_blocks_same_lane_without_blocking_other_lanes():
         scheduler.shutdown(wait=True)
 
 
+def test_replace_by_key_cancels_queued_stale_work():
+    scheduler = BackgroundScheduler(max_workers=1, foreground_reserve=0)
+    release = threading.Event()
+    started = threading.Event()
+    ran: list[str] = []
+
+    def blocker():
+        started.set()
+        release.wait(2)
+
+    try:
+        scheduler.submit(blocker, priority="foreground")
+        assert started.wait(1)
+
+        old = scheduler.submit(
+            lambda: ran.append("old"),
+            priority="foreground",
+            key="discover-search",
+            replace=True,
+        )
+        newest = scheduler.submit(
+            lambda: ran.append("new"),
+            priority="foreground",
+            key="discover-search",
+            replace=True,
+        )
+
+        assert old.cancelled()
+        snapshot = scheduler.snapshot()
+        assert snapshot["pending_total"] == 1
+        assert snapshot["stale_queued_cancelled"] >= 1
+
+        release.set()
+        assert scheduler.wait_for_idle(2)
+        assert newest.done()
+        assert ran == ["new"]
+    finally:
+        scheduler.shutdown(wait=True)
+
+
+def test_replaced_running_task_result_is_suppressed():
+    from melodex.background_scheduler import StaleTaskError
+
+    scheduler = BackgroundScheduler(max_workers=2, foreground_reserve=0)
+    old_started = threading.Event()
+    release_old = threading.Event()
+
+    def old_work():
+        old_started.set()
+        release_old.wait(2)
+        return "old"
+
+    try:
+        old = scheduler.submit(
+            old_work,
+            priority="foreground",
+            key="visual-context",
+            replace=True,
+        )
+        assert old_started.wait(1)
+
+        newest = scheduler.submit(
+            lambda: "new",
+            priority="foreground",
+            key="visual-context",
+            replace=True,
+        )
+        assert newest.result(timeout=1) == "new"
+
+        release_old.set()
+        try:
+            old.result(timeout=1)
+            raise AssertionError("stale running result should not be delivered")
+        except StaleTaskError:
+            pass
+
+        snapshot = scheduler.snapshot()
+        assert snapshot["stale_results_suppressed"] >= 1
+    finally:
+        scheduler.shutdown(wait=True)
+
+
+def test_replaced_running_task_suppresses_late_error():
+    from melodex.background_scheduler import StaleTaskError
+
+    scheduler = BackgroundScheduler(max_workers=2, foreground_reserve=0)
+    started = threading.Event()
+    release = threading.Event()
+
+    def old_work():
+        started.set()
+        release.wait(2)
+        raise RuntimeError("obsolete failure")
+
+    try:
+        old = scheduler.submit(
+            old_work,
+            priority="foreground",
+            key="current-track-artwork",
+            replace=True,
+        )
+        assert started.wait(1)
+
+        newest = scheduler.submit(
+            lambda: "current",
+            priority="foreground",
+            key="current-track-artwork",
+            replace=True,
+        )
+        assert newest.result(timeout=1) == "current"
+
+        release.set()
+        try:
+            old.result(timeout=1)
+            raise AssertionError("obsolete failure should be suppressed as stale")
+        except StaleTaskError:
+            pass
+    finally:
+        scheduler.shutdown(wait=True)
+
+
+def test_cancel_key_invalidates_running_and_queued_work():
+    from melodex.background_scheduler import StaleTaskError
+
+    scheduler = BackgroundScheduler(max_workers=1, foreground_reserve=0)
+    started = threading.Event()
+    release = threading.Event()
+
+    def running():
+        started.set()
+        release.wait(2)
+        return "obsolete"
+
+    try:
+        active = scheduler.submit(
+            running,
+            priority="background",
+            key="next-track-prefetch",
+        )
+        assert started.wait(1)
+        queued = scheduler.submit(
+            lambda: "queued",
+            priority="prefetch",
+            key="next-track-prefetch",
+        )
+
+        cancelled = scheduler.cancel_key("next-track-prefetch")
+        assert cancelled == 1
+        assert queued.cancelled()
+
+        release.set()
+        try:
+            active.result(timeout=1)
+            raise AssertionError("invalidated running result should be stale")
+        except StaleTaskError:
+            pass
+
+        snapshot = scheduler.snapshot()
+        assert snapshot["invalidations"] >= 1
+        assert snapshot["stale_queued_cancelled"] >= 1
+        assert snapshot["stale_results_suppressed"] >= 1
+    finally:
+        scheduler.shutdown(wait=True)
+
+
+def test_rapid_latest_wins_submissions_do_not_grow_pending_queue():
+    scheduler = BackgroundScheduler(max_workers=1, foreground_reserve=0)
+    release = threading.Event()
+    started = threading.Event()
+
+    def blocker():
+        started.set()
+        release.wait(2)
+
+    try:
+        scheduler.submit(blocker, priority="foreground")
+        assert started.wait(1)
+
+        latest = None
+        for index in range(50):
+            latest = scheduler.submit(
+                lambda value=index: value,
+                priority="foreground",
+                key="discover-search",
+                replace=True,
+            )
+            assert scheduler.snapshot()["pending_total"] <= 1
+
+        release.set()
+        assert scheduler.wait_for_idle(2)
+        assert latest is not None
+        assert latest.result() == 49
+        snapshot = scheduler.snapshot()
+        assert snapshot["stale_queued_cancelled"] >= 49
+        assert snapshot["queue_high_water"] <= 1
+    finally:
+        scheduler.shutdown(wait=True)
+
+
 def test_snapshot_reports_priority_and_queue_high_water():
     scheduler = BackgroundScheduler(max_workers=1)
     release = threading.Event()

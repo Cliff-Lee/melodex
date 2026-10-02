@@ -397,6 +397,7 @@ class LibraryBrowser(QWidget):
     onlineArtworkRequested = Signal(object)
     artistImageRequested = Signal(object)
     artistImageCacheRequested = Signal(object)
+    cachedArtworkInvalidated = Signal(str)
     artistPhotoFileRequested = Signal(object)
     scanPauseRequested = Signal()
     scanCancelRequested = Signal()
@@ -433,6 +434,8 @@ class LibraryBrowser(QWidget):
         self._artist_cache_requested: set[str] = set()
         self._album_cache_inflight = False
         self._artist_cache_inflight = False
+        self._album_cache_inflight_keys: set[str] = set()
+        self._artist_cache_inflight_keys: set[str] = set()
         self._artwork_batch_size = 4
         self._viewport_artwork_batch_size = 12
         self._idle_artwork_batch_size = 4
@@ -770,6 +773,11 @@ class LibraryBrowser(QWidget):
         ):
             return
 
+        if self._album_cache_inflight:
+            self.cachedArtworkInvalidated.emit("albums")
+        if self._artist_cache_inflight:
+            self.cachedArtworkInvalidated.emit("artists")
+
         started = time.perf_counter()
         current_thread = threading.current_thread()
         metrics: dict[str, object] = {
@@ -824,6 +832,8 @@ class LibraryBrowser(QWidget):
         self._artist_cache_requested.clear()
         self._album_cache_inflight = False
         self._artist_cache_inflight = False
+        self._album_cache_inflight_keys.clear()
+        self._artist_cache_inflight_keys.clear()
         self._album_artwork_generation += 1
         self._artist_artwork_generation += 1
         self._album_scroll_value = 0
@@ -1850,7 +1860,14 @@ class LibraryBrowser(QWidget):
             if value != previous:
                 self._album_scroll_direction = 1 if value > previous else -1
             self._album_scroll_value=value
+        inflight=(
+            self._artist_cache_inflight
+            if kind=="artists"
+            else self._album_cache_inflight
+        )
         self._bump_artwork_generation(kind)
+        if inflight:
+            self.cachedArtworkInvalidated.emit(kind)
         self._schedule_viewport_artwork(kind)
 
     def _card_artwork_priority(
@@ -2036,11 +2053,14 @@ class LibraryBrowser(QWidget):
         }
 
         if batch:
+            keys={str(row.get("key") or "") for row in batch if str(row.get("key") or "")}
             if kind=="artists":
                 self._artist_cache_inflight=True
+                self._artist_cache_inflight_keys=keys
                 self.artistImageCacheRequested.emit(batch)
             else:
                 self._album_cache_inflight=True
+                self._album_cache_inflight_keys=keys
                 self.artworkRequested.emit(batch)
             return
 
@@ -2054,6 +2074,7 @@ class LibraryBrowser(QWidget):
     ) -> None:
         if kind=="artists":
             self._artist_cache_inflight=False
+            self._artist_cache_inflight_keys.clear()
             for key in keys:
                 self._artist_cache_requested.discard(str(key))
             if self.current_view()=="artists":
@@ -2061,10 +2082,30 @@ class LibraryBrowser(QWidget):
             return
 
         self._album_cache_inflight=False
+        self._album_cache_inflight_keys.clear()
         for key in keys:
             self._art_requested.discard(str(key))
         if self.current_view()=="albums":
             self._schedule_viewport_artwork("albums",idle=True)
+
+    def cached_artwork_batch_cancelled(self, kind: str) -> None:
+        if kind=="artists":
+            keys=set(self._artist_cache_inflight_keys)
+            self._artist_cache_inflight=False
+            self._artist_cache_inflight_keys.clear()
+            for key in keys:
+                self._artist_cache_requested.discard(key)
+            if self.current_view()=="artists":
+                self._schedule_viewport_artwork("artists")
+            return
+
+        keys=set(self._album_cache_inflight_keys)
+        self._album_cache_inflight=False
+        self._album_cache_inflight_keys.clear()
+        for key in keys:
+            self._art_requested.discard(key)
+        if self.current_view()=="albums":
+            self._schedule_viewport_artwork("albums")
 
     def _request_artwork(self) -> None:
         self._schedule_viewport_artwork("albums")
@@ -2215,6 +2256,7 @@ class LibraryBrowser(QWidget):
 
     def set_artwork(self, mapping: dict[str, str]) -> None:
         self._album_cache_inflight=False
+        self._album_cache_inflight_keys.clear()
         for key, path in dict(mapping or {}).items():
             key = str(key)
             path = str(path or "")
@@ -2233,6 +2275,7 @@ class LibraryBrowser(QWidget):
 
     def set_artist_images(self, mapping: dict[str, str]) -> None:
         self._artist_cache_inflight=False
+        self._artist_cache_inflight_keys.clear()
         for key, path in dict(mapping or {}).items():
             key=str(key)
             path=str(path or "")

@@ -321,9 +321,11 @@ def test_cached_album_artwork_prioritizes_viewport_and_scroll_target():
     browser.show()
 
     batches = []
+    invalidations = []
     browser.artworkRequested.connect(
         lambda rows: batches.append([dict(row) for row in rows])
     )
+    browser.cachedArtworkInvalidated.connect(invalidations.append)
 
     tracks = [
         _track(
@@ -358,13 +360,15 @@ def test_cached_album_artwork_prioritizes_viewport_and_scroll_target():
     assert browser.last_artwork_priority_metrics["requested_now"] <= 12
 
     # Move to the bottom while the first cache batch is still in flight.
-    # Completing that old batch should continue from the new viewport, not
-    # from the top of the collection.
+    # P8d invalidates that old logical batch immediately rather than waiting
+    # for it to finish before the new viewport can become eligible.
     scrollbar = browser.album_scroll.verticalScrollBar()
     scrollbar.setValue(scrollbar.maximum())
     app.processEvents()
+    assert "albums" in invalidations
+
     before = len(batches)
-    browser.set_artwork({row["key"]: "" for row in first})
+    browser.cached_artwork_batch_cancelled("albums")
     app.processEvents()
     app.processEvents()
     if len(batches) == before:
@@ -406,6 +410,64 @@ def test_cached_album_artwork_prioritizes_viewport_and_scroll_target():
         assert 1 <= len(idle_batch) <= browser._idle_artwork_batch_size
         assert {row["key"] for row in idle_batch} <= distant_keys
 
+    browser.deleteLater()
+    app.processEvents()
+
+
+def test_catalog_replacement_invalidates_inflight_cached_artwork():
+    try:
+        from PySide6.QtWidgets import QApplication
+        from melodex.library_browser import LibraryBrowser
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    browser = LibraryBrowser()
+    browser.resize(1000, 700)
+    browser.show()
+
+    batches = []
+    invalidations = []
+    browser.artworkRequested.connect(
+        lambda rows: batches.append([dict(row) for row in rows])
+    )
+    browser.cachedArtworkInvalidated.connect(invalidations.append)
+
+    first_catalog = [
+        _track(
+            f"/catalog/first/{index:03d}.flac",
+            f"Artist {index:03d}",
+            f"Album {index:03d}",
+            f"Track {index:03d}",
+            1,
+        )
+        for index in range(40)
+    ]
+    browser.set_catalog(first_catalog, revision=1)
+    app.processEvents()
+    app.processEvents()
+    if not batches:
+        browser._emit_viewport_artwork_batch(
+            "albums",
+            browser._artwork_generation("albums"),
+        )
+    assert browser._album_cache_inflight is True
+
+    second_catalog = [
+        _track(
+            f"/catalog/second/{index:03d}.flac",
+            f"New Artist {index:03d}",
+            f"New Album {index:03d}",
+            f"New Track {index:03d}",
+            1,
+        )
+        for index in range(20)
+    ]
+    browser.set_catalog(second_catalog, revision=2)
+
+    assert "albums" in invalidations
+    assert browser._catalog_revision == 2
     browser.deleteLater()
     app.processEvents()
 
@@ -1677,6 +1739,7 @@ def test_search_failure_preserves_stale_useful_results(monkeypatch, tmp_path):
 
 def test_stale_search_response_cannot_replace_newer_request(monkeypatch, tmp_path):
     try:
+        from PySide6.QtCore import Qt
         from PySide6.QtWidgets import QApplication
         import melodex.main_window as main_window
     except ImportError as exc:
@@ -1692,8 +1755,8 @@ def test_stale_search_response_cannot_replace_newer_request(monkeypatch, tmp_pat
     window.search_source.addItem("All sources", "all")
     calls = []
 
-    def hold_async(fn, done, on_error=None, **_kwargs):
-        calls.append((done, on_error))
+    def hold_async(fn, done, on_error=None, **kwargs):
+        calls.append((done, on_error, kwargs))
 
     monkeypatch.setattr(window, "_run_async", hold_async)
 
@@ -1701,6 +1764,9 @@ def test_stale_search_response_cannot_replace_newer_request(monkeypatch, tmp_pat
     window._search()
     window.search_box.setText("second")
     window._search()
+
+    assert calls[0][2]["latest_key"] == "discover-search"
+    assert calls[1][2]["latest_key"] == "discover-search"
 
     calls[0][0](
         {
@@ -1736,6 +1802,42 @@ def test_stale_search_response_cannot_replace_newer_request(monkeypatch, tmp_pat
     )
     assert window.results.count() == 1
     assert window.results.item(0).data(Qt.UserRole)["track_id"] == "current"
+
+    window.close()
+    app.processEvents()
+
+
+def test_navigation_invalidates_offscreen_background_models(monkeypatch, tmp_path):
+    try:
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+
+    window = main_window.MainWindow()
+    cancelled = []
+    monkeypatch.setattr(
+        window.background,
+        "cancel_key",
+        lambda key: cancelled.append(str(key)) or 0,
+    )
+
+    window.open_page("library")
+
+    assert "album-wall-model" in cancelled
+    assert "music-map-model" in cancelled
+    assert "visual-context" in cancelled
+
+    cancelled.clear()
+    window.open_page("album_wall")
+    assert "album-wall-model" not in cancelled
+    assert "music-map-model" in cancelled
+    assert "visual-context" in cancelled
 
     window.close()
     app.processEvents()
@@ -2102,7 +2204,10 @@ def test_next_track_prefetch_is_local_only_and_consumed_on_advance(monkeypatch, 
         lambda _path: cached_analysis,
     )
 
-    def immediate_async(fn, done, on_error=None, **_kwargs):
+    async_policies = []
+
+    def immediate_async(fn, done, on_error=None, **kwargs):
+        async_policies.append(dict(kwargs))
         try:
             done(fn())
         except Exception as exc:
@@ -2118,6 +2223,7 @@ def test_next_track_prefetch_is_local_only_and_consumed_on_advance(monkeypatch, 
 
     token = main_window.UserState.track_key(upcoming)
     assert artwork_calls == ["Next"]
+    assert async_policies[-1]["latest_key"] == "next-track-prefetch"
     assert token in window._prefetched_track_assets
     assert window._prefetched_track_assets[token]["analysis"] is cached_analysis
 
@@ -2149,6 +2255,36 @@ def test_next_track_prefetch_is_local_only_and_consumed_on_advance(monkeypatch, 
     assert cover_calls[-1] == str(tmp_path / "next-cover.jpg")
     assert analysis_calls[-1] is cached_analysis
     assert token not in window._prefetched_track_assets
+
+    window.close()
+    app.processEvents()
+
+
+def test_rescheduling_prefetch_invalidates_previous_prefetch_immediately(monkeypatch, tmp_path):
+    try:
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+
+    window = main_window.MainWindow()
+    cancelled = []
+    monkeypatch.setattr(
+        window.background,
+        "cancel_key",
+        lambda key: cancelled.append(str(key)) or 0,
+    )
+
+    before = window._prefetch_sequence
+    window._schedule_next_track_prefetch()
+
+    assert window._prefetch_sequence == before + 1
+    assert cancelled == ["next-track-prefetch"]
 
     window.close()
     app.processEvents()
@@ -2232,6 +2368,69 @@ def test_main_window_async_work_uses_bounded_scheduler(monkeypatch, tmp_path):
     assert window.background.wait_for_idle(2)
     app.processEvents()
     assert finished == ["done"]
+
+    window.close()
+    app.processEvents()
+
+
+def test_main_window_latest_wins_suppresses_running_stale_callback(monkeypatch, tmp_path):
+    try:
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+
+    window = main_window.MainWindow()
+    old_started = threading.Event()
+    release_old = threading.Event()
+    delivered = []
+    stale = []
+
+    def old_work():
+        old_started.set()
+        release_old.wait(2)
+        return "old"
+
+    old_future = window._run_async(
+        old_work,
+        delivered.append,
+        priority="foreground",
+        lane="network",
+        label="old-search",
+        latest_key="synthetic-latest",
+        on_stale=lambda: stale.append("old"),
+    )
+    assert old_started.wait(1)
+
+    new_future = window._run_async(
+        lambda: "new",
+        delivered.append,
+        priority="foreground",
+        lane="network",
+        label="new-search",
+        latest_key="synthetic-latest",
+    )
+    assert new_future.result(timeout=1) == "new"
+    app.processEvents()
+    assert delivered == ["new"]
+
+    release_old.set()
+    try:
+        old_future.result(timeout=1)
+        raise AssertionError("old keyed task should have become stale")
+    except main_window.StaleTaskError:
+        pass
+
+    assert window.background.wait_for_idle(2)
+    app.processEvents()
+    assert delivered == ["new"]
+    assert stale == ["old"]
+    assert window.background.snapshot()["stale_results_suppressed"] >= 1
 
     window.close()
     app.processEvents()

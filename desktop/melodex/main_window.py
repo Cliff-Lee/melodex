@@ -4,6 +4,7 @@ import json
 import threading
 import time
 import uuid
+from concurrent.futures import CancelledError
 from pathlib import Path
 from typing import Any
 
@@ -57,7 +58,7 @@ from .plugin_health import health_badge, health_summary
 from .diagnostics import write_diagnostics
 from .responsiveness import UiResponsivenessMonitor
 from .motion import MotionController, FAST_MOTION_MS, STANDARD_MOTION_MS
-from .background_scheduler import BackgroundScheduler
+from .background_scheduler import BackgroundScheduler, StaleTaskError
 from .library_browser import LibraryBrowser
 from .library_scan_process import LibraryScanProcess
 from .ux_components import (
@@ -75,6 +76,7 @@ class WorkerSignals(QObject):
     done = Signal(object)
     error = Signal(str)
     progress = Signal(object)
+    stale = Signal()
 
 def _escape_html(value: Any) -> str:
     import html
@@ -1336,6 +1338,7 @@ class MainWindow(QMainWindow):
         self.library_browser.onlineArtworkRequested.connect(self._library_online_artwork_requested)
         self.library_browser.artistImageRequested.connect(self._library_artist_images_requested)
         self.library_browser.artistImageCacheRequested.connect(self._library_cached_artist_images_requested)
+        self.library_browser.cachedArtworkInvalidated.connect(self._library_cached_artwork_invalidated)
         self.library_browser.artistPhotoFileRequested.connect(self._choose_artist_photo_file)
         l.addWidget(self.library_browser,1)
 
@@ -2225,9 +2228,21 @@ class MainWindow(QMainWindow):
         if event.type() == QEvent.WindowStateChange and hasattr(self, "living_canvas"):
             self.living_canvas.set_window_minimized(self.isMinimized())
 
+    def _cancel_stale_page_work(self, destination: str) -> None:
+        if not hasattr(self,"background"):
+            return
+        destination=str(destination or "")
+        if destination!="album_wall":
+            self.background.cancel_key("album-wall-model")
+        if destination!="music_map":
+            self.background.cancel_key("music-map-model")
+        if destination!="now_playing":
+            self.background.cancel_key("visual-context")
+
     def open_page(self, name: str):
         if name not in self.pages:
             return
+        self._cancel_stale_page_work(name)
         interaction = (
             self.responsiveness.begin_interaction(f"navigate:{name}")
             if hasattr(self, "responsiveness")
@@ -3094,6 +3109,19 @@ class MainWindow(QMainWindow):
             3500,
         )
 
+    def _library_cached_artwork_invalidated(self, kind: str) -> None:
+        kind=str(kind or "")
+        if kind not in {"albums","artists"}:
+            return
+        key=(
+            "viewport-artist-photo"
+            if kind=="artists"
+            else "viewport-album-artwork"
+        )
+        if hasattr(self,"background"):
+            self.background.cancel_key(key)
+        self.library_browser.cached_artwork_batch_cancelled(kind)
+
     def _library_artwork_requested(self, requests: object) -> None:
         rows=[dict(x) for x in list(requests or []) if isinstance(x,dict)]
         if not rows:
@@ -3121,6 +3149,7 @@ class MainWindow(QMainWindow):
             priority="visible",
             lane="disk",
             label="viewport-album-artwork",
+            latest_key="viewport-album-artwork",
         )
 
     def _library_online_artwork_requested(self, requests: object) -> None:
@@ -3290,6 +3319,7 @@ class MainWindow(QMainWindow):
             priority="visible",
             lane="disk",
             label="viewport-artist-photo",
+            latest_key="viewport-artist-photo",
         )
 
     def _library_artist_images_requested(self, requests: object) -> None:
@@ -4886,6 +4916,7 @@ class MainWindow(QMainWindow):
             priority="foreground",
             lane="network",
             label="discover-search",
+            latest_key="discover-search",
         )
 
     def _search_report_failed(
@@ -5198,6 +5229,7 @@ class MainWindow(QMainWindow):
             priority="visible",
             lane="default",
             label="album-wall-model",
+            latest_key="album-wall-model",
         )
 
     def _apply_album_wall_payload(self,payload):
@@ -5363,6 +5395,7 @@ class MainWindow(QMainWindow):
             priority="visible",
             lane="default",
             label="music-map-model",
+            latest_key="music-map-model",
         )
 
     def _apply_music_map_payload(self,payload):
@@ -6291,6 +6324,8 @@ class MainWindow(QMainWindow):
     def _schedule_next_track_prefetch(self) -> None:
         if self._closing:
             return
+        if hasattr(self,"background"):
+            self.background.cancel_key("next-track-prefetch")
         self._prefetch_sequence += 1
         sequence=self._prefetch_sequence
         QTimer.singleShot(
@@ -6358,6 +6393,7 @@ class MainWindow(QMainWindow):
             priority="prefetch",
             lane="prefetch",
             label="next-track-prefetch",
+            latest_key="next-track-prefetch",
         )
 
     # ------------------------------- player/taste
@@ -6436,6 +6472,7 @@ class MainWindow(QMainWindow):
                     priority="foreground",
                     lane="disk",
                     label="current-track-artwork",
+                    latest_key="current-track-artwork",
                 )
         if hasattr(self,"rich_now"):
             self.rich_now.set_track(dict(t))
@@ -6479,6 +6516,7 @@ class MainWindow(QMainWindow):
             priority="foreground",
             lane="analysis",
             label="current-track-analysis",
+            latest_key="current-track-analysis",
         )
 
     def _visual_analysis_loaded(self, local_path: str, analysis: object) -> None:
@@ -6536,6 +6574,7 @@ class MainWindow(QMainWindow):
             priority="visible",
             lane="disk",
             label=f"visual-context:{mode}",
+            latest_key="visual-context",
         )
 
     def _visual_context_loaded(self, sequence: int, mode: str, payload: object) -> None:
@@ -7063,6 +7102,8 @@ class MainWindow(QMainWindow):
         priority="foreground",
         lane="default",
         label="",
+        latest_key="",
+        on_stale=None,
     ):
         sig=WorkerSignals()
         sig.done.connect(lambda result: None if self._closing else done(result))
@@ -7072,20 +7113,34 @@ class MainWindow(QMainWindow):
             )
         else:
             sig.error.connect(lambda e: None if self._closing else on_error(e))
+        if on_stale is not None:
+            sig.stale.connect(
+                lambda: None if self._closing else on_stale()
+            )
         self._last_worker=sig
 
-        def work():
-            try:
-                sig.done.emit(fn())
-            except Exception as exc:
-                sig.error.emit(str(exc))
-
-        return self.background.submit(
-            work,
+        future=self.background.submit(
+            fn,
             priority=priority,
             lane=lane,
             label=label,
+            key=str(latest_key or ""),
+            replace=bool(latest_key),
         )
+
+        def completed(result_future):
+            try:
+                result=result_future.result()
+            except (CancelledError,StaleTaskError):
+                if on_stale is not None:
+                    sig.stale.emit()
+            except Exception as exc:
+                sig.error.emit(str(exc))
+            else:
+                sig.done.emit(result)
+
+        future.add_done_callback(completed)
+        return future
 
     def closeEvent(self,event):
         if self.music_live_active:
