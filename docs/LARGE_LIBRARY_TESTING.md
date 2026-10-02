@@ -4,9 +4,9 @@ This benchmark exists because an external tester reported that Melodex 0.7.2
 never recovered while adding a Synology NAS library containing approximately
 12,700 FLAC files / 500 GB.
 
-The purpose of this first campaign is **measurement and reproduction**, not to
-change scan behaviour yet. The current implementation is intentionally still
-synchronous so the next campaign can be measured against a known baseline.
+Campaign 1 established the measurement baseline. Campaign 2 moves application
+library scans off the Qt UI thread while preserving the same path-free metrics,
+so before/after behaviour can be compared directly.
 
 ## What the probe measures
 
@@ -99,13 +99,15 @@ intended to expose a second scalability problem independently of NAS I/O.
 pytest tests/test_library_scan_metrics.py tests/test_diagnostics.py -q
 ```
 
-The tests deliberately capture the current architecture: constructing a local
-provider with saved roots performs the scan on the calling thread. In the
-desktop application that caller is currently the UI/main thread.
+Direct `LocalFilesProvider` callers can still request a synchronous scan for
+compatibility, but `ProviderManager` no longer scans saved roots during
+application construction. The desktop schedules saved-root scans only after the
+Qt window has been built, and the filesystem/tag work runs on a worker thread.
 
-Campaign 2 should change that behaviour. At that point the regression test
-should be replaced with a test that proves slow scan work cannot block the Qt
-event loop.
+The regression suite now includes a deliberately blocked scan plus a Qt timer.
+The timer must fire while the scan worker is still blocked, proving that slow
+NAS work cannot monopolise the event loop. It also verifies that changing roots
+mid-scan discards the stale result and queues a fresh scan.
 
 ## Acceptance baseline for the later fix
 
@@ -117,3 +119,35 @@ The permanent stress case is:
 A future implementation should also remain responsive when metadata reads are
 slow, individual files are malformed, a directory is inaccessible, or the
 network share becomes unavailable.
+
+
+## Campaign 2 architecture
+
+Application scans now use a snapshot/apply split:
+
+```text
+Qt UI thread
+  |
+  | configure roots (fast, no filesystem traversal)
+  v
+worker thread
+  |
+  | enumerate directories + read Mutagen metadata
+  v
+scan snapshot { tracks, metrics }
+  |
+  v
+Qt UI thread
+  |
+  | atomically apply completed snapshot
+  v
+refresh My Music
+```
+
+This matters because the live catalog is not progressively mutated from a
+worker thread. Users can keep interacting with the existing catalog while a
+rescan is in progress, and a root change during a scan cannot overwrite the
+newer configuration with stale results.
+
+Progress, pause and cancel controls are intentionally left to Campaign 3.
+Persistent startup indexing is intentionally left to Campaign 4.

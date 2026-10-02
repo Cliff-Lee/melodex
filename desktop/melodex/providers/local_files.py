@@ -20,6 +20,8 @@ class LocalFilesProvider(MusicProvider):
         self,
         roots: list[Path] | None = None,
         overrides: dict[str, dict[str, Any]] | None = None,
+        *,
+        scan_on_init: bool = True,
     ):
         self.roots = [Path(p) for p in (roots or [])]
         self.overrides = {
@@ -29,7 +31,7 @@ class LocalFilesProvider(MusicProvider):
         }
         self._tracks: list[dict[str, Any]] = []
         self._last_scan_metrics: dict[str, object] = {}
-        if self.roots:
+        if self.roots and scan_on_init:
             self.scan()
 
     @staticmethod
@@ -88,8 +90,13 @@ class LocalFilesProvider(MusicProvider):
             permissions={"network_hosts": [], "offline_downloads": False, "local_files": True},
         )
 
-    def set_roots(self, roots: list[Path]) -> None:
+    def configure_roots(self, roots: list[Path]) -> None:
+        """Update configured roots without touching the filesystem."""
         self.roots = [Path(x) for x in roots]
+
+    def set_roots(self, roots: list[Path]) -> None:
+        """Compatibility API for callers that explicitly want a synchronous scan."""
+        self.configure_roots(roots)
         self.scan()
 
     @staticmethod
@@ -158,11 +165,25 @@ class LocalFilesProvider(MusicProvider):
             out["year"] = int(date[:4])
         return out
 
-    def scan(self) -> int:
+    def scan_snapshot(
+        self,
+        roots: list[Path] | None = None,
+    ) -> dict[str, Any]:
+        """Scan roots without mutating the live provider catalog.
+
+        This is safe to run on a worker thread. The caller applies the completed
+        snapshot on the UI thread with :meth:`apply_scan_snapshot`.
+        """
+        scan_roots = [Path(x) for x in (self.roots if roots is None else roots)]
+        overrides = {
+            str(key): dict(value)
+            for key, value in self.overrides.items()
+            if isinstance(value, dict)
+        }
         tracks: list[dict[str, Any]] = []
-        probe = ScanProbe(len(self.roots))
+        probe = ScanProbe(len(scan_roots))
         try:
-            for root in self.roots:
+            for root in scan_roots:
                 exists = root.exists()
                 probe.root_checked(exists=exists)
                 if not exists:
@@ -173,14 +194,47 @@ class LocalFilesProvider(MusicProvider):
                         p = Path(base) / name
                         is_audio = p.suffix.lower() in AUDIO_EXTS
                         probe.file_seen(audio=is_audio)
-                        if is_audio:
-                            with probe.metadata_read():
-                                metadata = self._metadata(p)
-                            tracks.append(self._apply_override(metadata))
-            self._tracks = tracks
-            return len(tracks)
+                        if not is_audio:
+                            continue
+                        with probe.metadata_read():
+                            metadata = self._metadata(p)
+                        local_path = str(
+                            metadata.get("local_path")
+                            or metadata.get("track_id")
+                            or ""
+                        )
+                        override = overrides.get(
+                            self._override_key(local_path),
+                            {},
+                        )
+                        if override:
+                            metadata = dict(metadata)
+                            for key, value in override.items():
+                                if key in self.EDITABLE_METADATA_FIELDS:
+                                    metadata[key] = value
+                        tracks.append(metadata)
         finally:
-            self._last_scan_metrics = probe.finish(tracks_indexed=len(tracks))
+            metrics = probe.finish(tracks_indexed=len(tracks))
+        return {
+            "tracks": tracks,
+            "metrics": metrics,
+        }
+
+    def apply_scan_snapshot(self, snapshot: dict[str, Any]) -> int:
+        """Atomically replace the live catalog with a completed scan snapshot."""
+        tracks = [
+            dict(item)
+            for item in list((snapshot or {}).get("tracks") or [])
+            if isinstance(item, dict)
+        ]
+        metrics = dict((snapshot or {}).get("metrics") or {})
+        self._tracks = tracks
+        self._last_scan_metrics = metrics
+        return len(tracks)
+
+    def scan(self) -> int:
+        snapshot = self.scan_snapshot()
+        return self.apply_scan_snapshot(snapshot)
 
     @property
     def last_scan_metrics(self) -> dict[str, object]:

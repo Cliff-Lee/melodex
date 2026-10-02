@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import os
 import sys
+import threading
+import time
 from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -1186,3 +1188,157 @@ def test_plain_lyrics_html_uses_explicit_dark_theme_contrast():
     assert "color:#e5edf6" in rendered
     assert "font-size:21px" in rendered
     assert "Line one<br>Line two" in rendered
+
+
+
+def test_slow_library_scan_keeps_qt_event_loop_responsive(monkeypatch, tmp_path):
+    try:
+        from PySide6.QtCore import QTimer
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+
+    window = main_window.MainWindow()
+    root = tmp_path / "slow-nas"
+    root.mkdir()
+    window.providers.configure_local_roots([root])
+
+    started = threading.Event()
+    release = threading.Event()
+    worker_thread = {}
+
+    def slow_snapshot(roots=None):
+        worker_thread["name"] = threading.current_thread().name
+        worker_thread["main"] = threading.current_thread() is threading.main_thread()
+        started.set()
+        release.wait(timeout=2)
+        return {
+            "tracks": [],
+            "metrics": {
+                "thread_name": threading.current_thread().name,
+                "main_thread": False,
+                "root_count": 1,
+                "tracks_indexed": 0,
+                "total_seconds": 0.1,
+            },
+        }
+
+    monkeypatch.setattr(
+        window.providers,
+        "scan_local_roots_snapshot",
+        slow_snapshot,
+    )
+
+    timer_fired = []
+    QTimer.singleShot(0, lambda: timer_fired.append(True))
+    window._start_local_scan("test")
+
+    deadline = time.monotonic() + 1.0
+    while time.monotonic() < deadline and (not started.is_set() or not timer_fired):
+        app.processEvents()
+        time.sleep(0.005)
+
+    assert started.is_set()
+    assert timer_fired == [True]
+    assert window._local_scan_in_progress is True
+    assert worker_thread["main"] is False
+
+    release.set()
+    deadline = time.monotonic() + 2.0
+    while time.monotonic() < deadline and window._local_scan_in_progress:
+        app.processEvents()
+        time.sleep(0.005)
+
+    assert window._local_scan_in_progress is False
+    window.close()
+    app.processEvents()
+
+
+def test_root_change_during_scan_discards_stale_snapshot(monkeypatch, tmp_path):
+    try:
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+
+    window = main_window.MainWindow()
+    root_a = tmp_path / "root-a"
+    root_b = tmp_path / "root-b"
+    root_a.mkdir()
+    root_b.mkdir()
+    window.providers.configure_local_roots([root_a])
+
+    first_started = threading.Event()
+    release_first = threading.Event()
+    calls = []
+
+    def scan_snapshot(roots=None):
+        roots = [Path(x) for x in (roots or [])]
+        calls.append(tuple(str(x) for x in roots))
+        if len(calls) == 1:
+            first_started.set()
+            release_first.wait(timeout=2)
+            return {
+                "tracks": [
+                    {
+                        "provider_id": "local",
+                        "track_id": "/stale.flac",
+                        "local_path": "/stale.flac",
+                        "title": "Stale",
+                        "artist": "Old",
+                    }
+                ],
+                "metrics": {"tracks_indexed": 1, "main_thread": False},
+            }
+        return {
+            "tracks": [
+                {
+                    "provider_id": "local",
+                    "track_id": "/fresh.flac",
+                    "local_path": "/fresh.flac",
+                    "title": "Fresh",
+                    "artist": "New",
+                }
+            ],
+            "metrics": {"tracks_indexed": 1, "main_thread": False},
+        }
+
+    monkeypatch.setattr(window.providers, "scan_local_roots_snapshot", scan_snapshot)
+    window._start_local_scan("first")
+
+    deadline = time.monotonic() + 1.0
+    while time.monotonic() < deadline and not first_started.is_set():
+        app.processEvents()
+        time.sleep(0.005)
+    assert first_started.is_set()
+
+    window.providers.configure_local_roots([root_a, root_b])
+    window._start_local_scan("roots changed")
+    assert window._local_scan_pending is True
+    release_first.set()
+
+    deadline = time.monotonic() + 2.0
+    while time.monotonic() < deadline and (
+        window._local_scan_in_progress or len(calls) < 2
+    ):
+        app.processEvents()
+        time.sleep(0.005)
+
+    catalog = window.providers.local_catalog()
+    assert len(calls) == 2
+    assert len(catalog) == 1
+    assert catalog[0]["title"] == "Fresh"
+
+    window.close()
+    app.processEvents()

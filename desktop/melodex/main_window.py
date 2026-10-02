@@ -145,6 +145,9 @@ class MainWindow(QMainWindow):
         self.pending_journey_replay: tuple[dict[str, Any], str] | None = None
         self.current_page = "home"
         self._closing = False
+        self._local_scan_in_progress = False
+        self._local_scan_pending = False
+        self._local_scan_sequence = 0
         self.externalCommand.connect(self._on_external_command)
 
         self.player = FlowPlayer(
@@ -160,6 +163,9 @@ class MainWindow(QMainWindow):
         self._build_ui()
         self._show_home()
         self._start_local_bridge()
+        if self.providers.local_roots():
+            # Let Qt paint the window before any saved library scan begins.
+            QTimer.singleShot(0, lambda: self._start_local_scan("startup"))
 
     # ------------------------------- UI
     def _build_ui(self):
@@ -3661,15 +3667,85 @@ class MainWindow(QMainWindow):
     # ------------------------------- sources/search
     def _choose_music_folder(self):
         folder=QFileDialog.getExistingDirectory(self,"Choose a music folder")
-        if not folder: return
-        roots=[Path(x) for x in self.providers.settings.get("local_roots",[])]
+        if not folder:
+            return
+        roots=self.providers.local_roots()
         p=Path(folder)
-        if p not in roots: roots.append(p)
-        count=self.providers.set_local_roots(roots); self.statusBar().showMessage(f"Found {count:,} tracks",5000); self._refresh_library(); self._show_home()
+        if p not in roots:
+            roots.append(p)
+        self.providers.configure_local_roots(roots)
+        self._start_local_scan("folder added")
 
     def _rescan(self):
-        roots=[Path(x) for x in self.providers.settings.get("local_roots",[])]
-        count=self.providers.set_local_roots(roots); self.statusBar().showMessage(f"Rescanned {count:,} tracks",4000); self._refresh_library()
+        self._start_local_scan("rescan")
+
+    @staticmethod
+    def _local_roots_key(roots: list[Path]) -> tuple[str, ...]:
+        return tuple(str(Path(root)) for root in roots)
+
+    def _start_local_scan(self, reason: str = "scan") -> None:
+        roots=self.providers.local_roots()
+        if not roots:
+            self.statusBar().showMessage("Add a music folder first",3000)
+            return
+
+        if self._local_scan_in_progress:
+            self._local_scan_pending=True
+            self.statusBar().showMessage(
+                "Music indexing is already running · your latest library change is queued",
+                4000,
+            )
+            return
+
+        self._local_scan_in_progress=True
+        self._local_scan_pending=False
+        self._local_scan_sequence += 1
+        sequence=self._local_scan_sequence
+        roots_snapshot=[Path(root) for root in roots]
+        roots_key=self._local_roots_key(roots_snapshot)
+        self.statusBar().showMessage("Indexing your music in the background…")
+
+        def work():
+            return self.providers.scan_local_roots_snapshot(roots_snapshot)
+
+        def done(snapshot):
+            if sequence != self._local_scan_sequence:
+                return
+            current_key=self._local_roots_key(self.providers.local_roots())
+            self._local_scan_in_progress=False
+
+            # If the user changed roots while this worker was running, discard
+            # the stale snapshot rather than briefly replacing the catalog with
+            # results from an old root set.
+            if current_key != roots_key:
+                self._local_scan_pending=False
+                QTimer.singleShot(0, lambda: self._start_local_scan("queued change"))
+                return
+
+            count=self.providers.apply_local_scan_snapshot(dict(snapshot or {}))
+            self._refresh_library()
+            self._show_home()
+            self.statusBar().showMessage(
+                f"Music indexing complete · {count:,} tracks",
+                5000,
+            )
+            if self._local_scan_pending:
+                self._local_scan_pending=False
+                QTimer.singleShot(0, lambda: self._start_local_scan("queued rescan"))
+
+        def failed(error):
+            if sequence != self._local_scan_sequence:
+                return
+            self._local_scan_in_progress=False
+            self.statusBar().showMessage(
+                f"Music indexing failed · {error}",
+                7000,
+            )
+            if self._local_scan_pending:
+                self._local_scan_pending=False
+                QTimer.singleShot(0, lambda: self._start_local_scan("queued rescan"))
+
+        self._run_async(work,done,failed)
 
     def _jamendo_settings(self):
         value,ok=QInputDialog.getText(self,"Jamendo reference provider","Your Jamendo developer client ID:",text=str(self.providers.settings.get("jamendo_client_id","")))

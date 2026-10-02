@@ -5,6 +5,7 @@ import time
 from pathlib import Path
 
 import melodex.providers.local_files as local_files
+from melodex.provider_manager import ProviderManager
 from melodex.providers.local_files import LocalFilesProvider
 
 
@@ -113,3 +114,95 @@ def test_constructor_scan_records_that_work_runs_on_calling_thread(
     # This captures the current architecture: constructing the provider scans
     # synchronously on the caller. Campaign 2 is expected to change this.
     assert provider.last_scan_metrics["main_thread"] is True
+
+
+
+def test_scan_snapshot_does_not_mutate_live_catalog_until_applied(
+    monkeypatch,
+    tmp_path: Path,
+):
+    root = tmp_path / "snapshot-share"
+    root.mkdir()
+
+    monkeypatch.setattr(
+        local_files.os,
+        "walk",
+        lambda _root: [(str(root), [], ["one.flac", "two.flac"])],
+    )
+    monkeypatch.setattr(
+        LocalFilesProvider,
+        "_metadata",
+        staticmethod(_metadata_row),
+    )
+
+    provider = LocalFilesProvider(scan_on_init=False)
+    provider.configure_roots([root])
+
+    snapshot = provider.scan_snapshot()
+
+    assert provider.tracks == []
+    assert len(snapshot["tracks"]) == 2
+    assert snapshot["metrics"]["tracks_indexed"] == 2
+
+    assert provider.apply_scan_snapshot(snapshot) == 2
+    assert len(provider.tracks) == 2
+
+
+def test_provider_manager_does_not_scan_saved_roots_during_startup(
+    monkeypatch,
+    tmp_path: Path,
+):
+    root = tmp_path / "saved-nas"
+    root.mkdir()
+    (tmp_path / "sources.json").write_text(
+        json.dumps({"local_roots": [str(root)]}),
+        encoding="utf-8",
+    )
+
+    def fail_if_scanned(self):
+        raise AssertionError("saved roots must not be scanned during ProviderManager startup")
+
+    monkeypatch.setattr(LocalFilesProvider, "scan", fail_if_scanned)
+
+    manager = ProviderManager(tmp_path)
+    try:
+        assert manager.local_roots() == [root]
+        assert manager.local_catalog() == []
+    finally:
+        manager.close()
+
+
+def test_background_scan_snapshot_records_worker_thread(
+    monkeypatch,
+    tmp_path: Path,
+):
+    root = tmp_path / "worker-share"
+    root.mkdir()
+
+    monkeypatch.setattr(
+        local_files.os,
+        "walk",
+        lambda _root: [(str(root), [], ["worker.flac"])],
+    )
+    monkeypatch.setattr(
+        LocalFilesProvider,
+        "_metadata",
+        staticmethod(_metadata_row),
+    )
+
+    provider = LocalFilesProvider(scan_on_init=False)
+    snapshot_holder = {}
+
+    import threading
+
+    def run():
+        snapshot_holder["value"] = provider.scan_snapshot([root])
+
+    worker = threading.Thread(target=run, name="library-scan-test")
+    worker.start()
+    worker.join(timeout=2)
+
+    assert not worker.is_alive()
+    snapshot = snapshot_holder["value"]
+    assert snapshot["metrics"]["main_thread"] is False
+    assert snapshot["metrics"]["thread_name"] == "library-scan-test"
