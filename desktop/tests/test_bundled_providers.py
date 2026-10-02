@@ -178,3 +178,68 @@ def test_legacy_private_development_provider_is_quarantined_and_rejected(tmp_pat
         assert any(row["name"] == legacy_name for row in rows)
     finally:
         reopened.close()
+
+
+
+def test_superseded_example_radio_and_librivox_are_hidden_when_real_sources_exist(
+    tmp_path: Path,
+):
+    data_dir = tmp_path / "data"
+    radio_example = _provider_package(
+        tmp_path / "radio-example.mdxprovider",
+        "org.melodex.example.radio-browser",
+        "0.1.1",
+        name="Radio Browser Example",
+    )
+    librivox_example = _provider_package(
+        tmp_path / "librivox-example.mdxprovider",
+        "org.melodex.example.librivox",
+        "0.1.1",
+        name="LibriVox Example",
+    )
+
+    manager = ProviderManager(data_dir)
+    try:
+        # Simulate an older Melodex install that already had the SDK examples.
+        manager.installer.install(radio_example)
+        manager.installer.install(librivox_example)
+    finally:
+        manager.close()
+
+    reopened = ProviderManager(data_dir)
+    try:
+        assert "org.melodex.radiobrowser" in reopened.providers
+        assert "org.melodex.librivox" in reopened.providers
+        assert "org.melodex.example.radio-browser" not in reopened.providers
+        assert "org.melodex.example.librivox" not in reopened.providers
+
+        superseded = {
+            row["id"]: row["replacement"]
+            for row in reopened.superseded_providers()
+        }
+        assert superseded["org.melodex.example.radio-browser"] == "org.melodex.radiobrowser"
+        assert superseded["org.melodex.example.librivox"] == "org.melodex.librivox"
+
+        order = reopened.provider_order()
+        assert "org.melodex.example.radio-browser" not in order
+        assert "org.melodex.example.librivox" not in order
+    finally:
+        reopened.close()
+
+
+def test_reinstalling_superseded_example_source_is_rejected(tmp_path: Path):
+    import pytest
+
+    manager = ProviderManager(tmp_path / "data")
+    try:
+        package = _provider_package(
+            tmp_path / "radio-example.mdxprovider",
+            "org.melodex.example.radio-browser",
+            "0.1.1",
+            name="Radio Browser Example",
+        )
+        with pytest.raises(ValueError, match="replaced by the included Radio Browser"):
+            manager.install_package(package)
+        assert "org.melodex.example.radio-browser" not in manager.providers
+    finally:
+        manager.close()

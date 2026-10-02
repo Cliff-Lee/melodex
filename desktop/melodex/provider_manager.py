@@ -30,6 +30,12 @@ from .plugin_health import (
 )
 
 
+SUPERSEDED_PROVIDER_REPLACEMENTS = {
+    "org.melodex.example.radio-browser": "org.melodex.radiobrowser",
+    "org.melodex.example.librivox": "org.melodex.librivox",
+}
+
+
 class ProviderManager:
     def __init__(self, data_dir: Path):
         self.data_dir = Path(data_dir)
@@ -62,7 +68,23 @@ class ProviderManager:
             "streams": UserStreamsProvider(list(self.settings.get("user_streams", []))),
         }
         self._quarantined_legacy_providers: list[dict[str, str]] = []
+        self._superseded_providers: list[dict[str, str]] = []
         for provider in self.installer.load_installed():
+            replacement = SUPERSEDED_PROVIDER_REPLACEMENTS.get(
+                str(provider.info.id or "")
+            )
+            if replacement and replacement in bundled_ids:
+                self._superseded_providers.append(
+                    {
+                        "id": str(provider.info.id or ""),
+                        "name": str(provider.info.name or provider.info.id or ""),
+                        "replacement": replacement,
+                    }
+                )
+                close = getattr(provider, "close", None)
+                if callable(close):
+                    close()
+                continue
             if self._is_legacy_private_provider(provider):
                 self._quarantined_legacy_providers.append(
                     {
@@ -109,6 +131,10 @@ class ProviderManager:
 
     def quarantined_legacy_providers(self) -> list[dict[str, str]]:
         return [dict(row) for row in self._quarantined_legacy_providers]
+
+    def superseded_providers(self) -> list[dict[str, str]]:
+        """Installed providers hidden because an included replacement exists."""
+        return [dict(row) for row in self._superseded_providers]
 
     def _load_settings(self) -> dict[str, Any]:
         try:
@@ -564,6 +590,24 @@ class ProviderManager:
             shutil.rmtree(folder,ignore_errors=True)
             raise ValueError(
                 "This legacy development provider is not supported by public Melodex builds."
+            )
+        replacement = SUPERSEDED_PROVIDER_REPLACEMENTS.get(
+            str(provider.info.id or "")
+        )
+        if replacement and self.is_bundled_provider(replacement):
+            close=getattr(provider,"close",None)
+            if callable(close):
+                close()
+            shutil.rmtree(folder,ignore_errors=True)
+            replacement_provider=self.providers.get(replacement)
+            replacement_name=(
+                str(replacement_provider.info.name)
+                if replacement_provider is not None
+                else replacement
+            )
+            raise ValueError(
+                f"{provider.info.name} has been replaced by the included "
+                f"{replacement_name} source."
             )
         provider.configure(
             self.plugin_config.values(
