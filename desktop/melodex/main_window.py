@@ -4374,6 +4374,8 @@ class MainWindow(QMainWindow):
                     {},
                 ) or {}
             )
+        if hasattr(self, "background"):
+            ui_metrics["background_scheduler"] = self.background.snapshot()
         if hasattr(self, "responsiveness"):
             ui_metrics["responsiveness"] = self.responsiveness.summary()
         try:
