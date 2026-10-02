@@ -1270,6 +1270,93 @@ def test_plain_lyrics_html_uses_explicit_dark_theme_contrast():
 
 
 
+def test_navigation_shell_changes_before_slow_page_population(monkeypatch, tmp_path):
+    try:
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+
+    window = main_window.MainWindow()
+    refresh_started = []
+
+    def slow_library_refresh():
+        refresh_started.append(time.monotonic())
+        time.sleep(0.12)
+
+    monkeypatch.setattr(window, "_refresh_library", slow_library_refresh)
+
+    started_at = time.monotonic()
+    window.open_page("library")
+    shell_seconds = time.monotonic() - started_at
+
+    # The click is complete once the destination shell is selected. Data
+    # population must not be part of that foreground interaction.
+    assert shell_seconds < 0.10
+    assert window.current_page == "library"
+    assert window.stack.currentWidget() is window.pages["library"]
+    assert bool(window.nav_buttons["library"].property("active"))
+    assert refresh_started == []
+
+    deadline = time.monotonic() + 0.5
+    while time.monotonic() < deadline and not refresh_started:
+        app.processEvents()
+        time.sleep(0.005)
+
+    assert refresh_started
+    window.close()
+    app.processEvents()
+
+
+def test_rapid_navigation_drops_stale_page_population(monkeypatch, tmp_path):
+    try:
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+
+    window = main_window.MainWindow()
+    populated = []
+    monkeypatch.setattr(
+        window,
+        "_refresh_library",
+        lambda: populated.append("library"),
+    )
+    monkeypatch.setattr(
+        window,
+        "_refresh_playlists",
+        lambda: populated.append("playlists"),
+    )
+
+    window.open_page("library")
+    window.open_page("playlists")
+
+    # Both shells were requested before deferred population started. Only the
+    # page the user actually ended on should consume refresh work.
+    assert window.current_page == "playlists"
+    assert window.stack.currentWidget() is window.pages["playlists"]
+    assert populated == []
+
+    deadline = time.monotonic() + 0.5
+    while time.monotonic() < deadline and "playlists" not in populated:
+        app.processEvents()
+        time.sleep(0.005)
+
+    assert populated == ["playlists"]
+    window.close()
+    app.processEvents()
+
+
 def test_slow_source_config_check_keeps_qt_event_loop_responsive(monkeypatch, tmp_path):
     try:
         from types import SimpleNamespace
