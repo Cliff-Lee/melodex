@@ -664,17 +664,17 @@ class MainWindow(QMainWindow):
             }
             QLabel#albumCardTitle{font-weight:700;font-size:12px}
             QLabel#albumCardMeta{color:#8995a7;font-size:11px}
-            QListWidget#visualTrackList{
+            QListView#visualTrackList{
                 background:transparent;
                 border:0;
                 padding:0;
             }
-            QListWidget#visualTrackList::item{
+            QListView#visualTrackList::item{
                 background:transparent;
                 border:0;
                 padding:0;
             }
-            QListWidget#visualTrackList::item:selected{
+            QListView#visualTrackList::item:selected{
                 background:transparent;
             }
             QFrame#trackRow{
