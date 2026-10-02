@@ -9,7 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "desktop" / "bundled_provider_sources" / "librivox"
 LICENSE = ROOT / "LICENSE"
-EXPECTED_VERSION = "0.1.4"
+EXPECTED_VERSION = "0.1.5"
 
 
 def rebuild(destination: Path) -> None:
