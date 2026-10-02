@@ -17,13 +17,13 @@ CACHE_TTL_SECONDS = 300
 _ITEM_CACHE: dict[str, dict] = {}
 _SEARCH_CACHE: dict[str, tuple[float, dict]] = {}
 _LAST_RATE_LIMIT_REMAINING: str | None = None
+_API_KEY = ""
 
 
 def _headers() -> dict[str, str]:
     headers = {"User-Agent": USER_AGENT, "Accept": "application/json"}
-    key = str(os.getenv("NICHEDB_API_KEY") or "").strip()
-    if key:
-        headers["Authorization"] = f"Bearer {key}"
+    if _API_KEY:
+        headers["Authorization"] = f"Bearer {_API_KEY}"
     return headers
 
 
@@ -206,8 +206,11 @@ def _item(track_id: str) -> dict:
 
 
 def respond(request: dict):
+    global _API_KEY
     method = request.get("method")
     params = request.get("params") or {}
+    config = params.get("_melodex_config") or {}
+    _API_KEY = str(config.get("api_key") or "").strip() if isinstance(config, dict) else ""
 
     if method == "provider.info":
         return {
@@ -222,7 +225,7 @@ def respond(request: dict):
         try:
             rows = _search("popular", 1)
             suffix = (
-                f"; {_LAST_RATE_LIMIT_REMAINING} anonymous API requests remain this hour"
+                f"; {_LAST_RATE_LIMIT_REMAINING} API requests remain this hour"
                 if _LAST_RATE_LIMIT_REMAINING is not None
                 else ""
             )
