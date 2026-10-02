@@ -194,19 +194,19 @@ class LocalFilesProvider(MusicProvider):
         control: ScanControl | None = None,
         cached_entries: dict[str, dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
-        """Scan roots, reusing cached tags for files whose fingerprint is unchanged.
+        """Scan roots while streaming discovered files into final snapshot rows.
 
-        The cheap fingerprint is file size + nanosecond modification time. A
-        cache entry without a complete fingerprint is deliberately treated as
-        changed, so the first rescan after upgrading populates trustworthy
-        fingerprints for future incremental scans.
+        P10b removes the separate collection-wide discovered list. Each audio
+        file is fingerprinted and, when necessary, has metadata read as it is
+        encountered. The completed snapshot is still published atomically,
+        preserving the existing correctness model while reducing one O(n) copy
+        of scan state.
+
+        If a root becomes incomplete during traversal, rows produced for that
+        root are rolled back from the in-memory snapshot and the previously
+        indexed SQLite copy is preserved.
         """
         scan_roots = [Path(x) for x in (self.roots if roots is None else roots)]
-        overrides = {
-            str(key): dict(value)
-            for key, value in self.overrides.items()
-            if isinstance(value, dict)
-        }
         cached = {
             self._override_key(key): dict(value)
             for key, value in dict(cached_entries or {}).items()
@@ -214,7 +214,6 @@ class LocalFilesProvider(MusicProvider):
         }
         control = control or ScanControl()
         throttle = ProgressThrottle()
-        discovered: list[dict[str, Any]] = []
         tracks: list[dict[str, Any]] = []
         index_tracks: list[dict[str, Any]] = []
         index_records: list[dict[str, Any]] = []
@@ -236,6 +235,9 @@ class LocalFilesProvider(MusicProvider):
             current: str = "",
             completed: int = 0,
             total: int = 0,
+            root_unchanged: int = 0,
+            root_added: int = 0,
+            root_changed: int = 0,
         ) -> None:
             if progress is None or not throttle.ready(force=force):
                 return
@@ -250,11 +252,12 @@ class LocalFilesProvider(MusicProvider):
                     "current": Path(current).name if current else "",
                     "paused": control.paused,
                     "cancelled": control.cancelled,
-                    "unchanged": unchanged,
-                    "added": added,
-                    "changed": changed,
+                    "unchanged": unchanged + root_unchanged,
+                    "added": added + root_added,
+                    "changed": changed + root_changed,
                     "removed": removed,
                     "stat_failures": stat_failures,
+                    "streaming": True,
                 }
             )
 
@@ -276,9 +279,14 @@ class LocalFilesProvider(MusicProvider):
                     continue
 
                 root_key = self._override_key(root)
-                root_start = len(discovered)
+                tracks_start = len(tracks)
+                index_tracks_start = len(index_tracks)
+                index_records_start = len(index_records)
                 root_seen: set[str] = set()
                 root_walk_errors = 0
+                root_unchanged = 0
+                root_added = 0
+                root_changed = 0
 
                 def on_walk_error(_error: OSError) -> None:
                     nonlocal root_walk_errors
@@ -287,8 +295,6 @@ class LocalFilesProvider(MusicProvider):
                 try:
                     walker = os.walk(root, onerror=on_walk_error)
                 except TypeError:
-                    # Keeps simple monkeypatched walkers in unit tests working;
-                    # the real os.walk supports onerror.
                     walker = os.walk(root)
 
                 for base, _, files in walker:
@@ -300,7 +306,13 @@ class LocalFilesProvider(MusicProvider):
                         is_audio = p.suffix.lower() in AUDIO_EXTS
                         probe.file_seen(audio=is_audio)
                         if not is_audio:
-                            emit("discovering", current=Path(base).name)
+                            emit(
+                                "discovering",
+                                current=Path(base).name,
+                                root_unchanged=root_unchanged,
+                                root_added=root_added,
+                                root_changed=root_changed,
+                            )
                             continue
 
                         key = self._override_key(p)
@@ -347,50 +359,58 @@ class LocalFilesProvider(MusicProvider):
                         )
 
                         if reusable:
-                            kind = "unchanged"
-                            unchanged += 1
-                        elif previous is None:
-                            kind = "added"
-                            added += 1
+                            raw_metadata = previous_track
+                            root_unchanged += 1
                         else:
-                            kind = "changed"
-                            changed += 1
+                            if previous is None:
+                                root_added += 1
+                            else:
+                                root_changed += 1
+                            with probe.metadata_read():
+                                raw_metadata = self._metadata(p)
+                            emit(
+                                "metadata",
+                                current=p.name,
+                                completed=probe.metrics.metadata_attempts,
+                                total=0,
+                                root_unchanged=root_unchanged,
+                                root_added=root_added,
+                                root_changed=root_changed,
+                            )
 
-                        discovered.append(
-                            {
-                                "path": p,
-                                "key": key,
-                                "size": size,
-                                "mtime_ns": mtime_ns,
-                                "kind": kind,
-                                "root_key": root_key,
-                                "raw_track": previous_track if reusable else {},
-                            }
+                        if raw_metadata:
+                            index_tracks.append(dict(raw_metadata))
+                            index_records.append(
+                                {
+                                    "track": dict(raw_metadata),
+                                    "size": size,
+                                    "mtime_ns": mtime_ns,
+                                }
+                            )
+                            tracks.append(self._apply_override(raw_metadata))
+
+                        emit(
+                            "discovering",
+                            current=Path(base).name,
+                            root_unchanged=root_unchanged,
+                            root_added=root_added,
+                            root_changed=root_changed,
                         )
-                        emit("discovering", current=Path(base).name)
 
                 root_state["walk_errors"] = int(root_walk_errors)
                 root_state["complete"] = root_walk_errors == 0
                 if root_walk_errors:
-                    # Never apply a partial root. Undo its discovery/change
-                    # counters and preserve the root's previous SQLite snapshot.
-                    partial_rows = discovered[root_start:]
-                    for row in partial_rows:
-                        kind = str(row.get("kind") or "")
-                        if kind == "unchanged":
-                            unchanged = max(0, unchanged - 1)
-                        elif kind == "added":
-                            added = max(0, added - 1)
-                        elif kind == "changed":
-                            changed = max(0, changed - 1)
-                    del discovered[root_start:]
+                    del tracks[tracks_start:]
+                    del index_tracks[index_tracks_start:]
+                    del index_records[index_records_start:]
                     continue
 
+                unchanged += root_unchanged
+                added += root_added
+                changed += root_changed
                 available_root_keys.add(root_key)
                 seen_keys.update(root_seen)
 
-            # A cached file is considered removed only when its root was
-            # positively available and fully enumerated in this scan.
             for key, previous in cached.items():
                 if key in seen_keys:
                     continue
@@ -398,43 +418,12 @@ class LocalFilesProvider(MusicProvider):
                 if root_path and self._override_key(root_path) in available_root_keys:
                     removed += 1
 
-            pending = [
-                row for row in discovered
-                if not dict(row.get("raw_track") or {})
-            ]
             emit(
                 "metadata",
                 force=True,
-                completed=0,
-                total=len(pending),
+                completed=probe.metrics.metadata_attempts,
+                total=probe.metrics.metadata_attempts,
             )
-            for index, row in enumerate(pending, start=1):
-                control.checkpoint()
-                p = Path(row["path"])
-                with probe.metadata_read():
-                    row["raw_track"] = self._metadata(p)
-                emit(
-                    "metadata",
-                    current=p.name,
-                    completed=index,
-                    total=len(pending),
-                )
-
-            # Build one complete snapshot in discovery order. Cached metadata is
-            # raw file metadata; Melodex-only corrections are applied separately.
-            for row in discovered:
-                raw_metadata = dict(row.get("raw_track") or {})
-                if not raw_metadata:
-                    continue
-                index_tracks.append(dict(raw_metadata))
-                index_records.append(
-                    {
-                        "track": dict(raw_metadata),
-                        "size": row.get("size"),
-                        "mtime_ns": row.get("mtime_ns"),
-                    }
-                )
-                tracks.append(self._apply_override(raw_metadata))
         except ScanCancelled:
             cancelled = True
         finally:
@@ -447,10 +436,13 @@ class LocalFilesProvider(MusicProvider):
                     "removed_files": int(removed),
                     "stat_failures": int(stat_failures),
                     "metadata_reused": int(unchanged),
+                    "streaming_discovery": True,
+                    "discovery_buffer_rows": 0,
                     "incomplete_roots": sum(
                         1
                         for state in root_states
-                        if bool(state.get("available")) and not bool(state.get("complete", True))
+                        if bool(state.get("available"))
+                        and not bool(state.get("complete", True))
                     ),
                 }
             )
