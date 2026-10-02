@@ -321,9 +321,11 @@ def test_cached_album_artwork_prioritizes_viewport_and_scroll_target():
     browser.show()
 
     batches = []
+    invalidations = []
     browser.artworkRequested.connect(
         lambda rows: batches.append([dict(row) for row in rows])
     )
+    browser.cachedArtworkInvalidated.connect(invalidations.append)
 
     tracks = [
         _track(
@@ -358,13 +360,15 @@ def test_cached_album_artwork_prioritizes_viewport_and_scroll_target():
     assert browser.last_artwork_priority_metrics["requested_now"] <= 12
 
     # Move to the bottom while the first cache batch is still in flight.
-    # Completing that old batch should continue from the new viewport, not
-    # from the top of the collection.
+    # P8d invalidates that old logical batch immediately rather than waiting
+    # for it to finish before the new viewport can become eligible.
     scrollbar = browser.album_scroll.verticalScrollBar()
     scrollbar.setValue(scrollbar.maximum())
     app.processEvents()
+    assert "albums" in invalidations
+
     before = len(batches)
-    browser.set_artwork({row["key"]: "" for row in first})
+    browser.cached_artwork_batch_cancelled("albums")
     app.processEvents()
     app.processEvents()
     if len(batches) == before:
