@@ -341,7 +341,13 @@ def build_diagnostics(
     )
     raw_scheduler = supplied_ui.get("background_scheduler")
     if scheduler and isinstance(raw_scheduler,dict):
-        for key in ("active_by_lane","pending_by_priority","pending_by_lane","lane_limits"):
+        for key in (
+            "active_by_lane",
+            "active_by_priority",
+            "pending_by_priority",
+            "pending_by_lane",
+            "lane_limits",
+        ):
             value=raw_scheduler.get(key)
             if isinstance(value,dict):
                 scheduler[key]={
