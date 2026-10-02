@@ -42,6 +42,20 @@ jobs:
           python-version: "3.12"
       - name: Install desktop runtime dependencies
         run: pip install numpy mutagen requests PySide6
+      - name: Capture Wikimedia provider source for audit
+        if: matrix.id == 'org.melodex.wikimedia.commons.audio'
+        run: |
+          mkdir -p provider-audit
+          unzip -p desktop/melodex/bundled_providers/Wikimedia-Commons-Audio-0.1.1.mdxprovider manifest.json > provider-audit/manifest.json
+          unzip -p desktop/melodex/bundled_providers/Wikimedia-Commons-Audio-0.1.1.mdxprovider provider.py > provider-audit/provider.py
+          unzip -p desktop/melodex/bundled_providers/Wikimedia-Commons-Audio-0.1.1.mdxprovider README.md > provider-audit/README.md || true
+      - name: Upload Wikimedia provider source audit
+        if: matrix.id == 'org.melodex.wikimedia.commons.audio'
+        uses: actions/upload-artifact@v4
+        with:
+          name: wikimedia-provider-source-audit
+          path: provider-audit
+          if-no-files-found: error
       - name: Verify ${{ matrix.label }}
         env:
           PYTHONPATH: desktop
