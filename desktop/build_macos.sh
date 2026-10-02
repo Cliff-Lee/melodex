@@ -7,6 +7,7 @@ python -m pip install --upgrade pip
 pip install -r requirements-build.txt
 rm -rf build dist
 pyinstaller --noconfirm --windowed --name Melodex --icon ../assets/icon.png --add-data "melodex/assets/melodex-mark.png:melodex/assets" --add-data "melodex/bundled_providers:melodex/bundled_providers" run.py
+python tools/set_macos_bundle_version.py dist/Melodex.app
 python check_bundled_provider_payload.py dist/Melodex.app
 python tools/audit_qt_dependencies.py dist/Melodex.app \
   --json-out dist/Melodex-qt-audit-before.json \
