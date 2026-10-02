@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .library_index import LocalLibraryIndex
+from .isolated_scan import IsolatedLibraryScanRunner
 from .provider import MusicProvider, ProviderInstaller
 from .providers import JamendoProvider, LocalFilesProvider, UserStreamsProvider
 from .resolver import UniversalResolver
@@ -324,10 +325,19 @@ class ProviderManager:
         *,
         progress: Callable[[dict[str, Any]], None] | None = None,
         control: Any = None,
+        isolated: bool = False,
     ) -> dict[str, Any]:
         provider = self.providers["local"]
         assert isinstance(provider, LocalFilesProvider)
         scan_roots = self.local_roots() if roots is None else [Path(x) for x in roots]
+        if isolated:
+            runner = IsolatedLibraryScanRunner(self.library_index.path)
+            return runner.run(
+                scan_roots,
+                overrides=provider.overrides,
+                progress=progress,
+                control=control,
+            )
         return provider.scan_snapshot(
             scan_roots,
             progress=progress,
