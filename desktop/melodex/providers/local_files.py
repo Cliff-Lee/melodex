@@ -565,6 +565,10 @@ class LocalFilesProvider(MusicProvider):
         return self.apply_scan_snapshot(snapshot)
 
     @property
+    def catalog_loaded(self) -> bool:
+        return self._cached_loader is None
+
+    @property
     def catalog_revision(self) -> int:
         self._ensure_cached_loaded()
         return int(self._catalog_revision)
