@@ -81,6 +81,85 @@ def test_visual_library_defaults_to_album_cards_and_filters():
     app.processEvents()
 
 
+
+def test_large_library_progressively_renders_widgets():
+    try:
+        from PySide6.QtWidgets import QApplication
+        from melodex.library_browser import LibraryBrowser
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    browser = LibraryBrowser()
+    browser.resize(1100, 760)
+    browser.show()
+
+    tracks = [
+        _track(
+            f"/large/{index:04d}.flac",
+            f"Artist {index:04d}",
+            f"Album {index:04d}",
+            f"Track {index:04d}",
+            1,
+            1980 + (index % 40),
+        )
+        for index in range(350)
+    ]
+    browser.set_catalog(tracks)
+    app.processEvents()
+
+    # Models still contain the whole collection, but heavyweight Qt cards do not.
+    assert len(browser.albums) == 350
+    assert len(browser.artist_rows) == 350
+    assert len(browser.cards) == browser._album_batch_size == 120
+    assert browser.album_more_button.isVisible()
+    assert "Showing 120 of 350 albums" in browser.album_more_button.text()
+    assert len(browser.artist_cards) == 0
+    assert len(browser.track_rows) == 0
+
+    browser._show_more_albums()
+    app.processEvents()
+    assert len(browser.cards) == 240
+    assert "Showing 240 of 350 albums" in browser.album_more_button.text()
+
+    # Search resets to a small render window and drops no-longer-visible cards.
+    browser.search.setText("Album 0349")
+    app.processEvents()
+    assert len(browser._visible_albums) == 1
+    assert len(browser.cards) == 1
+    assert not browser.album_more_button.isVisible()
+
+    browser.search.clear()
+    browser.set_view("artists")
+    app.processEvents()
+    assert len(browser.artist_cards) == 120
+    assert browser.artist_more_button.isVisible()
+    browser._show_more_artists()
+    app.processEvents()
+    assert len(browser.artist_cards) == 240
+
+    # Tracks use the same progressive policy; only the requested rows become
+    # TrackRow widgets, rather than all 12,700 in a large real library.
+    browser.set_view("tracks")
+    app.processEvents()
+    assert browser.stack.currentWidget() is browser.track_list
+    assert len(browser.track_rows) == browser._track_batch_size == 300
+    assert browser._track_more_item is not None
+
+    browser._show_more_tracks()
+    app.processEvents()
+    assert len(browser.track_rows) == 350
+    assert browser._track_more_item is None
+
+    browser.search.setText("Track 0349")
+    app.processEvents()
+    assert len(browser._visible_tracks) == 1
+    assert len(browser.track_rows) == 1
+
+    browser.deleteLater()
+    app.processEvents()
+
 def test_redesigned_main_window_builds_with_goal_navigation(monkeypatch, tmp_path):
     try:
         from PySide6.QtWidgets import QApplication, QLabel

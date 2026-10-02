@@ -52,3 +52,12 @@ This file tracks changes intended for the next release after **v0.7.4**.
 - The existing live catalog remains available after cancellation or forced termination.
 - Changing music roots during a scan stops the stale worker and restarts against the current root set.
 - Frozen desktop build checks now verify the built-in scan-worker mode.
+
+
+## Large-library reliability — progressive My Music rendering
+
+- My Music keeps the full library model but initially renders only 120 albums, 120 artists or 300 track rows.
+- Albums, Artists and Tracks expand progressively instead of constructing thousands of Qt widgets at once.
+- Search still covers the complete collection and resets to a small render window.
+- Off-screen cards outside the current filtered window are released rather than accumulating in memory.
+- Artwork and artist-image cache work follows the rendered window instead of the whole collection.
