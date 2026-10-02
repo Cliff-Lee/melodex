@@ -108,6 +108,29 @@ primarily a rendering-granularity problem.
 Therefore P8b should begin with viewport-sized/virtualized Track rendering before
 spending effort micro-optimising metadata sorting.
 
+## P8b first result — virtualized Tracks
+
+P8b replaced the Tracks QListWidget population path with a lightweight full
+QAbstractListModel plus viewport-bounded rich-row hydration.
+
+On the same 12,700-track CI profile:
+
+- previous Tracks switch: about **0.705 s**;
+- new shell + full 12,700-row model: about **0.017 s**;
+- visible rich-row hydration: about **0.020 s**;
+- rich TrackRow widgets created: **15**, rather than 300;
+- approximate time to rich visible content: **0.037 s**.
+
+This is roughly an **18× reduction** in the measured first-view cost. It also moves the
+visible Tracks path from well above the 500 ms serious-stall threshold to inside the
+preferred 50 ms interaction target on this directional CI run.
+
+The full model still contains all 12,700 tracks, so the scrollbar represents the whole
+collection immediately. Scrolling moves the hydration window and removes rich rows that
+leave the buffered viewport rather than accumulating widgets indefinitely.
+
+The Fluid Melodex release gate now includes this bounded-window regression.
+
 ## P8 campaign sequence
 
 ### P8a — Synthetic baseline
