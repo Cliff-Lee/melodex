@@ -215,6 +215,7 @@ The ecosystem is being developed with small examples built around documented, le
 
 | Example | What it demonstrates |
 | --- | --- |
+| 24-7 Niche Radio | branded niche-station discovery + live playback |
 | Radio Browser | station search + live playback |
 | LibriVox | public-domain search + playback + offline |
 | MusicBrainz | canonical identity + metadata provenance |
