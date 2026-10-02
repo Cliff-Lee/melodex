@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 import zipfile
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -36,11 +37,12 @@ def version_key(value: str) -> tuple[int, ...]:
     return tuple(nums or [0])
 
 
-def bundled_packages() -> list[tuple[str, Path, dict[str, Any]]]:
+@lru_cache(maxsize=1)
+def _bundled_packages_cached() -> tuple[tuple[str, Path, dict[str, Any]], ...]:
     result: list[tuple[str, Path, dict[str, Any]]] = []
     root = bundled_provider_dir()
     if not root.is_dir():
-        return result
+        return ()
 
     for package in sorted(root.glob("*.mdxprovider")):
         try:
@@ -50,7 +52,16 @@ def bundled_packages() -> list[tuple[str, Path, dict[str, Any]]]:
                 result.append((pid, package, manifest))
         except Exception:
             continue
-    return result
+    return tuple(result)
+
+
+def bundled_packages() -> list[tuple[str, Path, dict[str, Any]]]:
+    # Bundled archives are immutable for the lifetime of a running build.
+    # Parse each zip manifest once, then give callers shallow manifest copies.
+    return [
+        (pid, package, dict(manifest))
+        for pid, package, manifest in _bundled_packages_cached()
+    ]
 
 
 def bundled_provider_ids() -> list[str]:
