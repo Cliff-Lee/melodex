@@ -4,6 +4,7 @@ import json
 import threading
 import time
 import uuid
+from concurrent.futures import CancelledError
 from pathlib import Path
 from typing import Any
 
@@ -57,7 +58,7 @@ from .plugin_health import health_badge, health_summary
 from .diagnostics import write_diagnostics
 from .responsiveness import UiResponsivenessMonitor
 from .motion import MotionController, FAST_MOTION_MS, STANDARD_MOTION_MS
-from .background_scheduler import BackgroundScheduler
+from .background_scheduler import BackgroundScheduler, StaleTaskError
 from .library_browser import LibraryBrowser
 from .library_scan_process import LibraryScanProcess
 from .ux_components import (
@@ -75,6 +76,7 @@ class WorkerSignals(QObject):
     done = Signal(object)
     error = Signal(str)
     progress = Signal(object)
+    stale = Signal()
 
 def _escape_html(value: Any) -> str:
     import html
@@ -7063,6 +7065,8 @@ class MainWindow(QMainWindow):
         priority="foreground",
         lane="default",
         label="",
+        latest_key="",
+        on_stale=None,
     ):
         sig=WorkerSignals()
         sig.done.connect(lambda result: None if self._closing else done(result))
@@ -7072,20 +7076,34 @@ class MainWindow(QMainWindow):
             )
         else:
             sig.error.connect(lambda e: None if self._closing else on_error(e))
+        if on_stale is not None:
+            sig.stale.connect(
+                lambda: None if self._closing else on_stale()
+            )
         self._last_worker=sig
 
-        def work():
-            try:
-                sig.done.emit(fn())
-            except Exception as exc:
-                sig.error.emit(str(exc))
-
-        return self.background.submit(
-            work,
+        future=self.background.submit(
+            fn,
             priority=priority,
             lane=lane,
             label=label,
+            key=str(latest_key or ""),
+            replace=bool(latest_key),
         )
+
+        def completed(result_future):
+            try:
+                result=result_future.result()
+            except (CancelledError,StaleTaskError):
+                if on_stale is not None:
+                    sig.stale.emit()
+            except Exception as exc:
+                sig.error.emit(str(exc))
+            else:
+                sig.done.emit(result)
+
+        future.add_done_callback(completed)
+        return future
 
     def closeEvent(self,event):
         if self.music_live_active:
