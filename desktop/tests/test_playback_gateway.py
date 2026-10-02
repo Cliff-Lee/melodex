@@ -197,3 +197,104 @@ def test_gateway_drops_credentials_when_allowed_redirect_changes_origin():
         redirect.server_close()
         target.shutdown()
         target.server_close()
+
+
+
+class _RequiresUserAgentHandler(BaseHTTPRequestHandler):
+    seen_user_agent = ""
+
+    def log_message(self, _format, *args):
+        return
+
+    def do_GET(self):  # noqa: N802
+        type(self).seen_user_agent = self.headers.get("User-Agent", "")
+        if not type(self).seen_user_agent.startswith("Melodex/"):
+            self.send_response(403)
+            self.end_headers()
+            return
+        body = b"audio-bytes"
+        self.send_response(200)
+        self.send_header("Content-Type", "audio/mpeg")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+
+class _HeadRejectingAudioHandler(BaseHTTPRequestHandler):
+    head_hits = 0
+    get_hits = 0
+    last_range = ""
+
+    def log_message(self, _format, *args):
+        return
+
+    def do_HEAD(self):  # noqa: N802
+        type(self).head_hits += 1
+        self.send_response(405)
+        self.end_headers()
+
+    def do_GET(self):  # noqa: N802
+        type(self).get_hits += 1
+        type(self).last_range = self.headers.get("Range", "")
+        body = b"x"
+        self.send_response(206 if type(self).last_range else 200)
+        self.send_header("Content-Type", "audio/mpeg")
+        self.send_header("Accept-Ranges", "bytes")
+        self.send_header("Content-Length", str(len(body)))
+        if type(self).last_range:
+            self.send_header("Content-Range", "bytes 0-0/12345")
+        self.end_headers()
+        self.wfile.write(body)
+
+
+def test_gateway_adds_melodex_user_agent_when_provider_omits_one():
+    upstream = ThreadingHTTPServer(("127.0.0.1", 0), _RequiresUserAgentHandler)
+    thread = threading.Thread(target=upstream.serve_forever, daemon=True)
+    thread.start()
+    gateway = PlaybackGateway()
+    try:
+        _RequiresUserAgentHandler.seen_user_agent = ""
+        url = gateway.register(
+            {
+                "url": f"http://127.0.0.1:{upstream.server_address[1]}/audio",
+                "_playback_allowed_hosts": ["127.0.0.1"],
+            }
+        )
+        response = requests.get(url, timeout=3)
+        assert response.status_code == 200
+        assert response.content == b"audio-bytes"
+        assert _RequiresUserAgentHandler.seen_user_agent.startswith("Melodex/")
+    finally:
+        gateway.close()
+        upstream.shutdown()
+        upstream.server_close()
+
+
+def test_gateway_falls_back_to_tiny_get_when_audio_server_rejects_head():
+    upstream = ThreadingHTTPServer(("127.0.0.1", 0), _HeadRejectingAudioHandler)
+    thread = threading.Thread(target=upstream.serve_forever, daemon=True)
+    thread.start()
+    gateway = PlaybackGateway()
+    try:
+        _HeadRejectingAudioHandler.head_hits = 0
+        _HeadRejectingAudioHandler.get_hits = 0
+        _HeadRejectingAudioHandler.last_range = ""
+        url = gateway.register(
+            {
+                "url": f"http://127.0.0.1:{upstream.server_address[1]}/stream",
+                "_playback_allowed_hosts": ["127.0.0.1"],
+            }
+        )
+        response = requests.head(url, timeout=3)
+        assert response.status_code == 206
+        assert response.content == b""
+        assert "Content-Length" not in response.headers
+        assert "Content-Range" not in response.headers
+        assert response.headers["Content-Type"] == "audio/mpeg"
+        assert _HeadRejectingAudioHandler.head_hits == 1
+        assert _HeadRejectingAudioHandler.get_hits == 1
+        assert _HeadRejectingAudioHandler.last_range == "bytes=0-0"
+    finally:
+        gateway.close()
+        upstream.shutdown()
+        upstream.server_close()
