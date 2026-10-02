@@ -3882,6 +3882,7 @@ class MainWindow(QMainWindow):
                     roots_snapshot,
                     progress=sig.progress.emit,
                     control=control,
+                    isolated=True,
                 )
                 if not bool(result.get("cancelled")):
                     sig.progress.emit({
