@@ -1395,6 +1395,8 @@ class LibraryBrowser(QWidget):
             row, column = divmod(index, columns)
             self.album_grid.addWidget(card, row, column, Qt.AlignTop)
         self.album_container.adjustSize()
+        if self.last_catalog_metrics:
+            self.last_catalog_metrics["rendered_album_count"] = len(self.cards)
 
         remaining = max(0, len(self._visible_albums) - len(rendered))
         self.album_more_button.setVisible(bool(remaining))
@@ -1432,6 +1434,8 @@ class LibraryBrowser(QWidget):
             row, column = divmod(index, columns)
             self.artist_grid.addWidget(card, row, column, Qt.AlignTop)
         self.artist_container.adjustSize()
+        if self.last_catalog_metrics:
+            self.last_catalog_metrics["rendered_artist_count"] = len(self.artist_cards)
 
         remaining = max(0, len(self._visible_artists) - len(rendered))
         self.artist_more_button.setVisible(bool(remaining))
