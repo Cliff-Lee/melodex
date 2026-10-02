@@ -22,6 +22,7 @@ class _ScheduledJob:
     priority: str = field(compare=False)
     callback: Callable[[], None] = field(compare=False)
     name: str = field(compare=False, default="")
+    replace_key: str = field(compare=False, default="")
 
 
 class BackgroundScheduler:
@@ -65,6 +66,7 @@ class BackgroundScheduler:
         self._submitted = 0
         self._completed = 0
         self._failed = 0
+        self._cancelled_pending = 0
         self._peak_active = 0
         self._stopping = False
 
@@ -85,13 +87,17 @@ class BackgroundScheduler:
         *,
         priority: str = "background",
         name: str = "",
+        replace_key: str = "",
     ) -> bool:
         lane = str(priority or "background").strip().lower()
         if lane not in PRIORITY_ORDER:
             raise ValueError(f"Unknown background priority: {priority!r}")
+        key = str(replace_key or "").strip()
         with self._condition:
             if self._stopping:
                 return False
+            if key:
+                self._cancel_pending_locked(key)
             sequence = next(self._sequence)
             heapq.heappush(
                 self._pending,
@@ -100,11 +106,36 @@ class BackgroundScheduler:
                     lane,
                     callback,
                     str(name or ""),
+                    key,
                 ),
             )
             self._submitted += 1
             self._condition.notify_all()
             return True
+
+    def cancel_pending(self, replace_key: str) -> int:
+        key = str(replace_key or "").strip()
+        if not key:
+            return 0
+        with self._condition:
+            cancelled = self._cancel_pending_locked(key)
+            if cancelled:
+                self._condition.notify_all()
+            return cancelled
+
+    def _cancel_pending_locked(self, replace_key: str) -> int:
+        before = len(self._pending)
+        if not before:
+            return 0
+        self._pending = [
+            job for job in self._pending
+            if job.replace_key != replace_key
+        ]
+        cancelled = before - len(self._pending)
+        if cancelled:
+            heapq.heapify(self._pending)
+            self._cancelled_pending += cancelled
+        return cancelled
 
     def snapshot(self) -> dict[str, object]:
         with self._condition:
@@ -119,6 +150,7 @@ class BackgroundScheduler:
                 "submitted": self._submitted,
                 "completed": self._completed,
                 "failed": self._failed,
+                "cancelled_pending": self._cancelled_pending,
                 "pending_total": len(self._pending),
                 "active_by_priority": dict(self._active_by_priority),
                 "pending_by_priority": pending,
