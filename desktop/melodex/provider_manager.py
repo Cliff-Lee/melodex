@@ -455,6 +455,31 @@ class ProviderManager:
     def provider_order(self) -> list[str]:
         return self.resolver.provider_order()
 
+    _SEARCH_SHADOWS = {
+        "org.melodex.example.radio-browser": "org.melodex.radiobrowser",
+        "org.melodex.example.librivox": "org.melodex.librivox",
+    }
+
+    def searchable_provider_ids(self) -> list[str]:
+        """Return end-user search sources with duplicate examples suppressed.
+
+        Reference/example providers remain installed and manageable for developers,
+        but when the production bundled equivalent is present, normal listeners
+        should see and query only the production source.
+        """
+        ordered = []
+        for pid in self.provider_order():
+            provider = self.providers.get(pid)
+            if provider is None:
+                continue
+            if "search" not in list(provider.info.capabilities or []):
+                continue
+            production_id = self._SEARCH_SHADOWS.get(pid)
+            if production_id and production_id in self.providers:
+                continue
+            ordered.append(pid)
+        return ordered
+
     def set_provider_order(self, provider_ids: list[str]) -> list[str]:
         return self.resolver.set_provider_order(provider_ids)
 
@@ -631,12 +656,7 @@ class ProviderManager:
                 "provider_ids": [provider_id],
             }
 
-        searchable = [
-            pid
-            for pid in self.provider_order()
-            if pid in self.providers
-            and "search" in list(self.providers[pid].info.capabilities or [])
-        ]
+        searchable = self.searchable_provider_ids()
         if not searchable:
             return {
                 "items": [],

@@ -2324,10 +2324,8 @@ class MainWindow(QMainWindow):
 
     def _refresh_source_combo(self):
         current=self.search_source.currentData(); self.search_source.clear(); self.search_source.addItem("All sources","all")
-        for pid in self.providers.provider_order():
+        for pid in self.providers.searchable_provider_ids():
             p=self.providers.providers[pid]
-            if "search" not in list(p.info.capabilities or []):
-                continue
             self.search_source.addItem(p.info.name,pid)
         idx=self.search_source.findData(current); self.search_source.setCurrentIndex(idx if idx>=0 else 0)
 
@@ -3981,9 +3979,9 @@ class MainWindow(QMainWindow):
 
     def _searchable_source_names(self) -> list[str]:
         names=[]
-        for pid in self.providers.provider_order():
+        for pid in self.providers.searchable_provider_ids():
             provider=self.providers.providers.get(pid)
-            if provider is None or "search" not in list(provider.info.capabilities or []):
+            if provider is None:
                 continue
             if self._plugin_needs_setup_here(pid):
                 continue
