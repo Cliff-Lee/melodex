@@ -51,6 +51,9 @@ def _find_qpdf_plugins(root: Path) -> list[Path]:
 def _qt_pdf_dependents(root: Path) -> list[str]:
     dependents: list[str] = []
     for path in _files(root):
+        relative = "/" + path.relative_to(root).as_posix().lower()
+        if "/qtpdf.framework/" in relative:
+            continue
         for dep in _dependencies(path):
             if "qtpdf" in dep.lower():
                 dependents.append(path.relative_to(root).as_posix())
