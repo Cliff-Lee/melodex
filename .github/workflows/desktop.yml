@@ -63,6 +63,7 @@ jobs:
           cd desktop
           chmod +x build_macos.sh
           ./build_macos.sh
+          if [ -f dist/Melodex-bundle-size.md ]; then cat dist/Melodex-bundle-size.md >> "$GITHUB_STEP_SUMMARY"; fi
           if [ -f dist/Melodex.dmg ]; then mv dist/Melodex.dmg dist/Melodex-${{ matrix.name }}.dmg; fi
       - name: Build Windows
         if: runner.os == 'Windows'
@@ -77,7 +78,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Melodex-${{ matrix.name }}
-          path: desktop/dist/Melodex-${{ matrix.name }}.dmg
+          path: |
+            desktop/dist/Melodex-${{ matrix.name }}.dmg
+            desktop/dist/Melodex-bundle-size.json
+            desktop/dist/Melodex-bundle-size.md
       - name: Upload Windows artifact
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
