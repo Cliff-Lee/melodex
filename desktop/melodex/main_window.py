@@ -99,6 +99,7 @@ def _track_text(t: dict[str, Any]) -> str:
 
 class MainWindow(QMainWindow):
     externalCommand = Signal(str, object, object)
+    _PAGE_CONTENT_DELAY_MS = 16
 
     def __init__(self):
         super().__init__()
@@ -154,6 +155,7 @@ class MainWindow(QMainWindow):
         self._local_scan_runner: LibraryScanProcess | None = None
         self._local_scan_signals: WorkerSignals | None = None
         self._source_config_refresh_in_progress = False
+        self._page_refresh_sequence = 0
         self.externalCommand.connect(self._on_external_command)
 
         self.player = FlowPlayer(
@@ -2166,23 +2168,81 @@ class MainWindow(QMainWindow):
             if hasattr(self, "responsiveness")
             else None
         )
+        started_at = interaction[1] if interaction is not None else None
+
+        # Phase 1: acknowledge immediately. Page population is deliberately
+        # deferred so Qt can paint the destination shell before heavier work.
         self.current_page=name
         self.stack.setCurrentWidget(self.pages[name])
         self._update_nav_state(name)
         if interaction is not None:
             self.responsiveness.end_interaction(interaction)
-        if name=="home": self._show_home()
+
+        self._page_refresh_sequence += 1
+        sequence = self._page_refresh_sequence
+
+        shell_token = (
+            (f"shell:{name}", started_at)
+            if started_at is not None
+            else None
+        )
+        QTimer.singleShot(
+            0,
+            lambda target=name, seq=sequence, token=shell_token:
+                self._record_navigation_shell(target, seq, token),
+        )
+        QTimer.singleShot(
+            self._PAGE_CONTENT_DELAY_MS,
+            lambda target=name, seq=sequence:
+                self._refresh_page_content(target, seq),
+        )
+
+    def _record_navigation_shell(
+        self,
+        name: str,
+        sequence: int,
+        token: tuple[str, float] | None,
+    ) -> None:
+        if (
+            self._closing
+            or sequence != self._page_refresh_sequence
+            or self.current_page != name
+        ):
+            return
+        if token is not None and hasattr(self, "responsiveness"):
+            self.responsiveness.end_interaction(token)
+
+    def _refresh_page_content(self, name: str, sequence: int) -> None:
+        """Populate only the page the user still wants after its shell has painted."""
+        if (
+            self._closing
+            or sequence != self._page_refresh_sequence
+            or self.current_page != name
+        ):
+            return
+
+        if name=="home":
+            self._show_home()
         elif name=="library":
             self._refresh_library()
             self._refresh_plugin_presence()
-        elif name=="album_wall": self._refresh_album_wall()
-        elif name=="music_map": self._refresh_music_map()
+        elif name=="album_wall":
+            self._refresh_album_wall()
+        elif name=="music_map":
+            self._refresh_music_map()
         elif name=="sources":
             self._refresh_sources()
-            QTimer.singleShot(0, self._refresh_source_config_statuses_async)
-        elif name=="moments": self._refresh_moments()
-        elif name=="journeys": self._refresh_journeys()
-        elif name=="playlists": self._refresh_playlists()
+            if (
+                sequence == self._page_refresh_sequence
+                and self.current_page == name
+            ):
+                QTimer.singleShot(0, self._refresh_source_config_statuses_async)
+        elif name=="moments":
+            self._refresh_moments()
+        elif name=="journeys":
+            self._refresh_journeys()
+        elif name=="playlists":
+            self._refresh_playlists()
         elif name=="for_you":
             self._refresh_taste()
             self._refresh_plugin_presence()
@@ -2221,7 +2281,7 @@ class MainWindow(QMainWindow):
         self._refresh_taste()
         count=len(self.providers.local_catalog())
         src=len(self.providers.providers)
-        ext=len(self.providers.extensions())
+        ext=len(self.providers.extensions(cached_config=True))
         flow_text = (
             "Flow analysis ready"
             if self.flow.analysis_available
