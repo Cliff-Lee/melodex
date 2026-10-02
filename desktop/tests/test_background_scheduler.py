@@ -42,7 +42,7 @@ def test_foreground_work_jumps_ahead_of_queued_idle_work():
 
 
 def test_scheduler_enforces_global_worker_cap():
-    scheduler = BackgroundScheduler(max_workers=3)
+    scheduler = BackgroundScheduler(max_workers=3, foreground_reserve=0)
     release = threading.Event()
     lock = threading.Lock()
     active = 0
@@ -71,6 +71,54 @@ def test_scheduler_enforces_global_worker_cap():
         release.set()
         assert scheduler.wait_for_idle(2)
         assert scheduler.snapshot()["max_active_observed"] == 3
+    finally:
+        scheduler.shutdown(wait=True)
+
+
+def test_background_work_leaves_one_slot_for_foreground():
+    scheduler = BackgroundScheduler(max_workers=4, foreground_reserve=1)
+    release = threading.Event()
+    background_started = threading.Event()
+    foreground_started = threading.Event()
+    lock = threading.Lock()
+    running_background = 0
+
+    def background_work():
+        nonlocal running_background
+        with lock:
+            running_background += 1
+            if running_background >= 3:
+                background_started.set()
+        release.wait(2)
+
+    def foreground_work():
+        foreground_started.set()
+        release.wait(2)
+
+    try:
+        for _ in range(6):
+            scheduler.submit(
+                background_work,
+                priority="background",
+                lane="default",
+            )
+
+        assert background_started.wait(1)
+        time.sleep(0.05)
+        with lock:
+            assert running_background == 3
+        assert scheduler.snapshot()["active_total"] == 3
+
+        scheduler.submit(
+            foreground_work,
+            priority="foreground",
+            lane="default",
+        )
+        assert foreground_started.wait(1)
+        assert scheduler.snapshot()["active_total"] == 4
+
+        release.set()
+        assert scheduler.wait_for_idle(2)
     finally:
         scheduler.shutdown(wait=True)
 
