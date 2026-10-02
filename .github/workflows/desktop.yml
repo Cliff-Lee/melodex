@@ -63,6 +63,7 @@ jobs:
           cd desktop
           chmod +x build_macos.sh
           ./build_macos.sh
+          if [ -f dist/Melodex-qt-audit.md ]; then cat dist/Melodex-qt-audit.md >> "$GITHUB_STEP_SUMMARY"; fi
           if [ -f dist/Melodex-bundle-size.md ]; then cat dist/Melodex-bundle-size.md >> "$GITHUB_STEP_SUMMARY"; fi
           if [ -f dist/Melodex.dmg ]; then mv dist/Melodex.dmg dist/Melodex-${{ matrix.name }}.dmg; fi
       - name: Build Windows
@@ -82,6 +83,8 @@ jobs:
             desktop/dist/Melodex-${{ matrix.name }}.dmg
             desktop/dist/Melodex-bundle-size.json
             desktop/dist/Melodex-bundle-size.md
+            desktop/dist/Melodex-qt-audit.json
+            desktop/dist/Melodex-qt-audit.md
       - name: Upload Windows artifact
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
