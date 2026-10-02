@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
+from .library_index import LocalLibraryIndex
 from .provider import MusicProvider, ProviderInstaller
 from .providers import JamendoProvider, LocalFilesProvider, UserStreamsProvider
 from .resolver import UniversalResolver
@@ -42,12 +43,20 @@ class ProviderManager:
         bundled_ids = set(ensure_bundled_providers(self.installer, self.settings))
         self._record_bundled_installations(bundled_ids)
         local_roots = [Path(x) for x in self.settings.get("local_roots", [])]
+        self.library_index = LocalLibraryIndex(
+            self.data_dir / "library-index.sqlite3"
+        )
+        self.library_index.sync_roots(local_roots)
+        local_provider = LocalFilesProvider(
+            local_roots,
+            self._local_metadata_overrides,
+            scan_on_init=False,
+        )
+        local_provider.load_cached_tracks(
+            self.library_index.load_tracks(local_roots)
+        )
         self.providers: dict[str, MusicProvider] = {
-            "local": LocalFilesProvider(
-                local_roots,
-                self._local_metadata_overrides,
-                scan_on_init=False,
-            ),
+            "local": local_provider,
             "jamendo": JamendoProvider(str(self.settings.get("jamendo_client_id", ""))),
             "streams": UserStreamsProvider(list(self.settings.get("user_streams", []))),
         }
@@ -264,11 +273,29 @@ class ProviderManager:
         assert isinstance(provider, LocalFilesProvider)
         provider.configure_roots(clean)
         self.settings["local_roots"] = [str(x) for x in clean]
+        self.library_index.sync_roots(clean)
         self.save()
         return clean
 
     def local_roots(self) -> list[Path]:
         return [Path(x) for x in self.settings.get("local_roots", [])]
+
+    def local_index_ready(self, roots: list[Path] | None = None) -> bool:
+        selected = self.local_roots() if roots is None else [Path(x) for x in roots]
+        return self.library_index.roots_ready(selected)
+
+    def local_index_summary(self) -> dict[str, Any]:
+        return self.library_index.summary(self.local_roots())
+
+    def persist_local_scan_snapshot(
+        self,
+        roots: list[Path],
+        snapshot: dict[str, Any],
+    ) -> dict[str, Any]:
+        return self.library_index.replace_scan(
+            [Path(x) for x in roots],
+            dict(snapshot or {}),
+        )
 
     def scan_local_roots_snapshot(
         self,
@@ -295,6 +322,8 @@ class ProviderManager:
         """Compatibility API for synchronous/non-GUI callers."""
         clean = self.configure_local_roots(roots)
         snapshot = self.scan_local_roots_snapshot(clean)
+        if not bool(snapshot.get("cancelled")):
+            self.persist_local_scan_snapshot(clean, snapshot)
         return self.apply_local_scan_snapshot(snapshot)
 
     def update_local_metadata(
