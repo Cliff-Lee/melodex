@@ -62,3 +62,15 @@ def test_main_window_does_not_eager_import_heavy_page_modules() -> None:
         "plugin_directory",
     }
     assert forbidden.isdisjoint(imported), imported & forbidden
+
+
+def test_provider_manager_keeps_plugin_registry_lazy(tmp_path) -> None:
+    from melodex.provider_manager import ProviderManager
+
+    manager = ProviderManager(tmp_path / "data")
+    try:
+        assert manager._registry is None
+        registry = manager.registry
+        assert registry is manager._registry
+    finally:
+        manager.close()
