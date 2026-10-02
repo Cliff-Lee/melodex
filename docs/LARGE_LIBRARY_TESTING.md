@@ -151,3 +151,13 @@ newer configuration with stale results.
 
 Progress, pause and cancel controls are intentionally left to Campaign 3.
 Persistent startup indexing is intentionally left to Campaign 4.
+
+
+## Campaign 2 acceptance checks
+
+- opening Melodex with saved NAS roots must paint the main window before scanning starts
+- a deliberately blocked metadata read must not stop Qt timers or navigation
+- Add music and Rescan must return control to the UI immediately
+- completed worker results are applied only after the scan finishes
+- a root change during an active scan must discard the stale snapshot and scan the new roots
+- scan metrics from application-initiated scans must report `main_thread: false`
