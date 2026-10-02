@@ -427,7 +427,9 @@ class LocalFilesProvider(MusicProvider):
         except ScanCancelled:
             cancelled = True
         finally:
-            metrics = probe.finish(tracks_indexed=len(tracks))
+            metrics = probe.finish(
+                tracks_indexed=0 if cancelled else len(tracks)
+            )
             metrics.update(
                 {
                     "unchanged_files": int(unchanged),
