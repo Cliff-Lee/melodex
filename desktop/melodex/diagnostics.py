@@ -69,6 +69,7 @@ _LIBRARY_FILTER_METRIC_FIELDS = (
 
 _BACKGROUND_SCHEDULER_FIELDS = (
     "max_workers",
+    "foreground_reserve",
     "active_total",
     "pending_total",
     "submitted",
