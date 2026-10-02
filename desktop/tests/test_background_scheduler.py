@@ -407,7 +407,9 @@ def test_rapid_latest_wins_submissions_do_not_grow_pending_queue():
         assert scheduler.wait_for_idle(2)
         assert latest is not None
         assert latest.result() == 49
-        assert scheduler.snapshot()["stale_queued_cancelled"] >= 49
+        snapshot = scheduler.snapshot()
+        assert snapshot["stale_queued_cancelled"] >= 49
+        assert snapshot["queue_high_water"] <= 1
     finally:
         scheduler.shutdown(wait=True)
 
