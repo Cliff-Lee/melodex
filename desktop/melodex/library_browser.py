@@ -352,6 +352,7 @@ class LibraryBrowser(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.catalog: list[dict[str, Any]] = []
+        self._catalog_revision: int | None = None
         self.albums: list[dict[str, Any]] = []
         self.cards: dict[str, AlbumCard] = {}
         self.artist_rows: list[dict[str, Any]] = []
@@ -665,7 +666,19 @@ class LibraryBrowser(QWidget):
             if widget is not None:
                 widget.setParent(None)
 
-    def set_catalog(self, catalog: list[dict[str, Any]]) -> None:
+    def set_catalog(
+        self,
+        catalog: list[dict[str, Any]],
+        *,
+        revision: int | None = None,
+    ) -> None:
+        if (
+            revision is not None
+            and self._catalog_revision is not None
+            and int(revision) == self._catalog_revision
+        ):
+            return
+
         started = time.perf_counter()
         current_thread = threading.current_thread()
         metrics: dict[str, object] = {
@@ -709,6 +722,7 @@ class LibraryBrowser(QWidget):
 
         copy_started = time.perf_counter()
         self.catalog = [dict(item) for item in catalog if isinstance(item, dict)]
+        self._catalog_revision = int(revision) if revision is not None else None
         metrics["copy_catalog_seconds"] = round(
             time.perf_counter() - copy_started,
             6,

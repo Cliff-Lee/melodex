@@ -82,6 +82,57 @@ def test_visual_library_defaults_to_album_cards_and_filters():
 
 
 
+def test_library_reuses_rendered_state_for_same_catalog_revision():
+    try:
+        from PySide6.QtWidgets import QApplication
+        from melodex.library_browser import LibraryBrowser
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    browser = LibraryBrowser()
+    browser.resize(1000, 700)
+    browser.show()
+
+    catalog = [
+        _track("/a/01.mp3", "Artist A", "Album A", "One", 1, 2001),
+        _track("/b/01.mp3", "Artist B", "Album B", "Two", 1, 2002),
+    ]
+    browser.set_catalog(catalog, revision=7)
+    app.processEvents()
+
+    first_cards = list(browser.cards.values())
+    assert len(first_cards) == 2
+    preserved_card = first_cards[0]
+
+    browser.search.setText("Album A")
+    app.processEvents()
+    assert len(browser._visible_albums) == 1
+
+    # Reopening My Music with the same provider revision must retain the
+    # existing rendered widgets and user state rather than clearing/rebuilding.
+    browser.set_catalog(catalog, revision=7)
+    app.processEvents()
+
+    assert preserved_card in browser.cards.values()
+    assert browser.search.text() == "Album A"
+    assert len(browser._visible_albums) == 1
+
+    # A real catalog revision must still rebuild the visible model.
+    changed = catalog + [
+        _track("/c/01.mp3", "Artist C", "Album C", "Three", 1, 2003),
+    ]
+    browser.set_catalog(changed, revision=8)
+    app.processEvents()
+
+    assert len(browser.albums) == 3
+    assert preserved_card not in browser.cards.values()
+
+    browser.deleteLater()
+    app.processEvents()
+
+
 def test_large_library_progressively_renders_widgets():
     try:
         from PySide6.QtWidgets import QApplication
@@ -1268,6 +1319,246 @@ def test_plain_lyrics_html_uses_explicit_dark_theme_contrast():
     assert "font-size:21px" in rendered
     assert "Line one<br>Line two" in rendered
 
+
+
+def test_search_keeps_previous_results_visible_while_refreshing(monkeypatch, tmp_path):
+    try:
+        from PySide6.QtCore import Qt
+        from PySide6.QtWidgets import QApplication, QListWidgetItem
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+
+    window = main_window.MainWindow()
+    window.search_source.clear()
+    window.search_source.addItem("All sources", "all")
+    window.search_box.setText("new query")
+
+    old_track = {
+        "provider_id": "local",
+        "track_id": "old",
+        "artist": "Previous Artist",
+        "title": "Previous Result",
+    }
+    old_item = QListWidgetItem("Previous Artist — Previous Result")
+    old_item.setData(Qt.UserRole, old_track)
+    window.results.addItem(old_item)
+
+    callbacks = {}
+
+    def hold_async(fn, done, on_error=None):
+        callbacks["done"] = done
+        callbacks["error"] = on_error
+
+    monkeypatch.setattr(window, "_run_async", hold_async)
+
+    window._search()
+
+    assert window.results.count() == 1
+    assert window.results.item(0).data(Qt.UserRole) == old_track
+    assert "showing previous results" in window.search_status.text()
+    assert window.search_button.text() == "Searching…"
+
+    # Even if the delayed-loading callback runs, useful stale content stays put.
+    window._show_delayed_search_loading(
+        window._search_sequence,
+        "your connected sources",
+    )
+    assert window.results.count() == 1
+    assert window.results.item(0).data(Qt.UserRole) == old_track
+
+    callbacks["done"](
+        {
+            "items": [
+                {
+                    "provider_id": "local",
+                    "track_id": "fresh",
+                    "artist": "Fresh Artist",
+                    "title": "Fresh Result",
+                }
+            ],
+            "failures": [],
+            "searched": 1,
+            "available": 1,
+        }
+    )
+
+    assert window.results.count() == 1
+    assert window.results.item(0).data(Qt.UserRole)["track_id"] == "fresh"
+    assert window.search_button.text() == "Search"
+
+    window.close()
+    app.processEvents()
+
+
+def test_fast_search_never_flashes_delayed_loading_placeholder(monkeypatch, tmp_path):
+    try:
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+
+    window = main_window.MainWindow()
+    window.search_source.clear()
+    window.search_source.addItem("All sources", "all")
+    window.search_box.setText("fast query")
+    callbacks = {}
+
+    def hold_async(fn, done, on_error=None):
+        callbacks["done"] = done
+
+    monkeypatch.setattr(window, "_run_async", hold_async)
+    window._search()
+    sequence = window._search_sequence
+
+    # Before 220 ms there is no generic loading row.
+    assert window.results.count() == 0
+
+    callbacks["done"](
+        {
+            "items": [
+                {
+                    "provider_id": "local",
+                    "track_id": "fast",
+                    "artist": "Fast Artist",
+                    "title": "Fast Result",
+                }
+            ],
+            "failures": [],
+            "searched": 1,
+            "available": 1,
+        }
+    )
+
+    # A timer firing after completion must be a no-op.
+    window._show_delayed_search_loading(sequence, "your connected sources")
+    assert window.results.count() == 1
+    assert window.results.item(0).text() == "Fast Artist — Fast Result"
+
+    window.close()
+    app.processEvents()
+
+
+def test_search_failure_preserves_stale_useful_results(monkeypatch, tmp_path):
+    try:
+        from PySide6.QtCore import Qt
+        from PySide6.QtWidgets import QApplication, QListWidgetItem
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+
+    window = main_window.MainWindow()
+    window.search_source.clear()
+    window.search_source.addItem("All sources", "all")
+    window.search_box.setText("offline query")
+
+    old_track = {
+        "provider_id": "local",
+        "track_id": "cached",
+        "artist": "Cached Artist",
+        "title": "Cached Result",
+    }
+    item = QListWidgetItem("Cached Artist — Cached Result")
+    item.setData(Qt.UserRole, old_track)
+    window.results.addItem(item)
+
+    callbacks = {}
+
+    def hold_async(fn, done, on_error=None):
+        callbacks["error"] = on_error
+
+    monkeypatch.setattr(window, "_run_async", hold_async)
+    window._search()
+    callbacks["error"]("synthetic provider outage")
+
+    assert window.results.count() == 1
+    assert window.results.item(0).data(Qt.UserRole) == old_track
+    assert "showing previous results" in window.search_status.text()
+    assert window.search_status.toolTip() == "synthetic provider outage"
+
+    window.close()
+    app.processEvents()
+
+
+def test_stale_search_response_cannot_replace_newer_request(monkeypatch, tmp_path):
+    try:
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+
+    window = main_window.MainWindow()
+    window.search_source.clear()
+    window.search_source.addItem("All sources", "all")
+    calls = []
+
+    def hold_async(fn, done, on_error=None):
+        calls.append((done, on_error))
+
+    monkeypatch.setattr(window, "_run_async", hold_async)
+
+    window.search_box.setText("first")
+    window._search()
+    window.search_box.setText("second")
+    window._search()
+
+    calls[0][0](
+        {
+            "items": [
+                {
+                    "provider_id": "local",
+                    "track_id": "stale",
+                    "artist": "Old",
+                    "title": "Stale",
+                }
+            ],
+            "failures": [],
+            "searched": 1,
+            "available": 1,
+        }
+    )
+    assert window.results.count() == 0
+
+    calls[1][0](
+        {
+            "items": [
+                {
+                    "provider_id": "local",
+                    "track_id": "current",
+                    "artist": "New",
+                    "title": "Current",
+                }
+            ],
+            "failures": [],
+            "searched": 1,
+            "available": 1,
+        }
+    )
+    assert window.results.count() == 1
+    assert window.results.item(0).data(Qt.UserRole)["track_id"] == "current"
+
+    window.close()
+    app.processEvents()
 
 
 def test_navigation_shell_changes_before_slow_page_population(monkeypatch, tmp_path):

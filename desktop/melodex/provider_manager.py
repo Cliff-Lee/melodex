@@ -1243,6 +1243,10 @@ class ProviderManager:
         provider = self.providers["local"]
         return provider.tracks if isinstance(provider, LocalFilesProvider) else []
 
+    def local_catalog_revision(self) -> int:
+        provider = self.providers["local"]
+        return provider.catalog_revision if isinstance(provider, LocalFilesProvider) else 0
+
     def close(self) -> None:
         self.capabilities.close()
         for provider in self.providers.values():
