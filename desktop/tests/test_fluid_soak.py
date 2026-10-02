@@ -42,13 +42,18 @@ def test_soak_report_budget_evaluator_flags_regressions():
 
 
 def test_small_soak_smoke_run_stays_bounded():
-    report = run_soak(
-        track_count=240,
-        minimum_cycles=18,
-        duration_seconds=0.4,
-        warmup_cycles=3,
-        pace_ms=1,
-    )
+    import pytest
+
+    try:
+        report = run_soak(
+            track_count=240,
+            minimum_cycles=18,
+            duration_seconds=0.4,
+            warmup_cycles=3,
+            pace_ms=1,
+        )
+    except ImportError as exc:
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
 
     assert report["schema"] == 1
     assert report["profile_tracks"] == 240
