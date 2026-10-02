@@ -1423,6 +1423,10 @@ def test_library_scan_progress_panel_is_clear_and_reassuring():
     assert "6,350" in browser.scan_progress_summary.text()
     assert browser.scan_progress_detail.text() == "Teardrop.flac"
 
+    browser.set_scan_progress({"phase": "saving"})
+    assert "saving library index" in browser.scan_progress_summary.text().lower()
+    assert "reopen" in browser.scan_progress_detail.text().lower()
+
     browser.set_scan_paused(True)
     assert browser.scan_pause_button.text() == "Resume"
     assert "paused" in browser.scan_progress_title.text().lower()
@@ -1506,6 +1510,168 @@ def test_cancelled_main_window_scan_keeps_existing_catalog(monkeypatch, tmp_path
     assert len(catalog) == 1
     assert catalog[0]["title"] == "Existing"
     assert "cancelled" in window.library_browser.scan_progress_title.text().lower()
+
+    window.close()
+    app.processEvents()
+
+
+
+def test_indexed_library_loads_on_startup_without_automatic_rescan(
+    monkeypatch,
+    tmp_path,
+):
+    try:
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+        from melodex.library_index import LocalLibraryIndex
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    root = tmp_path / "offline-synology"
+    (tmp_path / "sources.json").write_text(
+        __import__("json").dumps({"local_roots": [str(root)]}),
+        encoding="utf-8",
+    )
+
+    index = LocalLibraryIndex(tmp_path / "library-index.sqlite3")
+    index.sync_roots([root])
+    cached = {
+        "provider_id": "local",
+        "track_id": str(root / "Artist" / "song.flac"),
+        "local_path": str(root / "Artist" / "song.flac"),
+        "artist": "Cached Artist",
+        "album": "Cached Album",
+        "title": "Cached Song",
+        "source": "local",
+    }
+    index.replace_scan(
+        [root],
+        {
+            "tracks": [cached],
+            "index_tracks": [dict(cached)],
+            "root_states": [{"path": str(root), "available": True}],
+            "metrics": {"tracks_indexed": 1},
+            "cancelled": False,
+        },
+    )
+
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+    scans = []
+    monkeypatch.setattr(
+        main_window.MainWindow,
+        "_start_local_scan",
+        lambda self, reason="scan": scans.append(reason),
+    )
+
+    window = main_window.MainWindow()
+    window.show()
+    app.processEvents()
+
+    assert scans == []
+    assert window.providers.local_index_ready() is True
+    assert len(window.providers.local_catalog()) == 1
+    assert window.providers.local_catalog()[0]["title"] == "Cached Song"
+    assert "1 local tracks" in window.home_status.text()
+
+    window.close()
+    app.processEvents()
+
+
+def test_existing_roots_without_index_trigger_one_migration_scan(
+    monkeypatch,
+    tmp_path,
+):
+    try:
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    root = tmp_path / "old-library"
+    (tmp_path / "sources.json").write_text(
+        __import__("json").dumps({"local_roots": [str(root)]}),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+    scans = []
+    monkeypatch.setattr(
+        main_window.MainWindow,
+        "_start_local_scan",
+        lambda self, reason="scan": scans.append(reason),
+    )
+
+    window = main_window.MainWindow()
+    window.show()
+    for _ in range(5):
+        app.processEvents()
+        time.sleep(0.005)
+
+    assert scans == ["initial index"]
+    assert window.providers.local_index_ready() is False
+
+    window.close()
+    app.processEvents()
+
+
+def test_library_index_persistence_runs_off_qt_main_thread(
+    monkeypatch,
+    tmp_path,
+):
+    try:
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+
+    window = main_window.MainWindow()
+    root = tmp_path / "nas"
+    window.providers.configure_local_roots([root])
+
+    persistence_threads = []
+
+    def fake_scan(roots=None, **kwargs):
+        return {
+            "tracks": [],
+            "index_tracks": [],
+            "root_states": [{"path": str(root), "available": True}],
+            "metrics": {"tracks_indexed": 0, "main_thread": False},
+            "cancelled": False,
+        }
+
+    def fake_persist(roots, snapshot):
+        persistence_threads.append(
+            threading.current_thread() is threading.main_thread()
+        )
+        return {"tracks_persisted": 0}
+
+    monkeypatch.setattr(window.providers, "scan_local_roots_snapshot", fake_scan)
+    monkeypatch.setattr(window.providers, "persist_local_scan_snapshot", fake_persist)
+    monkeypatch.setattr(
+        window.providers,
+        "indexed_scan_result",
+        lambda roots, snapshot: dict(snapshot),
+    )
+
+    window._start_local_scan("persistence thread test")
+    deadline = time.monotonic() + 2.0
+    while time.monotonic() < deadline and window._local_scan_in_progress:
+        app.processEvents()
+        time.sleep(0.005)
+
+    assert window._local_scan_in_progress is False
+    assert persistence_threads == [False]
 
     window.close()
     app.processEvents()
