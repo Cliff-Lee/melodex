@@ -5,16 +5,25 @@ import threading
 import time
 from typing import Any
 
-from PySide6.QtCore import QEvent, QSize, Qt, Signal
+from PySide6.QtCore import (
+    QAbstractListModel,
+    QEvent,
+    QModelIndex,
+    QPoint,
+    QSize,
+    Qt,
+    QTimer,
+    Signal,
+)
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QButtonGroup,
     QFrame,
     QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QListWidget,
-    QListWidgetItem,
+    QListView,
     QPushButton,
     QProgressBar,
     QScrollArea,
@@ -257,6 +266,49 @@ class ArtistCard(QFrame):
             event.accept()
             return
         super().mouseDoubleClickEvent(event)
+
+
+class TrackListModel(QAbstractListModel):
+    """Cheap metadata model for the full filtered Tracks collection."""
+
+    TrackRole = int(Qt.UserRole) + 1
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._tracks: list[dict[str, Any]] = []
+
+    def set_tracks(self, tracks: list[dict[str, Any]]) -> None:
+        self.beginResetModel()
+        self._tracks = list(tracks)
+        self.endResetModel()
+
+    def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:
+        return 0 if parent.isValid() else len(self._tracks)
+
+    def data(self, index: QModelIndex, role: int = int(Qt.DisplayRole)):
+        if not index.isValid() or index.row() < 0 or index.row() >= len(self._tracks):
+            return None
+        track = self._tracks[index.row()]
+        if role in (int(Qt.UserRole), self.TrackRole):
+            return dict(track)
+        if role == int(Qt.DisplayRole):
+            title = str(track.get("title") or "Unknown track")
+            artist = str(track.get("artist") or "Unknown artist")
+            album = str(track.get("album") or "")
+            return f"{title}  ·  {artist}" + (f"  ·  {album}" if album else "")
+        if role == int(Qt.ToolTipRole):
+            title = str(track.get("title") or "Unknown track")
+            artist = str(track.get("artist") or "Unknown artist")
+            album = str(track.get("album") or "")
+            return "\n".join(part for part in (title, artist, album) if part)
+        if role == int(Qt.SizeHintRole):
+            return QSize(100, 82)
+        return None
+
+    def track_at(self, row: int) -> dict[str, Any]:
+        if 0 <= int(row) < len(self._tracks):
+            return dict(self._tracks[int(row)])
+        return {}
 
 
 class TrackRow(QFrame):
