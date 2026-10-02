@@ -61,6 +61,7 @@ _RESPONSIVENESS_FIELDS = (
     "ci_violations",
     "serious_stalls",
     "release_blockers",
+    "event_loop_sample_count",
     "p99_event_loop_gap_ms",
     "max_gap_ms",
     "max_delay_ms",
