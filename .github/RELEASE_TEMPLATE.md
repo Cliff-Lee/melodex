@@ -42,6 +42,7 @@
 - [ ] Provider SDK tests passed
 - [ ] documentation/ecosystem/release checks passed
 - [ ] release asset filenames match the installation documentation
+- [ ] macOS trust report reviewed; Developer ID/notarization required once Campaign 9B is activated
 
 ## Notes
 
