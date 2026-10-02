@@ -773,6 +773,11 @@ class LibraryBrowser(QWidget):
         ):
             return
 
+        if self._album_cache_inflight:
+            self.cachedArtworkInvalidated.emit("albums")
+        if self._artist_cache_inflight:
+            self.cachedArtworkInvalidated.emit("artists")
+
         started = time.perf_counter()
         current_thread = threading.current_thread()
         metrics: dict[str, object] = {
