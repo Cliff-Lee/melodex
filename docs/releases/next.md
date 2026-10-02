@@ -107,3 +107,12 @@ This file tracks changes intended for the next release after **v0.7.4**.
 - CI measures the installed frozen payload, Debian package and AppImage and
   protects all three against unexpected growth.
 - Existing Ubuntu and Debian packaged-launch smoke tests remain required.
+
+
+## macOS distribution — signing/notarization readiness
+
+- macOS builds now have separate preview and Developer ID distribution-signing paths.
+- Release CI can import a Developer ID certificate into an ephemeral keychain without committing credentials.
+- The distribution path signs Melodex with hardened runtime, signs the DMG, submits it with Apple's `notarytool`, staples the ticket, and verifies the result.
+- Every macOS artifact now includes a trust report that distinguishes ad-hoc preview builds from Developer ID/notarized distributions.
+- Normal pull-request builds remain credential-free; requiring notarization for public releases is reserved for Campaign 9B after live Apple credentials are configured.

@@ -17,9 +17,7 @@ python tools/prune_qt_bundle.py dist/Melodex.app \
 python tools/audit_qt_dependencies.py dist/Melodex.app \
   --json-out dist/Melodex-qt-audit.json \
   --markdown-out dist/Melodex-qt-audit.md
-if command -v codesign >/dev/null; then
-  codesign --force --deep --sign - dist/Melodex.app
-fi
+bash macos/sign_app.sh dist/Melodex.app
 python tools/check_qt_bundle.py dist/Melodex.app
 python tools/audit_runtime_bundle.py dist/Melodex.app \
   --json-out dist/Melodex-runtime-audit.json \
@@ -43,6 +41,17 @@ if command -v hdiutil >/dev/null && [ -d dist/Melodex.app ]; then
 fi
 
 if [ -f dist/Melodex.dmg ]; then
+  bash macos/finalize_distribution.sh dist/Melodex.dmg
+  TRUST_ARGS=(
+    dist/Melodex.app
+    --dmg dist/Melodex.dmg
+    --json-out dist/Melodex-macos-trust.json
+    --markdown-out dist/Melodex-macos-trust.md
+  )
+  if [[ "${MELODEX_REQUIRE_DISTRIBUTION_TRUST:-0}" == "1" ]]; then
+    TRUST_ARGS+=(--require-distribution-trust)
+  fi
+  python tools/report_macos_trust.py "${TRUST_ARGS[@]}"
   python tools/report_bundle_size.py dist/Melodex.app \
     --archive dist/Melodex.dmg \
     --json-out dist/Melodex-bundle-size.json \
