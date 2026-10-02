@@ -153,6 +153,9 @@ class MainWindow(QMainWindow):
         self._local_scan_sequence = 0
         self._local_scan_started_at = 0.0
         self._local_scan_last_progress: dict[str, Any] = {}
+        self._prefetched_track_assets: dict[str, dict[str, Any]] = {}
+        self._prefetch_sequence = 0
+        self._prefetch_delay_ms = 350
         self._local_scan_runner: LibraryScanProcess | None = None
         self._local_scan_signals: WorkerSignals | None = None
         self._source_config_refresh_in_progress = False
@@ -171,6 +174,9 @@ class MainWindow(QMainWindow):
         self.player.positionChanged.connect(self._on_position)
         self.player.error.connect(lambda s: self.statusBar().showMessage(s, 7000))
         self.player.queueChanged.connect(self._refresh_queue)
+        self.player.queueChanged.connect(
+            lambda _queue: self._schedule_next_track_prefetch()
+        )
         self.player.manualAdvanced.connect(self._on_manual_advance)
 
         self._build_ui()
@@ -438,22 +444,22 @@ class MainWindow(QMainWindow):
         text_col.addWidget(self.seek)
         bl.addLayout(text_col, 1)
 
-        keep = QPushButton("Keep")
-        keep.setObjectName("playerAction")
-        keep.clicked.connect(self._keep)
-        love = QPushButton("♥")
-        love.setObjectName("playerAction")
-        love.clicked.connect(lambda: self._feedback(True))
+        self.keep_button = QPushButton("Keep")
+        self.keep_button.setObjectName("playerAction")
+        self.keep_button.clicked.connect(self._keep)
+        self.love_button = QPushButton("♥")
+        self.love_button.setObjectName("playerAction")
+        self.love_button.clicked.connect(lambda: self._feedback(True))
         queue = QPushButton("Queue")
         queue.setObjectName("playerAction")
         queue.clicked.connect(
             lambda: self.queue_panel.setVisible(not self.queue_panel.isVisible())
         )
-        set_help(keep, "Keep", "Teach Melodex that this track is worth keeping around in future listening.")
-        set_help(love, "Love", "Mark this as a strong positive preference.")
+        set_help(self.keep_button, "Keep", "Teach Melodex that this track is worth keeping around in future listening.")
+        set_help(self.love_button, "Love", "Mark this as a strong positive preference.")
         set_help(queue, "Queue", "Show or hide the music that is coming next.")
-        bl.addWidget(keep)
-        bl.addWidget(love)
+        bl.addWidget(self.keep_button)
+        bl.addWidget(self.love_button)
         bl.addWidget(queue)
 
         self.player_power_actions = QWidget()
@@ -6150,6 +6156,81 @@ class MainWindow(QMainWindow):
         if tracks:self.player.set_queue(tracks,0,True)
         self.statusBar().showMessage(f"Journey ready · {len(tracks)} tracks · {plan.get('new_to_you',0)} new to you",6000)
 
+    def _next_queue_track(self) -> dict[str, Any]:
+        queue=list(getattr(self.player,"queue",[]) or [])
+        index=int(getattr(self.player,"index",-1))
+        next_index=index+1
+        if next_index < 0 or next_index >= len(queue):
+            return {}
+        row=queue[next_index]
+        return dict(row) if isinstance(row,dict) else {}
+
+    def _schedule_next_track_prefetch(self) -> None:
+        if self._closing:
+            return
+        self._prefetch_sequence += 1
+        sequence=self._prefetch_sequence
+        QTimer.singleShot(
+            self._prefetch_delay_ms,
+            lambda token=sequence:self._prefetch_next_track_assets(token),
+        )
+
+    def _prefetch_next_track_assets(self, sequence: int) -> None:
+        if (
+            self._closing
+            or sequence != self._prefetch_sequence
+            or self._local_scan_in_progress
+        ):
+            return
+        track=self._next_queue_track()
+        token=UserState.track_key(track) if track else ""
+        if not token or token in self._prefetched_track_assets:
+            return
+
+        def load() -> dict[str, Any]:
+            payload: dict[str, Any] = {
+                "token": token,
+                "artwork_loaded": True,
+                "artwork": {},
+                "analysis_loaded": False,
+                "analysis": None,
+                "local_path": str(track.get("local_path") or "").strip(),
+            }
+            try:
+                payload["artwork"]=dict(
+                    self.metadata.local_artwork(dict(track)) or {}
+                )
+            except Exception:
+                payload["artwork"]={}
+            local_path=str(payload["local_path"] or "")
+            if local_path:
+                payload["analysis_loaded"]=True
+                try:
+                    payload["analysis"]=self.flow.cached_analysis_for(
+                        Path(local_path)
+                    )
+                except Exception:
+                    payload["analysis"]=None
+            return payload
+
+        def apply(payload: object) -> None:
+            if (
+                sequence != self._prefetch_sequence
+                or not isinstance(payload,dict)
+            ):
+                return
+            current_next=self._next_queue_track()
+            if token != UserState.track_key(current_next):
+                return
+            self._prefetched_track_assets[token]=dict(payload)
+            # Keep this deliberately tiny: prediction must never become a
+            # competing cache of the whole queue.
+            while len(self._prefetched_track_assets) > 3:
+                oldest=next(iter(self._prefetched_track_assets))
+                self._prefetched_track_assets.pop(oldest,None)
+
+        self._run_async(load,apply)
+
     # ------------------------------- player/taste
     def _on_track_changed(self,t):
         if self._closing:
@@ -6157,11 +6238,25 @@ class MainWindow(QMainWindow):
         if self.current_track and self.current_track_started and time.time()-self.current_track_started<30:
             self.state.record_skip(self.current_track)
         self.current_track=dict(t); self.current_track_started=time.time(); self.current_history_id=self.state.record_play(t)
+        token=UserState.track_key(self.current_track)
+        prefetched=dict(self._prefetched_track_assets.pop(token,{}) or {})
+        self._set_taste_action_state()
+        self._load_taste_action_state(self.current_track)
         self._visual_position_ms = 0
         self._visual_duration_ms = 0
         if hasattr(self, "living_canvas"):
-            self.living_canvas.set_track(self.current_track, None)
-            self._request_cached_visual_analysis(self.current_track)
+            local_path=str(self.current_track.get("local_path") or "").strip()
+            if (
+                prefetched.get("analysis_loaded")
+                and str(prefetched.get("local_path") or "") == local_path
+            ):
+                self.living_canvas.set_track(
+                    self.current_track,
+                    prefetched.get("analysis"),
+                )
+            else:
+                self.living_canvas.set_track(self.current_track, None)
+                self._request_cached_visual_analysis(self.current_track)
         if hasattr(self,"music_map"):
             self.music_map.highlight_track(t)
         if hasattr(self,"album_wall"):
@@ -6193,22 +6288,25 @@ class MainWindow(QMainWindow):
             base + ((f"   ·   <a href=\"{src}\">{attr or 'Source'}</a>") if src else "")
         )
         if hasattr(self,"player_cover"):
-            token=UserState.track_key(t)
+            artwork=dict(prefetched.get("artwork") or {})
+            artwork_path=str(artwork.get("path") or "")
             self.player_cover.set_cover(
-                "",
+                artwork_path,
                 title=album or str(t.get("title") or ""),
                 key=token,
             )
-            self._run_async(
-                lambda:self.metadata.local_artwork(dict(t)),
-                lambda result:self._player_artwork_loaded(token,result),
-            )
+            if not prefetched.get("artwork_loaded"):
+                self._run_async(
+                    lambda:self.metadata.local_artwork(dict(t)),
+                    lambda result:self._player_artwork_loaded(token,result),
+                )
         if hasattr(self,"rich_now"):
             self.rich_now.set_track(dict(t))
         if hasattr(self, "living_canvas"):
             self.living_canvas.refresh_context()
         if self.current_page=="home":
             self._refresh_home_continue()
+        self._schedule_next_track_prefetch()
 
     def _player_artwork_loaded(self, token: str, result: object) -> None:
         if not isinstance(result,dict):
@@ -6355,11 +6453,99 @@ class MainWindow(QMainWindow):
         p=self.player.players[self.player.active]; dur=p.duration()
         if dur>0:self.player.seek(int(dur*self.seek.value()/1000))
 
+    def _set_taste_action_state(
+        self,
+        *,
+        loved: bool = False,
+        kept: bool = False,
+    ) -> None:
+        if hasattr(self, "love_button"):
+            self.love_button.setText("♥ Loved" if loved else "♥")
+            self.love_button.setEnabled(not loved)
+        if hasattr(self, "keep_button"):
+            self.keep_button.setText("✓ Kept" if kept else "Keep")
+            self.keep_button.setEnabled(not kept)
+
+    def _load_taste_action_state(self, track: dict[str, Any]) -> None:
+        token=UserState.track_key(track)
+        if not token:
+            self._set_taste_action_state()
+            return
+
+        def apply(signal: object) -> None:
+            if token != UserState.track_key(dict(self.current_track or {})):
+                return
+            row=dict(signal or {}) if isinstance(signal,dict) else {}
+            self._set_taste_action_state(
+                loved=bool(int(row.get("loves") or 0)),
+                kept=bool(int(row.get("keeps") or 0)),
+            )
+
+        self._run_async(
+            lambda:self.state.track_signal(dict(track)),
+            apply,
+        )
+
     def _feedback(self,positive):
-        if self.current_track:self.state.record_feedback(self.current_track,positive); self.statusBar().showMessage("Loved" if positive else "Not for me",2500)
+        if not self.current_track:
+            return
+        track=dict(self.current_track)
+        token=UserState.track_key(track)
+        if positive and hasattr(self,"love_button"):
+            previous_text=self.love_button.text()
+            previous_enabled=self.love_button.isEnabled()
+            self.love_button.setText("♥ Loved")
+            self.love_button.setEnabled(False)
+            self.statusBar().showMessage("Loved",2500)
+        else:
+            previous_text=""
+            previous_enabled=True
+            self.statusBar().showMessage(
+                "Loved" if positive else "Not for me",
+                2500,
+            )
+
+        def persist() -> bool:
+            self.state.record_feedback(track,positive)
+            return True
+
+        def failed(error: str) -> None:
+            if positive and token == UserState.track_key(dict(self.current_track or {})):
+                self.love_button.setText(previous_text)
+                self.love_button.setEnabled(previous_enabled)
+            self.statusBar().showMessage(
+                f"Could not save preference · {error}",
+                5000,
+            )
+
+        self._run_async(persist,lambda _result:None,failed)
 
     def _keep(self):
-        if self.current_track:self.state.record_keep(self.current_track); self.statusBar().showMessage("Kept in taste memory",2500)
+        if not self.current_track:
+            return
+        track=dict(self.current_track)
+        token=UserState.track_key(track)
+        previous_text=self.keep_button.text() if hasattr(self,"keep_button") else "Keep"
+        previous_enabled=self.keep_button.isEnabled() if hasattr(self,"keep_button") else True
+        if hasattr(self,"keep_button"):
+            self.keep_button.setText("✓ Kept")
+            self.keep_button.setEnabled(False)
+        self.statusBar().showMessage("Kept in taste memory",2500)
+
+        def persist() -> bool:
+            self.state.record_keep(track)
+            return True
+
+        def failed(error: str) -> None:
+            if token == UserState.track_key(dict(self.current_track or {})) and hasattr(self,"keep_button"):
+                self.keep_button.setText(previous_text)
+                self.keep_button.setEnabled(previous_enabled)
+            self.statusBar().showMessage(
+                f"Could not save Keep · {error}",
+                5000,
+            )
+
+        self._run_async(persist,lambda _result:None,failed)
 
     def _more_actions(self):
         if not self.current_track:return

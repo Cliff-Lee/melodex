@@ -1747,6 +1747,237 @@ def test_slow_source_config_check_keeps_qt_event_loop_responsive(monkeypatch, tm
     app.processEvents()
 
 
+def test_love_and_keep_acknowledge_before_persistence(monkeypatch, tmp_path):
+    try:
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+
+    window = main_window.MainWindow()
+    track = _track(
+        str(tmp_path / "track.mp3"),
+        "Artist",
+        "Album",
+        "Track",
+        1,
+    )
+    window.current_track = dict(track)
+    pending = []
+
+    def hold_async(fn, done, on_error=None):
+        pending.append((fn, done, on_error))
+
+    monkeypatch.setattr(window, "_run_async", hold_async)
+
+    window._feedback(True)
+
+    # The visual action completes before persistence is even allowed to run.
+    assert window.love_button.text() == "♥ Loved"
+    assert window.love_button.isEnabled() is False
+    assert len(pending) == 1
+    assert window.state.track_signal(track).get("loves", 0) == 0
+
+    result = pending.pop(0)[0]()
+    assert result is True
+    assert window.state.track_signal(track)["loves"] == 1
+
+    window._set_taste_action_state(loved=False, kept=False)
+    window._keep()
+
+    assert window.keep_button.text() == "✓ Kept"
+    assert window.keep_button.isEnabled() is False
+    assert len(pending) == 1
+    assert window.state.track_signal(track).get("keeps", 0) == 0
+
+    result = pending.pop(0)[0]()
+    assert result is True
+    assert window.state.track_signal(track)["keeps"] == 1
+
+    window.close()
+    app.processEvents()
+
+
+def test_optimistic_taste_action_rolls_back_if_persistence_fails(monkeypatch, tmp_path):
+    try:
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+
+    window = main_window.MainWindow()
+    window.current_track = _track(
+        str(tmp_path / "track.mp3"),
+        "Artist",
+        "Album",
+        "Track",
+        1,
+    )
+    pending = []
+
+    def hold_async(fn, done, on_error=None):
+        pending.append((fn, done, on_error))
+
+    monkeypatch.setattr(window, "_run_async", hold_async)
+
+    window._feedback(True)
+    assert window.love_button.text() == "♥ Loved"
+    assert window.love_button.isEnabled() is False
+
+    error = pending[0][2]
+    assert error is not None
+    error("synthetic database failure")
+
+    assert window.love_button.text() == "♥"
+    assert window.love_button.isEnabled() is True
+    assert "Could not save preference" in window.statusBar().currentMessage()
+
+    window.close()
+    app.processEvents()
+
+
+def test_next_track_prefetch_is_local_only_and_consumed_on_advance(monkeypatch, tmp_path):
+    try:
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+
+    window = main_window.MainWindow()
+    current = _track(
+        str(tmp_path / "current.mp3"),
+        "Artist",
+        "Album",
+        "Current",
+        1,
+    )
+    upcoming = _track(
+        str(tmp_path / "next.mp3"),
+        "Artist",
+        "Album",
+        "Next",
+        2,
+    )
+    window.player.queue = [dict(current), dict(upcoming)]
+    window.player.index = 0
+
+    artwork_calls = []
+    cached_analysis = object()
+
+    def local_artwork(track):
+        artwork_calls.append(str(track.get("title") or ""))
+        return {"path": str(tmp_path / "next-cover.jpg"), "source": "cache"}
+
+    monkeypatch.setattr(window.metadata, "local_artwork", local_artwork)
+    monkeypatch.setattr(
+        window.flow,
+        "cached_analysis_for",
+        lambda _path: cached_analysis,
+    )
+
+    def immediate_async(fn, done, on_error=None):
+        try:
+            done(fn())
+        except Exception as exc:
+            if on_error is not None:
+                on_error(str(exc))
+            else:
+                raise
+
+    monkeypatch.setattr(window, "_run_async", immediate_async)
+
+    window._prefetch_sequence = 1
+    window._prefetch_next_track_assets(1)
+
+    token = main_window.UserState.track_key(upcoming)
+    assert artwork_calls == ["Next"]
+    assert token in window._prefetched_track_assets
+    assert window._prefetched_track_assets[token]["analysis"] is cached_analysis
+
+    cover_calls = []
+    analysis_calls = []
+    monkeypatch.setattr(
+        window.player_cover,
+        "set_cover",
+        lambda path, **kwargs: cover_calls.append(path),
+    )
+    monkeypatch.setattr(
+        window.living_canvas,
+        "set_track",
+        lambda track, analysis: analysis_calls.append(analysis),
+    )
+    monkeypatch.setattr(window.living_canvas, "refresh_context", lambda: None)
+    monkeypatch.setattr(window.music_map, "highlight_track", lambda _track: None)
+    monkeypatch.setattr(window.album_wall, "highlight_track", lambda _track: None)
+    monkeypatch.setattr(window.rich_now, "set_track", lambda _track: None)
+
+    # If prefetch worked, advancing must not call local_artwork a second time.
+    window.player.index = 1
+    window.current_track = None
+    window.current_track_started = 0
+    window._on_track_changed(dict(upcoming))
+
+    assert artwork_calls == ["Next"]
+    assert cover_calls[-1] == str(tmp_path / "next-cover.jpg")
+    assert analysis_calls[-1] is cached_analysis
+    assert token not in window._prefetched_track_assets
+
+    window.close()
+    app.processEvents()
+
+
+def test_next_track_prefetch_yields_to_large_library_scan(monkeypatch, tmp_path):
+    try:
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+
+    window = main_window.MainWindow()
+    window.player.queue = [
+        _track(str(tmp_path / "a.mp3"), "A", "A", "A", 1),
+        _track(str(tmp_path / "b.mp3"), "B", "B", "B", 1),
+    ]
+    window.player.index = 0
+    window._local_scan_in_progress = True
+    calls = []
+    monkeypatch.setattr(
+        window,
+        "_run_async",
+        lambda *args, **kwargs: calls.append((args, kwargs)),
+    )
+
+    window._prefetch_sequence = 3
+    window._prefetch_next_track_assets(3)
+
+    assert calls == []
+    assert window._prefetched_track_assets == {}
+
+    window._local_scan_in_progress = False
+    window.close()
+    app.processEvents()
+
+
 def test_global_scan_activity_persists_across_navigation(monkeypatch, tmp_path):
     try:
         from PySide6.QtWidgets import QApplication
