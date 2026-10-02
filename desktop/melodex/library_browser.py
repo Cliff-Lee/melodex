@@ -408,8 +408,12 @@ class LibraryBrowser(QWidget):
         self._catalog_revision: int | None = None
         self.albums: list[dict[str, Any]] = []
         self.cards: dict[str, AlbumCard] = {}
+        self._album_home_cards: dict[str, AlbumCard] = {}
+        self._album_home_keys: set[str] = set()
         self.artist_rows: list[dict[str, Any]] = []
         self.artist_cards: dict[str, ArtistCard] = {}
+        self._artist_home_cards: dict[str, ArtistCard] = {}
+        self._artist_home_keys: set[str] = set()
         self.track_rows: dict[str, TrackRow] = {}
         self._track_widget_rows: dict[int, str] = {}
         self.track_album_key: dict[str, str] = {}
@@ -802,14 +806,18 @@ class LibraryBrowser(QWidget):
             "total_seconds": 0.0,
         }
 
-        for card in list(self.cards.values()):
+        for card in list(self.cards.values()) + list(self._album_home_cards.values()):
             card.setParent(None)
             card.deleteLater()
-        for card in list(self.artist_cards.values()):
+        for card in list(self.artist_cards.values()) + list(self._artist_home_cards.values()):
             card.setParent(None)
             card.deleteLater()
         self.cards.clear()
+        self._album_home_cards.clear()
+        self._album_home_keys.clear()
         self.artist_cards.clear()
+        self._artist_home_cards.clear()
+        self._artist_home_keys.clear()
         self._clear_track_widgets()
         self.track_model.set_tracks([])
         self._clear_grid(self.album_grid)
@@ -1526,10 +1534,12 @@ class LibraryBrowser(QWidget):
         track_filter_sort_seconds = time.perf_counter() - track_started
 
         layout_started = time.perf_counter()
-        self._layout_album_cards()
-        if self.current_view() == "artists" or self.artist_cards:
+        active_view = self.current_view()
+        if active_view == "albums":
+            self._layout_album_cards()
+        elif active_view == "artists":
             self._layout_artist_cards()
-        if self.current_view() == "tracks":
+        elif active_view == "tracks":
             self._rebuild_tracks()
             self._tracks_built = True
         layout_seconds = time.perf_counter() - layout_started
@@ -1554,25 +1564,53 @@ class LibraryBrowser(QWidget):
         self._album_columns = columns
         rendered = self._visible_albums[: self._album_render_limit]
         rendered_keys = {str(album.get("key") or "") for album in rendered}
+
+        query_active = bool(_norm(self.search.text()))
+        if not query_active:
+            self._album_home_keys = {
+                str(album.get("key") or "")
+                for album in self._visible_albums[: self._album_batch_size]
+                if str(album.get("key") or "")
+            }
+
+        # Move normal first-page cards into a bounded hidden cache while a
+        # filter is active. Filter-only cards remain disposable.
         for key in list(self.cards):
             if key in rendered_keys:
                 continue
             card = self.cards.pop(key)
+            if query_active and key in self._album_home_keys:
+                card.hide()
+                self._album_home_cards[key] = card
+            else:
+                card.setParent(None)
+                card.deleteLater()
+
+        # Anything no longer part of the normal first-page cache can go.
+        for key in list(self._album_home_cards):
+            if key in self._album_home_keys:
+                continue
+            card = self._album_home_cards.pop(key)
             card.setParent(None)
             card.deleteLater()
+
         for index, album in enumerate(rendered):
             key = str(album.get("key") or "")
             card = self.cards.get(key)
             if card is None:
+                card = self._album_home_cards.pop(key, None)
+            if card is None:
                 card = AlbumCard(album)
                 card.playRequested.connect(self.playAlbumRequested)
                 card.queueRequested.connect(self.queueAlbumRequested)
-                self.cards[key] = card
-                path = self.artwork_paths.get(key, "")
-                if path:
-                    card.set_cover(path)
+            self.cards[key] = card
+            path = self.artwork_paths.get(key, "")
+            if path:
+                card.set_cover(path)
             row, column = divmod(index, columns)
             self.album_grid.addWidget(card, row, column, Qt.AlignTop)
+            card.show()
+
         row_count=(len(rendered)+columns-1)//columns if rendered else 0
         spacing=max(0,int(self.album_grid.verticalSpacing()))
         minimum_height=(
@@ -1601,26 +1639,51 @@ class LibraryBrowser(QWidget):
         self._artist_columns = columns
         rendered = self._visible_artists[: self._artist_render_limit]
         rendered_keys = {str(artist.get("key") or "") for artist in rendered}
+
+        query_active = bool(_norm(self.search.text()))
+        if not query_active:
+            self._artist_home_keys = {
+                str(artist.get("key") or "")
+                for artist in self._visible_artists[: self._artist_batch_size]
+                if str(artist.get("key") or "")
+            }
+
         for key in list(self.artist_cards):
             if key in rendered_keys:
                 continue
             card = self.artist_cards.pop(key)
+            if query_active and key in self._artist_home_keys:
+                card.hide()
+                self._artist_home_cards[key] = card
+            else:
+                card.setParent(None)
+                card.deleteLater()
+
+        for key in list(self._artist_home_cards):
+            if key in self._artist_home_keys:
+                continue
+            card = self._artist_home_cards.pop(key)
             card.setParent(None)
             card.deleteLater()
+
         for index, artist in enumerate(rendered):
             key = str(artist.get("key") or "")
             card = self.artist_cards.get(key)
+            if card is None:
+                card = self._artist_home_cards.pop(key, None)
             if card is None:
                 card = ArtistCard(artist)
                 card.openRequested.connect(self._artist_opened)
                 card.playRequested.connect(self.playArtistRequested)
                 card.photoRequested.connect(self.artistPhotoFileRequested)
-                self.artist_cards[key] = card
-                artist_path=self.artist_image_paths.get(key,"")
-                if artist_path:
-                    card.set_image(artist_path,artist_photo=True)
+            self.artist_cards[key] = card
+            artist_path=self.artist_image_paths.get(key,"")
+            if artist_path:
+                card.set_image(artist_path,artist_photo=True)
             row, column = divmod(index, columns)
             self.artist_grid.addWidget(card, row, column, Qt.AlignTop)
+            card.show()
+
         row_count=(len(rendered)+columns-1)//columns if rendered else 0
         spacing=max(0,int(self.artist_grid.verticalSpacing()))
         minimum_height=(
@@ -2263,7 +2326,7 @@ class LibraryBrowser(QWidget):
             if not path:
                 continue
             self.artwork_paths[key] = path
-            card = self.cards.get(key)
+            card = self.cards.get(key) or self._album_home_cards.get(key)
             if card is not None:
                 card.set_cover(path)
 
@@ -2281,7 +2344,7 @@ class LibraryBrowser(QWidget):
             path=str(path or "")
             if path:
                 self.artist_image_paths[key]=path
-            card = self.artist_cards.get(key)
+            card = self.artist_cards.get(key) or self._artist_home_cards.get(key)
             if card is not None and path:
                 card.set_image(path, artist_photo=True)
             elif not path:
