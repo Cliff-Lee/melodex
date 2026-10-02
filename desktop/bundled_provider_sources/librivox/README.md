@@ -12,3 +12,5 @@ index and media host used by this integration.
 
 Rights note: LibriVox recordings are public domain in the United States. Users
 should check copyright status in their own jurisdiction.
+
+Version 0.1.5 allows Internet Archive's regional CDN subdomains during guarded playback. Archive may redirect hosted MP3s to hosts such as `dn*.ca.archive.org` as well as `*.us.archive.org`.
