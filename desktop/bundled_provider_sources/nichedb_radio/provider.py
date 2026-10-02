@@ -3,15 +3,15 @@ from __future__ import annotations
 import json
 import os
 import time
-import urllib.error
 import urllib.parse
-import urllib.request
+
+import requests
 
 PROVIDER_ID = "org.melodex.nichedb.radio"
 API_BASE = os.getenv("NICHEDB_API_BASE", "https://nichedb.dev/api/v1").rstrip("/")
 USER_AGENT = os.getenv(
     "MELODEX_USER_AGENT",
-    "Melodex-NicheDB-Radio/0.1 (https://github.com/Cliff-Lee/melodex)",
+    "Melodex-NicheDB-Radio/0.1.2 (https://github.com/Cliff-Lee/melodex)",
 )
 CACHE_TTL_SECONDS = 300
 _ITEM_CACHE: dict[str, dict] = {}
@@ -39,18 +39,20 @@ def _get_json(path: str, params: dict | None = None, *, use_cache: bool = False)
         if cached and now - cached[0] < CACHE_TTL_SECONDS:
             return cached[1]
 
-    request = urllib.request.Request(url, headers=_headers())
     try:
-        with urllib.request.urlopen(request, timeout=15) as response:
-            _LAST_RATE_LIMIT_REMAINING = response.headers.get("x-ratelimit-remaining")
-            payload = json.load(response)
-    except urllib.error.HTTPError as exc:
-        if exc.code == 429:
-            retry = exc.headers.get("retry-after") or "later"
-            raise RuntimeError(f"NicheDB rate limit reached; retry {retry}") from exc
-        raise RuntimeError(f"NicheDB returned HTTP {exc.code}") from exc
-    except Exception as exc:
+        response = requests.get(url, headers=_headers(), timeout=15)
+        _LAST_RATE_LIMIT_REMAINING = response.headers.get("x-ratelimit-remaining")
+        if response.status_code == 429:
+            retry = response.headers.get("retry-after") or "later"
+            raise RuntimeError(f"NicheDB rate limit reached; retry {retry}")
+        response.raise_for_status()
+        payload = response.json()
+    except requests.exceptions.SSLError as exc:
+        raise RuntimeError(f"NicheDB TLS verification failed: {exc}") from exc
+    except requests.exceptions.RequestException as exc:
         raise RuntimeError(f"NicheDB request failed: {exc}") from exc
+    except ValueError as exc:
+        raise RuntimeError("NicheDB returned invalid JSON") from exc
 
     if not isinstance(payload, dict):
         raise RuntimeError("NicheDB returned an invalid response")
@@ -218,7 +220,7 @@ def respond(request: dict):
         return {
             "id": PROVIDER_ID,
             "name": "NicheDB Radio",
-            "version": "0.1.0",
+            "version": "0.1.2",
             "protocol_version": "1.0",
             "capabilities": ["search", "track", "playback"],
         }
