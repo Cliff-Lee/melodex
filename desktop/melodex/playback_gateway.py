@@ -34,6 +34,11 @@ _CREDENTIAL_HEADERS = {
     "cookie",
     "cookie2",
 }
+_DEFAULT_USER_AGENT = (
+    "Melodex-Playback-Gateway/1.0 "
+    "(+https://github.com/Cliff-Lee/melodex)"
+)
+
 
 
 def _origin_key(url: str) -> tuple[str, str, int]:
@@ -198,6 +203,7 @@ class PlaybackGateway:
 
         url = str(resource.get("stream_url") or resource.get("url") or "")
         headers = {str(k): str(v) for k, v in dict(resource.get("headers") or {}).items()}
+        headers.setdefault("User-Agent", _DEFAULT_USER_AGENT)
         cookies = dict(resource.get("cookies") or {})
         if cookies and "Cookie" not in headers:
             headers["Cookie"] = "; ".join(f"{k}={v}" for k, v in cookies.items())
