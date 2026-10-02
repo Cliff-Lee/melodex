@@ -3831,6 +3831,11 @@ class MainWindow(QMainWindow):
                 value=max(0,int(changes.get(key) or 0))
                 if value:
                     summary_parts.append(f"{value:,} {label}")
+            incomplete=max(0,int(changes.get("incomplete_roots") or 0))
+            if incomplete:
+                summary_parts.append(
+                    f"{incomplete} root{'s' if incomplete != 1 else ''} incomplete (cached copy kept)"
+                )
             suffix=(" · " + " · ".join(summary_parts)) if summary_parts else ""
             self.statusBar().showMessage(
                 f"Music indexing complete · {count:,} tracks{suffix}",
