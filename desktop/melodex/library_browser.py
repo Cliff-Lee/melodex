@@ -805,24 +805,45 @@ class LibraryBrowser(QWidget):
                 f"Discovering files · {current}" if current else "Discovering files…"
             )
         elif phase=="metadata":
+            unchanged=max(0,int(payload.get("unchanged") or 0))
+            added=max(0,int(payload.get("added") or 0))
+            changed=max(0,int(payload.get("changed") or 0))
             if total:
                 self.scan_progress.setRange(0,total)
                 self.scan_progress.setValue(min(completed,total))
                 self.scan_progress.setFormat("%v / %m")
+                self.scan_progress_summary.setText(
+                    f"Reading metadata · {completed:,} / {total:,}"
+                )
+                detail_parts=[]
+                if unchanged:
+                    detail_parts.append(f"{unchanged:,} unchanged")
+                if added:
+                    detail_parts.append(f"{added:,} new")
+                if changed:
+                    detail_parts.append(f"{changed:,} changed")
+                self.scan_progress_detail.setText(
+                    (current + (" · " if detail_parts else "") if current else "")
+                    + " · ".join(detail_parts)
+                    if current or detail_parts
+                    else "Reading track information…"
+                )
+            elif found:
+                self.scan_progress.setRange(0,1)
+                self.scan_progress.setValue(1)
+                self.scan_progress.setFormat("Up to date")
+                self.scan_progress_summary.setText("Metadata already up to date")
+                self.scan_progress_detail.setText(
+                    f"{unchanged or found:,} unchanged · no audio files need reopening"
+                )
             else:
                 self.scan_progress.setRange(0,1)
                 self.scan_progress.setValue(0)
                 self.scan_progress.setFormat("No audio files found")
-            self.scan_progress_summary.setText(
-                f"Reading metadata · {completed:,} / {total:,}"
-            )
-            self.scan_progress_detail.setText(
-                current or (
-                    "Reading track information…"
-                    if total
-                    else "No supported audio files were discovered."
+                self.scan_progress_summary.setText("No supported audio files found")
+                self.scan_progress_detail.setText(
+                    "No supported audio files were discovered."
                 )
-            )
         elif phase=="saving":
             self.scan_progress.setRange(0,0)
             self.scan_progress.setFormat("")
@@ -869,6 +890,7 @@ class LibraryBrowser(QWidget):
         *,
         count: int = 0,
         error: str = "",
+        changes: dict[str, Any] | None = None,
     ) -> None:
         status=str(status or "complete")
         self._scan_active=False
@@ -890,7 +912,25 @@ class LibraryBrowser(QWidget):
             self.scan_progress_summary.setText(
                 f"{max(0,int(count)):,} track{'s' if int(count) != 1 else ''}"
             )
-            self.scan_progress_detail.setText("Your music index is ready.")
+            change_data=dict(changes or {})
+            parts=[]
+            for key,label in (
+                ("unchanged","unchanged"),
+                ("added","new"),
+                ("changed","updated"),
+                ("removed","removed"),
+            ):
+                value=max(0,int(change_data.get(key) or 0))
+                if value:
+                    parts.append(f"{value:,} {label}")
+            incomplete=max(0,int(change_data.get("incomplete_roots") or 0))
+            if incomplete:
+                parts.append(
+                    f"{incomplete} root{'s' if incomplete != 1 else ''} incomplete · cached copy kept"
+                )
+            self.scan_progress_detail.setText(
+                " · ".join(parts) if parts else "Your music index is ready."
+            )
 
     def clear_scan_status(self) -> None:
         if not self._scan_active:

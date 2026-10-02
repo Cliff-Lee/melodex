@@ -3709,7 +3709,15 @@ class MainWindow(QMainWindow):
         elif phase=="metadata":
             completed=int(payload.get("completed") or 0)
             total=int(payload.get("total") or 0)
-            message=f"Indexing music · reading metadata · {completed:,}/{total:,}"
+            found=int(payload.get("audio_files_seen") or 0)
+            unchanged=int(payload.get("unchanged") or 0)
+            if total==0 and found:
+                message=(
+                    f"Indexing music · metadata already up to date · "
+                    f"{unchanged or found:,} reused"
+                )
+            else:
+                message=f"Indexing music · reading metadata · {completed:,}/{total:,}"
             self.statusBar().showMessage(message)
             if hasattr(self,"home_status"):
                 self.home_status.setText(message)
@@ -3811,14 +3819,35 @@ class MainWindow(QMainWindow):
                 return
 
             count=self.providers.apply_local_scan_snapshot(result)
+            changes=dict(result.get("changes") or {})
             self._refresh_library()
             self._show_home()
             if hasattr(self,"library_browser"):
-                self.library_browser.finish_scan("complete",count=count)
+                self.library_browser.finish_scan(
+                    "complete",
+                    count=count,
+                    changes=changes,
+                )
                 QTimer.singleShot(3500,self.library_browser.clear_scan_status)
+            summary_parts=[]
+            for key,label in (
+                ("unchanged","unchanged"),
+                ("added","new"),
+                ("changed","updated"),
+                ("removed","removed"),
+            ):
+                value=max(0,int(changes.get(key) or 0))
+                if value:
+                    summary_parts.append(f"{value:,} {label}")
+            incomplete=max(0,int(changes.get("incomplete_roots") or 0))
+            if incomplete:
+                summary_parts.append(
+                    f"{incomplete} root{'s' if incomplete != 1 else ''} incomplete (cached copy kept)"
+                )
+            suffix=(" · " + " · ".join(summary_parts)) if summary_parts else ""
             self.statusBar().showMessage(
-                f"Music indexing complete · {count:,} tracks",
-                5000,
+                f"Music indexing complete · {count:,} tracks{suffix}",
+                6500,
             )
             if self._local_scan_pending:
                 self._local_scan_pending=False

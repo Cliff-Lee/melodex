@@ -24,6 +24,13 @@ _SCAN_METRIC_FIELDS = (
     "non_metadata_seconds",
     "total_seconds",
     "tracks_indexed",
+    "unchanged_files",
+    "added_files",
+    "changed_files",
+    "removed_files",
+    "stat_failures",
+    "metadata_reused",
+    "incomplete_roots",
 )
 
 _CATALOG_METRIC_FIELDS = (
