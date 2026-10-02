@@ -327,9 +327,14 @@ class ExternalProvider(MusicProvider):
         ]
         url = str(out.get("stream_url") or out.get("url") or "").strip()
         host = (urlparse(url).hostname or "").strip().casefold()
-        if host and host not in {value.casefold().strip(".") for value in hosts}:
+        if (
+            declared_hosts
+            and host
+            and host not in {value.casefold().strip(".") for value in hosts}
+        ):
             # The provider selected this exact media origin. Add only that
             # concrete host; redirects are still checked against the list.
+            # An empty declaration remains a hard "no network" boundary.
             hosts.append(host)
         out["_playback_allowed_hosts"] = hosts
         return out
