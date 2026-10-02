@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Sequence, TextIO
 
 CHILD_FLAG = "--melodex-python-child"
+MODULE_CHILD_FLAG = "--melodex-python-module-child"
 
 
 def _open_inherited_stdio(fd: int, mode: str) -> TextIO | None:
@@ -76,6 +77,16 @@ def python_child_command(script: Path) -> list[str]:
     return [sys.executable, "-u", str(script)]
 
 
+def python_module_child_command(module: str) -> list[str]:
+    """Return a command that runs a bundled Melodex module without GUI startup."""
+    module = str(module or "").strip()
+    if not module:
+        raise ValueError("module name is required")
+    if getattr(sys, "frozen", False):
+        return [sys.executable, MODULE_CHILD_FLAG, module]
+    return [sys.executable, "-u", "-m", module]
+
+
 def _line_buffer_stdio() -> None:
     for stream in (sys.stdout, sys.stderr):
         reconfigure = getattr(stream, "reconfigure", None)
@@ -133,18 +144,52 @@ def maybe_run_child_from_argv(argv: Sequence[str] | None = None) -> int | None:
     """Handle frozen child-worker mode before QApplication is imported."""
 
     values = list(sys.argv[1:] if argv is None else argv)
-    if not values or values[0] != CHILD_FLAG:
+    if not values:
         return None
-    if len(values) < 2:
-        if _restore_child_stdio():
-            print("Melodex child-worker mode requires a script path", file=sys.stderr)
-        return 2
-    return run_child_script(Path(values[1]), values[2:])
+
+    if values[0] == CHILD_FLAG:
+        if len(values) < 2:
+            if _restore_child_stdio():
+                print("Melodex child-worker mode requires a script path", file=sys.stderr)
+            return 2
+        return run_child_script(Path(values[1]), values[2:])
+
+    if values[0] == MODULE_CHILD_FLAG:
+        if len(values) < 2:
+            if _restore_child_stdio():
+                print("Melodex module-child mode requires a module name", file=sys.stderr)
+            return 2
+        if not _restore_child_stdio():
+            return 2
+        _line_buffer_stdio()
+        os.environ["MELODEX_CHILD_PROCESS"] = "1"
+        os.environ["PYTHONUNBUFFERED"] = "1"
+        module = str(values[1])
+        sys.argv = [module, *[str(value) for value in values[2:]]]
+        try:
+            runpy.run_module(module, run_name="__main__", alter_sys=True)
+        except SystemExit as exc:
+            code = exc.code
+            if code is None:
+                return 0
+            if isinstance(code, int):
+                return int(code)
+            print(str(code), file=sys.stderr, flush=True)
+            return 1
+        except BaseException:
+            import traceback
+            traceback.print_exc(file=sys.stderr)
+            return 1
+        return 0
+
+    return None
 
 
 __all__ = [
     "CHILD_FLAG",
+    "MODULE_CHILD_FLAG",
     "python_child_command",
+    "python_module_child_command",
     "run_child_script",
     "maybe_run_child_from_argv",
 ]

@@ -1,13 +1,20 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
 import pytest
 
 from melodex.capabilities import ExternalExtension
-from melodex.child_host import CHILD_FLAG, maybe_run_child_from_argv, python_child_command
+from melodex.child_host import (
+    CHILD_FLAG,
+    MODULE_CHILD_FLAG,
+    maybe_run_child_from_argv,
+    python_child_command,
+    python_module_child_command,
+)
 from melodex.provider import ExternalProvider
 from melodex.instance_identity import instance_server_name
 
@@ -44,6 +51,50 @@ def test_child_worker_executes_script_without_gui(tmp_path: Path):
     payload = json.loads(marker.read_text("utf-8"))
     assert payload == {"argv": ["hello"], "child": "1"}
 
+
+
+
+def test_frozen_python_module_children_reenter_melodex_without_gui(monkeypatch):
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    command = python_module_child_command("melodex.scan_worker")
+    assert command == [
+        sys.executable,
+        MODULE_CHILD_FLAG,
+        "melodex.scan_worker",
+    ]
+
+
+def test_source_python_module_children_use_dash_m(monkeypatch):
+    monkeypatch.delattr(sys, "frozen", raising=False)
+    assert python_module_child_command("melodex.scan_worker") == [
+        sys.executable,
+        "-u",
+        "-m",
+        "melodex.scan_worker",
+    ]
+
+
+def test_scan_worker_module_child_smoke_does_not_start_gui(capsys):
+    original_argv = list(sys.argv)
+    original_child = os.environ.get("MELODEX_CHILD_PROCESS")
+    original_unbuffered = os.environ.get("PYTHONUNBUFFERED")
+    try:
+        code = maybe_run_child_from_argv(
+            [MODULE_CHILD_FLAG, "melodex.scan_worker", "--smoke"]
+        )
+        assert code == 0
+        lines = [line for line in capsys.readouterr().out.splitlines() if line.strip()]
+        assert json.loads(lines[-1]) == {"scan_worker_smoke": True}
+    finally:
+        sys.argv = original_argv
+        if original_child is None:
+            os.environ.pop("MELODEX_CHILD_PROCESS", None)
+        else:
+            os.environ["MELODEX_CHILD_PROCESS"] = original_child
+        if original_unbuffered is None:
+            os.environ.pop("PYTHONUNBUFFERED", None)
+        else:
+            os.environ["PYTHONUNBUFFERED"] = original_unbuffered
 
 def test_external_provider_frozen_command_uses_child_host(monkeypatch, tmp_path: Path):
     (tmp_path / "provider.py").write_text("pass\n", "utf-8")

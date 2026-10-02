@@ -3797,13 +3797,23 @@ class MainWindow(QMainWindow):
             result=dict(snapshot or {})
 
             if bool(result.get("cancelled")):
+                hard_cancelled=bool(result.get("hard_cancelled"))
                 if hasattr(self,"library_browser"):
                     self.library_browser.finish_scan("cancelled")
-                    QTimer.singleShot(3500,self.library_browser.clear_scan_status)
+                    if hard_cancelled:
+                        self.library_browser.scan_progress_detail.setText(
+                            "A blocked filesystem operation was stopped safely. "
+                            "The existing library was kept unchanged."
+                        )
+                    QTimer.singleShot(4500,self.library_browser.clear_scan_status)
                 self._show_home()
                 self.statusBar().showMessage(
-                    "Music indexing cancelled · existing library kept",
-                    5000,
+                    (
+                        "Blocked music scan stopped safely · existing library kept"
+                        if hard_cancelled
+                        else "Music indexing cancelled · existing library kept"
+                    ),
+                    6000,
                 )
                 if self._local_scan_pending:
                     self._local_scan_pending=False
@@ -3882,6 +3892,7 @@ class MainWindow(QMainWindow):
                     roots_snapshot,
                     progress=sig.progress.emit,
                     control=control,
+                    isolated=True,
                 )
                 if not bool(result.get("cancelled")):
                     sig.progress.emit({

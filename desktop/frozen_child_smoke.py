@@ -7,6 +7,7 @@ import tempfile
 from pathlib import Path
 
 CHILD_FLAG = "--melodex-python-child"
+MODULE_CHILD_FLAG = "--melodex-python-module-child"
 
 
 def main() -> int:
@@ -59,7 +60,42 @@ def main() -> int:
         expected = {"jsonrpc": "2.0", "id": 1, "result": {"frozen_child": True}}
         if response != expected:
             raise SystemExit(f"unexpected frozen child response: {response!r}")
-    print(f"Frozen child RPC smoke passed: {executable}")
+    module_process = subprocess.run(
+        [
+            str(executable),
+            MODULE_CHILD_FLAG,
+            "melodex.scan_worker",
+            "--smoke",
+        ],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=15,
+        check=False,
+    )
+    module_lines = [
+        line for line in module_process.stdout.splitlines()
+        if line.strip()
+    ]
+    if module_process.returncode != 0 or not module_lines:
+        raise SystemExit(
+            "frozen scan-worker module child failed "
+            f"with exit {module_process.returncode}\n"
+            f"stdout: {module_process.stdout}\n"
+            f"stderr: {module_process.stderr}"
+        )
+    try:
+        module_response = json.loads(module_lines[-1])
+    except json.JSONDecodeError as exc:
+        raise SystemExit(
+            f"frozen scan-worker child emitted invalid JSON: {module_process.stdout}"
+        ) from exc
+    if module_response != {"scan_worker_smoke": True}:
+        raise SystemExit(
+            f"unexpected frozen scan-worker response: {module_response!r}"
+        )
+
+    print(f"Frozen child RPC + scan-worker smoke passed: {executable}")
     return 0
 
 
