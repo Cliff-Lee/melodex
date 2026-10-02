@@ -2,7 +2,7 @@
   "schema_version": 1,
   "id": "org.melodex.librivox",
   "name": "LibriVox",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "publisher": "Melodex",
   "protocol_version": "1.0",
   "description": "Public-domain LibriVox audiobooks indexed through the Internet Archive LibriVox collection. Search titles, authors or subjects and play hosted MP3 recordings.",
@@ -16,7 +16,7 @@
     "network_hosts": [
       "archive.org",
       "www.archive.org",
-      "*.us.archive.org"
+      "*.archive.org"
     ],
     "offline_downloads": false,
     "local_files": false,

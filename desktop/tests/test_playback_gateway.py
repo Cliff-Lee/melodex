@@ -197,3 +197,17 @@ def test_gateway_drops_credentials_when_allowed_redirect_changes_origin():
         redirect.server_close()
         target.shutdown()
         target.server_close()
+
+def test_gateway_allows_regional_archive_cdn_under_archive_wildcard():
+    gateway = PlaybackGateway()
+    try:
+        url = gateway.validate_resource(
+            {
+                "url": "https://dn711108.ca.archive.org/0/items/book/chapter.mp3",
+                "_playback_allowed_hosts": ["archive.org", "*.archive.org"],
+            }
+        )
+        assert url.startswith("https://dn711108.ca.archive.org/")
+    finally:
+        gateway.close()
+

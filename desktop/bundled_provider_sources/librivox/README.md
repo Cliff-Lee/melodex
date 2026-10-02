@@ -12,3 +12,5 @@ index and media host used by this integration.
 
 Rights note: LibriVox recordings are public domain in the United States. Users
 should check copyright status in their own jurisdiction.
+
+Version 0.1.5 also permits Internet Archive's regional `*.archive.org` media CDN hosts, so legitimate redirects such as `*.ca.archive.org` remain playable through Melodex's secure playback gateway.
