@@ -3,6 +3,9 @@ from __future__ import annotations
 import ast
 import json
 import os
+import inspect
+import threading
+import time
 import subprocess
 import sys
 
@@ -191,3 +194,96 @@ def test_local_control_bridge_is_submitted_as_background_work(
     finally:
         window.close()
         app.processEvents()
+
+
+def test_async_jobs_share_process_lived_ui_dispatcher(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    try:
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        pytest.skip(f"Qt GUI runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(
+        main_window.MainWindow,
+        "_start_local_bridge",
+        lambda self: None,
+    )
+
+    window = main_window.MainWindow()
+    results: list[int] = []
+    try:
+        dispatcher = window._ui_callback_dispatcher
+        assert dispatcher.parent() is app
+
+        source = inspect.getsource(main_window.MainWindow._run_async)
+        assert "WorkerSignals()" not in source
+        assert "_last_worker" not in source
+
+        for index in range(64):
+            window._run_async(
+                lambda value=index: value,
+                lambda value: results.append(int(value)),
+                priority="foreground",
+                task_name=f"dispatcher-stress-{index}",
+            )
+
+        deadline = time.monotonic() + 5.0
+        while len(results) < 64 and time.monotonic() < deadline:
+            app.processEvents()
+            time.sleep(0.005)
+
+        assert sorted(results) == list(range(64))
+        assert window._ui_callback_dispatcher is dispatcher
+    finally:
+        window.close()
+        app.processEvents()
+
+
+def test_async_completion_after_window_close_is_harmless(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    try:
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        pytest.skip(f"Qt GUI runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(
+        main_window.MainWindow,
+        "_start_local_bridge",
+        lambda self: None,
+    )
+
+    release = threading.Event()
+    delivered: list[object] = []
+    window = main_window.MainWindow()
+
+    def blocked_work():
+        release.wait(timeout=2.0)
+        return "late"
+
+    window._run_async(
+        blocked_work,
+        delivered.append,
+        priority="foreground",
+        task_name="close-race",
+    )
+    window.close()
+    window.deleteLater()
+    app.processEvents()
+
+    release.set()
+    deadline = time.monotonic() + 1.0
+    while time.monotonic() < deadline:
+        app.processEvents()
+        time.sleep(0.005)
+
+    assert delivered == []
