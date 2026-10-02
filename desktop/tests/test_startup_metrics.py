@@ -119,3 +119,30 @@ def test_flow_import_keeps_numpy_cold() -> None:
         timeout=20,
     )
     assert completed.returncode == 0, completed.stderr
+
+
+def test_main_window_import_keeps_optional_numeric_and_http_stacks_cold() -> None:
+    desktop = Path(__file__).resolve().parents[1]
+    env = dict(os.environ)
+    existing = str(env.get("PYTHONPATH") or "")
+    env["PYTHONPATH"] = (
+        str(desktop)
+        if not existing
+        else str(desktop) + os.pathsep + existing
+    )
+    code = (
+        "import sys; import melodex.main_window; "
+        "assert 'numpy' not in sys.modules, 'MainWindow eagerly imported NumPy'; "
+        "assert 'requests' not in sys.modules, 'MainWindow eagerly imported requests'"
+    )
+    completed = subprocess.run(
+        [sys.executable, "-c", code],
+        env=env,
+        cwd=desktop.parent,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+    assert completed.returncode == 0, completed.stderr
