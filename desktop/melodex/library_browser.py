@@ -1563,6 +1563,14 @@ class LibraryBrowser(QWidget):
                     card.set_cover(path)
             row, column = divmod(index, columns)
             self.album_grid.addWidget(card, row, column, Qt.AlignTop)
+        row_count=(len(rendered)+columns-1)//columns if rendered else 0
+        spacing=max(0,int(self.album_grid.verticalSpacing()))
+        minimum_height=(
+            row_count*286 + max(0,row_count-1)*spacing
+            if row_count
+            else 0
+        )
+        self.album_container.setMinimumHeight(minimum_height)
         self.album_container.adjustSize()
         if self.last_catalog_metrics:
             self.last_catalog_metrics["rendered_album_count"] = len(self.cards)
@@ -1603,6 +1611,14 @@ class LibraryBrowser(QWidget):
                     card.set_image(artist_path,artist_photo=True)
             row, column = divmod(index, columns)
             self.artist_grid.addWidget(card, row, column, Qt.AlignTop)
+        row_count=(len(rendered)+columns-1)//columns if rendered else 0
+        spacing=max(0,int(self.artist_grid.verticalSpacing()))
+        minimum_height=(
+            row_count*272 + max(0,row_count-1)*spacing
+            if row_count
+            else 0
+        )
+        self.artist_container.setMinimumHeight(minimum_height)
         self.artist_container.adjustSize()
         if self.last_catalog_metrics:
             self.last_catalog_metrics["rendered_artist_count"] = len(self.artist_cards)
