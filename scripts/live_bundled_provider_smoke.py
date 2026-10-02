@@ -11,7 +11,9 @@ from urllib.parse import urlsplit
 from melodex.provider_manager import ProviderManager
 
 
-# Real network checks; intentionally not part of deterministic PR CI.
+ROOT = Path(__file__).resolve().parents[1]
+
+# Real network checks; intentionally separate from deterministic unit tests.
 CASES = {
     "org.melodex.internetarchive.audio": "Grateful Dead",
     "org.melodex.librivox": "Odyssey",
@@ -20,6 +22,12 @@ CASES = {
     "org.melodex.somafm": "Groove Salad",
     "org.melodex.wikimedia.commons.audio": "Beethoven",
     "org.melodex.ccmixter": "ambient",
+    "org.melodex.example.openverse-audio": "ambient",
+}
+
+OPTIONAL_PACKAGES = {
+    "org.melodex.example.openverse-audio":
+        ROOT / "provider-sdk/registry/packages/openverse-audio-0.1.1.mdxprovider",
 }
 
 
@@ -81,6 +89,14 @@ def _probe(resource: dict, *, timeout: float = 20.0) -> dict:
 
 def _verify_provider(manager: ProviderManager, provider_id: str, query: str) -> dict:
     provider = manager.providers.get(provider_id)
+    if provider is None and provider_id in OPTIONAL_PACKAGES:
+        package = OPTIONAL_PACKAGES[provider_id]
+        if not package.is_file():
+            raise RuntimeError(f"optional provider package is missing: {package.name}")
+        provider = manager.install_package(
+            package,
+            install_source="live-audit",
+        )
     if provider is None:
         raise RuntimeError("provider was not installed from bundled payload")
 
@@ -129,18 +145,28 @@ def _verify_provider(manager: ProviderManager, provider_id: str, query: str) -> 
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Live smoke test the provider packages bundled with Melodex."
+        description="Live smoke test Melodex provider integrations."
     )
     parser.add_argument("--json", type=Path, help="Optional output report path.")
+    parser.add_argument(
+        "--provider",
+        choices=sorted(CASES),
+        help="Verify only one bundled provider. Useful for CI matrix jobs.",
+    )
     args = parser.parse_args()
 
+    selected_cases = (
+        {args.provider: CASES[args.provider]}
+        if args.provider
+        else CASES
+    )
     results = []
     failures = []
 
     with tempfile.TemporaryDirectory(prefix="melodex-live-provider-") as tmp:
         manager = ProviderManager(Path(tmp))
         try:
-            for provider_id, query in CASES.items():
+            for provider_id, query in selected_cases.items():
                 try:
                     result = _verify_provider(manager, provider_id, query)
                     results.append(result)
@@ -167,8 +193,8 @@ def main() -> int:
 
     report = {
         "schema_version": 1,
-        "purpose": "live bundled-provider search/resolve/playback reachability",
-        "providers_expected": len(CASES),
+        "purpose": "live provider search/resolve/playback reachability",
+        "providers_expected": len(selected_cases),
         "providers_passed": sum(1 for row in results if row.get("status") == "pass"),
         "providers_failed": len(failures),
         "results": results,
@@ -183,7 +209,7 @@ def main() -> int:
 
     print(
         f"SUMMARY {report['providers_passed']}/{report['providers_expected']} "
-        "bundled providers live-verified"
+        "providers live-verified"
     )
     return 1 if failures else 0
 
