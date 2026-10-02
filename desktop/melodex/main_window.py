@@ -23,10 +23,6 @@ from .provider_manager import ProviderManager
 from .flow import FlowEngine
 from .mind import MindEngine
 from .local_intelligence import LocalIntelligenceService
-from .music_map import MusicMapWidget
-from .music_map_model import build_music_map
-from .album_wall import AlbumWallWidget
-from .album_wall_model import build_album_wall
 from .music_knowledge import MusicKnowledgeStore, build_knowledge_graph
 from .music_pathfinder import find_music_path
 from .music_journey import STAGE_LABELS, build_music_journey
@@ -48,10 +44,6 @@ from .llm_bridge import LLMClient, LLMSettings, llm_track_summary
 from .bridge_server import ProviderBridge
 from .playlist_io import load_playlist, parse_playlist_text, save_playlist
 from .metadata import RichMetadataService
-from .rich_now_playing import RichNowPlayingWidget
-from .living_canvas import LivingCanvasView
-from .visualization_models import build_constellation, build_visual_memory
-from .plugin_directory import PluginDirectoryDialog
 from .plugin_configuration_dialog import configure_plugin
 from .plugin_onboarding import plugin_needs_setup
 from .plugin_health import health_badge, health_summary
@@ -59,7 +51,6 @@ from .diagnostics import write_diagnostics
 from .responsiveness import UiResponsivenessMonitor
 from .background_scheduler import BackgroundScheduler
 from .motion import MotionController, FAST_MOTION_MS, STANDARD_MOTION_MS
-from .library_browser import LibraryBrowser
 from .library_scan_process import LibraryScanProcess
 from .ux_components import (
     ActionCard,
@@ -330,14 +321,28 @@ class MainWindow(QMainWindow):
             self.pages[name] = page
             self.stack.addWidget(page)
 
+        # Heavy surfaces get only a tiny first-paint shell at startup. Their
+        # modules and widgets are constructed on the first navigation to them.
+        self._lazy_page_builders = {
+            "library": self._build_library,
+            "now_playing": self._build_now_playing,
+            "album_wall": self._build_album_wall,
+            "music_map": self._build_music_map,
+        }
+        self._built_lazy_pages: set[str] = set()
+        self.lazy_page_build_metrics: dict[str, float] = {}
+        for page, title, subtitle in (
+            ("library", "My Music", "Preparing your collection…"),
+            ("now_playing", "Now playing", "Preparing lyrics, artwork and visuals…"),
+            ("album_wall", "Album Wall", "Preparing your visual collection…"),
+            ("music_map", "Music Map", "Preparing your music landscape…"),
+        ):
+            self._prepare_lazy_page_shell(page, title, subtitle)
+
         self._build_home()
-        self._build_library()
         self._build_explore()
-        self._build_now_playing()
         self._build_for_you()
         self._build_discover()
-        self._build_album_wall()
-        self._build_music_map()
         self._build_journeys()
         self._build_playlists()
         self._build_moments()
@@ -978,13 +983,76 @@ class MainWindow(QMainWindow):
         if hasattr(self,"play_button"):
             self.play_button.setText("❚❚" if playing else "▶")
 
+    @staticmethod
+    def _clear_layout_items(layout) -> None:
+        while layout.count():
+            item=layout.takeAt(0)
+            child=item.layout()
+            if child is not None:
+                MainWindow._clear_layout_items(child)
+                child.deleteLater()
+            widget=item.widget()
+            if widget is not None:
+                widget.deleteLater()
+
     def _page_layout(self, page: str, title: str, subtitle: str=""):
-        lay=QVBoxLayout(self.pages[page]); lay.setContentsMargins(28,24,28,24)
+        existing=self.pages[page].layout()
+        if existing is None:
+            lay=QVBoxLayout(self.pages[page])
+        else:
+            lay=existing
+            self._clear_layout_items(lay)
+        lay.setContentsMargins(28,24,28,24)
+        lay.setSpacing(6)
         t=QLabel(title); t.setStyleSheet("font-size:28px;font-weight:700"); lay.addWidget(t)
         self.page_titles[page]=t
         if subtitle:
-            s=QLabel(subtitle); s.setWordWrap(True); s.setStyleSheet("color:#aab0ba"); lay.addWidget(s)
+            subtitle_label=QLabel(subtitle)
+            subtitle_label.setWordWrap(True)
+            subtitle_label.setStyleSheet("color:#aab0ba")
+            lay.addWidget(subtitle_label)
         return lay
+
+    def _prepare_lazy_page_shell(
+        self,
+        page: str,
+        title: str,
+        subtitle: str,
+    ) -> None:
+        lay=self._page_layout(page,title,subtitle)
+        hint=QLabel("Opening…")
+        hint.setStyleSheet("color:#758297;margin-top:8px")
+        lay.addWidget(hint)
+        lay.addStretch(1)
+
+    def _ensure_lazy_page_built(self, name: str) -> bool:
+        builder=self._lazy_page_builders.get(name)
+        if builder is None or name in self._built_lazy_pages:
+            return False
+        started=time.perf_counter()
+        builder()
+        elapsed_ms=(time.perf_counter()-started)*1000.0
+        self._built_lazy_pages.add(name)
+        self.lazy_page_build_metrics[name]=round(elapsed_ms,3)
+        self._startup_mark(f"lazy_page_ready:{name}")
+        return True
+
+    def _build_lazy_page_if_current(self, name: str, generation: int) -> None:
+        if (
+            self._closing
+            or generation != self._navigation_generation
+            or name != self.current_page
+        ):
+            return
+        self._ensure_lazy_page_built(name)
+        self.pages[name].update()
+        QTimer.singleShot(
+            0,
+            lambda page=name, token=generation: self._populate_page_if_current(
+                page,
+                token,
+            ),
+        )
 
     def _build_home(self):
         l=self._page_layout(
@@ -1113,6 +1181,9 @@ class MainWindow(QMainWindow):
 
 
     def _build_now_playing(self):
+        from .living_canvas import LivingCanvasView
+        from .rich_now_playing import RichNowPlayingWidget
+                
         l=self._page_layout(
             "now_playing",
             "Now playing",
@@ -1329,6 +1400,8 @@ class MainWindow(QMainWindow):
         l.addLayout(row2)
 
     def _build_library(self):
+        from .library_browser import LibraryBrowser
+        
         l=self._page_layout(
             "library",
             "My Music",
@@ -1427,6 +1500,8 @@ class MainWindow(QMainWindow):
         l.addStretch(1)
 
     def _build_album_wall(self):
+        from .album_wall import AlbumWallWidget
+        
         l=self._page_layout(
             "album_wall",
             "Album Wall",
@@ -1498,6 +1573,8 @@ class MainWindow(QMainWindow):
 
 
     def _build_music_map(self):
+        from .music_map import MusicMapWidget
+        
         l=self._page_layout(
             "music_map",
             "Music Map",
@@ -2283,6 +2360,19 @@ class MainWindow(QMainWindow):
         )
         if interaction is not None:
             self.responsiveness.end_interaction(interaction)
+
+        if (
+            name in self._lazy_page_builders
+            and name not in self._built_lazy_pages
+        ):
+            QTimer.singleShot(
+                self._page_refresh_delay_ms,
+                lambda page=name, token=generation: self._build_lazy_page_if_current(
+                    page,
+                    token,
+                ),
+            )
+            return
 
         # Navigation acknowledgement and page population are separate phases.
         # Give Qt one short frame to paint the destination shell before any
@@ -3934,6 +4024,8 @@ class MainWindow(QMainWindow):
             QTimer.singleShot(700,lambda:self.player.seek(position))
 
     def _refresh_taste(self):
+        if not hasattr(self,"taste_label"):
+            return
         s=self.state.taste_summary(); self.taste_label.setText(f"Taste memory: {s.get('tracks',0)} tracks learned · {s.get('artists',0)} artists · completion rate {float(s.get('completion_rate',0))*100:.0f}%")
 
     # ------------------------------- sources/search
@@ -4319,6 +4411,8 @@ class MainWindow(QMainWindow):
         self._refresh_plugin_presence()
 
     def _plugin_directory(self, capability: str = ""):
+        from .plugin_directory import PluginDirectoryDialog
+        
         dialog=PluginDirectoryDialog(
             self.providers,
             on_installed=self._refresh_sources_and_plugin_presence,
@@ -5162,6 +5256,9 @@ class MainWindow(QMainWindow):
 
     # ------------------------------- Music Map
     def _build_album_wall_payload(self):
+        from .album_wall_model import build_album_wall
+        from .music_map_model import build_music_map
+                
         catalog=self.providers.local_catalog()
         profiles, _seed_refs, ref_map, _analysed = self.local_intelligence.build_snapshot(
             catalog,
@@ -5305,6 +5402,9 @@ class MainWindow(QMainWindow):
         self._run_async(load,self.album_wall.set_artwork, priority="background", task_name="album-wall-online-artwork")
 
     def _build_music_map_payload(self):
+        from .music_map_model import build_music_map
+        from .music_map_model import build_music_map
+
         catalog=self.providers.local_catalog()
         profiles, _seed_refs, ref_map, _analysed = self.local_intelligence.build_snapshot(
             catalog,
@@ -6456,6 +6556,8 @@ class MainWindow(QMainWindow):
         self.living_canvas.set_position(self._visual_position_ms, self._visual_duration_ms)
 
     def _request_visual_mode_data(self, request: str) -> None:
+        from .visualization_models import build_visual_memory
+
         if self._closing or not hasattr(self, "living_canvas"):
             return
         mode, _, scale = str(request or "").partition(":")
@@ -6507,6 +6609,8 @@ class MainWindow(QMainWindow):
         )
 
     def _visual_context_loaded(self, sequence: int, mode: str, payload: object) -> None:
+        from .visualization_models import build_constellation
+
         if self._closing or sequence != self._visual_context_sequence:
             return
         if not hasattr(self, "living_canvas") or self.living_canvas.active_mode != mode:

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import ast
 import json
+
+from pathlib import Path
 
 import pytest
 
@@ -37,3 +40,25 @@ def test_startup_timeline_rejects_empty_phase() -> None:
     timeline = StartupTimeline(started_at=0.0)
     with pytest.raises(ValueError):
         timeline.mark("   ", now=1.0)
+
+
+def test_main_window_does_not_eager_import_heavy_page_modules() -> None:
+    path = Path(__file__).resolve().parents[1] / "melodex" / "main_window.py"
+    tree = ast.parse(path.read_text("utf-8"))
+    imported = {
+        node.module
+        for node in tree.body
+        if isinstance(node, ast.ImportFrom) and node.level == 1 and node.module
+    }
+    forbidden = {
+        "library_browser",
+        "rich_now_playing",
+        "living_canvas",
+        "album_wall",
+        "album_wall_model",
+        "music_map",
+        "music_map_model",
+        "visualization_models",
+        "plugin_directory",
+    }
+    assert forbidden.isdisjoint(imported), imported & forbidden
