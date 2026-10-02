@@ -200,6 +200,26 @@ def _submit_latest_wins_churn(
             )
 
 
+def _measure_action(
+    app,
+    monitor,
+    samples: dict[str, list[float]] | None,
+    label: str,
+    fn,
+) -> float:
+    token = monitor.begin_interaction(f"soak:{label}") if monitor is not None else None
+    started = time.perf_counter()
+    fn()
+    elapsed_ms = (time.perf_counter() - started) * 1000.0
+    if monitor is not None:
+        monitor.end_interaction(token)
+    if samples is not None:
+        samples.setdefault(str(label), []).append(elapsed_ms)
+    # A real user cannot perform the next action before Qt gets another turn.
+    _drain_qt(app)
+    return elapsed_ms
+
+
 def _run_interaction_cycle(
     app,
     browser: Any,
@@ -208,38 +228,91 @@ def _run_interaction_cycle(
     cycle: int,
     *,
     pace_ms: int,
+    monitor=None,
+    action_samples: dict[str, list[float]] | None = None,
 ) -> float:
     started = time.perf_counter()
     phase = cycle % 6
 
     if phase in {0, 3}:
-        browser.set_view("albums")
+        view = "albums"
+        _measure_action(
+            app,
+            monitor,
+            action_samples,
+            "view:albums",
+            lambda: browser.set_view("albums"),
+        )
         bar = browser.album_scroll.verticalScrollBar()
         target = bar.maximum() if phase == 3 else 0
-        bar.setValue(target)
+        _measure_action(
+            app,
+            monitor,
+            action_samples,
+            "scroll:albums",
+            lambda: bar.setValue(target),
+        )
     elif phase in {1, 4}:
-        browser.set_view("artists")
+        view = "artists"
+        _measure_action(
+            app,
+            monitor,
+            action_samples,
+            "view:artists",
+            lambda: browser.set_view("artists"),
+        )
         bar = browser.artist_scroll.verticalScrollBar()
         target = bar.maximum() if phase == 4 else 0
-        bar.setValue(target)
+        _measure_action(
+            app,
+            monitor,
+            action_samples,
+            "scroll:artists",
+            lambda: bar.setValue(target),
+        )
     else:
-        browser.set_view("tracks")
+        view = "tracks"
+        _measure_action(
+            app,
+            monitor,
+            action_samples,
+            "view:tracks",
+            lambda: browser.set_view("tracks"),
+        )
         bar = browser.track_list.verticalScrollBar()
-        bar.setValue(bar.maximum() if phase == 5 else 0)
+        target = bar.maximum() if phase == 5 else 0
+        _measure_action(
+            app,
+            monitor,
+            action_samples,
+            "scroll:tracks",
+            lambda: bar.setValue(target),
+        )
 
-    # Alternate a narrow query and a clear. This repeatedly rebuilds the visible
-    # filtered model without changing the underlying synthetic catalog.
+    # Alternate a narrow query and a clear. Treat it as a separate user action
+    # rather than combining it with navigation in the same GUI turn.
     if cycle % 4 == 0 and catalog:
         row = catalog[(cycle * 97) % len(catalog)]
-        browser.search.setText(str(row.get("album") or row.get("artist") or ""))
+        query = str(row.get("album") or row.get("artist") or "")
+        _measure_action(
+            app,
+            monitor,
+            action_samples,
+            f"filter:{view}:set",
+            lambda: browser.search.setText(query),
+        )
     else:
-        browser.search.clear()
+        _measure_action(
+            app,
+            monitor,
+            action_samples,
+            f"filter:{view}:clear",
+            browser.search.clear,
+        )
 
     _submit_latest_wins_churn(scheduler, cycle)
+    _drain_qt(app)
 
-    # Process multiple turns so zero-delay viewport hydration and monitor timers
-    # get a chance to run even under sustained churn.
-    _drain_qt(app, turns=2)
     if pace_ms > 0:
         time.sleep(float(pace_ms) / 1000.0)
     _drain_qt(app)
@@ -402,6 +475,7 @@ def run_soak(
     monitor.start()
 
     cycle_ms: list[float] = []
+    action_samples: dict[str, list[float]] = {}
     checkpoints: list[dict[str, Any]] = []
     soak_started = time.perf_counter()
     cycle = 0
@@ -417,6 +491,8 @@ def run_soak(
                 catalog,
                 cycle + int(warmup_cycles),
                 pace_ms=max(0, int(pace_ms)),
+                monitor=monitor,
+                action_samples=action_samples,
             )
         )
         cycle += 1
@@ -464,6 +540,16 @@ def run_soak(
     )
     hydrated_budget = viewport_rows + browser._track_overscan_rows * 2
 
+    action_summary = {
+        label: {
+            "count": len(values),
+            "median_ms": round(statistics.median(values), 3) if values else 0.0,
+            "p95_ms": round(_percentile(values, 95.0), 3),
+            "max_ms": round(max(values, default=0.0), 3),
+        }
+        for label, values in sorted(action_samples.items())
+    }
+
     report = {
         "schema": 1,
         "profile_tracks": int(track_count),
@@ -471,6 +557,7 @@ def run_soak(
         "warmup_cycles": int(warmup_cycles),
         "duration_seconds": round(time.perf_counter() - soak_started, 3),
         "cycles_completed": cycle,
+        "actions": action_summary,
         "cycles": {
             "median_ms": round(statistics.median(cycle_ms), 3) if cycle_ms else 0.0,
             "p95_ms": round(_percentile(cycle_ms, 95.0), 3),
