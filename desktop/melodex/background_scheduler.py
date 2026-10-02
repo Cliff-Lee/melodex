@@ -279,19 +279,20 @@ class BackgroundScheduler:
     def _task_completed(self, task: _QueuedTask, completed: Future) -> None:
         try:
             if not task.future.cancelled():
-                try:
-                    result = completed.result()
-                except Exception as exc:
-                    task.future.set_exception(exc)
-                else:
-                    with self._condition:
-                        stale = self._task_is_stale_locked(task)
-                        if stale:
-                            self._stale_results_suppressed += 1
+                with self._condition:
+                    stale = self._task_is_stale_locked(task)
                     if stale:
-                        task.future.set_exception(StaleTaskError(task.key))
-                    else:
-                        task.future.set_result(result)
+                        self._stale_results_suppressed += 1
+                if stale:
+                    # Once work is obsolete, suppress both its value and any
+                    # late error. The newer keyed task owns the user-facing
+                    # outcome.
+                    task.future.set_exception(StaleTaskError(task.key))
+                else:
+                    try:
+                        task.future.set_result(completed.result())
+                    except Exception as exc:
+                        task.future.set_exception(exc)
         finally:
             with self._condition:
                 self._active_total = max(0, self._active_total - 1)
