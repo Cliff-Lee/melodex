@@ -576,3 +576,61 @@ def test_old_index_without_fingerprints_is_refreshed_once(
         assert again["changes"]["metadata_reads"] == 0
     finally:
         manager.close()
+
+
+
+def test_partial_directory_walk_preserves_cached_root(
+    monkeypatch,
+    tmp_path: Path,
+):
+    root = tmp_path / "nas"
+    root.mkdir()
+    first_path = root / "first.flac"
+    hidden_path = root / "hidden.flac"
+    first_path.write_bytes(b"first")
+    hidden_path.write_bytes(b"hidden")
+
+    manager = ProviderManager(tmp_path)
+    try:
+        manager.configure_local_roots([root])
+        monkeypatch.setattr(
+            LocalFilesProvider,
+            "_metadata",
+            staticmethod(_metadata_row),
+        )
+        initial = manager.scan_local_roots_snapshot([root])
+        manager.persist_local_scan_snapshot([root], initial)
+        assert len(manager.library_index.load_tracks([root])) == 2
+
+        def partial_walk(_root, onerror=None):
+            yield str(root), [], ["first.flac"]
+            if onerror is not None:
+                onerror(PermissionError("simulated unreadable NAS subfolder"))
+
+        monkeypatch.setattr(local_files.os, "walk", partial_walk)
+        metadata_calls = []
+        monkeypatch.setattr(
+            LocalFilesProvider,
+            "_metadata",
+            staticmethod(
+                lambda p: metadata_calls.append(p.name) or _metadata_row(p)
+            ),
+        )
+
+        partial = manager.scan_local_roots_snapshot([root])
+
+        assert partial["changes"]["incomplete_roots"] == 1
+        assert partial["changes"]["removed"] == 0
+        assert partial["index_records"] == []
+        assert metadata_calls == []
+
+        persisted = manager.persist_local_scan_snapshot([root], partial)
+        assert persisted["roots_incomplete"] == 1
+        merged = manager.indexed_scan_result([root], partial)
+        names = {
+            Path(track["local_path"]).name
+            for track in merged["tracks"]
+        }
+        assert names == {"first.flac", "hidden.flac"}
+    finally:
+        manager.close()
