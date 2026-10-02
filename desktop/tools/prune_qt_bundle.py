@@ -58,12 +58,55 @@ def _qt_pdf_dependents(root: Path) -> list[str]:
     return sorted(set(dependents))
 
 
-def _qt_pdf_frameworks(root: Path) -> list[Path]:
-    matches = []
-    for path in root.rglob("QtPdf.framework"):
-        if path.is_dir():
-            matches.append(path)
+QML_FAMILY = (
+    "QtQuick",
+    "QtQml",
+    "QtQmlMeta",
+    "QtQmlModels",
+    "QtQmlWorkerScript",
+)
+
+
+def _frameworks_named(root: Path, names: tuple[str, ...]) -> list[Path]:
+    matches: list[Path] = []
+    for name in names:
+        for path in root.rglob(f"{name}.framework"):
+            if path.is_dir():
+                matches.append(path)
     return sorted(set(matches))
+
+
+def _qt_pdf_frameworks(root: Path) -> list[Path]:
+    return _frameworks_named(root, ("QtPdf",))
+
+
+def _family_dependents(root: Path, names: tuple[str, ...]) -> list[str]:
+    markers = tuple(name.lower() for name in names)
+    family_paths = tuple(f"/{name.lower()}.framework/" for name in names)
+    dependents: list[str] = []
+    for path in _files(root):
+        relative = "/" + path.relative_to(root).as_posix().lower()
+        if any(marker in relative for marker in family_paths):
+            continue
+        for dep in _dependencies(path):
+            lower = dep.lower()
+            if any(marker in lower for marker in markers):
+                dependents.append(path.relative_to(root).as_posix())
+                break
+    return sorted(set(dependents))
+
+
+def _remove_tree(path: Path) -> int:
+    size = 0
+    for child in path.rglob("*"):
+        if child.is_symlink() or not child.is_file():
+            continue
+        try:
+            size += int(child.stat().st_size)
+        except OSError:
+            pass
+    shutil.rmtree(path)
+    return size
 
 
 def prune_bundle(root: Path) -> dict:
@@ -90,17 +133,37 @@ def prune_bundle(root: Path) -> dict:
     removed_frameworks: list[str] = []
     if not dependents and shutil.which("otool") is not None:
         for framework in _qt_pdf_frameworks(root):
-            size = 0
-            for path in framework.rglob("*"):
-                if path.is_symlink() or not path.is_file():
-                    continue
-                try:
-                    size += int(path.stat().st_size)
-                except OSError:
-                    pass
-            bytes_removed += size
+            bytes_removed += _remove_tree(framework)
             removed_frameworks.append(framework.relative_to(root).as_posix())
-            shutil.rmtree(framework)
+
+    removed_virtual_keyboard: list[str] = []
+    for path in list(_files(root)):
+        lower = path.as_posix().lower()
+        if (
+            "/plugins/platforminputcontexts/" in lower
+            and "virtualkeyboard" in path.name.lower()
+        ):
+            try:
+                bytes_removed += int(path.stat().st_size)
+            except OSError:
+                pass
+            removed_virtual_keyboard.append(path.relative_to(root).as_posix())
+            path.unlink(missing_ok=True)
+
+    removed_vk_frameworks: list[str] = []
+    for framework in _frameworks_named(
+        root,
+        ("QtVirtualKeyboard", "QtVirtualKeyboardQml"),
+    ):
+        bytes_removed += _remove_tree(framework)
+        removed_vk_frameworks.append(framework.relative_to(root).as_posix())
+
+    qml_dependents = _family_dependents(root, QML_FAMILY)
+    removed_qml_frameworks: list[str] = []
+    if not qml_dependents and shutil.which("otool") is not None:
+        for framework in _frameworks_named(root, QML_FAMILY):
+            bytes_removed += _remove_tree(framework)
+            removed_qml_frameworks.append(framework.relative_to(root).as_posix())
 
     return {
         "schema_version": 1,
@@ -109,6 +172,15 @@ def prune_bundle(root: Path) -> dict:
         "removed_qt_pdf_frameworks": removed_frameworks,
         "bytes_removed": bytes_removed,
         "qt_pdf_pruned": bool(removed_plugins and removed_frameworks and not dependents),
+        "removed_virtual_keyboard_plugins": removed_virtual_keyboard,
+        "removed_virtual_keyboard_frameworks": removed_vk_frameworks,
+        "qml_family_dependents_after_virtual_keyboard_removal": qml_dependents,
+        "removed_qml_frameworks": removed_qml_frameworks,
+        "qml_family_pruned": bool(
+            (removed_virtual_keyboard or removed_vk_frameworks)
+            and removed_qml_frameworks
+            and not qml_dependents
+        ),
     }
 
 
@@ -118,6 +190,7 @@ def markdown(report: dict) -> str:
         "",
         f"- qpdf plugins removed: **{len(report.get('removed_qpdf_plugins') or [])}**",
         f"- QtPdf framework removed: **{'yes' if report.get('qt_pdf_pruned') else 'no'}**",
+        f"- Virtual keyboard/QML chain removed: **{'yes' if report.get('qml_family_pruned') else 'no'}**",
         f"- Bytes removed: **{int(report.get('bytes_removed') or 0):,}**",
         "",
     ]
@@ -150,6 +223,11 @@ def main() -> int:
     # rather than silently claiming the optimization succeeded.
     if report["removed_qpdf_plugins"] and not report["qt_pdf_pruned"]:
         return 2
+    if (
+        report["removed_virtual_keyboard_plugins"]
+        or report["removed_virtual_keyboard_frameworks"]
+    ) and not report["qml_family_pruned"]:
+        return 3
     return 0
 
 
