@@ -41,8 +41,8 @@ On first launch, the desktop app installs these seven providers into the user's 
 | SomaFM 0.1.1 | Curated live internet radio | Streams come from SomaFM; station terms apply. |
 | NicheDB Radio 0.1.2 | Daily-refreshed radio search with genre/country/language/codec/popularity metadata | Discovery uses NicheDB; playback connects directly to each station stream. |
 | Radio Browser 0.1.2 | Community radio station search and playback | Availability and rights depend on each station. |
-| Wikimedia Commons Audio 0.1.1 | Openly licensed and public-domain audio | Licence and attribution are specific to each file. |
-| LibriVox 0.1.4 | Public-domain audiobooks and spoken-word audio | Searches the Internet Archive LibriVox collection; public-domain status can depend on jurisdiction. |
+| Wikimedia Commons Audio 0.1.2 | Openly licensed and public-domain audio | Licence and attribution are specific to each file. |
+| LibriVox 0.1.5 | Public-domain audiobooks and spoken-word audio | Searches the Internet Archive LibriVox collection; public-domain status can depend on jurisdiction. |
 | Internet Archive Audio 0.1.1 | Publicly accessible audio search and playback | Search is lightweight; file metadata resolves only when a result is opened or played. Rights and access vary by item. |
 
 These provider packages connect to their respective sources; the installer does not contain music or audiobook files. LibriVox 0.1.4 deliberately uses Internet Archive's LibriVox collection for search and hosted MP3 playback, avoiding interactive search load on the volunteer-hosted LibriVox API. In **Sources & plugins → Power tools**, choose **Remove selected provider** to remove one. Removed bundled sources stay removed across restarts. Choose **Restore bundled sources** to install them again. A newer manually installed provider is kept when it is newer than the bundled copy.
