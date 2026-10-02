@@ -78,6 +78,7 @@ bundled = ROOT / "desktop" / "melodex" / "bundled_providers"
 required_bundled = {
     "LibriVox-0.1.4.mdxprovider",
     "NicheDB-Radio-0.1.2.mdxprovider",
+    "Internet-Archive-Audio-0.1.1.mdxprovider",
 }
 for name in required_bundled:
     if not (bundled / name).is_file():
@@ -86,6 +87,8 @@ if (bundled / "LibriVox-0.1.2.mdxprovider").exists():
     errors.append("obsolete LibriVox-0.1.2.mdxprovider is still bundled")
 if (bundled / "NicheDB-Radio-0.1.0.mdxprovider").exists():
     errors.append("obsolete NicheDB-Radio-0.1.0.mdxprovider is still bundled")
+if (bundled / "Internet-Archive-Audio-0.1.0.mdxprovider").exists():
+    errors.append("obsolete Internet-Archive-Audio-0.1.0.mdxprovider is still bundled")
 
 live_smoke = ROOT / "scripts" / "live_bundled_provider_smoke.py"
 if not live_smoke.is_file():
