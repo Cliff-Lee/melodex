@@ -1739,6 +1739,7 @@ def test_search_failure_preserves_stale_useful_results(monkeypatch, tmp_path):
 
 def test_stale_search_response_cannot_replace_newer_request(monkeypatch, tmp_path):
     try:
+        from PySide6.QtCore import Qt
         from PySide6.QtWidgets import QApplication
         import melodex.main_window as main_window
     except ImportError as exc:
