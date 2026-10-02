@@ -301,3 +301,45 @@ def test_changed_fingerprint_updates_only_changed_index_row(tmp_path: Path):
     assert result["tracks_deleted"] == 0
     titles = {row["title"] for row in index.load_tracks([root])}
     assert titles == {"One", "Two updated"}
+
+
+
+def test_cancelled_index_commit_rolls_back_partial_changes(tmp_path: Path):
+    root = tmp_path / "music"
+    index = LocalLibraryIndex(tmp_path / "library-index.sqlite3")
+    index.sync_roots([root])
+
+    old_path = root / "old.flac"
+    old_track = _track(old_path, title="Old")
+    old_snapshot = _snapshot(root, [old_track])
+    old_snapshot["index_records"] = [
+        {"track": dict(old_track), "size": 10, "mtime_ns": 100}
+    ]
+    index.replace_scan([root], old_snapshot)
+
+    new_path = root / "new.flac"
+    new_track = _track(new_path, title="New")
+    new_snapshot = _snapshot(root, [new_track])
+    new_snapshot["index_records"] = [
+        {"track": dict(new_track), "size": 20, "mtime_ns": 200}
+    ]
+
+    checks = {"count": 0}
+
+    def cancel_before_commit() -> bool:
+        checks["count"] += 1
+        # Start transaction, enter the root, perform row mutations, then abort
+        # at the final pre-commit checkpoint.
+        return checks["count"] >= 3
+
+    result = index.replace_scan(
+        [root],
+        new_snapshot,
+        cancelled=cancel_before_commit,
+    )
+
+    assert result["cancelled"] is True
+    assert checks["count"] >= 3
+    stored = index.load_tracks([root])
+    assert len(stored) == 1
+    assert stored[0]["title"] == "Old"

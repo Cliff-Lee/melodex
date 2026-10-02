@@ -6,7 +6,7 @@ import os
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 
 SCHEMA_VERSION = 1
@@ -273,6 +273,8 @@ class LocalLibraryIndex:
         self,
         roots: list[Path],
         snapshot: dict[str, Any],
+        *,
+        cancelled: Callable[[], bool] | None = None,
     ) -> dict[str, Any]:
         """Atomically persist completed scan results.
 
@@ -363,7 +365,31 @@ class LocalLibraryIndex:
         with self._connect() as db:
             db.execute("BEGIN IMMEDIATE")
             try:
+                if cancelled is not None and cancelled():
+                    db.rollback()
+                    return {
+                        "cancelled": True,
+                        "roots_persisted": 0,
+                        "tracks_persisted": 0,
+                        "tracks_written": 0,
+                        "tracks_reused": 0,
+                        "tracks_deleted": 0,
+                        "roots_unavailable": 0,
+                        "roots_incomplete": 0,
+                    }
                 for root_id in available_ids:
+                    if cancelled is not None and cancelled():
+                        db.rollback()
+                        return {
+                            "cancelled": True,
+                            "roots_persisted": 0,
+                            "tracks_persisted": 0,
+                            "tracks_written": 0,
+                            "tracks_reused": 0,
+                            "tracks_deleted": 0,
+                            "roots_unavailable": 0,
+                            "roots_incomplete": 0,
+                        }
                     root = root_by_id.get(root_id)
                     if root is None:
                         continue
@@ -463,6 +489,18 @@ class LocalLibraryIndex:
                         """,
                         (now, len(rows), root_id),
                     )
+                if cancelled is not None and cancelled():
+                    db.rollback()
+                    return {
+                        "cancelled": True,
+                        "roots_persisted": 0,
+                        "tracks_persisted": 0,
+                        "tracks_written": 0,
+                        "tracks_reused": 0,
+                        "tracks_deleted": 0,
+                        "roots_unavailable": 0,
+                        "roots_incomplete": 0,
+                    }
                 db.commit()
             except Exception:
                 db.rollback()

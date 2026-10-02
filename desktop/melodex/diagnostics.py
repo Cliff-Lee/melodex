@@ -31,6 +31,7 @@ _SCAN_METRIC_FIELDS = (
     "stat_failures",
     "metadata_reused",
     "incomplete_roots",
+    "process_isolated",
 )
 
 _CATALOG_METRIC_FIELDS = (

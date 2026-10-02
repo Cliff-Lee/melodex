@@ -1204,36 +1204,71 @@ def test_slow_library_scan_keeps_qt_event_loop_responsive(monkeypatch, tmp_path)
     monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
     monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
 
+    started = threading.Event()
+    release = threading.Event()
+    worker_thread = {}
+
+    class SlowRunner:
+        def __init__(
+            self,
+            data_dir,
+            roots,
+            *,
+            on_progress,
+            on_done,
+            on_error,
+            **_kwargs,
+        ):
+            self.roots = [Path(x) for x in roots]
+            self.on_progress = on_progress
+            self.on_done = on_done
+            self.on_error = on_error
+            self.paused = False
+
+        def start(self):
+            def work():
+                worker_thread["name"] = threading.current_thread().name
+                worker_thread["main"] = (
+                    threading.current_thread() is threading.main_thread()
+                )
+                started.set()
+                release.wait(timeout=2)
+                self.on_done(
+                    {
+                        "tracks": [],
+                        "metrics": {
+                            "thread_name": threading.current_thread().name,
+                            "main_thread": False,
+                            "root_count": 1,
+                            "tracks_indexed": 0,
+                            "total_seconds": 0.1,
+                        },
+                        "changes": {},
+                        "cancelled": False,
+                    }
+                )
+
+            threading.Thread(target=work, name="fake-scan-process", daemon=True).start()
+
+        def pause(self):
+            self.paused = True
+
+        def resume(self):
+            self.paused = False
+
+        def cancel(self, **_kwargs):
+            self.on_done({"tracks": [], "cancelled": True})
+
+        def shutdown(self, **_kwargs):
+            release.set()
+
+    monkeypatch.setattr(main_window, "LibraryScanProcess", SlowRunner)
+
     window = main_window.MainWindow()
     root = tmp_path / "slow-nas"
     root.mkdir()
     window.providers.configure_local_roots([root])
 
-    started = threading.Event()
-    release = threading.Event()
-    worker_thread = {}
-
-    def slow_snapshot(roots=None, **kwargs):
-        worker_thread["name"] = threading.current_thread().name
-        worker_thread["main"] = threading.current_thread() is threading.main_thread()
-        started.set()
-        release.wait(timeout=2)
-        return {
-            "tracks": [],
-            "metrics": {
-                "thread_name": threading.current_thread().name,
-                "main_thread": False,
-                "root_count": 1,
-                "tracks_indexed": 0,
-                "total_seconds": 0.1,
-            },
-        }
-
-    monkeypatch.setattr(
-        window.providers,
-        "scan_local_roots_snapshot",
-        slow_snapshot,
-    )
     apply_threads = []
     original_apply = window.providers.apply_local_scan_snapshot
 
@@ -1287,56 +1322,86 @@ def test_root_change_during_scan_discards_stale_snapshot(monkeypatch, tmp_path):
     monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
     monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
 
-    window = main_window.MainWindow()
     root_a = tmp_path / "root-a"
     root_b = tmp_path / "root-b"
     root_a.mkdir()
     root_b.mkdir()
-    window.providers.configure_local_roots([root_a])
 
     first_started = threading.Event()
-    release_first = threading.Event()
+    first_cancelled = threading.Event()
     calls = []
 
-    def scan_snapshot(roots=None, **kwargs):
-        roots = [Path(x) for x in (roots or [])]
-        calls.append(tuple(str(x) for x in roots))
-        if len(calls) == 1:
-            first_started.set()
-            release_first.wait(timeout=2)
-            stale = {
-                "provider_id": "local",
-                "track_id": str(root_a / "stale.flac"),
-                "local_path": str(root_a / "stale.flac"),
-                "title": "Stale",
-                "artist": "Old",
-            }
-            return {
-                "tracks": [stale],
-                "index_tracks": [dict(stale)],
-                "root_states": [
-                    {"path": str(root_a), "available": True}
-                ],
-                "metrics": {"tracks_indexed": 1, "main_thread": False},
-            }
-        fresh = {
-            "provider_id": "local",
-            "track_id": str(root_b / "fresh.flac"),
-            "local_path": str(root_b / "fresh.flac"),
-            "title": "Fresh",
-            "artist": "New",
-        }
-        return {
-            "tracks": [fresh],
-            "index_tracks": [dict(fresh)],
-            "root_states": [
-                {"path": str(root_a), "available": True},
-                {"path": str(root_b), "available": True},
-            ],
-            "metrics": {"tracks_indexed": 1, "main_thread": False},
-        }
+    class RestartingRunner:
+        def __init__(
+            self,
+            data_dir,
+            roots,
+            *,
+            on_progress,
+            on_done,
+            on_error,
+            **_kwargs,
+        ):
+            self.roots = [Path(x) for x in roots]
+            self.on_done = on_done
+            self.on_error = on_error
+            self.paused = False
+            self.cancel_event = threading.Event()
+            calls.append(tuple(str(x) for x in self.roots))
+            self.number = len(calls)
 
-    monkeypatch.setattr(window.providers, "scan_local_roots_snapshot", scan_snapshot)
+        def start(self):
+            if self.number == 1:
+                def first():
+                    first_started.set()
+                    self.cancel_event.wait(timeout=2)
+                    first_cancelled.set()
+                    self.on_done(
+                        {
+                            "tracks": [],
+                            "metrics": {},
+                            "changes": {},
+                            "cancelled": True,
+                        }
+                    )
+                threading.Thread(target=first, daemon=True).start()
+                return
+
+            fresh = {
+                "provider_id": "local",
+                "track_id": str(root_b / "fresh.flac"),
+                "local_path": str(root_b / "fresh.flac"),
+                "title": "Fresh",
+                "artist": "New",
+            }
+            threading.Thread(
+                target=lambda: self.on_done(
+                    {
+                        "tracks": [fresh],
+                        "metrics": {"tracks_indexed": 1, "main_thread": False},
+                        "changes": {"added": 1},
+                        "cancelled": False,
+                    }
+                ),
+                daemon=True,
+            ).start()
+
+        def pause(self):
+            self.paused = True
+
+        def resume(self):
+            self.paused = False
+
+        def cancel(self, **_kwargs):
+            self.cancel_event.set()
+
+        def shutdown(self, **_kwargs):
+            self.cancel_event.set()
+
+    monkeypatch.setattr(main_window, "LibraryScanProcess", RestartingRunner)
+
+    window = main_window.MainWindow()
+    window.providers.configure_local_roots([root_a])
     window._start_local_scan("first")
 
     deadline = time.monotonic() + 1.0
@@ -1348,7 +1413,6 @@ def test_root_change_during_scan_discards_stale_snapshot(monkeypatch, tmp_path):
     window.providers.configure_local_roots([root_a, root_b])
     window._start_local_scan("roots changed")
     assert window._local_scan_pending is True
-    release_first.set()
 
     deadline = time.monotonic() + 2.0
     while time.monotonic() < deadline and (
@@ -1357,14 +1421,16 @@ def test_root_change_during_scan_discards_stale_snapshot(monkeypatch, tmp_path):
         app.processEvents()
         time.sleep(0.005)
 
+    assert first_cancelled.is_set()
     catalog = window.providers.local_catalog()
     assert len(calls) == 2
+    assert calls[0] == (str(root_a),)
+    assert calls[1] == (str(root_a), str(root_b))
     assert len(catalog) == 1
     assert catalog[0]["title"] == "Fresh"
 
     window.close()
     app.processEvents()
-
 
 
 def test_library_scan_progress_panel_is_clear_and_reassuring():
@@ -1485,6 +1551,51 @@ def test_cancelled_main_window_scan_keeps_existing_catalog(monkeypatch, tmp_path
     monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
     monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
 
+    worker_started = threading.Event()
+
+    class CancellableRunner:
+        def __init__(
+            self,
+            data_dir,
+            roots,
+            *,
+            on_progress,
+            on_done,
+            on_error,
+            **_kwargs,
+        ):
+            self.roots = [Path(x) for x in roots]
+            self.on_done = on_done
+            self.paused = False
+
+        def start(self):
+            worker_started.set()
+
+        def pause(self):
+            self.paused = True
+
+        def resume(self):
+            self.paused = False
+
+        def cancel(self, **_kwargs):
+            threading.Thread(
+                target=lambda: self.on_done(
+                    {
+                        "tracks": [],
+                        "metrics": {"tracks_indexed": 0, "main_thread": False},
+                        "changes": {},
+                        "cancelled": True,
+                        "hard_cancelled": True,
+                    }
+                ),
+                daemon=True,
+            ).start()
+
+        def shutdown(self, **_kwargs):
+            pass
+
+    monkeypatch.setattr(main_window, "LibraryScanProcess", CancellableRunner)
+
     window = main_window.MainWindow()
     root = tmp_path / "nas"
     root.mkdir()
@@ -1503,31 +1614,8 @@ def test_cancelled_main_window_scan_keeps_existing_catalog(monkeypatch, tmp_path
     )
     window._refresh_library()
 
-    worker_started = threading.Event()
-
-    def cancellable_snapshot(roots=None, *, progress=None, control=None):
-        worker_started.set()
-        while control is not None and not control.cancelled:
-            time.sleep(0.005)
-        return {
-            "tracks": [],
-            "metrics": {"tracks_indexed": 0, "main_thread": False},
-            "cancelled": True,
-        }
-
-    monkeypatch.setattr(
-        window.providers,
-        "scan_local_roots_snapshot",
-        cancellable_snapshot,
-    )
-
     window._start_local_scan("cancel test")
-    deadline = time.monotonic() + 1.0
-    while time.monotonic() < deadline and not worker_started.is_set():
-        app.processEvents()
-        time.sleep(0.005)
     assert worker_started.is_set()
-
     window._cancel_local_scan()
 
     deadline = time.monotonic() + 2.0
@@ -1540,10 +1628,10 @@ def test_cancelled_main_window_scan_keeps_existing_catalog(monkeypatch, tmp_path
     assert len(catalog) == 1
     assert catalog[0]["title"] == "Existing"
     assert "cancelled" in window.library_browser.scan_progress_title.text().lower()
+    assert "unresponsive scanner terminated" in window.statusBar().currentMessage()
 
     window.close()
     app.processEvents()
-
 
 
 def test_indexed_library_loads_on_startup_without_automatic_rescan(
@@ -1650,7 +1738,7 @@ def test_existing_roots_without_index_trigger_one_migration_scan(
     app.processEvents()
 
 
-def test_library_index_persistence_runs_off_qt_main_thread(
+def test_gui_library_scan_uses_isolated_runner_not_provider_thread(
     monkeypatch,
     tmp_path,
 ):
@@ -1665,43 +1753,87 @@ def test_library_index_persistence_runs_off_qt_main_thread(
     monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
     monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
 
+    created = []
+
+    class ImmediateRunner:
+        def __init__(
+            self,
+            data_dir,
+            roots,
+            *,
+            on_progress,
+            on_done,
+            on_error,
+            **_kwargs,
+        ):
+            self.roots = [Path(x) for x in roots]
+            self.on_done = on_done
+            self.paused = False
+            created.append(
+                {
+                    "data_dir": Path(data_dir),
+                    "roots": list(self.roots),
+                }
+            )
+
+        def start(self):
+            threading.Thread(
+                target=lambda: self.on_done(
+                    {
+                        "tracks": [],
+                        "metrics": {"tracks_indexed": 0, "main_thread": False},
+                        "changes": {},
+                        "cancelled": False,
+                    }
+                ),
+                daemon=True,
+            ).start()
+
+        def pause(self):
+            self.paused = True
+
+        def resume(self):
+            self.paused = False
+
+        def cancel(self, **_kwargs):
+            self.on_done({"tracks": [], "cancelled": True})
+
+        def shutdown(self, **_kwargs):
+            pass
+
+    monkeypatch.setattr(main_window, "LibraryScanProcess", ImmediateRunner)
+
     window = main_window.MainWindow()
     root = tmp_path / "nas"
     window.providers.configure_local_roots([root])
 
-    persistence_threads = []
-
-    def fake_scan(roots=None, **kwargs):
-        return {
-            "tracks": [],
-            "index_tracks": [],
-            "root_states": [{"path": str(root), "available": True}],
-            "metrics": {"tracks_indexed": 0, "main_thread": False},
-            "cancelled": False,
-        }
-
-    def fake_persist(roots, snapshot):
-        persistence_threads.append(
-            threading.current_thread() is threading.main_thread()
-        )
-        return {"tracks_persisted": 0}
-
-    monkeypatch.setattr(window.providers, "scan_local_roots_snapshot", fake_scan)
-    monkeypatch.setattr(window.providers, "persist_local_scan_snapshot", fake_persist)
     monkeypatch.setattr(
         window.providers,
-        "indexed_scan_result",
-        lambda roots, snapshot: dict(snapshot),
+        "scan_local_roots_snapshot",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("GUI must not scan the library in its own process")
+        ),
+    )
+    monkeypatch.setattr(
+        window.providers,
+        "persist_local_scan_snapshot",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("GUI must not persist the scan in its own worker thread")
+        ),
     )
 
-    window._start_local_scan("persistence thread test")
+    window._start_local_scan("isolated process test")
     deadline = time.monotonic() + 2.0
     while time.monotonic() < deadline and window._local_scan_in_progress:
         app.processEvents()
         time.sleep(0.005)
 
     assert window._local_scan_in_progress is False
-    assert persistence_threads == [False]
+    assert len(created) == 1
+    assert created[0]["data_dir"] == tmp_path
+    assert created[0]["roots"] == [root]
 
     window.close()
     app.processEvents()
+
+

@@ -352,3 +352,54 @@ python tools/profile_incremental_rescan.py \
 - legacy cache rows without fingerprints are refreshed once, then become reusable
 - progress distinguishes files discovered from files whose metadata actually needs reading
 - diagnostics report aggregate incremental counts without exposing filenames or paths
+
+
+## Campaign 6 — disposable NAS scan process
+
+Background threads keep the Qt event loop responsive, but they cannot safely
+interrupt every operating-system filesystem call. A network share can strand a
+thread inside `stat`, `scandir`, or a metadata read long after the user has
+pressed Cancel.
+
+GUI-initiated library scans now run in a dedicated child process:
+
+```text
+Melodex GUI
+  |
+  | JSON request + pause/resume/cancel controls
+  v
+disposable scan process
+  |
+  | walk roots + stat files + read changed tags
+  | update library-index.sqlite3 transactionally
+  v
+JSON result
+  |
+  v
+Melodex GUI applies completed catalog
+```
+
+Cancel is cooperative first. If the worker does not exit promptly, Melodex
+terminates the entire scan process. The GUI, playback state and previously
+loaded library remain alive.
+
+This also makes application shutdown deterministic: a live scanner is
+terminated before the rest of the desktop services are closed.
+
+### Frozen-build coverage
+
+The existing PyInstaller child-process smoke test now launches the built-in
+library scanner as well as an external provider/plugin child. This specifically
+checks that macOS and Windows packaged builds can re-enter the Melodex
+executable in scan-worker mode before Qt starts.
+
+### Campaign 6 acceptance checks
+
+- a normal scan completes through the isolated child process and persists the index
+- progress still reaches the Qt UI while the scan is isolated
+- Pause/Resume controls are forwarded without blocking the GUI
+- cooperative Cancel keeps the previous live catalog
+- a deliberately unresponsive worker is forcibly terminated within a bounded time
+- changing roots stops the stale scan and queues the new root set
+- closing Melodex terminates a live scan worker
+- packaged macOS and Windows builds pass the frozen scan-child smoke test
