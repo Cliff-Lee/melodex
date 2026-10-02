@@ -122,6 +122,14 @@ def test_flow_import_keeps_numpy_cold() -> None:
 
 
 def test_main_window_import_keeps_optional_numeric_and_http_stacks_cold() -> None:
+    # The broad Python matrix intentionally does not apt-install Qt's Linux
+    # display libraries. The dedicated Fluid gate does, so enforce this import
+    # contract there while letting the stripped matrix skip cleanly.
+    try:
+        from PySide6.QtGui import QPixmap  # noqa: F401
+    except ImportError as exc:
+        pytest.skip(f"Qt GUI runtime is unavailable: {exc}")
+
     desktop = Path(__file__).resolve().parents[1]
     env = dict(os.environ)
     existing = str(env.get("PYTHONPATH") or "")
