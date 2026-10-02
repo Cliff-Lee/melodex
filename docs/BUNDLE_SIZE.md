@@ -49,3 +49,45 @@ compare the result against exactly the same report.
 - the largest framework/resource areas are visible without unpacking the app manually
 - symlinked framework files are not counted twice
 - size reporting does not change runtime contents or behaviour
+
+
+## Campaign 8B — minimal Qt bundle
+
+The 8A Intel baseline measured:
+
+- installed `Melodex.app`: **701,886,703 bytes (669.4 MB)**
+- compressed DMG: **306,247,025 bytes (292.1 MB)**
+- `Contents/Frameworks/PySide6`: **605,719,380 bytes**
+- `Contents/Resources/PySide6`: **50,434,264 bytes**
+- `QtWebEngineCore` alone: **247,131,536 bytes**
+
+Melodex source imports only four Qt families:
+
+```text
+QtCore
+QtGui
+QtWidgets
+QtMultimedia
+QtNetwork
+```
+
+8B therefore removes PyInstaller's blanket `--collect-all PySide6` from both
+macOS and Windows builds and lets the PyInstaller Qt hooks collect the imported
+modules plus their runtime dependencies.
+
+A build-time guard verifies the five required PySide modules remain present and
+rejects heavyweight families that Melodex does not use, including WebEngine,
+QML/Quick, Quick3D, Designer, PDF, Charts, Bluetooth, NFC, Sensors, Serial and
+Qt SQL drivers.
+
+`--collect-all keyring` is deliberately unchanged in this campaign. Python,
+NumPy and other dependency trimming belongs to 8C.
+
+### 8B acceptance checks
+
+- macOS Intel and Apple Silicon frozen builds still launch and pass child-process/provider smoke tests
+- Windows frozen build still passes the same smoke tests
+- QtCore, QtGui, QtWidgets, QtMultimedia and QtNetwork remain present
+- QtWebEngine and the other explicitly unused heavyweight Qt families are absent
+- installed macOS size is materially below the 669.4 MB 8A baseline
+- the same 8A report is generated so before/after numbers are directly comparable
