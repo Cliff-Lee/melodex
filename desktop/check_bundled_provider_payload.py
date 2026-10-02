@@ -12,6 +12,7 @@ EXPECTED = {
         "0.1.0",
     ),
     "LibriVox-0.1.4.mdxprovider": ("org.melodex.librivox", "0.1.4"),
+    "NicheRadio-0.1.0.mdxprovider": ("org.melodex.nicheradio", "0.1.0"),
     "Radio-Browser-0.1.2.mdxprovider": ("org.melodex.radiobrowser", "0.1.2"),
     "SomaFM-0.1.1.mdxprovider": ("org.melodex.somafm", "0.1.1"),
     "Wikimedia-Commons-Audio-0.1.1.mdxprovider": (
