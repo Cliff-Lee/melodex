@@ -167,3 +167,29 @@ def test_cached_status_never_reads_secret_store_and_reports_pending(tmp_path: Pa
     assert secrets.get_calls == 1
     assert cached_again["ready"] is True
     assert cached_again["pending"] is False
+
+
+def test_default_secret_store_is_deferred_until_secret_access(
+    monkeypatch,
+    tmp_path: Path,
+):
+    import melodex.plugin_config as plugin_config
+
+    calls = {"created": 0}
+
+    def make_store():
+        calls["created"] += 1
+        return FakeSecretStore()
+
+    monkeypatch.setattr(plugin_config, "_default_secret_store", make_store)
+    broker = PluginConfigBroker(tmp_path)
+
+    assert calls["created"] == 0
+    assert broker.secret_storage == "deferred"
+
+    cached = broker.cached_status("org.example.provider", FIELDS)
+    assert cached["pending"] is True
+    assert calls["created"] == 0
+
+    broker.values("org.example.provider", FIELDS)
+    assert calls["created"] == 1
