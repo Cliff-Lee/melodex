@@ -76,15 +76,6 @@ class WorkerSignals(QObject):
     error = Signal(str)
     progress = Signal(object)
 
-
-class _VisualAnalysisSignals(QObject):
-    ready = Signal(str, object)
-
-
-class _VisualContextSignals(QObject):
-    ready = Signal(int, str, object)
-
-
 def _escape_html(value: Any) -> str:
     import html
     return html.escape(str(value or ""))
@@ -140,10 +131,6 @@ class MainWindow(QMainWindow):
         self.current_track: dict[str, Any] | None = None
         self._visual_position_ms = 0
         self._visual_duration_ms = 0
-        self._visual_analysis_signals = _VisualAnalysisSignals(self)
-        self._visual_analysis_signals.ready.connect(self._visual_analysis_loaded)
-        self._visual_context_signals = _VisualContextSignals(self)
-        self._visual_context_signals.ready.connect(self._visual_context_loaded)
         self._visual_context_sequence = 0
         self._visual_neighbour_tracks: dict[int, dict[str, Any]] = {}
         self.music_path_start_ref = ""
