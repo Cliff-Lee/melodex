@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import tempfile
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -58,17 +59,28 @@ def _probe(resource: dict, *, timeout: float = 20.0) -> dict:
     )
     headers.setdefault("Range", "bytes=0-4095")
 
-    req = urllib.request.Request(url, headers=headers, method="GET")
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as response:
-            body = response.read(4096)
-            status = int(getattr(response, "status", 200) or 200)
-            content_type = str(response.headers.get("Content-Type") or "")
-            final_url = str(response.geturl() or url)
-    except urllib.error.HTTPError as exc:
-        raise RuntimeError(f"media probe HTTP {exc.code}") from exc
-    except Exception as exc:
-        raise RuntimeError(f"media probe failed: {exc}") from exc
+    last_error = None
+    for attempt in range(3):
+        req = urllib.request.Request(url, headers=headers, method="GET")
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as response:
+                body = response.read(4096)
+                status = int(getattr(response, "status", 200) or 200)
+                content_type = str(response.headers.get("Content-Type") or "")
+                final_url = str(response.geturl() or url)
+            break
+        except urllib.error.HTTPError as exc:
+            last_error = exc
+            if exc.code not in {429, 500, 502, 503, 504} or attempt == 2:
+                raise RuntimeError(f"media probe HTTP {exc.code}") from exc
+            time.sleep(0.5 * (attempt + 1))
+        except Exception as exc:
+            last_error = exc
+            if attempt == 2:
+                raise RuntimeError(f"media probe failed: {exc}") from exc
+            time.sleep(0.5 * (attempt + 1))
+    else:
+        raise RuntimeError(f"media probe failed: {last_error}")
 
     if status not in {200, 206}:
         raise RuntimeError(f"media probe returned HTTP {status}")
@@ -142,7 +154,7 @@ def _verify_provider(manager: ProviderManager, provider_id: str, query: str) -> 
         raise RuntimeError(f"search returned no results for {query!r}")
 
     attempts = []
-    for track in rows[:5]:
+    for track in rows[:8]:
         label = f"{track.get('artist') or ''} — {track.get('title') or ''}".strip(" —")
         try:
             resolved = provider.resolve(track)
