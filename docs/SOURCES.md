@@ -39,7 +39,8 @@ On first launch, the desktop app installs these seven providers into the user's 
 | --- | --- | --- |
 | ccMixter 0.1.3 | Creative Commons music search and playback | Check each track's licence and attribution. |
 | SomaFM 0.1.1 | Curated live internet radio | Streams come from SomaFM; station terms apply. |
-| NicheDB Radio 0.1.0 | Daily-refreshed radio search with genre/country/language/codec/popularity metadata | Discovery uses NicheDB; playback connects directly to each station stream. |\n| Radio Browser 0.1.2 | Community radio station search and playback | Availability and rights depend on each station. |
+| NicheDB Radio 0.1.2 | Daily-refreshed radio search with genre/country/language/codec/popularity metadata | Discovery uses NicheDB; playback connects directly to each station stream. |
+| Radio Browser 0.1.2 | Community radio station search and playback | Availability and rights depend on each station. |
 | Wikimedia Commons Audio 0.1.1 | Openly licensed and public-domain audio | Licence and attribution are specific to each file. |
 | LibriVox 0.1.4 | Public-domain audiobooks and spoken-word audio | Searches the Internet Archive LibriVox collection; public-domain status can depend on jurisdiction. |
 | Internet Archive Audio 0.1.0 | Publicly accessible audio search and playback | Rights and access vary by item. |
@@ -56,7 +57,7 @@ The Plugin Centre shows the user-facing purpose, capabilities, permissions and i
 
 Installable packages are downloaded over HTTPS and must match the registry SHA-256 and byte size.
 
-Plugins that need required configuration open a setup form immediately after installation. If setup is cancelled or incomplete, Melodex keeps the plugin installed but labels it **SETUP NEEDED** until configuration is completed.
+Plugins that need required configuration open a setup form immediately after installation. If setup is cancelled or incomplete, Melodex keeps the plugin installed but labels it **SETUP NEEDED** until configuration is completed. NicheDB Radio needs no setup or API key for normal use.
 
 ## Health status
 

@@ -22,7 +22,7 @@ If an installed release does not contain something described in current document
 
 This distinction is normal for an actively developed project, but it should be stated rather than left for users to infer.
 
-The current release target is **v0.7.3**, which adds NicheDB Radio and major large-library reliability improvements. During its release, the stable application version is **0.7.3**; after publication, the next development cycle should use **0.7.4.dev0**.
+The current release target is **v0.7.4**, a hotfix release for NicheDB Radio HTTPS on packaged macOS builds and the Sources-page `QColor` crash. During its release, the stable application version is **0.7.4**; after publication, the next development cycle should use **0.7.5.dev0**.
 
 ## App version policy
 

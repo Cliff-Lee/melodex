@@ -159,3 +159,44 @@ def test_offline_station_is_not_playable(monkeypatch):
         provider.respond(
             {"method": "playback.resolve", "params": {"track_id": "101"}}
         )
+
+def test_http_uses_requests_session_and_reports_tls_failure(monkeypatch):
+    provider = _load_provider()
+    provider._SEARCH_CACHE.clear()
+
+    class FakeResponse:
+        headers = {"x-ratelimit-remaining": "599"}
+        status_code = 200
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"items": [_station()]}
+
+    calls = []
+
+    def fake_get(url, timeout):
+        calls.append((url, timeout))
+        return FakeResponse()
+
+    monkeypatch.setattr(provider._SESSION, "get", fake_get)
+    payload = provider._get_json(
+        "/search",
+        {"q": "jazz", "collection": "radio", "kind": "station", "limit": 5},
+    )
+    assert payload["items"]
+    assert calls and calls[0][0].startswith("https://nichedb.dev/api/v1/search?")
+    assert calls[0][1] == 15
+
+    def ssl_failure(url, timeout):
+        raise provider.requests.exceptions.SSLError("certificate chain unavailable")
+
+    provider._SEARCH_CACHE.clear()
+    monkeypatch.setattr(provider._SESSION, "get", ssl_failure)
+
+    import pytest
+
+    with pytest.raises(RuntimeError, match="TLS verification failed"):
+        provider._get_json("/search", {"q": "jazz"})
+

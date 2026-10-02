@@ -37,7 +37,8 @@ The desktop app carries seven audited provider packages and installs them automa
 | --- | ---: | --- |
 | Internet Archive Audio | 0.1.0 | Search/play openly accessible archive audio |
 | LibriVox | 0.1.4 | Public-domain audiobooks |
-| NicheDB Radio | 0.1.0 | Rich daily-refreshed internet-radio discovery |\n| Radio Browser | 0.1.2 | Internet radio directory |
+| NicheDB Radio | 0.1.2 | Rich daily-refreshed internet-radio discovery |
+| Radio Browser | 0.1.2 | Internet radio directory |
 | SomaFM | 0.1.1 | Curated internet radio |
 | Wikimedia Commons Audio | 0.1.1 | Openly licensed/public-domain audio |
 | ccMixter | 0.1.3 | Creative Commons music |
