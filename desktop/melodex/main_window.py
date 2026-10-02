@@ -156,6 +156,7 @@ class MainWindow(QMainWindow):
         self._local_scan_signals: WorkerSignals | None = None
         self._source_config_refresh_in_progress = False
         self._page_refresh_sequence = 0
+        self._library_browser_revision = -1
         self.externalCommand.connect(self._on_external_command)
 
         self.player = FlowPlayer(
@@ -2898,9 +2899,14 @@ class MainWindow(QMainWindow):
         order[i],order[j]=order[j],order[i]; self.providers.set_provider_order(order); self._refresh_sources(); self.sources_list.setCurrentRow(j)
         self.statusBar().showMessage("Source priority updated",2500)
 
-    def _refresh_library(self):
-        if hasattr(self,"library_browser"):
-            self.library_browser.set_catalog(self.providers.local_catalog())
+    def _refresh_library(self, *, force: bool = False):
+        if not hasattr(self,"library_browser"):
+            return
+        revision=self.providers.local_catalog_revision()
+        if not force and revision == self._library_browser_revision:
+            return
+        self.library_browser.set_catalog(self.providers.local_catalog())
+        self._library_browser_revision = revision
 
     def _play_library_track(self, track: object) -> None:
         if not isinstance(track,dict):
