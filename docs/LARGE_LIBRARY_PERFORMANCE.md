@@ -211,6 +211,77 @@ Task labels and user content are deliberately excluded from diagnostics.
 The Fluid Melodex release gate verifies priority ordering, total worker bounds, lane
 bounds, foreground-reserved capacity, cross-lane progress and MainWindow integration.
 
+## P8d result — cancellation and stale-work elimination
+
+P8d adds **latest-wins** cancellation to the bounded scheduler introduced in P8c.
+
+Logical background jobs may carry a stable key such as `discover-search` or
+`next-track-prefetch`. Replacing or explicitly invalidating that key:
+
+- cancels older queued work before it starts;
+- removes cancelled tasks from the scheduler heap immediately;
+- marks already-running work stale without attempting unsafe thread termination;
+- suppresses both late values and late errors from stale running work; and
+- delivers only the newest logical result to Qt.
+
+A synthetic burst of 50 rapid same-key submissions is required to keep both the
+runnable pending count and physical queue high-water mark bounded to one replacement
+slot while another worker is deliberately blocked.
+
+P8d applies latest-wins semantics to:
+
+- Discover search;
+- next-track prefetch;
+- current-track artwork;
+- current-track cached analysis;
+- Now Playing visual-context loads;
+- Album Wall model rebuilds;
+- Music Map model rebuilds;
+- viewport album-artwork cache hydration; and
+- viewport artist-photo cache hydration.
+
+Existing UI sequence/generation checks remain in place as a second safety layer.
+
+### Viewport and catalog invalidation
+
+If the user scrolls while automatic cached artwork is in flight, the old logical batch
+is invalidated immediately. Its in-flight keys are released so the new viewport can
+request visible work straight away. If the old worker later finishes, its result is
+suppressed.
+
+Replacing the My Music catalog also invalidates any in-flight cached artwork work before
+the browser swaps to the new model.
+
+### Navigation invalidation
+
+The existing P2 navigation generation already drops delayed page-population callbacks.
+P8d extends that to safe background model work:
+
+- leaving Album Wall invalidates an unfinished Album Wall model build;
+- leaving Music Map invalidates an unfinished Music Map model build; and
+- leaving Now Playing invalidates unfinished visual-context work.
+
+### Prefetch invalidation
+
+Scheduling a new next-track prefetch invalidates the old prefetch key immediately,
+before the replacement's delay timer fires. A queue/track change therefore stops stale
+speculative work from occupying the prefetch lane unnecessarily.
+
+### Diagnostics
+
+Redacted scheduler diagnostics now also expose:
+
+- invalidation count;
+- stale queued tasks actually cancelled; and
+- stale running results/errors suppressed.
+
+Logical task keys, track names, search text and paths are not exported.
+
+The Fluid Melodex release gate verifies queue replacement, stale-result suppression,
+stale-error suppression, bounded queue storage, real MainWindow callback suppression,
+search latest-wins behavior, viewport artwork invalidation, catalog replacement,
+prefetch invalidation and navigation cancellation.
+
 ## P8 campaign sequence
 
 ### P8a — Synthetic baseline
