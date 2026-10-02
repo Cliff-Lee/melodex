@@ -3138,7 +3138,6 @@ class MainWindow(QMainWindow):
             lane="disk",
             label="viewport-album-artwork",
             latest_key="viewport-album-artwork",
-            on_stale=lambda:self.library_browser.cached_artwork_batch_cancelled("albums"),
         )
 
     def _library_online_artwork_requested(self, requests: object) -> None:
@@ -3309,7 +3308,6 @@ class MainWindow(QMainWindow):
             lane="disk",
             label="viewport-artist-photo",
             latest_key="viewport-artist-photo",
-            on_stale=lambda:self.library_browser.cached_artwork_batch_cancelled("artists"),
         )
 
     def _library_artist_images_requested(self, requests: object) -> None:
