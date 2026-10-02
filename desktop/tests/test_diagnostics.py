@@ -264,6 +264,7 @@ def test_diagnostics_filters_ui_performance_fields():
                 "foreground_reserve": 1,
                 "active_total": 3,
                 "active_by_lane": {"disk": 1, "network": 2},
+                "active_by_priority": {"visible": 1, "background": 2},
                 "pending_total": 5,
                 "pending_by_priority": {
                     "foreground": 1,
@@ -342,6 +343,7 @@ def test_diagnostics_filters_ui_performance_fields():
     assert scheduler["active_total"] == 3
     assert scheduler["pending_total"] == 5
     assert scheduler["active_by_lane"]["network"] == 2
+    assert scheduler["active_by_priority"]["background"] == 2
     assert scheduler["pending_by_priority"]["prefetch"] == 2
     assert scheduler["queue_high_water"] == 8
     responsiveness = payload["performance"]["ui_responsiveness"]
