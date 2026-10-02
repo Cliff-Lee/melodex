@@ -158,6 +158,7 @@ class MainWindow(QMainWindow):
         self._metadata = None
         self._startup_mark("core_services_ready")
         self.bridge: ProviderBridge | None = None
+        self._bridge_start_pending = False
         self.current_history_id = 0
         self.current_track_started = 0.0
         self.current_track: dict[str, Any] | None = None
@@ -234,9 +235,12 @@ class MainWindow(QMainWindow):
         self.responsiveness.mark_action("startup:home")
         self._show_home()
         self._startup_mark("home_ready")
+        # The local AI/control bridge is useful, but it is not part of the
+        # first-screen contract. Some platform networking stacks can block
+        # socket setup for many seconds, so never bind it on the Qt UI thread.
         self.responsiveness.mark_action("startup:bridge")
+        self._startup_mark("bridge_start_scheduled")
         self._start_local_bridge()
-        self._startup_mark("bridge_ready")
         startup_roots=self.providers.local_roots()
         if startup_roots and not self.providers.local_index_ready(startup_roots):
             # One-time migration for existing users who have configured roots
@@ -7159,11 +7163,48 @@ class MainWindow(QMainWindow):
         finally:event.set()
 
     def _start_local_bridge(self):
-        if self.bridge:return
-        try:
-            self.bridge=ProviderBridge(self.providers,"127.0.0.1",0,controller=self._control_request,state_path=self.data_dir/"bridge.json"); self.bridge.start()
-        except Exception as exc:
-            self.bridge=None; self.statusBar().showMessage(f"AI control bridge could not start: {exc}",7000)
+        if self.bridge or self._bridge_start_pending or self._closing:
+            return
+        self._bridge_start_pending = True
+
+        def create_bridge():
+            bridge = ProviderBridge(
+                self.providers,
+                "127.0.0.1",
+                0,
+                controller=self._control_request,
+                state_path=self.data_dir / "bridge.json",
+            )
+            bridge.start()
+            if self._closing:
+                bridge.stop()
+                return None
+            return bridge
+
+        def bridge_ready(result):
+            self._bridge_start_pending = False
+            if result is None or self._closing:
+                return
+            self.bridge = result
+            self._startup_mark("bridge_ready")
+
+        def bridge_failed(error: str):
+            self._bridge_start_pending = False
+            if self._closing:
+                return
+            self.statusBar().showMessage(
+                f"AI control bridge could not start: {error}",
+                7000,
+            )
+
+        self._run_async(
+            create_bridge,
+            bridge_ready,
+            bridge_failed,
+            priority="background",
+            task_name="local-control-bridge",
+            replace_key="local-control-bridge",
+        )
 
     def _restart_bridge(self,host):
         token=self.bridge.token if self.bridge else ""; port=self.bridge.port if self.bridge else 0
@@ -7173,7 +7214,12 @@ class MainWindow(QMainWindow):
     def _bridge_dialog(self):
         if not self.bridge:
             self._start_local_bridge()
-            if not self.bridge:return
+            if self._bridge_start_pending:
+                self.statusBar().showMessage(
+                    "AI control bridge is starting in the background…",
+                    3000,
+                )
+            return
         if self.bridge.host=="127.0.0.1":
             choice=QMessageBox.question(self,"Provider Bridge",f"The private AI control bridge is running locally on port {self.bridge.port}.\n\nAllow phones/computers on your LAN to use the provider bridge too?\n\nChoose No to keep it local-only.",QMessageBox.Yes|QMessageBox.No)
             if choice==QMessageBox.Yes:
