@@ -1398,6 +1398,7 @@ def test_search_keeps_previous_results_visible_while_refreshing(monkeypatch, tmp
 
 def test_fast_search_never_flashes_delayed_loading_placeholder(monkeypatch, tmp_path):
     try:
+        from PySide6.QtCore import Qt
         from PySide6.QtWidgets import QApplication
         import melodex.main_window as main_window
     except ImportError as exc:
