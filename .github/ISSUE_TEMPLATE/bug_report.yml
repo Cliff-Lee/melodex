@@ -24,7 +24,7 @@ body:
     id: version
     attributes:
       label: Melodex version
-      placeholder: "e.g. v0.1.1"
+      placeholder: "e.g. the version shown in About or on the release page"
     validations:
       required: true
   - type: dropdown
@@ -39,6 +39,18 @@ body:
         - Not source-related
     validations:
       required: true
+  - type: dropdown
+    id: storage
+    attributes:
+      label: Local-library storage (if relevant)
+      options:
+        - Not a local-library issue
+        - Internal drive
+        - External drive
+        - NAS / network share
+        - Multiple locations
+        - Other / not sure
+
   - type: textarea
     id: problem
     attributes:
@@ -56,6 +68,12 @@ body:
         3. Play…
     validations:
       required: true
+  - type: textarea
+    id: library_context
+    attributes:
+      label: Library context (if relevant)
+      description: Approximate track count, file types, and whether the failure happened on first import, restart, rescan or playback. For NAS issues, include SMB/NFS if known.
+
   - type: textarea
     id: diagnostics
     attributes:

@@ -46,6 +46,33 @@ body:
     validations:
       required: true
 
+  - type: dropdown
+    id: storage_type
+    attributes:
+      label: Where is your music stored?
+      options:
+        - No local library
+        - Internal drive
+        - External USB / Thunderbolt drive
+        - NAS / network share
+        - Multiple locations
+        - Other / not sure
+    validations:
+      required: true
+
+  - type: dropdown
+    id: installation
+    attributes:
+      label: How did installation / first launch feel?
+      options:
+        - Straightforward
+        - Worked, but there was a warning or confusing step
+        - I needed instructions to get through it
+        - I could not get Melodex running
+        - Not applicable / source build
+    validations:
+      required: true
+
   - type: textarea
     id: tried
     attributes:
@@ -87,6 +114,19 @@ body:
         - No
     validations:
       required: true
+
+  - type: textarea
+    id: library_import
+    attributes:
+      label: If you added a library, how did indexing feel?
+      description: Especially useful for large libraries or NAS/network shares.
+      placeholder: "Responsive / slow but usable / appeared stuck / cancelled successfully / not tested"
+
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Redacted diagnostics (optional)
+      description: For desktop issues, Sources → Show power tools → Export diagnostics… creates a support JSON. Review it before attaching or quoting it.
 
   - type: textarea
     id: anything_else

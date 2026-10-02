@@ -41,6 +41,8 @@
 - [ ] desktop tests passed
 - [ ] Provider SDK tests passed
 - [ ] documentation/ecosystem/release checks passed
+- [ ] 12,700-track large-library acceptance gate passed
+- [ ] desktop package size-regression guards passed
 - [ ] release asset filenames match the installation documentation
 - [ ] macOS trust report reviewed; Developer ID/notarization required once Campaign 9B is activated
 
@@ -49,6 +51,8 @@
 Melodex is still early software. Please report reproducible bugs through GitHub Issues.
 
 For installation help, see the [documentation](https://github.com/Cliff-Lee/melodex/blob/main/docs/START_HERE.md).
+
+Beta testers can use the [10-minute tester path](https://github.com/Cliff-Lee/melodex/blob/main/docs/TESTING.md). Large-library/NAS testers can use the [dedicated retest checklist](https://github.com/Cliff-Lee/melodex/blob/main/docs/LARGE_LIBRARY_BETA_RETEST.md).
 
 ## Responsible use
 
