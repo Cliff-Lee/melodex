@@ -6518,6 +6518,11 @@ class MainWindow(QMainWindow):
             previous_enabled=self.love_button.isEnabled()
             self.love_button.setText("♥ Loved")
             self.love_button.setEnabled(False)
+            self.motion.settle(
+                self.love_button,
+                duration_ms=FAST_MOTION_MS,
+                start_opacity=0.82,
+            )
             self.statusBar().showMessage("Loved",2500)
         else:
             previous_text=""
@@ -6552,6 +6557,11 @@ class MainWindow(QMainWindow):
         if hasattr(self,"keep_button"):
             self.keep_button.setText("✓ Kept")
             self.keep_button.setEnabled(False)
+            self.motion.settle(
+                self.keep_button,
+                duration_ms=FAST_MOTION_MS,
+                start_opacity=0.82,
+            )
         self.statusBar().showMessage("Kept in taste memory",2500)
 
         def persist() -> bool:
