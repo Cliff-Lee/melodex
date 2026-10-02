@@ -2387,7 +2387,7 @@ class MainWindow(QMainWindow):
         self._run_async(
             lambda:self.metadata.local_artwork(track),
             lambda result:self._home_continue_art_loaded(token,result),
-        , priority="visible", task_name="home-artwork")
+        priority="visible", task_name="home-artwork")
 
     def _home_continue_art_loaded(self, token: str, result: object) -> None:
         current=UserState.track_key(dict(getattr(self,"home_recent_track",{}) or {}))
@@ -4506,7 +4506,7 @@ class MainWindow(QMainWindow):
         self._run_async(
             lambda:self.providers.test_plugin_health(plugin_id),
             lambda result:self._finish_plugin_health_test(plugin_id,result),
-        , priority="foreground", task_name="plugin-health-selected")
+        priority="foreground", task_name="plugin-health-selected")
 
     def _finish_plugin_health_test(self,plugin_id,result):
         result=dict(result or {})
@@ -4851,7 +4851,7 @@ class MainWindow(QMainWindow):
                 error,
                 token,
             ),
-        , priority="foreground", task_name="search")
+        priority="foreground", task_name="search")
 
     def _search_report_failed(
         self,
@@ -5041,7 +5041,7 @@ class MainWindow(QMainWindow):
                 intent, catalog, seeds, limit=16, adventure=adventure
             ),
             self._show_intelligence_results,
-        , priority="foreground", task_name="local-intelligence")
+        priority="foreground", task_name="local-intelligence")
 
     def _show_intelligence_results(self, result: dict[str, Any]) -> None:
         self.intelligence_results.clear()
@@ -5115,7 +5115,7 @@ class MainWindow(QMainWindow):
         self._run_async(
             lambda: self.local_intelligence.analyse_catalog(catalog),
             self._library_analysis_finished,
-        , priority="background", task_name="library-analysis")
+        priority="background", task_name="library-analysis")
 
     def _library_analysis_finished(self, result: dict[str, Any]) -> None:
         self.statusBar().showMessage(
@@ -5186,7 +5186,7 @@ class MainWindow(QMainWindow):
         self._run_async(
             lambda:self.local_intelligence.analyse_catalog(catalog),
             self._album_wall_analysis_finished,
-        , priority="background", task_name="album-wall-analysis")
+        priority="background", task_name="album-wall-analysis")
 
     def _album_wall_analysis_finished(self,result):
         self.statusBar().showMessage(
@@ -5433,7 +5433,7 @@ class MainWindow(QMainWindow):
         self._run_async(
             lambda:self._knowledge_bundle_for_track(track),
             self._knowledge_enrichment_finished,
-        , priority="background", task_name="knowledge-enrich-selected")
+        priority="background", task_name="knowledge-enrich-selected")
 
     def _knowledge_needs_enrichment(self,track):
         payload=self.knowledge.get(dict(track or {}))
@@ -6134,7 +6134,7 @@ class MainWindow(QMainWindow):
         self._run_async(
             lambda:self.local_intelligence.analyse_catalog(catalog),
             self._music_map_analysis_finished,
-        , priority="background", task_name="music-map-analysis")
+        priority="background", task_name="music-map-analysis")
 
     def _music_map_analysis_finished(self,result):
         self.statusBar().showMessage(
@@ -6178,7 +6178,7 @@ class MainWindow(QMainWindow):
                 start_track=track,
             ),
             lambda plan:self._apply_mind(plan),
-        , priority="foreground", task_name="journey-build")
+        priority="foreground", task_name="journey-build")
 
     # ------------------------------- Flow / Mind
     def _path_for(self,t):
@@ -6356,7 +6356,7 @@ class MainWindow(QMainWindow):
                 self._run_async(
                     lambda:self.metadata.local_artwork(dict(t)),
                     lambda result:self._player_artwork_loaded(token,result),
-                , priority="visible", task_name="now-playing-artwork")
+                priority="visible", task_name="now-playing-artwork")
         if hasattr(self,"rich_now"):
             self.rich_now.set_track(dict(t))
         if hasattr(self, "living_canvas"):
@@ -6546,7 +6546,7 @@ class MainWindow(QMainWindow):
         self._run_async(
             lambda:self.state.track_signal(dict(track)),
             apply,
-        , priority="visible", task_name="taste-action-state")
+        priority="visible", task_name="taste-action-state")
 
     def _feedback(self,positive):
         if not self.current_track:
@@ -6780,7 +6780,7 @@ class MainWindow(QMainWindow):
         self._run_async(
             lambda:self.llm.complete(settings,prompt,{},[]),
             lambda result:self._show_lyrics_translation(target,str(result or "")),
-        , priority="foreground", task_name="lyrics-translate")
+        priority="foreground", task_name="lyrics-translate")
 
     def _show_lyrics_translation(self, language: str, text: str) -> None:
         dialog=QDialog(self)
@@ -6869,7 +6869,7 @@ class MainWindow(QMainWindow):
         self._run_async(
             lambda:self.providers.resolve_playlist(requested),
             lambda result:self._finish_ai_playlist(playlist_id,name,description,result,requested,source),
-        , priority="foreground", task_name="ai-playlist-resolve")
+        priority="foreground", task_name="ai-playlist-resolve")
 
     def _finish_ai_playlist(self,playlist_id,name,description,result,requested=None,source="llm"):
         tracks=list(result.get("tracks") or []); unresolved=list(result.get("unresolved") or [])
