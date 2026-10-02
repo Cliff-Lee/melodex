@@ -6947,7 +6947,7 @@ class MainWindow(QMainWindow):
 
     # ------------------------------- LLM
     def _llm_settings(self):
-        from .llm_bridge import LLMSettings
+        from .llm_bridge import LLMClient, LLMSettings
         return LLMSettings(
             provider=self.state.get_text("llm_provider","openwebui"),
             endpoint=self.state.get_text("llm_endpoint",LLMClient.default_endpoint(self.state.get_text("llm_provider","openwebui"))),
