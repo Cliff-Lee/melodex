@@ -428,7 +428,18 @@ class LibraryBrowser(QWidget):
         self.last_track_virtualization_metrics: dict[str, object] = {}
         self._art_requested: set[str] = set()
         self._artist_art_requested: set[str] = set()
+        self._artist_cache_requested: set[str] = set()
         self._artwork_batch_size = 4
+        self._viewport_artwork_batch_size = 12
+        self._idle_artwork_batch_size = 4
+        self._artwork_idle_delay_ms = 650
+        self._album_artwork_generation = 0
+        self._artist_artwork_generation = 0
+        self._album_scroll_value = 0
+        self._artist_scroll_value = 0
+        self._album_scroll_direction = 1
+        self._artist_scroll_direction = 1
+        self.last_artwork_priority_metrics: dict[str, object] = {}
         self._last_artwork_kind = ""
         self._artist_lookup_queue: list[dict[str, Any]] = []
         self._artist_lookup_inflight = 0
@@ -646,6 +657,9 @@ class LibraryBrowser(QWidget):
         self.album_scroll.setWidgetResizable(True)
         self.album_scroll.setFrameShape(QFrame.NoFrame)
         self.album_scroll.viewport().installEventFilter(self)
+        self.album_scroll.verticalScrollBar().valueChanged.connect(
+            lambda value: self._viewport_scroll_changed("albums", value)
+        )
         self.album_container = QWidget()
         self.album_grid = QGridLayout(self.album_container)
         self.album_grid.setContentsMargins(0, 0, 0, 0)
@@ -677,6 +691,9 @@ class LibraryBrowser(QWidget):
         self.artist_scroll.setWidgetResizable(True)
         self.artist_scroll.setFrameShape(QFrame.NoFrame)
         self.artist_scroll.viewport().installEventFilter(self)
+        self.artist_scroll.verticalScrollBar().valueChanged.connect(
+            lambda value: self._viewport_scroll_changed("artists", value)
+        )
         self.artist_container = QWidget()
         self.artist_grid = QGridLayout(self.artist_container)
         self.artist_grid.setContentsMargins(0, 0, 0, 0)
@@ -719,8 +736,12 @@ class LibraryBrowser(QWidget):
         if event.type() == QEvent.Resize:
             if watched is self.album_scroll.viewport():
                 self._layout_album_cards()
+                self._bump_artwork_generation("albums")
+                self._schedule_viewport_artwork("albums")
             elif watched is self.artist_scroll.viewport():
                 self._layout_artist_cards()
+                self._bump_artwork_generation("artists")
+                self._schedule_viewport_artwork("artists")
             elif watched is self.track_list.viewport():
                 self._schedule_track_hydration()
         return super().eventFilter(watched, event)
@@ -796,6 +817,14 @@ class LibraryBrowser(QWidget):
         metrics["track_count"] = len(self.catalog)
         self._art_requested.clear()
         self._artist_art_requested.clear()
+        self._artist_cache_requested.clear()
+        self._album_artwork_generation += 1
+        self._artist_artwork_generation += 1
+        self._album_scroll_value = 0
+        self._artist_scroll_value = 0
+        self._album_scroll_direction = 1
+        self._artist_scroll_direction = 1
+        self.last_artwork_priority_metrics = {}
         self._last_artwork_kind = ""
         self._artist_lookup_queue.clear()
         self._artist_lookup_inflight = 0
@@ -875,8 +904,9 @@ class LibraryBrowser(QWidget):
         metrics["rendered_track_count"] = len(self.track_rows)
 
         artwork_started = time.perf_counter()
-        self._request_artwork()
-        self._request_cached_artist_images()
+        self._schedule_viewport_artwork("albums")
+        if self.current_view() == "artists":
+            self._schedule_viewport_artwork("artists")
         metrics["artwork_request_seconds"] = round(
             time.perf_counter() - artwork_started,
             6,
@@ -1088,6 +1118,9 @@ class LibraryBrowser(QWidget):
         self.images_button.update()
         filter_started = time.perf_counter()
         self._apply_filter()
+        if name in {"albums","artists"}:
+            self._bump_artwork_generation(name)
+            self._schedule_viewport_artwork(name)
         self.last_view_metrics = {
             "view": name,
             "shell_seconds": round(shell_seconds, 6),
@@ -1578,12 +1611,14 @@ class LibraryBrowser(QWidget):
     def _show_more_albums(self) -> None:
         self._album_render_limit += self._album_batch_size
         self._layout_album_cards()
-        self._request_artwork()
+        self._bump_artwork_generation("albums")
+        self._schedule_viewport_artwork("albums")
 
     def _show_more_artists(self) -> None:
         self._artist_render_limit += self._artist_batch_size
         self._layout_artist_cards()
-        self._request_cached_artist_images()
+        self._bump_artwork_generation("artists")
+        self._schedule_viewport_artwork("artists")
 
     def _rebuild_artists(self) -> None:
         grouped: dict[str, dict[str, Any]] = defaultdict(
@@ -1765,34 +1800,223 @@ class LibraryBrowser(QWidget):
         self.search.setText(name)
         self.set_view("albums")
 
-    def _request_artwork(self) -> None:
-        batch = []
-        for album in self._visible_albums[: self._album_render_limit]:
-            key = str(album.get("key") or "")
-            if not key or key in self._art_requested:
+    def _bump_artwork_generation(self, kind: str) -> int:
+        if kind == "artists":
+            self._artist_artwork_generation += 1
+            return self._artist_artwork_generation
+        self._album_artwork_generation += 1
+        return self._album_artwork_generation
+
+    def _artwork_generation(self, kind: str) -> int:
+        return (
+            self._artist_artwork_generation
+            if kind == "artists"
+            else self._album_artwork_generation
+        )
+
+    def _viewport_scroll_changed(self, kind: str, value: int) -> None:
+        value=max(0,int(value))
+        if kind == "artists":
+            previous=self._artist_scroll_value
+            if value != previous:
+                self._artist_scroll_direction = 1 if value > previous else -1
+            self._artist_scroll_value=value
+        else:
+            previous=self._album_scroll_value
+            if value != previous:
+                self._album_scroll_direction = 1 if value > previous else -1
+            self._album_scroll_value=value
+        self._bump_artwork_generation(kind)
+        self._schedule_viewport_artwork(kind)
+
+    def _card_artwork_priority(
+        self,
+        kind: str,
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+        if kind == "artists":
+            scroll=self.artist_scroll
+            cards=self.artist_cards
+            rows=self._visible_artists[: self._artist_render_limit]
+            direction=self._artist_scroll_direction
+        else:
+            scroll=self.album_scroll
+            cards=self.cards
+            rows=self._visible_albums[: self._album_render_limit]
+            direction=self._album_scroll_direction
+
+        top=max(0,int(scroll.verticalScrollBar().value()))
+        height=max(1,int(scroll.viewport().height()))
+        bottom=top+height
+        if direction < 0:
+            near_top=max(0,top-height)
+            near_bottom=bottom
+        else:
+            near_top=top
+            near_bottom=bottom+height
+
+        visible: list[tuple[int,dict[str,Any]]] = []
+        near: list[tuple[int,int,dict[str,Any]]] = []
+        distant: list[tuple[int,int,dict[str,Any]]] = []
+        for row in rows:
+            key=str(row.get("key") or "")
+            card=cards.get(key)
+            if card is None:
                 continue
-            track = dict(album.get("representative_track") or {})
-            if not track:
+            card_top=int(card.y())
+            card_bottom=card_top+max(1,int(card.height()))
+            if card_bottom >= top and card_top <= bottom:
+                visible.append((card_top,dict(row)))
                 continue
-            self._art_requested.add(key)
-            batch.append({
-                "key": key,
-                "track": track,
-                "tracks": [dict(x) for x in list(album.get("tracks") or []) if isinstance(x,dict)],
-            })
+
+            distance=(
+                top-card_bottom
+                if card_bottom < top
+                else card_top-bottom
+            )
+            if card_bottom >= near_top and card_top <= near_bottom:
+                near.append((max(0,distance),card_top,dict(row)))
+            else:
+                distant.append((max(0,distance),card_top,dict(row)))
+
+        visible.sort(key=lambda item:item[0])
+        near.sort(key=lambda item:(item[0],item[1]))
+        distant.sort(key=lambda item:(item[0],item[1]))
+        return (
+            [row for _pos,row in visible],
+            [row for _distance,_pos,row in near],
+            [row for _distance,_pos,row in distant],
+        )
+
+    def _schedule_viewport_artwork(
+        self,
+        kind: str,
+        *,
+        idle: bool = False,
+    ) -> None:
+        if kind not in {"albums","artists"}:
+            return
+        generation=self._artwork_generation(kind)
+        delay=self._artwork_idle_delay_ms if idle else 0
+        QTimer.singleShot(
+            delay,
+            lambda k=kind,token=generation,is_idle=idle:
+                self._emit_viewport_artwork_batch(k,token,idle=is_idle),
+        )
+
+    def _emit_viewport_artwork_batch(
+        self,
+        kind: str,
+        generation: int,
+        *,
+        idle: bool = False,
+    ) -> None:
+        if generation != self._artwork_generation(kind):
+            return
+        if kind == "artists" and self.current_view() != "artists":
+            return
+        if kind == "albums" and self.current_view() != "albums":
+            return
+
+        visible,near,distant=self._card_artwork_priority(kind)
+        if kind == "artists":
+            requested=self._artist_cache_requested
+            has_image=lambda row: bool(
+                self.artist_image_paths.get(str(row.get("key") or ""))
+            )
+        else:
+            requested=self._art_requested
+            has_image=lambda row: bool(
+                self.artwork_paths.get(str(row.get("key") or ""))
+            )
+
+        def eligible(rows: list[dict[str,Any]]) -> list[dict[str,Any]]:
+            out=[]
+            for row in rows:
+                key=str(row.get("key") or "")
+                if not key or key in requested or has_image(row):
+                    continue
+                if kind == "artists" and _norm(row.get("name"))=="unknown artist":
+                    continue
+                out.append(row)
+            return out
+
+        visible_pending=eligible(visible)
+        near_pending=eligible(near)
+        distant_pending=eligible(distant)
+
+        tier="idle" if idle else "visible"
+        candidates=distant_pending if idle else visible_pending+near_pending
+        if not idle and not visible_pending and near_pending:
+            tier="near"
+        limit=(
+            self._idle_artwork_batch_size
+            if idle
+            else self._viewport_artwork_batch_size
+        )
+        selected=candidates[:limit]
+
+        batch=[]
+        for row in selected:
+            key=str(row.get("key") or "")
+            if kind == "artists":
+                track=dict(row.get("representative_track") or {})
+                name=str(row.get("name") or "")
+                if not track or not name:
+                    continue
+                requested.add(key)
+                batch.append({"key":key,"artist":name,"track":track})
+            else:
+                track=dict(row.get("representative_track") or {})
+                if not track:
+                    continue
+                requested.add(key)
+                batch.append({
+                    "key":key,
+                    "track":track,
+                    "tracks":[
+                        dict(x)
+                        for x in list(row.get("tracks") or [])
+                        if isinstance(x,dict)
+                    ],
+                })
+
+        scroll=(
+            self.artist_scroll.verticalScrollBar().value()
+            if kind=="artists"
+            else self.album_scroll.verticalScrollBar().value()
+        )
+        direction=(
+            self._artist_scroll_direction
+            if kind=="artists"
+            else self._album_scroll_direction
+        )
+        self.last_artwork_priority_metrics={
+            "kind":kind,
+            "tier":tier,
+            "scroll_value":int(scroll),
+            "direction":int(direction),
+            "visible_candidates":len(visible_pending),
+            "near_candidates":len(near_pending),
+            "distant_candidates":len(distant_pending),
+            "requested_now":len(batch),
+            "requested_total":len(requested),
+        }
+
         if batch:
-            self.artworkRequested.emit(batch)
+            if kind=="artists":
+                self.artistImageCacheRequested.emit(batch)
+            else:
+                self.artworkRequested.emit(batch)
+            return
+
+        if not idle and distant_pending:
+            self._schedule_viewport_artwork(kind,idle=True)
+
+    def _request_artwork(self) -> None:
+        self._schedule_viewport_artwork("albums")
 
     def _request_cached_artist_images(self) -> None:
-        batch=[]
-        for artist in self._visible_artists[: self._artist_render_limit]:
-            key=str(artist.get("key") or "")
-            track=dict(artist.get("representative_track") or {})
-            name=str(artist.get("name") or "")
-            if key and track and name and _norm(name)!="unknown artist":
-                batch.append({"key":key,"artist":name,"track":track})
-        if batch:
-            self.artistImageCacheRequested.emit(batch)
+        self._schedule_viewport_artwork("artists")
 
     def _request_online_artwork(self) -> None:
         # Keep one artwork job active at a time. Each job uses a small bounded
@@ -1949,6 +2173,8 @@ class LibraryBrowser(QWidget):
             for track_key, row in list(self.track_rows.items()):
                 if str(self.track_album_key.get(track_key) or "") == key:
                     row.set_cover(path)
+        if self.current_view()=="albums":
+            self._schedule_viewport_artwork("albums")
 
     def set_artist_images(self, mapping: dict[str, str]) -> None:
         for key, path in dict(mapping or {}).items():
@@ -1961,6 +2187,8 @@ class LibraryBrowser(QWidget):
                 card.set_image(path, artist_photo=True)
             elif not path:
                 self._artist_art_requested.discard(key)
+        if self.current_view()=="artists":
+            self._schedule_viewport_artwork("artists")
 
 
 __all__ = ["AlbumCard", "ArtistCard", "TrackRow", "LibraryBrowser"]
