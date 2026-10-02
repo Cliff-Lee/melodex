@@ -233,10 +233,63 @@ OS-cold result is still retained as an end-user worst-case observation, but it i
 used by itself to judge a code change because runner disk-cache variance can be larger
 than the code change.
 
-### P9e — packaged-app startup regression gate
+## P9e — packaged-app startup regression
 
-Measure packaged macOS, Windows and Linux builds where feasible, retain startup JSON
-artifacts, and add regression thresholds only after enough stable measurements exist.
+P9a-P9d measure Melodex after Python has already begun executing. Real users launch a
+frozen application, so packaging adds another layer that source-mode profiling cannot
+see: the PyInstaller bootloader, bundle lookup/loading, platform startup and (for
+AppImage) package runtime setup.
+
+P9e measures the binaries produced by the normal distribution workflows.
+
+### Packaged launch metric
+
+`scripts/packaged_startup_probe.py` launches the real packaged executable with an
+isolated Melodex profile and records:
+
+- process launch to the first Qt event-loop turn;
+- Melodex's existing internal startup timeline;
+- the difference between those two values as approximate packaging/bootloader overhead;
+- total process lifetime for the probe;
+- a fresh-profile launch;
+- a warm relaunch of the same profile; and
+- a second brand-new profile after package/code pages are warm.
+
+The parent process watches for the startup trace written at the first event-loop turn,
+so the important metric does not include arbitrary sleep time or the rest of shutdown.
+
+### Platforms measured in CI
+
+The ordinary package workflows now emit startup JSON alongside their binaries:
+
+- macOS ARM application bundle;
+- macOS Intel application bundle;
+- Windows x64 portable/frozen executable;
+- installed Linux `.deb` executable on Ubuntu 22.04, 24.04 and 26.04; and
+- Linux AppImage on those same runners.
+
+The macOS measurement runs the executable inside the exact `.app` that is placed in
+the DMG. The Windows measurement runs the executable that is placed in the portable zip
+and installer.
+
+CI cannot rely on FUSE for AppImage, so the AppImage probe uses
+`--appimage-extract-and-run`. That number is retained as an AppImage regression signal,
+but it must not be compared directly with a normal user's FUSE-mounted AppImage launch.
+The installed `.deb` measurement is the cleaner Linux end-user startup reference.
+
+### Regression policy
+
+The first P9e runs establish per-platform packaged baselines. They are required to
+produce a complete trace successfully, which already catches broken frozen startup.
+
+P9e deliberately does **not** impose one universal millisecond ceiling on the first run.
+GitHub's macOS, Windows and Linux runners have different CPUs, filesystem caches and
+virtualisation characteristics. Once stable measurements exist, regression budgets
+should be relative to each platform/package's own warm baseline rather than copied from
+the source-mode Linux numbers.
+
+The source-level Fluid/startup gates remain in place, so packaging measurement adds a
+new layer instead of replacing the existing responsiveness contracts.
 
 ## Why this is separate from P8
 
