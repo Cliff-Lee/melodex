@@ -330,6 +330,7 @@ class ProviderManager:
         provider = self.providers["local"]
         assert isinstance(provider, LocalFilesProvider)
         provider.configure_roots(clean)
+        provider.set_cached_loader(None)
         self.settings["local_roots"] = [str(x) for x in clean]
         self.library_index.sync_roots(clean)
         self._local_index_summary=self.library_index.summary(clean)
