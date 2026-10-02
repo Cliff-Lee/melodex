@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import urllib.error
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -85,6 +86,72 @@ def test_openverse_audio_example_with_fixture(monkeypatch):
     )
     assert play["url"].endswith(".mp3")
     assert play["seekable"] is True
+
+
+def test_openverse_playback_resolves_redirect_before_returning_resource(monkeypatch):
+    monkeypatch.delenv("MELODEX_EXAMPLE_FIXTURES", raising=False)
+    module = _load(
+        "openverse_audio_redirect",
+        EXAMPLES / "openverse_audio_provider" / "provider.py",
+    )
+    monkeypatch.setattr(
+        module,
+        "_find",
+        lambda _track_id: {
+            "id": "redirect-test",
+            "url": "https://origin.example/audio",
+            "filetype": "mp3",
+        },
+    )
+
+    requests = []
+
+    class Response:
+        headers = {"Content-Type": "audio/mpeg"}
+
+        def geturl(self):
+            return "https://cdn.example/final.mp3"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    def fake_urlopen(request, timeout=0):
+        requests.append(
+            {
+                "method": request.get_method(),
+                "range": request.get_header("Range") or "",
+                "timeout": timeout,
+            }
+        )
+        if request.get_method() == "HEAD":
+            raise urllib.error.HTTPError(
+                request.full_url,
+                405,
+                "Method Not Allowed",
+                {},
+                None,
+            )
+        return Response()
+
+    monkeypatch.setattr(module.urllib.request, "urlopen", fake_urlopen)
+
+    play = module.respond(
+        {
+            "method": "playback.resolve",
+            "params": {"provider_track_id": "redirect-test"},
+        }
+    )
+
+    assert play["url"] == "https://cdn.example/final.mp3"
+    assert play["stream_url"] == "https://cdn.example/final.mp3"
+    assert play["mime_type"] == "audio/mpeg"
+    assert requests == [
+        {"method": "HEAD", "range": "", "timeout": 20},
+        {"method": "GET", "range": "bytes=0-0", "timeout": 20},
+    ]
 
 
 def test_cover_art_archive_example_with_fixture(monkeypatch):
