@@ -68,13 +68,14 @@ QtCore
 QtGui
 QtWidgets
 QtMultimedia
+QtNetwork
 ```
 
 8B therefore removes PyInstaller's blanket `--collect-all PySide6` from both
 macOS and Windows builds and lets the PyInstaller Qt hooks collect the imported
 modules plus their runtime dependencies.
 
-A build-time guard verifies the four required PySide modules remain present and
+A build-time guard verifies the five required PySide modules remain present and
 rejects heavyweight families that Melodex does not use, including WebEngine,
 QML/Quick, Quick3D, Designer, PDF, Charts, Bluetooth, NFC, Sensors, Serial and
 Qt SQL drivers.
@@ -86,7 +87,7 @@ NumPy and other dependency trimming belongs to 8C.
 
 - macOS Intel and Apple Silicon frozen builds still launch and pass child-process/provider smoke tests
 - Windows frozen build still passes the same smoke tests
-- QtCore, QtGui, QtWidgets and QtMultimedia remain present
+- QtCore, QtGui, QtWidgets, QtMultimedia and QtNetwork remain present
 - QtWebEngine and the other explicitly unused heavyweight Qt families are absent
 - installed macOS size is materially below the 669.4 MB 8A baseline
 - the same 8A report is generated so before/after numbers are directly comparable
