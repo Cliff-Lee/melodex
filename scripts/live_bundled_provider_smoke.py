@@ -28,7 +28,7 @@ CASES = {
 
 OPTIONAL_PACKAGES = {
     "org.melodex.example.openverse-audio":
-        ROOT / "provider-sdk/registry/packages/openverse-audio-0.1.1.mdxprovider",
+        ROOT / "provider-sdk/registry/packages/openverse-audio-0.1.2.mdxprovider",
 }
 
 
