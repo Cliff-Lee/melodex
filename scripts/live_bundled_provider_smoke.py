@@ -11,7 +11,9 @@ from urllib.parse import urlsplit
 from melodex.provider_manager import ProviderManager
 
 
-# Real network checks; intentionally not part of deterministic PR CI.
+ROOT = Path(__file__).resolve().parents[1]
+
+# Real network checks; intentionally separate from deterministic unit tests.
 CASES = {
     "org.melodex.internetarchive.audio": "Grateful Dead",
     "org.melodex.librivox": "Odyssey",
@@ -20,6 +22,12 @@ CASES = {
     "org.melodex.somafm": "Groove Salad",
     "org.melodex.wikimedia.commons.audio": "Beethoven",
     "org.melodex.ccmixter": "ambient",
+    "org.melodex.example.openverse-audio": "ambient",
+}
+
+OPTIONAL_PACKAGES = {
+    "org.melodex.example.openverse-audio":
+        ROOT / "provider-sdk/registry/packages/openverse-audio-0.1.1.mdxprovider",
 }
 
 
@@ -81,6 +89,14 @@ def _probe(resource: dict, *, timeout: float = 20.0) -> dict:
 
 def _verify_provider(manager: ProviderManager, provider_id: str, query: str) -> dict:
     provider = manager.providers.get(provider_id)
+    if provider is None and provider_id in OPTIONAL_PACKAGES:
+        package = OPTIONAL_PACKAGES[provider_id]
+        if not package.is_file():
+            raise RuntimeError(f"optional provider package is missing: {package.name}")
+        provider = manager.install_package(
+            package,
+            install_source="live-audit",
+        )
     if provider is None:
         raise RuntimeError("provider was not installed from bundled payload")
 
