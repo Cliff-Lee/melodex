@@ -1,6 +1,6 @@
 {
   "schema_version": "0.1",
-  "updated_at": "2026-09-29T12:48:04Z",
+  "updated_at": "2026-10-02T04:55:00Z",
   "plugins": [
     {
       "id": "org.melodex.example.radio-browser",
@@ -168,7 +168,7 @@
       "id": "org.melodex.example.openverse-audio",
       "name": "Openverse Audio Example",
       "publisher": "Melodex examples",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "kind": "provider",
       "status": "example",
       "description": "Openly licensed audio search/playback example that preserves source, licence and attribution metadata without inferring offline rights.",
@@ -184,10 +184,10 @@
         "documentation": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/openverse_audio_provider/README.md"
       },
       "distribution": {
-        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/main/provider-sdk/registry/packages/openverse-audio-0.1.1.mdxprovider",
+        "package_url": "https://raw.githubusercontent.com/Cliff-Lee/melodex/main/provider-sdk/registry/packages/openverse-audio-0.1.2.mdxprovider",
         "format": "mdxprovider",
-        "sha256": "28c62dd617a1d48281e5c0705b54f939668a33dfe185848f09ca2553319c1b0b",
-        "size_bytes": 5302
+        "sha256": "39d44cf429240b0bc81c496a77270b9f174daeb289809bb03994a97f12ebcd61",
+        "size_bytes": 14328
       },
       "compatibility": {
         "melodex_min": "0.1.0",
@@ -195,12 +195,13 @@
         "contracts": {}
       },
       "permissions": [
-        "network:api.openverse.org"
+        "network:api.openverse.org",
+        "network:*"
       ],
       "source_policy": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/examples/ecosystem/openverse_audio_provider/SOURCE_POLICY.md",
       "review": {
         "record": "https://github.com/Cliff-Lee/melodex/blob/main/provider-sdk/registry/reviews/org.melodex.example.openverse-audio.json",
-        "last_reviewed_at": "2026-09-29T10:30:00Z"
+        "last_reviewed_at": "2026-10-02T04:55:00Z"
       }
     },
     {

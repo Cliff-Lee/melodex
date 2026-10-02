@@ -5,7 +5,7 @@
 - API: `https://api.openverse.org/v1/audio/`
 - Purpose: search openly licensed/public-domain audio indexed by Openverse.
 - Authentication: none required for this example.
-- Network permission: `api.openverse.org`.
+- Network permissions: `api.openverse.org` plus dynamic media hosts returned by Openverse. The provider follows the selected public media URL only to resolve its final HTTP(S) playback origin; Melodex then restricts the playback gateway to that concrete resolved host.
 
 ## Rights and attribution
 
@@ -15,7 +15,7 @@ The provider code is MIT licensed. Media found through Openverse remains under t
 
 ## Playback and offline use
 
-The provider returns the direct media URL supplied by Openverse for streaming. It does not declare the Melodex `offline` capability. A particular Creative Commons licence may permit downloading, but the example avoids translating licence metadata into an automatic offline-use decision.
+The provider resolves the selected media URL to its final HTTP(S) origin before returning it for streaming. This prevents ordinary CDN redirects from being rejected by Melodex's exact-host playback gateway. It does not declare the Melodex `offline` capability. A particular Creative Commons licence may permit downloading, but the example avoids translating licence metadata into an automatic offline-use decision.
 
 ## Caching and load
 

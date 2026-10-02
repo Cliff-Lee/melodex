@@ -236,3 +236,29 @@ def test_external_provider_uses_bounded_manifest_rpc_timeout(tmp_path: Path):
 
     invalid = ExternalProvider(tmp_path, {**manifest, "rpc_timeout_seconds": "nope"})
     assert invalid.timeout == 12.0
+
+
+
+def test_external_provider_wildcard_network_permission_does_not_escape_playback_gateway(tmp_path: Path):
+    manifest = {
+        "id": "org.example.dynamic-anywhere",
+        "name": "Dynamic Anywhere",
+        "version": "1",
+        "capabilities": ["playback"],
+        "permissions": {
+            "network_hosts": ["api.example", "*"],
+            "offline_downloads": False,
+            "local_files": False,
+        },
+        "entrypoints": {"python": "provider.py"},
+    }
+    provider = ExternalProvider(tmp_path, manifest)
+    merged = provider._merge_playback(
+        {"track_id": "1"},
+        {"kind": "http", "url": "https://cdn.selected.example/audio.mp3"},
+    )
+    assert "*" not in merged["_playback_allowed_hosts"]
+    assert merged["_playback_allowed_hosts"] == [
+        "api.example",
+        "cdn.selected.example",
+    ]

@@ -10,7 +10,7 @@ from urllib.request import Request, urlopen
 UA = "Melodex/0.7 (+https://github.com/Cliff-Lee/melodex)"
 PROVIDER_ID = "org.melodex.librivox"
 NAME = "LibriVox"
-VERSION = "0.1.4"
+VERSION = "0.1.5"
 
 SEARCH_API = "https://archive.org/advancedsearch.php"
 METADATA_API = "https://archive.org/metadata/"
@@ -248,6 +248,7 @@ def _resolve(identifier: str) -> dict:
         "expires_at": None,
         "seekable": True,
         "cache_policy": "session",
+        "headers": {"User-Agent": UA},
     }
 
 

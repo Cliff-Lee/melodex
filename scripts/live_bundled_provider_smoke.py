@@ -3,11 +3,13 @@ from __future__ import annotations
 import argparse
 import json
 import tempfile
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from melodex.playback_gateway import PlaybackGateway
 from melodex.provider_manager import ProviderManager
 
 
@@ -27,7 +29,7 @@ CASES = {
 
 OPTIONAL_PACKAGES = {
     "org.melodex.example.openverse-audio":
-        ROOT / "provider-sdk/registry/packages/openverse-audio-0.1.1.mdxprovider",
+        ROOT / "provider-sdk/registry/packages/openverse-audio-0.1.2.mdxprovider",
 }
 
 
@@ -57,17 +59,28 @@ def _probe(resource: dict, *, timeout: float = 20.0) -> dict:
     )
     headers.setdefault("Range", "bytes=0-4095")
 
-    req = urllib.request.Request(url, headers=headers, method="GET")
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as response:
-            body = response.read(4096)
-            status = int(getattr(response, "status", 200) or 200)
-            content_type = str(response.headers.get("Content-Type") or "")
-            final_url = str(response.geturl() or url)
-    except urllib.error.HTTPError as exc:
-        raise RuntimeError(f"media probe HTTP {exc.code}") from exc
-    except Exception as exc:
-        raise RuntimeError(f"media probe failed: {exc}") from exc
+    last_error = None
+    for attempt in range(3):
+        req = urllib.request.Request(url, headers=headers, method="GET")
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as response:
+                body = response.read(4096)
+                status = int(getattr(response, "status", 200) or 200)
+                content_type = str(response.headers.get("Content-Type") or "")
+                final_url = str(response.geturl() or url)
+            break
+        except urllib.error.HTTPError as exc:
+            last_error = exc
+            if exc.code not in {429, 500, 502, 503, 504} or attempt == 2:
+                raise RuntimeError(f"media probe HTTP {exc.code}") from exc
+            time.sleep(0.5 * (attempt + 1))
+        except Exception as exc:
+            last_error = exc
+            if attempt == 2:
+                raise RuntimeError(f"media probe failed: {exc}") from exc
+            time.sleep(0.5 * (attempt + 1))
+    else:
+        raise RuntimeError(f"media probe failed: {last_error}")
 
     if status not in {200, 206}:
         raise RuntimeError(f"media probe returned HTTP {status}")
@@ -85,6 +98,41 @@ def _probe(resource: dict, *, timeout: float = 20.0) -> dict:
         "bytes_read": len(body),
         "final_url": _compact_url(final_url),
     }
+
+
+def _gateway_url(resource: dict, gateway: PlaybackGateway) -> str:
+    """Mirror FlowPlayer's external-resource routing without importing Qt."""
+    guarded = "_playback_allowed_hosts" in resource
+    kind = str(resource.get("kind") or "http").casefold()
+    needs_gateway = bool(
+        resource.get("headers")
+        or resource.get("cookies")
+        or resource.get("gateway_required")
+        or (guarded and kind != "hls")
+    )
+    if needs_gateway:
+        return gateway.register(resource)
+    if guarded:
+        return gateway.validate_resource(resource)
+    return str(resource.get("stream_url") or resource.get("url") or "").strip()
+
+
+def _probe_through_gateway(resource: dict, *, timeout: float = 20.0) -> dict:
+    gateway = PlaybackGateway()
+    try:
+        url = _gateway_url(resource, gateway)
+        if not url:
+            raise RuntimeError("playback gateway produced no URL")
+        forwarded = dict(resource)
+        forwarded["url"] = url
+        forwarded.pop("stream_url", None)
+        forwarded["headers"] = {}
+        forwarded["cookies"] = {}
+        probe = _probe(forwarded, timeout=timeout)
+        probe["gateway_used"] = url.startswith("http://127.0.0.1:")
+        return probe
+    finally:
+        gateway.close()
 
 
 def _verify_provider(manager: ProviderManager, provider_id: str, query: str) -> dict:
@@ -106,11 +154,12 @@ def _verify_provider(manager: ProviderManager, provider_id: str, query: str) -> 
         raise RuntimeError(f"search returned no results for {query!r}")
 
     attempts = []
-    for track in rows[:5]:
+    for track in rows[:8]:
         label = f"{track.get('artist') or ''} — {track.get('title') or ''}".strip(" —")
         try:
             resolved = provider.resolve(track)
-            probe = _probe(resolved)
+            direct_probe = _probe(resolved)
+            gateway_probe = _probe_through_gateway(resolved)
             return {
                 "provider_id": provider_id,
                 "provider_name": provider.info.name,
@@ -131,7 +180,8 @@ def _verify_provider(manager: ProviderManager, provider_id: str, query: str) -> 
                 "resolved_url": _compact_url(
                     str(resolved.get("stream_url") or resolved.get("url") or "")
                 ),
-                "probe": probe,
+                "probe": direct_probe,
+                "gateway_probe": gateway_probe,
                 "status": "pass",
             }
         except Exception as exc:
@@ -170,12 +220,13 @@ def main() -> int:
                 try:
                     result = _verify_provider(manager, provider_id, query)
                     results.append(result)
-                    probe = result["probe"]
+                    probe = result["gateway_probe"]
+                    route = "gateway" if probe.get("gateway_used") else "direct"
                     print(
                         "PASS "
                         f"{result['provider_name']} {result['provider_version']} | "
                         f"search={result['search_results']} | "
-                        f"{probe['http_status']} {probe['content_type']} "
+                        f"{route} {probe['http_status']} {probe['content_type']} "
                         f"{probe['bytes_read']} bytes"
                     )
                 except Exception as exc:
