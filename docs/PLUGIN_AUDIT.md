@@ -66,7 +66,7 @@ Examples include:
 - Musical Detours
 - Public Domain Lyrics Example
 
-Entries marked **Reference** in the Plugin Centre are inspectable examples, not promises of production-grade upstream availability.
+Entries marked **Reference** in the Plugin Centre are inspectable examples, not promises of production-grade upstream availability. Reference-only source examples such as Openverse Audio are kept out of the normal end-user Search source list.
 
 ## Duplicate/reference capabilities
 

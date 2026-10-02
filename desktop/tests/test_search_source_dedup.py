@@ -46,7 +46,6 @@ def test_searchable_provider_ids_hide_shadowed_examples():
         "local",
         "org.melodex.radiobrowser",
         "org.melodex.librivox",
-        "org.melodex.example.openverse-audio",
     ]
 
 
@@ -71,3 +70,9 @@ def test_all_sources_search_does_not_query_shadowed_example():
 
     assert report["provider_ids"] == ["org.melodex.radiobrowser"]
     assert len(report["items"]) == 1
+
+
+def test_reference_only_openverse_does_not_appear_in_end_user_search():
+    manager = _manager(["org.melodex.example.openverse-audio"])
+
+    assert manager.searchable_provider_ids() == []
