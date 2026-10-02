@@ -21,9 +21,6 @@ from PySide6.QtWidgets import (
 from .paths import app_data_dir
 from .provider_manager import ProviderManager
 from .flow import FlowEngine
-from .mind import MindEngine
-from .local_intelligence import LocalIntelligenceService
-from .music_knowledge import MusicKnowledgeStore, build_knowledge_graph
 from .music_pathfinder import find_music_path
 from .music_journey import STAGE_LABELS, build_music_journey
 from .music_journey_live import replan_live_journey
@@ -40,10 +37,8 @@ from .journey_replay import (
 )
 from .user_state import UserState
 from .player import FlowPlayer
-from .llm_bridge import LLMClient, LLMSettings, llm_track_summary
 from .bridge_server import ProviderBridge
 from .playlist_io import load_playlist, parse_playlist_text, save_playlist
-from .metadata import RichMetadataService
 from .plugin_configuration_dialog import configure_plugin
 from .plugin_onboarding import plugin_needs_setup
 from .plugin_health import health_badge, health_summary
@@ -98,6 +93,60 @@ class MainWindow(QMainWindow):
         if timeline is not None:
             timeline.mark(phase)
 
+    @property
+    def mind(self):
+        if self._mind is None:
+            from .mind import MindEngine
+
+            self._mind = MindEngine(self.state, self.flow)
+            self._startup_mark("lazy_service:mind")
+        return self._mind
+
+    @property
+    def local_intelligence(self):
+        if self._local_intelligence is None:
+            from .local_intelligence import LocalIntelligenceService
+
+            self._local_intelligence = LocalIntelligenceService(
+                self.state,
+                self.flow,
+                self.providers.capabilities,
+            )
+            self._startup_mark("lazy_service:local_intelligence")
+        return self._local_intelligence
+
+    @property
+    def knowledge(self):
+        if self._knowledge is None:
+            from .music_knowledge import MusicKnowledgeStore
+
+            self._knowledge = MusicKnowledgeStore(
+                self.data_dir / "music-knowledge.sqlite3"
+            )
+            self._startup_mark("lazy_service:music_knowledge")
+        return self._knowledge
+
+    @property
+    def llm(self):
+        if self._llm is None:
+            from .llm_bridge import LLMClient
+
+            self._llm = LLMClient()
+            self._startup_mark("lazy_service:llm")
+        return self._llm
+
+    @property
+    def metadata(self):
+        if self._metadata is None:
+            from .metadata import RichMetadataService
+
+            self._metadata = RichMetadataService(
+                self.data_dir,
+                capability_broker=self.providers.capabilities,
+            )
+            self._startup_mark("lazy_service:metadata")
+        return self._metadata
+
     def __init__(self, *, startup_timeline=None):
         super().__init__()
         self._startup_timeline = startup_timeline
@@ -118,15 +167,14 @@ class MainWindow(QMainWindow):
         )
         self.page_titles: dict[str, QLabel] = {}
         self.flow = FlowEngine(self.data_dir / "flow.sqlite3")
-        self.mind = MindEngine(self.state, self.flow)
-        self.local_intelligence = LocalIntelligenceService(
-            self.state, self.flow, self.providers.capabilities
-        )
-        self.knowledge = MusicKnowledgeStore(
-            self.data_dir / "music-knowledge.sqlite3"
-        )
-        self.llm = LLMClient()
-        self.metadata = RichMetadataService(self.data_dir, capability_broker=self.providers.capabilities)
+        # Cold launch only constructs services needed to render Home and play
+        # audio.  Intelligence, metadata/network enrichment and the optional
+        # LLM are instantiated on first real use.
+        self._mind = None
+        self._local_intelligence = None
+        self._knowledge = None
+        self._llm = None
+        self._metadata = None
         self._startup_mark("core_services_ready")
         self.bridge: ProviderBridge | None = None
         self.current_history_id = 0
@@ -7200,4 +7248,12 @@ class MainWindow(QMainWindow):
             runner.shutdown()
             self._local_scan_runner=None
         if self.bridge:self.bridge.stop()
-        self.player.close(); self.metadata.close(); self.providers.close(); self.flow.close(); self.knowledge.close(); self.state.close(); super().closeEvent(event)
+        self.player.close()
+        if self._metadata is not None:
+            self._metadata.close()
+        self.providers.close()
+        self.flow.close()
+        if self._knowledge is not None:
+            self._knowledge.close()
+        self.state.close()
+        super().closeEvent(event)
