@@ -5,7 +5,7 @@
   "version": "0.1.2",
   "publisher": "Melodex",
   "protocol_version": "1.0",
-  "description": "Search and play NicheDB's daily-refreshed internet-radio catalogue with packaged TLS verification, genres, countries, languages, codec/bitrate, popularity and station health metadata.",
+  "description": "Search and play NicheDB's daily-refreshed internet-radio catalogue, with genres, countries, languages, codec/bitrate, popularity and station health metadata.",
   "capabilities": [
     "search",
     "track",
@@ -23,14 +23,5 @@
   },
   "entrypoints": {
     "python": "provider.py"
-  },
-  "configuration": [
-    {
-      "key": "api_key",
-      "label": "NicheDB API key",
-      "type": "secret",
-      "required": false,
-      "help": "Optional. Anonymous reads work without a key; add one only for a higher NicheDB API allowance."
-    }
-  ]
+  }
 }
