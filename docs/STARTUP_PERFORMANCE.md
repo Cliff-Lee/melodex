@@ -53,15 +53,49 @@ The baseline intentionally does not impose an arbitrary absolute startup budget 
 The point of P9a is to establish which phases dominate on the CI runner and how much a
 12,700-track cached library changes startup.
 
+## P9b — shell-first window construction
+
+P9a established the first baseline on the Linux CI runner:
+
+- fresh profile: about **2.54 s** to the first event-loop turn;
+- warm profile: about **490 ms**;
+- warm profile with a cached 12,700-track library: about **535 ms**;
+- the 12,700-track cache therefore added only about **45 ms** over the warm profile.
+
+The dominant warm-start phase was not the library. Importing the MainWindow dependency
+graph cost about **238 ms**, while constructing the complete UI cost about **55 ms**.
+On the fresh process the same import graph cost about **1.84 s** because Python and Qt
+modules were cold.
+
+P9b changes startup from "build every page, then show Home" to **shell first**.
+
+The Home/navigation/player surfaces still exist immediately. Four heavyweight pages now
+start as tiny placeholders:
+
+- My Music;
+- Now Playing / visualisations;
+- Album Wall; and
+- Music Map.
+
+On first navigation Melodex switches to the lightweight destination shell immediately,
+lets Qt paint one frame, and only then imports and constructs that page. Subsequent
+visits reuse the same widget tree.
+
+Page-specific Python modules are also no longer top-level MainWindow imports. In
+particular the library browser, Rich Now Playing, Living Canvas, Album Wall, Music Map,
+their projection/model helpers, visualisation models and plugin-directory UI remain
+unloaded until their feature is actually used.
+
+The first construction time for each heavy page is recorded in
+`lazy_page_build_metrics` for regression tests and future diagnostics.
+
+Regression coverage verifies both halves of the contract:
+
+- heavyweight page modules must not reappear as top-level imports; and
+- a heavy page is absent at startup, shows its shell first, builds after the shell frame,
+  and is constructed only once.
+
 ## Planned P9 sequence
-
-### P9b — shell-first window construction
-
-Build only the visible Home/player/navigation shell before first paint. Move expensive
-page widgets such as Music Map, Album Wall, Now Playing visualisations, plugin directory
-surfaces and other non-visible pages behind lazy construction.
-
-Success criterion: first usable shell no longer waits for pages the user has not opened.
 
 ### P9c — warm-cache service startup
 
