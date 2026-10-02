@@ -35,6 +35,7 @@ _CATALOG_METRIC_FIELDS = (
     "reset_seconds",
     "copy_catalog_seconds",
     "album_model_seconds",
+    "album_index_seconds",
     "artist_model_seconds",
     "initial_layout_seconds",
     "artwork_request_seconds",
