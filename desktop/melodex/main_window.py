@@ -3781,7 +3781,20 @@ class MainWindow(QMainWindow):
         if not requested:QMessageBox.information(self,"Empty playlist","No tracks were found in this playlist."); return
         playlist_id=str(uuid.uuid4()); name=str(data.get("name") or Path(filename).stem); description=str(data.get("description") or "")
         self.statusBar().showMessage(f"Importing and matching {len(requested)} tracks…")
-        self._run_async(lambda:self.providers.resolve_playlist(requested),lambda result:self._finish_playlist_file_import(playlist_id,name,description,str(data.get("format") or "playlist"),requested,result))
+        self._run_async(
+            lambda:self.providers.resolve_playlist(requested),
+            lambda result:self._finish_playlist_file_import(
+                playlist_id,
+                name,
+                description,
+                str(data.get("format") or "playlist"),
+                requested,
+                result,
+            ),
+            priority="foreground",
+            lane="network",
+            label="playlist-file-resolution",
+        )
 
     def _finish_playlist_file_import(self,playlist_id,name,description,fmt,requested,result):
         tracks=list(result.get("tracks") or []); unresolved=list(result.get("unresolved") or [])
@@ -4870,6 +4883,9 @@ class MainWindow(QMainWindow):
                 error,
                 token,
             ),
+            priority="foreground",
+            lane="network",
+            label="discover-search",
         )
 
     def _search_report_failed(
@@ -5176,7 +5192,13 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("Add local music to build an Album Wall",4000)
             return
         self.statusBar().showMessage("Building Album Wall from local metadata and cached Flow analysis…")
-        self._run_async(self._build_album_wall_payload,self._apply_album_wall_payload)
+        self._run_async(
+            self._build_album_wall_payload,
+            self._apply_album_wall_payload,
+            priority="visible",
+            lane="default",
+            label="album-wall-model",
+        )
 
     def _apply_album_wall_payload(self,payload):
         payload=dict(payload or {})
@@ -5205,6 +5227,9 @@ class MainWindow(QMainWindow):
         self._run_async(
             lambda:self.local_intelligence.analyse_catalog(catalog),
             self._album_wall_analysis_finished,
+            priority="background",
+            lane="analysis",
+            label="album-wall-analysis",
         )
 
     def _album_wall_analysis_finished(self,result):
@@ -5257,7 +5282,13 @@ class MainWindow(QMainWindow):
                 info=self.metadata.local_artwork(track)
                 result[key]=str(info.get("path") or "")
             return result
-        self._run_async(load,self.album_wall.set_artwork)
+        self._run_async(
+            load,
+            self.album_wall.set_artwork,
+            priority="visible",
+            lane="disk",
+            label="album-wall-cache",
+        )
 
     def _album_wall_online_artwork_requested(self,requests):
         rows=[dict(x) for x in list(requests or []) if isinstance(x,dict)]
@@ -5284,7 +5315,13 @@ class MainWindow(QMainWindow):
                 result[key]=path
             return result
 
-        self._run_async(load,self.album_wall.set_artwork)
+        self._run_async(
+            load,
+            self.album_wall.set_artwork,
+            priority="background",
+            lane="network",
+            label="album-wall-online-artwork",
+        )
 
     def _build_music_map_payload(self):
         catalog=self.providers.local_catalog()
@@ -5320,7 +5357,13 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("Add local music to build a Music Map",4000)
             return
         self.statusBar().showMessage("Building Music Map from cached Flow analysis…")
-        self._run_async(self._build_music_map_payload,self._apply_music_map_payload)
+        self._run_async(
+            self._build_music_map_payload,
+            self._apply_music_map_payload,
+            priority="visible",
+            lane="default",
+            label="music-map-model",
+        )
 
     def _apply_music_map_payload(self,payload):
         payload=dict(payload or {})
@@ -5452,6 +5495,9 @@ class MainWindow(QMainWindow):
         self._run_async(
             lambda:self._knowledge_bundle_for_track(track),
             self._knowledge_enrichment_finished,
+            priority="background",
+            lane="network",
+            label="knowledge-enrichment",
         )
 
     def _knowledge_needs_enrichment(self,track):
@@ -5486,7 +5532,13 @@ class MainWindow(QMainWindow):
                 except Exception as exc:
                     rows.append({"track":track,"matched":False,"credits":0,"context_cards":0,"errors":[str(exc)]})
             return rows
-        self._run_async(work,self._knowledge_batch_finished)
+        self._run_async(
+            work,
+            self._knowledge_batch_finished,
+            priority="background",
+            lane="network",
+            label="knowledge-batch",
+        )
 
     def _knowledge_enrichment_finished(self,result):
         errors=[str(x) for x in list((result or {}).get("errors") or []) if x]
@@ -6821,6 +6873,9 @@ class MainWindow(QMainWindow):
         self._run_async(
             lambda:self.llm.complete(settings,prompt,{},[]),
             lambda result:self._show_lyrics_translation(target,str(result or "")),
+            priority="foreground",
+            lane="network",
+            label="lyrics-translation",
         )
 
     def _show_lyrics_translation(self, language: str, text: str) -> None:
@@ -6882,7 +6937,13 @@ class MainWindow(QMainWindow):
         prompt=self.ask_box.text().strip();
         if not prompt:return
         self.ask_box.clear(); self.chat.append(f"You: {prompt}")
-        settings=self._llm_settings(); self._run_async(lambda:self.llm.complete(settings,prompt,self._llm_context(),[]),lambda text:self._handle_llm(text))
+        settings=self._llm_settings(); self._run_async(
+            lambda:self.llm.complete(settings,prompt,self._llm_context(),[]),
+            lambda text:self._handle_llm(text),
+            priority="foreground",
+            lane="network",
+            label="llm-chat",
+        )
 
     def _handle_llm(self,text):
         reply,actions=self.llm.parse_action_response(str(text)); self.chat.append(f"Melodex: {reply}")
@@ -6910,6 +6971,9 @@ class MainWindow(QMainWindow):
         self._run_async(
             lambda:self.providers.resolve_playlist(requested),
             lambda result:self._finish_ai_playlist(playlist_id,name,description,result,requested,source),
+            priority="foreground",
+            lane="network",
+            label="playlist-resolution",
         )
 
     def _finish_ai_playlist(self,playlist_id,name,description,result,requested=None,source="llm"):
