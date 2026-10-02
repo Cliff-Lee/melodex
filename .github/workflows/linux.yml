@@ -99,6 +99,26 @@ jobs:
           chmod +x linux-artifacts/Melodex-linux-x86_64.AppImage
           python3 desktop/linux/smoke_launch.py /usr/bin/melodex
           python3 desktop/linux/smoke_launch.py linux-artifacts/Melodex-linux-x86_64.AppImage --appimage
+      - name: Measure installed .deb startup
+        run: |
+          python3 scripts/packaged_startup_probe.py \
+            /usr/bin/melodex \
+            --output "packaged-startup-deb-${{ matrix.os }}.json"
+      - name: Measure AppImage startup
+        run: |
+          python3 scripts/packaged_startup_probe.py \
+            linux-artifacts/Melodex-linux-x86_64.AppImage \
+            --appimage \
+            --output "packaged-startup-appimage-${{ matrix.os }}.json"
+      - name: Upload Linux packaged startup measurements
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Packaged-startup-Linux-${{ matrix.os }}
+          path: |
+            packaged-startup-deb-${{ matrix.os }}.json
+            packaged-startup-appimage-${{ matrix.os }}.json
+          if-no-files-found: warn
       - name: Validate AppStream metadata
         if: matrix.os == 'ubuntu-26.04'
         run: |

@@ -16,6 +16,7 @@ on:
       - 'provider-sdk/**'
       - 'VERSION'
       - 'scripts/version_check.py'
+      - 'scripts/packaged_startup_probe.py'
       - '.github/workflows/desktop.yml'
   push:
     branches: [main]
@@ -72,6 +73,27 @@ jobs:
           .\build_windows.ps1
           choco install innosetup -y --no-progress
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
+      - name: Measure packaged macOS startup
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          python scripts/packaged_startup_probe.py \
+            "desktop/dist/Melodex.app/Contents/MacOS/Melodex" \
+            --output "desktop/dist/packaged-startup-${{ matrix.name }}.json"
+      - name: Measure packaged Windows startup
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python scripts/packaged_startup_probe.py `
+            "desktop/dist/Melodex/Melodex.exe" `
+            --output "desktop/dist/packaged-startup-${{ matrix.name }}.json"
+      - name: Upload packaged startup measurement
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Packaged-startup-${{ matrix.name }}
+          path: desktop/dist/packaged-startup-${{ matrix.name }}.json
+          if-no-files-found: warn
       - name: Upload macOS artifact
         if: runner.os == 'macOS'
         uses: actions/upload-artifact@v4
