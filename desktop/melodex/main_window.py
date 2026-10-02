@@ -4332,6 +4332,13 @@ class MainWindow(QMainWindow):
                     {},
                 ) or {}
             )
+            ui_metrics["artwork_priority"] = dict(
+                getattr(
+                    self.library_browser,
+                    "last_artwork_priority_metrics",
+                    {},
+                ) or {}
+            )
         if hasattr(self, "responsiveness"):
             ui_metrics["responsiveness"] = self.responsiveness.summary()
         try:
