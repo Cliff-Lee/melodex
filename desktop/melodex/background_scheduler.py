@@ -51,9 +51,14 @@ class BackgroundScheduler:
         *,
         max_workers: int = 4,
         lane_limits: dict[str, int] | None = None,
+        foreground_reserve: int = 1,
         thread_name_prefix: str = "melodex-bg",
     ) -> None:
         self.max_workers = max(1, int(max_workers))
+        self.foreground_reserve = max(
+            0,
+            min(self.max_workers - 1, int(foreground_reserve)),
+        )
         configured = dict(DEFAULT_LANE_LIMITS)
         configured.update(dict(lane_limits or {}))
         self.lane_limits = {
@@ -148,7 +153,17 @@ class BackgroundScheduler:
                 continue
 
             lane_active = self._active_by_lane.get(task.lane, 0)
-            if lane_active < self._lane_limit(task.lane):
+            low_priority = task.priority_value >= PRIORITIES["background"]
+            low_priority_cap = self.max_workers - self.foreground_reserve
+            reserve_blocked = (
+                low_priority
+                and self.foreground_reserve
+                and self._active_total >= low_priority_cap
+            )
+            if (
+                lane_active < self._lane_limit(task.lane)
+                and not reserve_blocked
+            ):
                 chosen = task
                 break
             blocked.append(task)
@@ -223,6 +238,7 @@ class BackgroundScheduler:
 
             return {
                 "max_workers": self.max_workers,
+                "foreground_reserve": self.foreground_reserve,
                 "lane_limits": dict(self.lane_limits),
                 "active_total": self._active_total,
                 "active_by_lane": dict(self._active_by_lane),
