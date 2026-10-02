@@ -197,6 +197,7 @@ class LocalFilesProvider(MusicProvider):
         throttle = ProgressThrottle()
         audio_paths: list[Path] = []
         tracks: list[dict[str, Any]] = []
+        root_states: list[dict[str, Any]] = []
         probe = ScanProbe(len(scan_roots))
 
         def emit(
@@ -231,6 +232,10 @@ class LocalFilesProvider(MusicProvider):
                 control.checkpoint()
                 exists = root.exists()
                 probe.root_checked(exists=exists)
+                root_states.append({
+                    "path": str(root),
+                    "available": bool(exists),
+                })
                 if not exists:
                     continue
                 for base, _, files in os.walk(root):
@@ -294,6 +299,7 @@ class LocalFilesProvider(MusicProvider):
             return {
                 "tracks": [],
                 "metrics": metrics,
+                "root_states": root_states,
                 "cancelled": True,
             }
 
@@ -306,6 +312,7 @@ class LocalFilesProvider(MusicProvider):
         return {
             "tracks": tracks,
             "metrics": metrics,
+            "root_states": root_states,
             "cancelled": False,
         }
 
