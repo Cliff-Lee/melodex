@@ -4187,6 +4187,7 @@ class MainWindow(QMainWindow):
             on_error=sig.error.emit,
         )
         self._local_scan_runner=runner
+        self._refresh_background_scan_activity()
         try:
             runner.start()
         except Exception as exc:
