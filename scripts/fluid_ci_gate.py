@@ -20,6 +20,7 @@ FLUID_GATE_TESTS = [
     "desktop/tests/test_startup_metrics.py::test_main_window_does_not_eager_import_heavy_page_modules",
     "desktop/tests/test_startup_metrics.py::test_flow_import_keeps_numpy_cold",
     "desktop/tests/test_startup_metrics.py::test_main_window_import_keeps_optional_numeric_and_http_stacks_cold",
+    "desktop/tests/test_packaged_startup_probe.py",
     "desktop/tests/test_gui_redesign.py::test_slow_source_config_check_keeps_qt_event_loop_responsive",
     "desktop/tests/test_gui_redesign.py::test_navigation_shell_changes_before_slow_page_population",
     "desktop/tests/test_gui_redesign.py::test_heavy_pages_build_once_after_navigation_shell",
