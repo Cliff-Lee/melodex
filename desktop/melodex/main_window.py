@@ -57,6 +57,7 @@ from .plugin_onboarding import plugin_needs_setup
 from .plugin_health import health_badge, health_summary
 from .diagnostics import write_diagnostics
 from .responsiveness import UiResponsivenessMonitor
+from .background_scheduler import BackgroundScheduler
 from .motion import MotionController, FAST_MOTION_MS, STANDARD_MOTION_MS
 from .library_browser import LibraryBrowser
 from .library_scan_process import LibraryScanProcess
@@ -170,6 +171,10 @@ class MainWindow(QMainWindow):
         self._search_sequence = 0
         self._search_pending_sequence = 0
         self._search_loading_delay_ms = 220
+        self.background_scheduler = BackgroundScheduler(
+            max_workers=4,
+            reserved_foreground_slots=1,
+        )
         self.externalCommand.connect(self._on_external_command)
 
         self.player = FlowPlayer(
@@ -6944,7 +6949,15 @@ class MainWindow(QMainWindow):
                 except Exception as exc:self.statusBar().showMessage(str(exc),7000)
 
     # ------------------------------- helpers
-    def _run_async(self,fn,done,on_error=None):
+    def _run_async(
+        self,
+        fn,
+        done,
+        on_error=None,
+        *,
+        priority: str = "foreground",
+        task_name: str = "",
+    ):
         sig=WorkerSignals()
         sig.done.connect(lambda result: None if self._closing else done(result))
         if on_error is None:
@@ -6954,10 +6967,21 @@ class MainWindow(QMainWindow):
         else:
             sig.error.connect(lambda e: None if self._closing else on_error(e))
         self._last_worker=sig
+
         def work():
-            try:sig.done.emit(fn())
-            except Exception as exc:sig.error.emit(str(exc))
-        threading.Thread(target=work,daemon=True).start()
+            try:
+                sig.done.emit(fn())
+            except Exception as exc:
+                sig.error.emit(str(exc))
+                raise
+
+        submitted=self.background_scheduler.submit(
+            work,
+            priority=priority,
+            name=task_name,
+        )
+        if not submitted and not self._closing:
+            sig.error.emit("Background work is shutting down")
 
     def closeEvent(self,event):
         if self.music_live_active:
@@ -6965,6 +6989,8 @@ class MainWindow(QMainWindow):
         if hasattr(self, "responsiveness"):
             self.responsiveness.stop()
         self._closing = True
+        if hasattr(self, "background_scheduler"):
+            self.background_scheduler.shutdown(wait=False)
         runner=self._local_scan_runner
         if runner is not None:
             runner.shutdown()
