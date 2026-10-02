@@ -70,9 +70,9 @@ Entries marked **Reference** in the Plugin Centre are inspectable examples, not 
 
 ## Duplicate/reference capabilities
 
-Some registry examples deliberately overlap with Core/bundled functionality:
+Some registry examples deliberately overlap with Core/bundled functionality. Reference provider duplicates are not loaded into normal Search when an audited bundled replacement is present:
 
-- Radio Browser and LibriVox are already included sources.
+- Radio Browser and LibriVox are already included sources; older installed `Radio Browser Example` / `LibriVox Example` packages are automatically ignored at runtime.
 - MusicBrainz identity/metadata is already part of Core enrichment.
 - Cover Art Archive is already used by Core artwork enrichment.
 - Wikimedia is already used by Core artist/artwork enrichment.
