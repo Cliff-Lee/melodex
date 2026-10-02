@@ -1696,8 +1696,8 @@ def test_stale_search_response_cannot_replace_newer_request(monkeypatch, tmp_pat
     window.search_source.addItem("All sources", "all")
     calls = []
 
-    def hold_async(fn, done, on_error=None, **_kwargs):
-        calls.append((done, on_error))
+    def hold_async(fn, done, on_error=None, **kwargs):
+        calls.append((done, on_error, kwargs))
 
     monkeypatch.setattr(window, "_run_async", hold_async)
 
@@ -1705,6 +1705,9 @@ def test_stale_search_response_cannot_replace_newer_request(monkeypatch, tmp_pat
     window._search()
     window.search_box.setText("second")
     window._search()
+
+    assert calls[0][2]["latest_key"] == "discover-search"
+    assert calls[1][2]["latest_key"] == "discover-search"
 
     calls[0][0](
         {
@@ -2106,7 +2109,10 @@ def test_next_track_prefetch_is_local_only_and_consumed_on_advance(monkeypatch, 
         lambda _path: cached_analysis,
     )
 
-    def immediate_async(fn, done, on_error=None, **_kwargs):
+    async_policies = []
+
+    def immediate_async(fn, done, on_error=None, **kwargs):
+        async_policies.append(dict(kwargs))
         try:
             done(fn())
         except Exception as exc:
@@ -2122,6 +2128,7 @@ def test_next_track_prefetch_is_local_only_and_consumed_on_advance(monkeypatch, 
 
     token = main_window.UserState.track_key(upcoming)
     assert artwork_calls == ["Next"]
+    assert async_policies[-1]["latest_key"] == "next-track-prefetch"
     assert token in window._prefetched_track_assets
     assert window._prefetched_track_assets[token]["analysis"] is cached_analysis
 
