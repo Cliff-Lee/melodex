@@ -44,6 +44,11 @@ def _run_json(script: str, *args: str) -> dict[str, Any]:
     return value
 
 
+def _int_value(mapping: dict[str, Any], key: str, default: int = 0) -> int:
+    value = mapping.get(key)
+    return default if value is None else int(value)
+
+
 def evaluate(tracks: int) -> dict[str, Any]:
     count = max(1, int(tracks))
 
@@ -73,53 +78,53 @@ def evaluate(tracks: int) -> dict[str, Any]:
     checks = [
         {
             "name": "initial scan indexes every synthetic track",
-            "ok": int(scan.get("tracks_indexed") or 0) == count,
-            "actual": int(scan.get("tracks_indexed") or 0),
+            "ok": _int_value(scan, "tracks_indexed") == count,
+            "actual": _int_value(scan, "tracks_indexed"),
             "expected": count,
         },
         {
             "name": "persistent index reloads the complete library",
             "ok": (
-                int(index.get("tracks_loaded") or 0) == count
+                _int_value(index, "tracks_loaded") == count
                 and bool(index.get("ready"))
             ),
-            "actual": int(index.get("tracks_loaded") or 0),
+            "actual": _int_value(index, "tracks_loaded"),
             "expected": count,
         },
         {
             "name": "unchanged rescan performs zero metadata reads",
-            "ok": int(incremental.get("rescan_metadata_reads") or -1) == 0,
-            "actual": int(incremental.get("rescan_metadata_reads") or -1),
+            "ok": _int_value(incremental, "rescan_metadata_reads", -1) == 0,
+            "actual": _int_value(incremental, "rescan_metadata_reads", -1),
             "expected": 0,
         },
         {
             "name": "unchanged rescan reuses every metadata record",
-            "ok": int(incremental.get("metadata_reused") or 0) == count,
-            "actual": int(incremental.get("metadata_reused") or 0),
+            "ok": _int_value(incremental, "metadata_reused") == count,
+            "actual": _int_value(incremental, "metadata_reused"),
             "expected": count,
         },
         {
             "name": "unchanged rescan rewrites zero index rows",
-            "ok": int(incremental.get("index_rows_rewritten") or -1) == 0,
-            "actual": int(incremental.get("index_rows_rewritten") or -1),
+            "ok": _int_value(incremental, "index_rows_rewritten", -1) == 0,
+            "actual": _int_value(incremental, "index_rows_rewritten", -1),
             "expected": 0,
         },
         {
             "name": "My Music retains the complete track model",
-            "ok": int(catalog.get("track_count") or 0) == count,
-            "actual": int(catalog.get("track_count") or 0),
+            "ok": _int_value(catalog, "track_count") == count,
+            "actual": _int_value(catalog, "track_count"),
             "expected": count,
         },
         {
             "name": "Albums initial render remains bounded",
-            "ok": int(catalog.get("album_widgets") or 0) <= 120,
-            "actual": int(catalog.get("album_widgets") or 0),
+            "ok": _int_value(catalog, "album_widgets") <= 120,
+            "actual": _int_value(catalog, "album_widgets"),
             "expected": "<= 120",
         },
         {
             "name": "Tracks initial render remains bounded",
-            "ok": int(catalog.get("track_widgets") or 0) <= 300,
-            "actual": int(catalog.get("track_widgets") or 0),
+            "ok": _int_value(catalog, "track_widgets") <= 300,
+            "actual": _int_value(catalog, "track_widgets"),
             "expected": "<= 300",
         },
     ]
