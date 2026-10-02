@@ -101,3 +101,47 @@ jobs:
         with:
           name: large-library-baseline
           path: large-library-baseline.json
+
+
+  fluid-soak:
+    name: Fluid Melodex soak (12.7k)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Qt runtime for soak scenario
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libasound2 libdbus-1-3 libegl1 libfontconfig1 libfreetype6 \
+            libgl1 libglib2.0-0 libpulse0 libwayland-client0 \
+            libwayland-cursor0 libwayland-egl1 libxcb-cursor0 libxcb-icccm4 \
+            libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 \
+            libxcb-shape0 libxcb-shm0 libxcb-sync1 libxcb-util1 \
+            libxcb-xfixes0 libxcb-xinerama0 libxcb-xinput0 libxcb-xkb1 \
+            libxkbcommon0 libxkbcommon-x11-0 libx11-6 libxext6 libxrender1
+      - name: Install soak dependency
+        run: python -m pip install PySide6
+      - name: Run short 12.7k endurance soak
+        env:
+          PYTHONPATH: desktop
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          python scripts/fluid_soak.py \
+            --tracks 12700 \
+            --cycles 180 \
+            --duration-seconds 10 \
+            --warmup-cycles 12 \
+            --pace-ms 6 \
+            --output fluid-soak-12700.json \
+            --no-fail
+      - name: Upload soak report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fluid-soak-12700
+          path: fluid-soak-12700.json
+          if-no-files-found: error
