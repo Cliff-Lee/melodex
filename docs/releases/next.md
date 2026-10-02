@@ -1,8 +1,8 @@
 # Next release — draft notes
 
-**Development after Melodex v0.7.1.**
+**Development after Melodex v0.7.3.**
 
-This file tracks changes intended for **v0.7.2**.
+This file tracks changes intended for the next release after **v0.7.3**.
 
 ## Campaign I — Native Lyrics UX
 
@@ -33,3 +33,13 @@ This file tracks changes intended for **v0.7.2**.
 - Global **Power tools** no longer forces Album Wall or Music Map control panels open.
 - Spatial pages share a consistent pan/zoom mental model and preserve double-click-to-play behavior.
 
+
+
+## Large-library reliability — incremental rescanning
+
+- Previously indexed local/NAS libraries now reuse cached raw tags when file size and modification time are unchanged.
+- Rescan reopens only new or changed audio files instead of re-reading every track with Mutagen.
+- SQLite persistence is incremental too: unchanged track rows are left untouched.
+- New, updated, removed and unchanged counts are shown after a scan.
+- Offline or partially enumerated NAS roots keep their previous cached snapshot instead of being mistaken for an empty library.
+- Older indexes without fingerprints are refreshed once and then become incremental.
