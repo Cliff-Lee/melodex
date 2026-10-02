@@ -160,3 +160,51 @@ def test_root_identity_is_stable_without_root_existing(tmp_path: Path):
     first = index.root_id(root)
     second = index.root_id(Path(str(root)))
     assert first == second
+
+
+
+def test_manager_rescan_of_offline_root_keeps_cached_live_catalog(tmp_path: Path):
+    root = tmp_path / "nas"
+    (tmp_path / "sources.json").write_text(
+        json.dumps({"local_roots": [str(root)]}),
+        encoding="utf-8",
+    )
+    index = LocalLibraryIndex(tmp_path / "library-index.sqlite3")
+    index.sync_roots([root])
+    cached = _track(root / "cached.flac", title="Still Here")
+    index.replace_scan([root], _snapshot(root, [cached], available=True))
+
+    manager = ProviderManager(tmp_path)
+    try:
+        offline = {
+            "tracks": [],
+            "index_tracks": [],
+            "root_states": [{"path": str(root), "available": False}],
+            "metrics": {"tracks_indexed": 0, "roots_missing": 1},
+            "cancelled": False,
+        }
+        manager.persist_local_scan_snapshot([root], offline)
+        merged = manager.indexed_scan_result([root], offline)
+        manager.apply_local_scan_snapshot(merged)
+
+        catalog = manager.local_catalog()
+        assert len(catalog) == 1
+        assert catalog[0]["title"] == "Still Here"
+        assert manager.local_index_ready([root]) is True
+    finally:
+        manager.close()
+
+
+def test_successful_rescan_atomically_replaces_cached_root(tmp_path: Path):
+    root = tmp_path / "music"
+    index = LocalLibraryIndex(tmp_path / "library-index.sqlite3")
+    index.sync_roots([root])
+
+    old = _track(root / "old.flac", title="Old")
+    new = _track(root / "new.flac", title="New")
+    index.replace_scan([root], _snapshot(root, [old], available=True))
+    assert [row["title"] for row in index.load_tracks([root])] == ["Old"]
+
+    index.replace_scan([root], _snapshot(root, [new], available=True))
+
+    assert [row["title"] for row in index.load_tracks([root])] == ["New"]
