@@ -13,5 +13,26 @@ mkdir -p dist/release
 cp -R dist/Melodex.app dist/release/ 2>/dev/null || true
 if command -v hdiutil >/dev/null && [ -d dist/Melodex.app ]; then
   rm -f dist/Melodex.dmg
-  hdiutil create -volname Melodex -srcfolder dist/Melodex.app -ov -format UDZO dist/Melodex.dmg
+  for attempt in 1 2 3; do
+    if hdiutil create -volname Melodex -srcfolder dist/Melodex.app -ov -format UDZO dist/Melodex.dmg; then
+      break
+    fi
+    if [ "$attempt" -eq 3 ]; then
+      echo "hdiutil failed after 3 attempts" >&2
+      exit 1
+    fi
+    echo "hdiutil create failed (attempt $attempt); retrying…" >&2
+    sleep $((attempt * 3))
+  done
+fi
+
+if [ -f dist/Melodex.dmg ]; then
+  python tools/report_bundle_size.py dist/Melodex.app \
+    --archive dist/Melodex.dmg \
+    --json-out dist/Melodex-bundle-size.json \
+    --markdown-out dist/Melodex-bundle-size.md
+else
+  python tools/report_bundle_size.py dist/Melodex.app \
+    --json-out dist/Melodex-bundle-size.json \
+    --markdown-out dist/Melodex-bundle-size.md
 fi

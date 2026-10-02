@@ -61,3 +61,10 @@ This file tracks changes intended for the next release after **v0.7.4**.
 - Search still covers the complete collection and resets to a small render window.
 - Off-screen cards outside the current filtered window are released rather than accumulating in memory.
 - Artwork and artist-image cache work follows the rendered window instead of the whole collection.
+
+
+## Desktop packaging — bundle size measurement
+
+- macOS builds now record the installed app size and compressed DMG size separately.
+- CI publishes a breakdown of the largest bundle areas, files and file types.
+- This establishes a reproducible baseline before removing unnecessary Qt/PySide payload in the next packaging campaign.
