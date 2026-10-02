@@ -289,6 +289,9 @@ def test_diagnostics_filters_ui_performance_fields():
                 "cancelled": 0,
                 "queue_high_water": 8,
                 "max_active_observed": 4,
+                "invalidations": 12,
+                "stale_queued_cancelled": 9,
+                "stale_results_suppressed": 3,
                 "private_label": "Secret Album",
             },
             "responsiveness": {
@@ -346,6 +349,9 @@ def test_diagnostics_filters_ui_performance_fields():
     assert scheduler["active_by_priority"]["background"] == 2
     assert scheduler["pending_by_priority"]["prefetch"] == 2
     assert scheduler["queue_high_water"] == 8
+    assert scheduler["invalidations"] == 12
+    assert scheduler["stale_queued_cancelled"] == 9
+    assert scheduler["stale_results_suppressed"] == 3
     responsiveness = payload["performance"]["ui_responsiveness"]
     assert responsiveness["total_stalls"] == 2
     assert responsiveness["max_delay_ms"] == 620.0
