@@ -32,6 +32,7 @@ Melodex is a local-first music player for your own collection and connected musi
 > You do not need to be technical or have a huge music collection. Tell us where you got confused, what broke, what felt good, and what would make you use Melodex again.
 >
 > **[Take the 10-minute tester path →](docs/TESTING.md)**  
+> Large library or NAS? **[Use the 12,700-track/NAS retest path →](docs/LARGE_LIBRARY_BETA_RETEST.md)**  
 > [Give beta feedback](https://github.com/Cliff-Lee/melodex/issues/new?template=tester_feedback.yml) ·
 > [Report a bug](https://github.com/Cliff-Lee/melodex/issues/new?template=bug_report.yml) ·
 > [Request a feature](https://github.com/Cliff-Lee/melodex/issues/new?template=feature_request.yml)
@@ -66,7 +67,7 @@ No local collection yet? Use **Explore → Search everything** to search connect
 
 Developers can check [Status, stability and trust](docs/developers/00_STATUS_AND_STABILITY.md) before building.
 
-This README follows the repository's current branch. For a released build, use the [download page](https://github.com/Cliff-Lee/melodex/releases/latest) and its matching [release notes](docs/releases/v0.7.4.md).
+This README follows the repository's current branch. For a released build, use the [download page](https://github.com/Cliff-Lee/melodex/releases/latest) and the release notes attached to that version.
 
 ## The developer platform
 
