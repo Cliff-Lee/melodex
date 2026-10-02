@@ -9,9 +9,9 @@ import requests
 
 PROVIDER_ID = "org.melodex.internetarchive.audio"
 NAME = "Internet Archive Audio"
-VERSION = "0.1.1"
+VERSION = "0.1.2"
 SEARCH = "https://archive.org/advancedsearch.php"
-UA = "Melodex-InternetArchive/0.1.1 (+https://github.com/Cliff-Lee/melodex)"
+UA = "Melodex-InternetArchive/0.1.2 (+https://github.com/Cliff-Lee/melodex)"
 AUDIO_EXT = (".mp3", ".ogg", ".oga", ".flac", ".wav", ".m4a", ".aac", ".opus")
 
 _SESSION = requests.Session()
