@@ -332,6 +332,7 @@ class ProviderManager:
             scan_roots,
             progress=progress,
             control=control,
+            cached_entries=self.library_index.load_scan_cache(scan_roots),
         )
 
     def apply_local_scan_snapshot(self, snapshot: dict[str, Any]) -> int:
