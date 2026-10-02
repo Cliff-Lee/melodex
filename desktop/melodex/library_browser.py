@@ -1342,16 +1342,25 @@ class LibraryBrowser(QWidget):
                 + " ".join(str(x.get('album') or '') for x in artist.get('tracks',[]))
             )
         ]
-        self._visible_tracks = [
-            track
-            for track in self.catalog
-            if not query
-            or query
-            in _norm(
-                f"{track.get('artist','')} {track.get('title','')} "
-                f"{track.get('album','')} {track.get('genre','')}"
-            )
-        ]
+        self._visible_tracks = sorted(
+            [
+                track
+                for track in self.catalog
+                if not query
+                or query
+                in _norm(
+                    f"{track.get('artist','')} {track.get('title','')} "
+                    f"{track.get('album','')} {track.get('genre','')}"
+                )
+            ],
+            key=lambda item: (
+                _norm(item.get("artist")),
+                _norm(item.get("album")),
+                int(item.get("disc_number") or 0),
+                int(item.get("track_number") or 0),
+                _norm(item.get("title")),
+            ),
+        )
 
         self._layout_album_cards()
         if self.current_view() == "artists" or self.artist_cards:
@@ -1469,21 +1478,8 @@ class LibraryBrowser(QWidget):
             })
         self.artist_rows = sorted(rows, key=lambda row: _norm(row.get("name")))
 
-    def _rebuild_tracks(self) -> None:
-        self.track_list.clear()
-        self.track_rows.clear()
-        self.track_items.clear()
-        ordered = sorted(
-            self.catalog,
-            key=lambda item: (
-                _norm(item.get("artist")),
-                _norm(item.get("album")),
-                int(item.get("disc_number") or 0),
-                int(item.get("track_number") or 0),
-                _norm(item.get("title")),
-            ),
-        )
-        for track in ordered:
+    def _append_track_rows(self, tracks: list[dict[str, Any]]) -> None:
+        for track in tracks:
             key = _track_key(track)
             item = QListWidgetItem()
             item.setData(Qt.UserRole, dict(track))
@@ -1506,6 +1502,73 @@ class LibraryBrowser(QWidget):
             self.track_items[key] = item
             self.track_rows[key] = row
 
+    def _remove_track_more_footer(self) -> None:
+        item = self._track_more_item
+        if item is None:
+            return
+        row_index = self.track_list.row(item)
+        if row_index >= 0:
+            widget = self.track_list.itemWidget(item)
+            if widget is not None:
+                self.track_list.removeItemWidget(item)
+                widget.deleteLater()
+            self.track_list.takeItem(row_index)
+        self._track_more_item = None
+
+    def _update_track_more_footer(self) -> None:
+        self._remove_track_more_footer()
+        total = len(self._visible_tracks)
+        shown = min(self._track_render_limit, total)
+        remaining = max(0, total - shown)
+        if not remaining:
+            return
+
+        item = QListWidgetItem()
+        item.setData(Qt.UserRole, {"__melodex_load_more__": True})
+        item.setSizeHint(QSize(100, 58))
+
+        footer = QFrame()
+        row = QHBoxLayout(footer)
+        row.setContentsMargins(10, 8, 10, 8)
+        summary = QLabel(f"Showing {shown:,} of {total:,} tracks")
+        summary.setObjectName("trackMeta")
+        row.addWidget(summary)
+        row.addStretch(1)
+        step = min(self._track_batch_size, remaining)
+        button = QPushButton(f"Show {step:,} more")
+        button.setObjectName("quietButton")
+        button.clicked.connect(self._show_more_tracks)
+        row.addWidget(button)
+
+        self.track_list.addItem(item)
+        self.track_list.setItemWidget(item, footer)
+        self._track_more_item = item
+
+    def _rebuild_tracks(self) -> None:
+        self.track_list.clear()
+        self._track_more_item = None
+        self.track_rows.clear()
+        self.track_items.clear()
+        shown = self._visible_tracks[: self._track_render_limit]
+        self._append_track_rows(shown)
+        self._update_track_more_footer()
+        self._tracks_built = True
+        if self.last_catalog_metrics:
+            self.last_catalog_metrics["rendered_track_count"] = len(self.track_rows)
+
+    def _show_more_tracks(self) -> None:
+        total = len(self._visible_tracks)
+        previous = min(self._track_render_limit, total)
+        if previous >= total:
+            return
+        self._track_render_limit += self._track_batch_size
+        current = min(self._track_render_limit, total)
+        self._remove_track_more_footer()
+        self._append_track_rows(self._visible_tracks[previous:current])
+        self._update_track_more_footer()
+        if self.last_catalog_metrics:
+            self.last_catalog_metrics["rendered_track_count"] = len(self.track_rows)
+
     def _artist_opened(self, artist: object) -> None:
         if not isinstance(artist, dict):
             return
@@ -1517,12 +1580,15 @@ class LibraryBrowser(QWidget):
 
     def _track_activated(self, item: QListWidgetItem) -> None:
         track = item.data(Qt.UserRole)
+        if isinstance(track, dict) and track.get("__melodex_load_more__"):
+            self._show_more_tracks()
+            return
         if isinstance(track, dict):
             self.playTrackRequested.emit(dict(track))
 
     def _request_artwork(self) -> None:
         batch = []
-        for album in self.albums[:300]:
+        for album in self._visible_albums[: self._album_render_limit]:
             key = str(album.get("key") or "")
             if not key or key in self._art_requested:
                 continue
@@ -1540,7 +1606,7 @@ class LibraryBrowser(QWidget):
 
     def _request_cached_artist_images(self) -> None:
         batch=[]
-        for artist in self.artist_rows:
+        for artist in self._visible_artists[: self._artist_render_limit]:
             key=str(artist.get("key") or "")
             track=dict(artist.get("representative_track") or {})
             name=str(artist.get("name") or "")
