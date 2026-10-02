@@ -43,7 +43,11 @@ class ProviderManager:
         self._record_bundled_installations(bundled_ids)
         local_roots = [Path(x) for x in self.settings.get("local_roots", [])]
         self.providers: dict[str, MusicProvider] = {
-            "local": LocalFilesProvider(local_roots, self._local_metadata_overrides),
+            "local": LocalFilesProvider(
+                local_roots,
+                self._local_metadata_overrides,
+                scan_on_init=False,
+            ),
             "jamendo": JamendoProvider(str(self.settings.get("jamendo_client_id", ""))),
             "streams": UserStreamsProvider(list(self.settings.get("user_streams", []))),
         }
@@ -253,13 +257,38 @@ class ProviderManager:
             if isinstance(value, dict)
         ]
 
-    def set_local_roots(self, roots: list[Path]) -> int:
+    def configure_local_roots(self, roots: list[Path]) -> list[Path]:
+        """Persist roots without scanning them on the caller/UI thread."""
+        clean = [Path(x) for x in roots]
         provider = self.providers["local"]
         assert isinstance(provider, LocalFilesProvider)
-        provider.set_roots(roots)
-        self.settings["local_roots"] = [str(x) for x in roots]
+        provider.configure_roots(clean)
+        self.settings["local_roots"] = [str(x) for x in clean]
         self.save()
-        return len(provider.tracks)
+        return clean
+
+    def local_roots(self) -> list[Path]:
+        return [Path(x) for x in self.settings.get("local_roots", [])]
+
+    def scan_local_roots_snapshot(
+        self,
+        roots: list[Path] | None = None,
+    ) -> dict[str, Any]:
+        provider = self.providers["local"]
+        assert isinstance(provider, LocalFilesProvider)
+        scan_roots = self.local_roots() if roots is None else [Path(x) for x in roots]
+        return provider.scan_snapshot(scan_roots)
+
+    def apply_local_scan_snapshot(self, snapshot: dict[str, Any]) -> int:
+        provider = self.providers["local"]
+        assert isinstance(provider, LocalFilesProvider)
+        return provider.apply_scan_snapshot(snapshot)
+
+    def set_local_roots(self, roots: list[Path]) -> int:
+        """Compatibility API for synchronous/non-GUI callers."""
+        clean = self.configure_local_roots(roots)
+        snapshot = self.scan_local_roots_snapshot(clean)
+        return self.apply_local_scan_snapshot(snapshot)
 
     def update_local_metadata(
         self,
@@ -305,7 +334,7 @@ class ProviderManager:
         self._local_metadata_overrides.pop(key, None)
         if changed:
             self._save_local_metadata_overrides()
-            provider.clear_metadata_override(local_path)
+            provider.clear_metadata_override(local_path, rescan=False)
         return changed
 
     def set_jamendo_client_id(self, client_id: str) -> None:
