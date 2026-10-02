@@ -2,10 +2,10 @@
   "schema_version": 1,
   "id": "org.melodex.nichedb.radio",
   "name": "NicheDB Radio",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "publisher": "Melodex",
   "protocol_version": "1.0",
-  "description": "Search and play NicheDB's daily-refreshed internet-radio catalogue, with genres, countries, languages, codec/bitrate, popularity and station health metadata.",
+  "description": "Search and play NicheDB's daily-refreshed internet-radio catalogue with packaged TLS verification, genres, countries, languages, codec/bitrate, popularity and station health metadata.",
   "capabilities": [
     "search",
     "track",
