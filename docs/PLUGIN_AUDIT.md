@@ -35,7 +35,7 @@ The desktop app carries seven audited provider packages and installs them automa
 
 | Included source | Package version | Main role |
 | --- | ---: | --- |
-| Internet Archive Audio | 0.1.1 | Search/play openly accessible archive audio; lazy metadata resolution keeps search responsive |
+| Internet Archive Audio | 0.1.2 | Search/play openly accessible archive audio; lazy metadata resolution keeps search responsive |
 | LibriVox | 0.1.4 | Public-domain audiobooks |
 | NicheDB Radio | 0.1.2 | Rich daily-refreshed internet-radio discovery |
 | Radio Browser | 0.1.2 | Internet radio directory |
