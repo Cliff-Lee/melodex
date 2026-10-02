@@ -71,6 +71,28 @@ Machine-readable output:
 python tools/profile_library_scan.py --json
 ```
 
+
+## Synthetic My Music UI probe
+
+Scanning is only one possible bottleneck. After a catalog is returned, My Music
+also builds album/artist models and Qt widgets. Profile that separately:
+
+```bash
+python tools/profile_library_catalog.py --tracks 12700
+```
+
+To measure the cost of constructing the current Tracks view:
+
+```bash
+python tools/profile_library_catalog.py \
+  --tracks 12700 \
+  --view tracks
+```
+
+The output reports model-building time, initial layout time, the number of real
+Qt widgets created, and the additional time required to switch views. This is
+intended to expose a second scalability problem independently of NAS I/O.
+
 ## Regression tests
 
 ```bash
