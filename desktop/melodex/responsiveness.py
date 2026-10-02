@@ -152,6 +152,7 @@ class ResponsivenessTracker:
             "ci_violations": self._ci_violations,
             "serious_stalls": self._serious_stalls,
             "release_blockers": self._release_blockers,
+            "event_loop_sample_count": len(gaps),
             "p99_event_loop_gap_ms": round(
                 _nearest_rank_percentile(gaps, 99.0), 1
             ),

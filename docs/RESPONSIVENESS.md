@@ -311,6 +311,48 @@ the experience.
 
 ### P7 — Release gates
 
-Turn representative responsiveness and perceived-performance scenarios into regression
-tests and CI budgets. A feature is not finished if it completes correctly but makes the
-application feel frozen, blank, uncertain, or unnecessarily busy.
+Representative responsiveness and perceived-performance scenarios are release gates,
+not advisory checks.
+
+The dedicated **Fluid Melodex release gates** CI job installs a real Qt runtime and
+executes the controlled scenarios from P0–P6, including:
+
+- slow Keychain/config work while Sources remains interactive;
+- shell-first navigation and stale-navigation cancellation;
+- stale-while-revalidate Search behaviour and delayed loading UI;
+- reuse of unchanged My Music rendering;
+- persistent/cancellable large-library progress;
+- optimistic Love/Keep acknowledgement and rollback;
+- local-only next-track prefetch that yields to foreground bulk work; and
+- short non-blocking/reduced-motion behaviour.
+
+The gate also evaluates controlled responsiveness summaries against these hard budgets:
+
+- interaction acknowledgement p95 **≤100 ms**;
+- interaction acknowledgement p95 **≤50 ms preferred**;
+- event-loop p99 gap **≤100 ms**;
+- no foreground stall over the **250 ms CI budget**;
+- no **>500 ms serious** foreground stalls; and
+- no **>1 s release blockers**.
+
+The preferred 50 ms interaction target is advisory; the 100 ms p95 limit is blocking.
+
+CI deliberately avoids making release decisions from uncontrolled shared-runner
+microbenchmarks. Timing budgets are evaluated deterministically and the GUI scenarios
+test the architecture: slow work must be outside the foreground interaction path,
+useful content must not be destroyed unnecessarily, and long work must remain
+interruptible.
+
+Both normal main-branch releases and manual-tag releases run the same
+`scripts/fluid_ci_gate.py` runner before a release can proceed.
+`scripts/release_readiness.py` also verifies that those workflow hooks remain present.
+
+For a real desktop session, export Melodex diagnostics and evaluate them with:
+
+```bash
+python scripts/fluid_gate_check.py /path/to/melodex-diagnostics.json
+```
+
+This uses the same hard budget against the recorded interaction/event-loop summary.
+A feature is not finished if it completes correctly but makes the application feel
+frozen, blank, uncertain, or unnecessarily busy.

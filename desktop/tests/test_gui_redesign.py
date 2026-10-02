@@ -1398,6 +1398,7 @@ def test_search_keeps_previous_results_visible_while_refreshing(monkeypatch, tmp
 
 def test_fast_search_never_flashes_delayed_loading_placeholder(monkeypatch, tmp_path):
     try:
+        from PySide6.QtCore import Qt
         from PySide6.QtWidgets import QApplication
         import melodex.main_window as main_window
     except ImportError as exc:
@@ -1443,7 +1444,8 @@ def test_fast_search_never_flashes_delayed_loading_placeholder(monkeypatch, tmp_
     # A timer firing after completion must be a no-op.
     window._show_delayed_search_loading(sequence, "your connected sources")
     assert window.results.count() == 1
-    assert window.results.item(0).text() == "Fast Artist — Fast Result"
+    assert window.results.item(0).text().startswith("Fast Artist — Fast Result")
+    assert window.results.item(0).data(Qt.UserRole)["track_id"] == "fast"
 
     window.close()
     app.processEvents()
@@ -1957,6 +1959,7 @@ def test_next_track_prefetch_is_local_only_and_consumed_on_advance(monkeypatch, 
     monkeypatch.setattr(window.music_map, "highlight_track", lambda _track: None)
     monkeypatch.setattr(window.album_wall, "highlight_track", lambda _track: None)
     monkeypatch.setattr(window.rich_now, "set_track", lambda _track: None)
+    monkeypatch.setattr(window, "_refresh_home_continue", lambda: None)
 
     # If prefetch worked, advancing must not call local_artwork a second time.
     window.player.index = 1
