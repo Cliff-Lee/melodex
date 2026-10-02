@@ -247,3 +247,57 @@ def test_legacy_index_without_fingerprint_is_not_treated_as_unchanged(tmp_path: 
     entry = cache[str(path.resolve())]
     assert entry["size"] is None
     assert entry["mtime_ns"] is None
+
+
+
+def test_unchanged_fingerprinted_index_rows_are_not_rewritten(tmp_path: Path):
+    root = tmp_path / "music"
+    path = root / "song.flac"
+    index = LocalLibraryIndex(tmp_path / "library-index.sqlite3")
+    index.sync_roots([root])
+    track = _track(path, title="Stable")
+    snapshot = _snapshot(root, [track])
+    snapshot["index_records"] = [
+        {"track": dict(track), "size": 100, "mtime_ns": 200}
+    ]
+
+    first = index.replace_scan([root], snapshot)
+    second = index.replace_scan([root], snapshot)
+
+    assert first["tracks_written"] == 1
+    assert first["tracks_reused"] == 0
+    assert second["tracks_written"] == 0
+    assert second["tracks_reused"] == 1
+    assert second["tracks_deleted"] == 0
+
+
+def test_changed_fingerprint_updates_only_changed_index_row(tmp_path: Path):
+    root = tmp_path / "music"
+    first_path = root / "one.flac"
+    second_path = root / "two.flac"
+    index = LocalLibraryIndex(tmp_path / "library-index.sqlite3")
+    index.sync_roots([root])
+
+    first_track = _track(first_path, title="One")
+    second_track = _track(second_path, title="Two")
+    initial = _snapshot(root, [first_track, second_track])
+    initial["index_records"] = [
+        {"track": dict(first_track), "size": 10, "mtime_ns": 100},
+        {"track": dict(second_track), "size": 20, "mtime_ns": 200},
+    ]
+    index.replace_scan([root], initial)
+
+    updated_second = _track(second_path, title="Two updated")
+    changed = _snapshot(root, [first_track, updated_second])
+    changed["index_records"] = [
+        {"track": dict(first_track), "size": 10, "mtime_ns": 100},
+        {"track": dict(updated_second), "size": 25, "mtime_ns": 300},
+    ]
+
+    result = index.replace_scan([root], changed)
+
+    assert result["tracks_written"] == 1
+    assert result["tracks_reused"] == 1
+    assert result["tracks_deleted"] == 0
+    titles = {row["title"] for row in index.load_tracks([root])}
+    assert titles == {"One", "Two updated"}
