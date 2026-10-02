@@ -206,14 +206,43 @@ def test_diagnostics_filters_ui_performance_fields():
                 "artwork_request_seconds": 0.1,
                 "total_seconds": 5.22,
                 "private_path": "/Volumes/AnotherSecret/Music",
-            }
+            },
+            "responsiveness": {
+                "interval_ms": 50,
+                "long_task_threshold_ms": 50,
+                "ci_threshold_ms": 250,
+                "serious_threshold_ms": 500,
+                "blocker_threshold_ms": 1000,
+                "total_stalls": 2,
+                "long_tasks": 1,
+                "ci_violations": 1,
+                "serious_stalls": 0,
+                "release_blockers": 0,
+                "max_delay_ms": 620.0,
+                "recent_stalls": [
+                    {
+                        "recorded_at": "2026-10-02T00:00:00+00:00",
+                        "severity": "ci_violation",
+                        "delay_ms": 620.0,
+                        "gap_ms": 670.0,
+                        "action": "sources:selection",
+                        "private_path": "/Users/example/Music",
+                    }
+                ],
+                "private_path": "/Volumes/AnotherSecret/Music",
+            },
         },
     )
     text = json.dumps(payload)
     metrics = payload["performance"]["library_catalog"]
     assert metrics["track_count"] == 12700
     assert metrics["initial_layout_seconds"] == 4.5
+    responsiveness = payload["performance"]["ui_responsiveness"]
+    assert responsiveness["total_stalls"] == 2
+    assert responsiveness["max_delay_ms"] == 620.0
+    assert responsiveness["recent_stalls"][0]["action"] == "sources:selection"
     assert "/Volumes/AnotherSecret/Music" not in text
+    assert "/Users/example/Music" not in text
     assert "private_path" not in text
 
 

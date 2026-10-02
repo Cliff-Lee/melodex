@@ -50,11 +50,82 @@ _CATALOG_METRIC_FIELDS = (
     "total_seconds",
 )
 
+_RESPONSIVENESS_FIELDS = (
+    "interval_ms",
+    "long_task_threshold_ms",
+    "ci_threshold_ms",
+    "serious_threshold_ms",
+    "blocker_threshold_ms",
+    "total_stalls",
+    "long_tasks",
+    "ci_violations",
+    "serious_stalls",
+    "release_blockers",
+    "p99_event_loop_gap_ms",
+    "max_gap_ms",
+    "max_delay_ms",
+    "interaction_count",
+    "interaction_p95_ms",
+    "interaction_max_ms",
+    "interactions_over_50_ms",
+    "interactions_over_100_ms",
+)
+
+_RESPONSIVENESS_EVENT_FIELDS = (
+    "recorded_at",
+    "severity",
+    "delay_ms",
+    "gap_ms",
+    "action",
+)
+
+_RESPONSIVENESS_INTERACTION_FIELDS = (
+    "label",
+    "duration_ms",
+)
+
 
 def _metric_summary(raw: Any, allowed: tuple[str, ...]) -> dict[str, Any]:
     if not isinstance(raw, dict):
         return {}
     return {key: raw.get(key) for key in allowed if key in raw}
+
+
+def _responsiveness_summary(raw: Any) -> dict[str, Any]:
+    summary = _metric_summary(raw, _RESPONSIVENESS_FIELDS)
+    if not isinstance(raw, dict):
+        return summary
+
+    events: list[dict[str, Any]] = []
+    for event in list(raw.get("recent_stalls") or [])[-50:]:
+        if not isinstance(event, dict):
+            continue
+        clean = {
+            key: event.get(key)
+            for key in _RESPONSIVENESS_EVENT_FIELDS
+            if key in event
+        }
+        if "action" in clean:
+            clean["action"] = str(clean["action"] or "")[:80]
+        events.append(clean)
+    if events:
+        summary["recent_stalls"] = events
+
+    interactions: list[dict[str, Any]] = []
+    for event in list(raw.get("recent_interactions") or [])[-50:]:
+        if not isinstance(event, dict):
+            continue
+        clean = {
+            key: event.get(key)
+            for key in _RESPONSIVENESS_INTERACTION_FIELDS
+            if key in event
+        }
+        if "label" in clean:
+            clean["label"] = str(clean["label"] or "")[:80]
+        interactions.append(clean)
+    if interactions:
+        summary["recent_interactions"] = interactions
+    return summary
 
 
 
@@ -172,6 +243,12 @@ def build_diagnostics(
     )
     if library_catalog:
         performance["library_catalog"] = library_catalog
+
+    ui_responsiveness = _responsiveness_summary(
+        supplied_ui.get("responsiveness")
+    )
+    if ui_responsiveness:
+        performance["ui_responsiveness"] = ui_responsiveness
 
     library_index: dict[str, Any] = {}
     summary_fn = getattr(manager, "local_index_summary", None)
