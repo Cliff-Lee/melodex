@@ -313,14 +313,24 @@ class ExternalProvider(MusicProvider):
     ) -> dict[str, Any]:
         out = dict(track)
         out.update(resource)
-        hosts = [str(x) for x in list((self.info.permissions or {}).get("network_hosts") or [])]
-        if hosts:
-            url = str(out.get("stream_url") or out.get("url") or "").strip()
-            host = (urlparse(url).hostname or "").strip().casefold()
-            if host and host not in {value.casefold().strip(".") for value in hosts}:
-                # The provider selected this exact media origin. Add only that
-                # host; redirects are still checked against the resulting list.
-                hosts.append(host)
+        declared_hosts = [
+            str(x)
+            for x in list((self.info.permissions or {}).get("network_hosts") or [])
+        ]
+        # A provider may need broad discovery/network permission (for example,
+        # Openverse can resolve media hosted by many independent sites), but a
+        # wildcard must never become a wildcard in the playback gateway.
+        hosts = [
+            value
+            for value in declared_hosts
+            if value.strip() != "*"
+        ]
+        url = str(out.get("stream_url") or out.get("url") or "").strip()
+        host = (urlparse(url).hostname or "").strip().casefold()
+        if host and host not in {value.casefold().strip(".") for value in hosts}:
+            # The provider selected this exact media origin. Add only that
+            # concrete host; redirects are still checked against the list.
+            hosts.append(host)
         out["_playback_allowed_hosts"] = hosts
         return out
 
