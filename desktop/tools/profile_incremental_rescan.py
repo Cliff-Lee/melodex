@@ -87,6 +87,10 @@ def main() -> int:
             second_seconds = time.perf_counter() - started
             second_reads = calls["count"]
 
+            persist_started = time.perf_counter()
+            second_persist = manager.persist_local_scan_snapshot([root], second)
+            persist_seconds = time.perf_counter() - persist_started
+
         manager.close()
 
     print("Melodex incremental library benchmark")
@@ -97,6 +101,9 @@ def main() -> int:
     print(f"Unchanged rescan:        {second_seconds:.3f} s")
     print(f"Rescan metadata reads:   {second_reads:,}")
     print(f"Metadata reused:         {int(second['changes']['unchanged']):,}")
+    print(f"Index rows rewritten:    {int(second_persist['tracks_written']):,}")
+    print(f"Index rows reused:       {int(second_persist['tracks_reused']):,}")
+    print(f"Index commit:            {persist_seconds:.3f} s")
     if first_seconds > 0:
         print(f"Rescan / first scan:     {second_seconds / first_seconds:.1%}")
     return 0
