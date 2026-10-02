@@ -154,3 +154,40 @@ def test_main_window_import_keeps_optional_numeric_and_http_stacks_cold() -> Non
         timeout=30,
     )
     assert completed.returncode == 0, completed.stderr
+
+
+def test_local_control_bridge_is_submitted_as_background_work(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    try:
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        pytest.skip(f"Qt GUI runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+
+    submitted = []
+
+    def hold_submit(self, callback, **kwargs):
+        submitted.append(dict(kwargs))
+        return True
+
+    monkeypatch.setattr(main_window.BackgroundScheduler, "submit", hold_submit)
+
+    window = main_window.MainWindow()
+    try:
+        bridge_jobs = [
+            item
+            for item in submitted
+            if item.get("name") == "local-control-bridge"
+        ]
+        assert len(bridge_jobs) == 1
+        assert bridge_jobs[0]["priority"] == "background"
+        assert window.bridge is None
+        assert window._bridge_start_pending is True
+    finally:
+        window.close()
+        app.processEvents()
