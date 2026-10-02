@@ -10,11 +10,11 @@ from melodex.provider_manager import ProviderManager
 
 EXPECTED = {
     "org.melodex.internetarchive.audio": "0.1.1",
-    "org.melodex.librivox": "0.1.4",
+    "org.melodex.librivox": "0.1.5",
     "org.melodex.nichedb.radio": "0.1.2",
     "org.melodex.radiobrowser": "0.1.2",
     "org.melodex.somafm": "0.1.1",
-    "org.melodex.wikimedia.commons.audio": "0.1.1",
+    "org.melodex.wikimedia.commons.audio": "0.1.2",
     "org.melodex.ccmixter": "0.1.3",
 }
 
@@ -62,6 +62,21 @@ def test_librivox_bundle_matches_checked_in_source():
         assert packaged_manifest == source_manifest
         assert archive.read("provider.py") == (source / "provider.py").read_bytes()
         assert archive.read("README.md") == (source / "README.md").read_bytes()
+
+
+def test_wikimedia_bundle_matches_checked_in_source():
+    source = Path(__file__).resolve().parents[1] / "bundled_provider_sources" / "wikimedia_commons_audio"
+    package = next(
+        package
+        for pid, package, _manifest in bundled_packages()
+        if pid == "org.melodex.wikimedia.commons.audio"
+    )
+    with zipfile.ZipFile(package) as archive:
+        packaged_manifest = json.loads(archive.read("manifest.json"))
+        source_manifest = json.loads((source / "manifest.json").read_text("utf-8"))
+        assert packaged_manifest == source_manifest
+        for filename in ("provider.py", "README.md", "SOURCE_POLICY.md"):
+            assert archive.read(filename) == (source / filename).read_bytes()
 
 
 def test_nichedb_radio_bundle_matches_checked_in_source():
