@@ -22,7 +22,7 @@ REQUIRED_PHASES = (
     "player_ready",
     "ui_built",
     "home_ready",
-    "bridge_ready",
+    "bridge_start_scheduled",
     "main_window_construct_ready",
     "window_show_requested",
     "first_event_loop_turn",
