@@ -334,7 +334,7 @@ class ProviderManager:
         self._local_metadata_overrides.pop(key, None)
         if changed:
             self._save_local_metadata_overrides()
-            provider.clear_metadata_override(local_path)
+            provider.clear_metadata_override(local_path, rescan=False)
         return changed
 
     def set_jamendo_client_id(self, client_id: str) -> None:
