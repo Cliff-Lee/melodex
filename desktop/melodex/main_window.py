@@ -105,7 +105,10 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Melodex")
         self.resize(1280, 800)
         self.data_dir = app_data_dir()
-        self.providers = ProviderManager(self.data_dir)
+        self.providers = ProviderManager(
+            self.data_dir,
+            startup_timeline=self._startup_timeline,
+        )
         self._startup_mark("providers_ready")
         self.state = UserState(self.data_dir / "taste.sqlite3")
         self._startup_mark("user_state_ready")
@@ -2447,9 +2450,9 @@ class MainWindow(QMainWindow):
 
     def _show_home(self):
         self._refresh_taste()
-        count=len(self.providers.local_catalog())
+        count=self.providers.local_catalog_count()
         src=len(self.providers.providers)
-        ext=len(self.providers.extensions())
+        ext=len(self.providers.extensions(cached_config=True))
         flow_text = (
             "Flow analysis ready"
             if self.flow.analysis_available
@@ -2477,7 +2480,7 @@ class MainWindow(QMainWindow):
         self._refresh_home_continue()
 
     def _home_primary_action(self) -> None:
-        if self.providers.local_catalog():
+        if self.providers.local_catalog_count():
             self._play_for_me("balanced",60,0.35)
         else:
             self._choose_music_folder()
