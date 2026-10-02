@@ -152,6 +152,11 @@ def profile_gui(
     started = time.perf_counter()
     browser.set_catalog(catalog, revision=revision)
     app.processEvents()
+    if not browser.last_artwork_priority_metrics:
+        browser._emit_viewport_artwork_batch(
+            "albums",
+            browser._artwork_generation("albums"),
+        )
     catalog_seconds = time.perf_counter() - started
     album_artwork_priority = dict(browser.last_artwork_priority_metrics)
 
