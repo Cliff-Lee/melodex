@@ -3100,6 +3100,7 @@ class MainWindow(QMainWindow):
         rows=[dict(x) for x in list(requests or []) if isinstance(x,dict)]
         if not rows:
             return
+        keys=[str(row.get("key") or "") for row in rows if str(row.get("key") or "")]
         def load():
             result={}
             for row in rows:
@@ -3109,7 +3110,13 @@ class MainWindow(QMainWindow):
                     info=self.metadata.local_artwork(track)
                     result[key]=str(info.get("path") or "")
             return result
-        self._run_async(load,self.library_browser.set_artwork)
+        def failed(error: str) -> None:
+            self.library_browser.cached_artwork_batch_failed("albums",keys)
+            self.statusBar().showMessage(
+                f"Cached artwork refresh paused · {error}",
+                3500,
+            )
+        self._run_async(load,self.library_browser.set_artwork,failed)
 
     def _library_online_artwork_requested(self, requests: object) -> None:
         rows=[dict(x) for x in list(requests or []) if isinstance(x,dict)]
@@ -3248,6 +3255,7 @@ class MainWindow(QMainWindow):
         if not rows:
             return
 
+        keys=[str(row.get("key") or "") for row in rows if str(row.get("key") or "")]
         def load():
             result={}
             for row in rows:
@@ -3258,7 +3266,14 @@ class MainWindow(QMainWindow):
                     result[key]=str(cached.get("path") or "")
             return result
 
-        self._run_async(load,self.library_browser.set_artist_images)
+        def failed(error: str) -> None:
+            self.library_browser.cached_artwork_batch_failed("artists",keys)
+            self.statusBar().showMessage(
+                f"Cached artist-photo refresh paused · {error}",
+                3500,
+            )
+
+        self._run_async(load,self.library_browser.set_artist_images,failed)
 
     def _library_artist_images_requested(self, requests: object) -> None:
         rows=[dict(x) for x in list(requests or []) if isinstance(x,dict)]
