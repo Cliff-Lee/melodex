@@ -1,0 +1,124 @@
+# Campaign 10 — Elastic Library Engine
+
+Campaign 10 extends the responsiveness work from P8/P9 from the current
+12,700-track stress case toward collections containing hundreds of thousands or
+even one million files.
+
+The objective is **not** to make every user pay for a million-file design.
+Melodex should use the same core architecture at every scale while keeping
+optional large-library machinery cheap or inactive for ordinary collections.
+
+## P10 contract
+
+1. Small libraries must not materially regress while huge-library paths improve.
+2. User interaction remains the priority: p95 acknowledgement target stays below 100 ms.
+3. Playback and navigation never wait for scanning, artwork, analysis or online enrichment.
+4. Scan workers, queues and in-flight state must remain bounded.
+5. Unchanged files must not reread metadata.
+6. Work should scale with the changed portion of a library whenever possible.
+7. An unavailable/incomplete NAS must never be interpreted as mass deletion.
+8. A million-file library must not imply a million UI widgets.
+9. Optional artwork/analysis/enrichment remains independent of the core index.
+10. Optimizations must preserve correctness; a fast scanner that misses changes fails.
+
+## Existing foundation
+
+Campaign 10 starts from a stronger base than the original 12,700-FLAC report.
+Melodex already has:
+
+- persistent SQLite indexing;
+- size + mtime fingerprints;
+- unchanged-file metadata reuse;
+- zero-row rewrites for unchanged indexed tracks;
+- preservation of cached data when NAS roots are unavailable or incomplete;
+- a disposable scan process for hard NAS cancellation;
+- lazy cached-catalog hydration;
+- progressive/virtualized large-library UI rendering;
+- bounded priority scheduling and latest-wins cancellation for UI/background work.
+
+P10 therefore does **not** reimplement those features.
+
+## Current scaling risk
+
+The current scanner intentionally builds a complete atomic snapshot before
+publishing it. During a scan it holds several collection-wide structures,
+including:
+
+- `discovered`;
+- `tracks`;
+- `index_tracks`;
+- `index_records`; and
+- sets used to detect removals.
+
+That model has excellent simple correctness properties at 12.7k tracks, but its
+working set grows with the complete library. P10 must quantify that growth
+before changing it.
+
+## P10a — baseline matrix and contracts
+
+P10a adds a multi-scale benchmark around the current real scanner:
+
+```bash
+cd desktop
+python tools/profile_library_scale_matrix.py
+```
+
+Default profiles:
+
+- 500
+- 5,000
+- 12,700
+- 50,000
+- 100,000 tracks
+
+The expensive release qualification sizes are deliberately opt-in:
+
+```bash
+python tools/profile_library_scale_matrix.py --release-scale --json
+```
+
+which appends:
+
+- 250,000
+- 500,000
+- 1,000,000
+
+The probe records total scan time, throughput, metadata reads, directories/files
+visited, and retained/peak Python memory.
+
+The one-million case is not a normal PR gate yet. P10a exists to measure the
+current architecture and prevent us from optimizing by guesswork.
+
+## Regression matrix
+
+Different scales have different jobs:
+
+| Tracks | Role |
+| ---: | --- |
+| 500 | small-library regression guard |
+| 5,000 | normal enthusiast library |
+| 12,700 | current MusicHoarder stress case |
+| 50,000 | scaling transition |
+| 100,000 | large-library engineering profile |
+| 250k / 500k / 1m | opt-in release/architecture qualification |
+
+Small-library performance is a first-class gate. Future P10 changes should be
+rejected if they buy large-library throughput by materially degrading 500/5k
+behavior.
+
+## Planned stages after P10a
+
+- **P10b — streaming discovery:** stop requiring a complete discovery list before downstream work can proceed.
+- **P10c — bounded pipeline/backpressure:** explicit bounded buffers between discovery, metadata and persistence.
+- **P10d — database writer/batch tuning:** measure transaction size and publication cadence rather than guessing.
+- **P10e — progressive catalog publication:** committed batches become searchable/browsable while indexing continues.
+- **P10f — directory fingerprints:** safely skip unchanged subtrees where filesystem semantics permit it.
+- **P10g — adaptive storage concurrency:** tune SSD/HDD/NAS work without hard-coding another application's worker count.
+- **P10h — deletion/offline correctness:** generation/checkpoint semantics for interruption and disappearing shares.
+- **P10i — 100k/1m qualification:** memory, throughput, cancellation, restart, delta rescan and NAS-failure stress tests.
+- **P10j — permanent scale gates:** lightweight PR profiles plus larger scheduled/release profiles.
+
+The design rule for the whole campaign is:
+
+> Library size may change how long background completion takes; it should not
+> fundamentally change how Melodex feels to use.
