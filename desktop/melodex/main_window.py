@@ -21,37 +21,13 @@ from PySide6.QtWidgets import (
 from .paths import app_data_dir
 from .provider_manager import ProviderManager
 from .flow import FlowEngine
-from .mind import MindEngine
-from .local_intelligence import LocalIntelligenceService
-from .music_knowledge import MusicKnowledgeStore, build_knowledge_graph
-from .music_pathfinder import find_music_path
-from .music_journey import STAGE_LABELS, build_music_journey
-from .music_journey_live import replan_live_journey
-from .journey_recipe import (
-    load_journey_recipe,
-    make_journey_recipe,
-    materialize_recipe_stages,
-    save_journey_recipe,
-)
-from .journey_replay import (
-    materialize_route_snapshot,
-    portable_route_snapshot,
-    summarize_journey_run,
-)
 from .user_state import UserState
 from .player import FlowPlayer
-from .llm_bridge import LLMClient, LLMSettings, llm_track_summary
 from .bridge_server import ProviderBridge
-from .playlist_io import load_playlist, parse_playlist_text, save_playlist
-from .metadata import RichMetadataService
-from .plugin_configuration_dialog import configure_plugin
-from .plugin_onboarding import plugin_needs_setup
 from .plugin_health import health_badge, health_summary
-from .diagnostics import write_diagnostics
 from .responsiveness import UiResponsivenessMonitor
 from .background_scheduler import BackgroundScheduler
 from .motion import MotionController, FAST_MOTION_MS, STANDARD_MOTION_MS
-from .library_scan_process import LibraryScanProcess
 from .ux_components import (
     ActionCard,
     CommandPaletteDialog,
@@ -98,6 +74,60 @@ class MainWindow(QMainWindow):
         if timeline is not None:
             timeline.mark(phase)
 
+    @property
+    def mind(self):
+        if self._mind is None:
+            from .mind import MindEngine
+
+            self._mind = MindEngine(self.state, self.flow)
+            self._startup_mark("lazy_service:mind")
+        return self._mind
+
+    @property
+    def local_intelligence(self):
+        if self._local_intelligence is None:
+            from .local_intelligence import LocalIntelligenceService
+
+            self._local_intelligence = LocalIntelligenceService(
+                self.state,
+                self.flow,
+                self.providers.capabilities,
+            )
+            self._startup_mark("lazy_service:local_intelligence")
+        return self._local_intelligence
+
+    @property
+    def knowledge(self):
+        if self._knowledge is None:
+            from .music_knowledge import MusicKnowledgeStore
+
+            self._knowledge = MusicKnowledgeStore(
+                self.data_dir / "music-knowledge.sqlite3"
+            )
+            self._startup_mark("lazy_service:music_knowledge")
+        return self._knowledge
+
+    @property
+    def llm(self):
+        if self._llm is None:
+            from .llm_bridge import LLMClient
+
+            self._llm = LLMClient()
+            self._startup_mark("lazy_service:llm")
+        return self._llm
+
+    @property
+    def metadata(self):
+        if self._metadata is None:
+            from .metadata import RichMetadataService
+
+            self._metadata = RichMetadataService(
+                self.data_dir,
+                capability_broker=self.providers.capabilities,
+            )
+            self._startup_mark("lazy_service:metadata")
+        return self._metadata
+
     def __init__(self, *, startup_timeline=None):
         super().__init__()
         self._startup_timeline = startup_timeline
@@ -118,15 +148,14 @@ class MainWindow(QMainWindow):
         )
         self.page_titles: dict[str, QLabel] = {}
         self.flow = FlowEngine(self.data_dir / "flow.sqlite3")
-        self.mind = MindEngine(self.state, self.flow)
-        self.local_intelligence = LocalIntelligenceService(
-            self.state, self.flow, self.providers.capabilities
-        )
-        self.knowledge = MusicKnowledgeStore(
-            self.data_dir / "music-knowledge.sqlite3"
-        )
-        self.llm = LLMClient()
-        self.metadata = RichMetadataService(self.data_dir, capability_broker=self.providers.capabilities)
+        # Cold launch only constructs services needed to render Home and play
+        # audio.  Intelligence, metadata/network enrichment and the optional
+        # LLM are instantiated on first real use.
+        self._mind = None
+        self._local_intelligence = None
+        self._knowledge = None
+        self._llm = None
+        self._metadata = None
         self._startup_mark("core_services_ready")
         self.bridge: ProviderBridge | None = None
         self.current_history_id = 0
@@ -1576,6 +1605,7 @@ class MainWindow(QMainWindow):
 
 
     def _build_music_map(self):
+        from .music_journey import STAGE_LABELS
         from .music_map import MusicMapWidget
 
         l=self._page_layout(
@@ -2873,6 +2903,7 @@ class MainWindow(QMainWindow):
         }.get(str(capability or ""), str(capability or "").replace("_"," "))
 
     def _extension_record(self, extension_id: str) -> dict[str,Any]:
+        from .plugin_onboarding import plugin_needs_setup
         return next(
             (
                 dict(row)
@@ -2902,6 +2933,7 @@ class MainWindow(QMainWindow):
         return status.get("ready") is False
 
     def _source_selection_changed(self) -> None:
+        from .plugin_onboarding import plugin_needs_setup
         if hasattr(self, "responsiveness"):
             self.responsiveness.mark_action("sources:selection")
         item=self.sources_list.currentItem() if hasattr(self,"sources_list") else None
@@ -3026,6 +3058,7 @@ class MainWindow(QMainWindow):
         )
 
     def _source_primary_action(self) -> None:
+        from .plugin_onboarding import plugin_needs_setup
         item=self.sources_list.currentItem() if hasattr(self,"sources_list") else None
         key=str(item.data(Qt.UserRole) or "") if item else ""
         if not key:
@@ -3487,6 +3520,7 @@ class MainWindow(QMainWindow):
         self._run_async(load,apply,failed, priority="background", task_name="library-online-artist-photo")
 
     def _refresh_journeys(self):
+        from .journey_replay import summarize_journey_run
         if not hasattr(self,"journey_recipes_list") or not hasattr(self,"journey_runs_list"):
             return
         self.journey_recipes_list.clear()
@@ -3545,6 +3579,7 @@ class MainWindow(QMainWindow):
         return dict(data or {}) if isinstance(data,dict) else {}
 
     def _journey_recipe_save_current(self):
+        from .journey_recipe import make_journey_recipe, save_journey_recipe
         if not self.music_journey_stages_data:
             self.statusBar().showMessage(
                 "Add Journey Designer stages before saving a recipe",3500
@@ -3603,6 +3638,7 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Refreshing Music Map before loading recipe…",3500)
 
     def _journey_recipe_import(self):
+        from .journey_recipe import load_journey_recipe, save_journey_recipe
         filename,_=QFileDialog.getOpenFileName(
             self,
             "Import journey recipe",
@@ -3627,6 +3663,7 @@ class MainWindow(QMainWindow):
         )
 
     def _journey_recipe_export(self):
+        from .journey_recipe import save_journey_recipe
         record=self._selected_journey_recipe_record()
         if not record:
             self.statusBar().showMessage("Select a journey recipe first",3000); return
@@ -3671,6 +3708,7 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Journey recipe deleted",3000)
 
     def _apply_pending_journey_recipe(self):
+        from .journey_recipe import materialize_recipe_stages
         pending=self.pending_journey_recipe
         self.pending_journey_recipe=None
         if not isinstance(pending,dict):
@@ -3717,6 +3755,7 @@ class MainWindow(QMainWindow):
         )
 
     def _journey_run_inspect(self):
+        from .journey_replay import summarize_journey_run
         run=self._selected_journey_run_record()
         if not run:
             self.statusBar().showMessage("Select a journey run first",3000); return
@@ -3783,6 +3822,7 @@ class MainWindow(QMainWindow):
         )
 
     def _apply_pending_journey_replay(self):
+        from .journey_replay import materialize_route_snapshot
         pending=self.pending_journey_replay
         self.pending_journey_replay=None
         if not pending:
@@ -3879,6 +3919,7 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(msg,6000)
 
     def _import_playlist_file(self):
+        from .playlist_io import load_playlist
         filename,_=QFileDialog.getOpenFileName(self,"Import playlist",filter="Playlists (*.xspf *.m3u *.m3u8);;XSPF (*.xspf);;M3U/M3U8 (*.m3u *.m3u8)")
         if not filename:return
         try:data=load_playlist(Path(filename))
@@ -3890,6 +3931,7 @@ class MainWindow(QMainWindow):
         self._run_async(lambda:self.providers.resolve_playlist(requested),lambda result:self._finish_playlist_file_import(playlist_id,name,description,str(data.get("format") or "playlist"),requested,result), priority="foreground", task_name="playlist-import-resolve")
 
     def _finish_playlist_file_import(self,playlist_id,name,description,fmt,requested,result):
+        from .playlist_io import save_playlist
         tracks=list(result.get("tracks") or []); unresolved=list(result.get("unresolved") or [])
         payload={"tracks":tracks,"unresolved":unresolved,"requested_tracks":requested,"format":fmt}
         self.state.save_playlist(playlist_id,name,description,f"import:{fmt}",payload); self._refresh_playlists()
@@ -3898,6 +3940,7 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(msg,7000)
 
     def _open_ai_playlist_import(self):
+        from .playlist_io import load_playlist, parse_playlist_text
         dialog=QDialog(self); dialog.setWindowTitle("Import an AI playlist"); dialog.resize(900,650)
         layout=QVBoxLayout(dialog); layout.setContentsMargins(24,22,24,20); layout.setSpacing(14)
         title=QLabel("Import an AI playlist"); title.setStyleSheet("font-size: 25px; font-weight: 700;")
@@ -3975,6 +4018,7 @@ class MainWindow(QMainWindow):
         return p
 
     def _export_selected_playlist(self):
+        from .playlist_io import save_playlist
         item=self.playlists_list.currentItem()
         if not item:self.statusBar().showMessage("Select a playlist first",3000); return
         record=dict(item.data(Qt.UserRole) or {}); tracks=self._playlist_tracks(record)
@@ -3985,6 +4029,7 @@ class MainWindow(QMainWindow):
         except Exception as exc:QMessageBox.warning(self,"Could not export playlist",str(exc))
 
     def _export_queue(self):
+        from .playlist_io import save_playlist
         tracks=[dict(x) for x in self.player.queue if isinstance(x,dict)]
         if not tracks:self.statusBar().showMessage("The queue is empty",3000); return
         path=self._playlist_export_path("Export queue")
@@ -4177,6 +4222,7 @@ class MainWindow(QMainWindow):
         )
 
     def _start_local_scan(self, reason: str = "scan") -> None:
+        from .library_scan_process import LibraryScanProcess
         roots=self.providers.local_roots()
         if not roots:
             self.statusBar().showMessage("Add a music folder first",3000)
@@ -4380,6 +4426,7 @@ class MainWindow(QMainWindow):
         return names
 
     def _searchable_source_names(self) -> list[str]:
+        from .plugin_onboarding import plugin_needs_setup
         names=[]
         for pid in self.providers.searchable_provider_ids():
             provider=self.providers.providers.get(pid)
@@ -4435,6 +4482,7 @@ class MainWindow(QMainWindow):
             self._use_extension(plugin_id)
 
     def _export_diagnostics(self):
+        from .diagnostics import write_diagnostics
         filename,_=QFileDialog.getSaveFileName(
             self,
             "Export redacted diagnostics",
@@ -4499,6 +4547,8 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(f"Exported {path.name}",4000)
 
     def _install_provider(self):
+        from .plugin_configuration_dialog import configure_plugin
+        from .plugin_onboarding import plugin_needs_setup
         path,_=QFileDialog.getOpenFileName(self,"Install provider",filter="Melodex Provider (*.mdxprovider *.zip)")
         if not path:return
         try:
@@ -4519,6 +4569,8 @@ class MainWindow(QMainWindow):
         except Exception as exc: QMessageBox.critical(self,"Could not install provider",str(exc))
 
     def _install_extension(self):
+        from .plugin_configuration_dialog import configure_plugin
+        from .plugin_onboarding import plugin_needs_setup
         path,_=QFileDialog.getOpenFileName(
             self,
             "Install capability extension",
@@ -4643,6 +4695,7 @@ class MainWindow(QMainWindow):
         priority="foreground", task_name="plugin-health-selected")
 
     def _finish_plugin_health_test(self,plugin_id,result):
+        from .plugin_configuration_dialog import configure_plugin
         result=dict(result or {})
         self._refresh_sources()
         self.statusBar().showMessage(health_summary(result),6000)
@@ -4665,6 +4718,7 @@ class MainWindow(QMainWindow):
         )
 
     def _configure_selected_plugin(self):
+        from .plugin_configuration_dialog import configure_plugin
         plugin_id=self._selected_plugin_id()
         if not plugin_id:
             self.statusBar().showMessage("Select an installed provider or extension first",3000)
@@ -5405,6 +5459,7 @@ class MainWindow(QMainWindow):
         self._run_async(load,self.album_wall.set_artwork, priority="background", task_name="album-wall-online-artwork")
 
     def _build_music_map_payload(self):
+        from .music_knowledge import build_knowledge_graph
         from .music_map_model import build_music_map
 
         catalog=self.providers.local_catalog()
@@ -5476,6 +5531,7 @@ class MainWindow(QMainWindow):
             self._apply_pending_journey_replay()
 
     def _remember_now_playing_knowledge(self,track,bundle):
+        from .music_knowledge import build_knowledge_graph
         if not isinstance(track,dict) or not isinstance(bundle,dict):
             return
         kwargs={}
@@ -5668,6 +5724,7 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Pathfinder destination set",2500)
 
     def _music_path_find(self):
+        from .music_pathfinder import find_music_path
         if not self.music_path_start_ref or not self.music_path_end_ref:
             self.statusBar().showMessage("Set both Pathfinder start and destination",3500); return
         mode=str(self.music_path_mode.currentData() or "balanced")
@@ -5750,6 +5807,7 @@ class MainWindow(QMainWindow):
 
     # ------------------------------- Music Map Journey Designer
     def _music_journey_render_stages(self):
+        from .music_journey import STAGE_LABELS
         if not hasattr(self,"music_journey_stages"):return
         self.music_journey_stages.clear()
         if not self.music_journey_stages_data:
@@ -5769,6 +5827,7 @@ class MainWindow(QMainWindow):
             self.music_journey_stages.addItem(item)
 
     def _music_journey_load_preset(self):
+        from .music_journey import STAGE_LABELS
         self.music_active_recipe_id=""
         self.music_active_recipe={}
         raw=self.music_journey_preset.currentData() if hasattr(self,"music_journey_preset") else []
@@ -5780,6 +5839,7 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Journey preset loaded",2500)
 
     def _music_journey_add_constraint(self):
+        from .music_journey import STAGE_LABELS
         self.music_active_recipe_id=""
         self.music_active_recipe={}
         key=str(self.music_journey_constraint.currentData() or "") if hasattr(self,"music_journey_constraint") else ""
@@ -5818,6 +5878,7 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Journey stages cleared",2500)
 
     def _music_journey_build(self):
+        from .music_journey import build_music_journey
         if self.music_live_active:
             self._journey_live_stop("design changed")
         if not self.music_path_start_ref or not self.music_path_end_ref:
@@ -5937,6 +5998,7 @@ class MainWindow(QMainWindow):
             pass
 
     def _journey_live_recipe_snapshot(self):
+        from .journey_recipe import make_journey_recipe
         name=str(self.music_active_recipe.get("name") or "Unsaved journey")
         description=str(self.music_active_recipe.get("description") or "")
         try:
@@ -5957,6 +6019,7 @@ class MainWindow(QMainWindow):
             }
 
     def _journey_live_final_snapshot(self):
+        from .journey_replay import portable_route_snapshot
         route=dict(self.music_live_route or self.music_path_result or {})
         played=[str(ref) for ref in list(self.music_live_played_refs or []) if str(ref)]
         tail=[str(ref) for ref in list(route.get("path_refs") or []) if str(ref)]
@@ -5973,6 +6036,7 @@ class MainWindow(QMainWindow):
         return portable_route_snapshot(route,dict(self.music_map.ref_map or {}))
 
     def _journey_live_start(self):
+        from .journey_replay import portable_route_snapshot
         route=dict(self.music_path_result or {})
         if not route.get("found") or not route.get("journey"):
             self.statusBar().showMessage(
@@ -6102,6 +6166,7 @@ class MainWindow(QMainWindow):
         base_route=None,
         reason="",
     ):
+        from .music_journey_live import replan_live_journey
         if not self.music_live_active:
             self.statusBar().showMessage("Start Journey Live first",3000); return
         if self.music_live_replanning:
@@ -6882,6 +6947,7 @@ class MainWindow(QMainWindow):
 
     # ------------------------------- LLM
     def _llm_settings(self):
+        from .llm_bridge import LLMClient, LLMSettings
         return LLMSettings(
             provider=self.state.get_text("llm_provider","openwebui"),
             endpoint=self.state.get_text("llm_endpoint",LLMClient.default_endpoint(self.state.get_text("llm_provider","openwebui"))),
@@ -6889,6 +6955,7 @@ class MainWindow(QMainWindow):
         )
 
     def _translate_lyrics(self, payload: dict[str,Any]) -> None:
+        from .llm_bridge import LLMClient
         payload=dict(payload or {})
         text=str(payload.get("text") or "").strip()
         if not text:
@@ -6977,6 +7044,7 @@ class MainWindow(QMainWindow):
         dialog.exec()
 
     def _llm_settings_dialog(self):
+        from .llm_bridge import LLMClient
         d=QDialog(self); d.setWindowTitle("Connect an LLM"); f=QFormLayout(d)
         provider=QComboBox(); provider.addItems(["openwebui","ollama","openai","custom"]); provider.setCurrentText(self.state.get_text("llm_provider","openwebui"))
         endpoint=QLineEdit(self.state.get_text("llm_endpoint",LLMClient.default_endpoint(provider.currentText()))); model=QLineEdit(self.state.get_text("llm_model","")); key=QLineEdit(self.state.get_text("llm_api_key","")); key.setEchoMode(QLineEdit.Password)
@@ -6987,6 +7055,7 @@ class MainWindow(QMainWindow):
             self.state.set_text("llm_provider",provider.currentText()); self.state.set_text("llm_endpoint",endpoint.text().strip()); self.state.set_text("llm_model",model.text().strip()); self.state.set_text("llm_api_key",key.text().strip())
 
     def _llm_context(self):
+        from .llm_bridge import llm_track_summary
         queue = (
             self.player.queue[self.player.index:self.player.index + 12]
             if self.player.index >= 0
@@ -7039,6 +7108,7 @@ class MainWindow(QMainWindow):
         priority="foreground", task_name="ai-playlist-resolve")
 
     def _finish_ai_playlist(self,playlist_id,name,description,result,requested=None,source="llm"):
+        from .playlist_io import save_playlist
         tracks=list(result.get("tracks") or []); unresolved=list(result.get("unresolved") or [])
         payload={"tracks":tracks,"unresolved":unresolved,"requested":int(result.get("requested") or len(tracks)+len(unresolved))}
         if requested is not None:payload["requested_tracks"]=[dict(x) for x in requested]
@@ -7200,4 +7270,12 @@ class MainWindow(QMainWindow):
             runner.shutdown()
             self._local_scan_runner=None
         if self.bridge:self.bridge.stop()
-        self.player.close(); self.metadata.close(); self.providers.close(); self.flow.close(); self.knowledge.close(); self.state.close(); super().closeEvent(event)
+        self.player.close()
+        if self._metadata is not None:
+            self._metadata.close()
+        self.providers.close()
+        self.flow.close()
+        if self._knowledge is not None:
+            self._knowledge.close()
+        self.state.close()
+        super().closeEvent(event)

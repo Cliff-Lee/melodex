@@ -174,6 +174,16 @@ def run_probe(
             timeout_seconds=timeout_seconds,
         )
 
+        # Separate "new Melodex profile" work from an OS-cold Python/Qt import.
+        # By this point code pages/import caches are warm, but this data
+        # directory has never been opened by Melodex.
+        profile_cold_dir = root / "profile-cold-after-code-warmup"
+        profile_cold = _run_launch(
+            profile_cold_dir,
+            root / "profile-cold.json",
+            timeout_seconds=timeout_seconds,
+        )
+
         large_profile = root / "large-profile"
         # Bootstrap bundled providers and small persistent stores outside the
         # measured large-library run, then add the synthetic cached index.
@@ -191,6 +201,7 @@ def run_probe(
 
     fresh_total = float(fresh["timeline_total_ms"])
     warm_total = float(warm["timeline_total_ms"])
+    profile_cold_total = float(profile_cold["timeline_total_ms"])
     large_total = float(large_cached["timeline_total_ms"])
     warm_gain = max(0.0, fresh_total - warm_total)
 
@@ -199,11 +210,20 @@ def run_probe(
         "cached_library_tracks": track_count,
         "fresh_profile": fresh,
         "warm_profile": warm,
+        "profile_cold_profile": profile_cold,
         "large_cached_profile": large_cached,
         "comparison": {
             "warm_vs_fresh_saved_ms": round(warm_gain, 3),
             "warm_vs_fresh_ratio": round(
                 warm_total / fresh_total if fresh_total else 0.0,
+                4,
+            ),
+            "profile_cold_over_warm_ms": round(
+                profile_cold_total - warm_total,
+                3,
+            ),
+            "profile_cold_over_warm_ratio": round(
+                profile_cold_total / warm_total if warm_total else 0.0,
                 4,
             ),
             "large_cached_over_warm_ms": round(large_total - warm_total, 3),
@@ -219,7 +239,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description=(
             "Measure Melodex process-to-first-event-loop startup phases for "
-            "fresh, warm and large cached-library profiles."
+            "OS-cold fresh, warm, code-warm/profile-cold and large cached-library profiles."
         )
     )
     parser.add_argument("--tracks", type=int, default=12_700)
