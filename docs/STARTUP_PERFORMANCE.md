@@ -95,15 +95,75 @@ Regression coverage verifies both halves of the contract:
 - a heavy page is absent at startup, shows its shell first, builds after the shell frame,
   and is constructed only once.
 
+## P9c — warm-cache service startup
+
+P9b moved the warm profile to about **334 ms** and the 12,700-track cached profile to
+about **416 ms** on the Linux CI runner. The remaining large-library startup premium was
+about **83 ms**, concentrated in ProviderManager/cache restoration rather than UI work.
+
+P9c changes the warm-cache path so Home does not eagerly materialise data it does not
+need.
+
+### Deferred local catalog hydration
+
+At startup Melodex now reads the persistent library index summary only. Home gets its
+track count from SQLite without JSON-decoding every cached track.
+
+For a large cached library:
+
+- the 12,700 metadata rows remain on disk while Home appears;
+- the local provider holds a one-shot cache loader;
+- the first feature that actually needs the catalog (My Music, search, Play Something,
+  local intelligence, etc.) hydrates it automatically;
+- direct LocalFilesProvider search/browse/resolve APIs preserve their normal behaviour;
+  and
+- the in-memory catalog is loaded only once.
+
+Changing configured roots explicitly discards any old deferred loader so a stale startup
+snapshot cannot reappear after the user selects new folders.
+
+### Warm SQLite fast path
+
+The library-index schema now records its schema version in SQLite
+`PRAGMA user_version`. Once an index is current, later launches skip repeated
+`CREATE TABLE`, index creation and schema-version writes.
+
+Configured roots are also compared with the existing root table before synchronisation,
+so an unchanged warm launch performs no root-table writes.
+
+### Plugins stay cold until used
+
+The plugin registry is no longer constructed during ProviderManager startup. Importing
+the registry client also imports its HTTP stack, so the registry now remains absent until
+the user opens/uses registry-backed plugin features.
+
+OS keyring discovery is similarly deferred. Provider and extension configuration can
+install one-shot configuration loaders; secret values are resolved only immediately
+before that external provider/extension is first called. Explicit configuration changes
+still apply immediately.
+
+Bundled provider archive manifests are cached after their first parse within a process,
+avoiding repeated zip reads during startup bookkeeping.
+
+### Measurement
+
+P9c adds ProviderManager sub-phases to the existing startup timeline:
+
+- settings/config files ready;
+- bundled providers ready;
+- local index summary ready;
+- installed providers ready;
+- capability extensions ready; and
+- ProviderManager ready.
+
+The same fresh/warm/12.7k startup artifact therefore shows both the end-to-end gain and
+which provider/cache stage remains dominant.
+
+Regression tests ensure the large cached catalog is not hydrated by construction or by
+Home's count, the OS secret store stays uninitialised during cached-status work, and the
+plugin registry remains lazy.
+
 ## Planned P9 sequence
-
-### P9c — warm-cache service startup
-
-Optimise ProviderManager, bundled-provider discovery, plugin registry/configuration,
-SQLite opening and cached-library restoration using the P9a phase data.
-
-Success criterion: the common subsequent-launch path does only the work required for
-the initial screen and local playback readiness.
 
 ### P9d — first-run and cold-profile work
 
