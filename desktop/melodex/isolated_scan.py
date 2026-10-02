@@ -101,6 +101,16 @@ class IsolatedLibraryScanRunner:
         control = control or ScanControl()
         command = python_module_child_command("melodex.scan_worker")
         env = os.environ.copy()
+        # Source checkouts may be launched from outside desktop/. Preserve the
+        # package root explicitly so `python -m melodex.scan_worker` resolves
+        # just as reliably as the frozen executable's module-child mode.
+        package_root = str(Path(__file__).resolve().parents[1])
+        existing_pythonpath = str(env.get("PYTHONPATH") or "")
+        env["PYTHONPATH"] = (
+            package_root
+            if not existing_pythonpath
+            else package_root + os.pathsep + existing_pythonpath
+        )
 
         process = subprocess.Popen(
             command,
