@@ -2366,7 +2366,7 @@ class MainWindow(QMainWindow):
             and name not in self._built_lazy_pages
         ):
             QTimer.singleShot(
-                0,
+                self._page_refresh_delay_ms,
                 lambda page=name, token=generation: self._build_lazy_page_if_current(
                     page,
                     token,
