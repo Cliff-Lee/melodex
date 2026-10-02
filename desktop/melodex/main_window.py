@@ -154,6 +154,8 @@ class MainWindow(QMainWindow):
         self._local_scan_runner: LibraryScanProcess | None = None
         self._local_scan_signals: WorkerSignals | None = None
         self._source_config_refresh_in_progress = False
+        self._navigation_generation = 0
+        self._page_refresh_delay_ms = 16
         self.externalCommand.connect(self._on_external_command)
 
         self.player = FlowPlayer(
@@ -2166,23 +2168,52 @@ class MainWindow(QMainWindow):
             if hasattr(self, "responsiveness")
             else None
         )
+        self._navigation_generation += 1
+        generation = self._navigation_generation
         self.current_page=name
         self.stack.setCurrentWidget(self.pages[name])
         self._update_nav_state(name)
+        self.pages[name].update()
         if interaction is not None:
             self.responsiveness.end_interaction(interaction)
-        if name=="home": self._show_home()
+
+        # Navigation acknowledgement and page population are separate phases.
+        # Give Qt one short frame to paint the destination shell before any
+        # refresh work starts. Rapid navigation invalidates stale callbacks.
+        QTimer.singleShot(
+            self._page_refresh_delay_ms,
+            lambda page=name, token=generation: self._populate_page_if_current(
+                page,
+                token,
+            ),
+        )
+
+    def _populate_page_if_current(self, name: str, generation: int) -> None:
+        if (
+            self._closing
+            or generation != self._navigation_generation
+            or name != self.current_page
+        ):
+            return
+
+        if name=="home":
+            self._show_home()
         elif name=="library":
             self._refresh_library()
             self._refresh_plugin_presence()
-        elif name=="album_wall": self._refresh_album_wall()
-        elif name=="music_map": self._refresh_music_map()
+        elif name=="album_wall":
+            self._refresh_album_wall()
+        elif name=="music_map":
+            self._refresh_music_map()
         elif name=="sources":
             self._refresh_sources()
             QTimer.singleShot(0, self._refresh_source_config_statuses_async)
-        elif name=="moments": self._refresh_moments()
-        elif name=="journeys": self._refresh_journeys()
-        elif name=="playlists": self._refresh_playlists()
+        elif name=="moments":
+            self._refresh_moments()
+        elif name=="journeys":
+            self._refresh_journeys()
+        elif name=="playlists":
+            self._refresh_playlists()
         elif name=="for_you":
             self._refresh_taste()
             self._refresh_plugin_presence()
