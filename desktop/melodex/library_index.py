@@ -295,6 +295,10 @@ class LocalLibraryIndex:
             for row in state_rows:
                 if not bool(row.get("available")):
                     continue
+                # Older snapshots have no "complete" field and are treated as
+                # complete for compatibility. New scans explicitly set it.
+                if "complete" in row and not bool(row.get("complete")):
+                    continue
                 path = str(row.get("path") or "")
                 if path:
                     available_ids.add(_root_id(path))
@@ -415,7 +419,16 @@ class LocalLibraryIndex:
                 len(rows) for root_id, rows in grouped.items()
                 if root_id in available_ids
             ),
-            "roots_unavailable": max(0, len(clean_roots) - len(available_ids)),
+            "roots_unavailable": sum(
+                1 for row in state_rows
+                if not bool(row.get("available"))
+            ) if state_rows else 0,
+            "roots_incomplete": sum(
+                1 for row in state_rows
+                if bool(row.get("available"))
+                and "complete" in row
+                and not bool(row.get("complete"))
+            ),
         }
 
     def summary(self, roots: list[Path]) -> dict[str, Any]:
