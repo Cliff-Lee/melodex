@@ -52,7 +52,7 @@ def _native_dependencies(path: Path) -> list[str]:
 
 def _target_from_dependency(value: str) -> str | None:
     lowered = value.lower()
-    for target in TARGETS:
+    for target in sorted(TARGETS, key=len, reverse=True):
         if target.lower() in lowered:
             return target
     return None
