@@ -63,6 +63,8 @@ jobs:
           cd desktop
           chmod +x build_macos.sh
           ./build_macos.sh
+          if [ -f dist/Melodex-qt-audit-before.md ]; then cat dist/Melodex-qt-audit-before.md >> "$GITHUB_STEP_SUMMARY"; fi
+          if [ -f dist/Melodex-qt-prune.md ]; then cat dist/Melodex-qt-prune.md >> "$GITHUB_STEP_SUMMARY"; fi
           if [ -f dist/Melodex-qt-audit.md ]; then cat dist/Melodex-qt-audit.md >> "$GITHUB_STEP_SUMMARY"; fi
           if [ -f dist/Melodex-bundle-size.md ]; then cat dist/Melodex-bundle-size.md >> "$GITHUB_STEP_SUMMARY"; fi
           if [ -f dist/Melodex.dmg ]; then mv dist/Melodex.dmg dist/Melodex-${{ matrix.name }}.dmg; fi
@@ -83,6 +85,10 @@ jobs:
             desktop/dist/Melodex-${{ matrix.name }}.dmg
             desktop/dist/Melodex-bundle-size.json
             desktop/dist/Melodex-bundle-size.md
+            desktop/dist/Melodex-qt-audit-before.json
+            desktop/dist/Melodex-qt-audit-before.md
+            desktop/dist/Melodex-qt-prune.json
+            desktop/dist/Melodex-qt-prune.md
             desktop/dist/Melodex-qt-audit.json
             desktop/dist/Melodex-qt-audit.md
       - name: Upload Windows artifact
