@@ -128,18 +128,18 @@ def test_background_can_fill_capacity_once_foreground_is_active():
     release = threading.Event()
     lock = threading.Lock()
     started = {"background": 0, "foreground": 0}
-    three_background = threading.Event()
+    two_background = threading.Event()
+    third_background = threading.Event()
     foreground_started = threading.Event()
-    fourth_background = threading.Event()
 
     def background_work():
         with lock:
             started["background"] += 1
             count = started["background"]
+            if count >= 2:
+                two_background.set()
             if count >= 3:
-                three_background.set()
-            if count >= 4:
-                fourth_background.set()
+                third_background.set()
         release.wait(2)
 
     def foreground_work():
@@ -149,23 +149,25 @@ def test_background_can_fill_capacity_once_foreground_is_active():
         release.wait(2)
 
     try:
-        for _ in range(3):
+        for _ in range(2):
             scheduler.submit(background_work, priority="background")
-        assert three_background.wait(1)
+        assert two_background.wait(1)
 
         scheduler.submit(foreground_work, priority="foreground")
         assert foreground_started.wait(1)
-        assert scheduler.snapshot()["active_total"] == 4
+        assert scheduler.snapshot()["active_total"] == 3
 
-        # A fourth background task cannot start yet because all four workers
-        # are already occupied, but the reserve is not counted twice.
+        # The foreground task already occupies the reserved capacity, so a
+        # third background task may use the remaining fourth worker.
         scheduler.submit(background_work, priority="background")
-        time.sleep(0.05)
-        assert fourth_background.is_set() is False
+        assert third_background.wait(1)
+        snapshot = scheduler.snapshot()
+        assert snapshot["active_total"] == 4
+        assert snapshot["active_by_priority"]["background"] == 3
+        assert snapshot["active_by_priority"]["foreground"] == 1
 
         release.set()
         assert scheduler.wait_for_idle(2)
-        assert fourth_background.is_set()
     finally:
         scheduler.shutdown(wait=True)
 
