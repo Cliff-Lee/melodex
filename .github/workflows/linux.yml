@@ -66,6 +66,9 @@ jobs:
             fi
           fi
           desktop/build_linux.sh "${BUILD_ARGS[@]}"
+          if [ -f desktop/dist/Melodex-linux-size-regression.md ]; then cat desktop/dist/Melodex-linux-size-regression.md >> "$GITHUB_STEP_SUMMARY"; fi
+          if [ -f desktop/dist/Melodex-linux-runtime-audit.md ]; then cat desktop/dist/Melodex-linux-runtime-audit.md >> "$GITHUB_STEP_SUMMARY"; fi
+          if [ -f desktop/dist/Melodex-linux-bundle-size.md ]; then cat desktop/dist/Melodex-linux-bundle-size.md >> "$GITHUB_STEP_SUMMARY"; fi
       - name: Validate package metadata
         run: |
           desktop-file-validate desktop/linux/io.github.cliff_lee.Melodex.desktop
@@ -78,6 +81,12 @@ jobs:
           path: |
             desktop/dist/Melodex-linux-x86_64.deb
             desktop/dist/Melodex-linux-x86_64.AppImage
+            desktop/dist/Melodex-linux-bundle-size.json
+            desktop/dist/Melodex-linux-bundle-size.md
+            desktop/dist/Melodex-linux-runtime-audit.json
+            desktop/dist/Melodex-linux-runtime-audit.md
+            desktop/dist/Melodex-linux-size-regression.json
+            desktop/dist/Melodex-linux-size-regression.md
 
   smoke-ubuntu:
     needs: build

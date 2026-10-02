@@ -25,6 +25,11 @@ def _baselines():
                 "portable_zip_bytes": 800,
                 "installer_bytes": 600,
             },
+            "Linux-x86_64": {
+                "installed_bytes": 1200,
+                "deb_bytes": 700,
+                "appimage_bytes": 900,
+            },
         },
     }
 
@@ -99,3 +104,27 @@ def test_markdown_reports_baseline_actual_and_limit():
     assert "Actual" in rendered
     assert "Limit" in rendered
     assert "+5.0%" in rendered
+
+
+
+def test_linux_size_guard_checks_bundle_deb_and_appimage(tmp_path: Path):
+    guard = _load_guard()
+    deb = tmp_path / "melodex.deb"
+    appimage = tmp_path / "Melodex.AppImage"
+    deb.write_bytes(b"x" * 735)
+    appimage.write_bytes(b"x" * 945)
+
+    result = guard.evaluate(
+        profile="Linux-x86_64",
+        baselines=_baselines(),
+        bundle_report={"total_bytes": 1260, "archive": None},
+        deb=deb,
+        appimage=appimage,
+    )
+
+    assert result["ok"] is True
+    assert {row["metric"] for row in result["metrics"]} == {
+        "installed_bytes",
+        "deb_bytes",
+        "appimage_bytes",
+    }

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "tolerance_percent": 12.0,
+  "tolerance_percent": 12,
   "profiles": {
     "macOS-intel": {
       "installed_bytes": 130056122,
@@ -13,6 +13,11 @@
     "Windows-x64": {
       "portable_zip_bytes": 77474957,
       "installer_bytes": 53610895
+    },
+    "Linux-x86_64": {
+      "installed_bytes": 304580012,
+      "deb_bytes": 93208828,
+      "appimage_bytes": 109500920
     }
   }
 }

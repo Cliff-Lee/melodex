@@ -97,3 +97,13 @@ This file tracks changes intended for the next release after **v0.7.4**.
   maximum allowed size.
 - Intentional size increases require an explicit baseline update instead of
   silently becoming permanent.
+
+
+## Linux packaging — size and runtime parity
+
+- Linux no longer blanket-collects the full keyring package.
+- Linux frozen builds now run the same Qt/runtime packaging checks used by the
+  other desktop platforms.
+- CI measures the installed frozen payload, Debian package and AppImage and
+  protects all three against unexpected growth.
+- Existing Ubuntu and Debian packaged-launch smoke tests remain required.

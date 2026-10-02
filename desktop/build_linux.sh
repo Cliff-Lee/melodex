@@ -23,8 +23,15 @@ rm -rf build dist
 pyinstaller --noconfirm --name Melodex \
   --add-data "melodex/assets/melodex-mark.png:melodex/assets" \
   --add-data "melodex/bundled_providers:melodex/bundled_providers" \
-  --collect-all keyring run.py
+  run.py
 python check_bundled_provider_payload.py dist/Melodex
+python tools/check_qt_bundle.py dist/Melodex
+python tools/audit_runtime_bundle.py dist/Melodex \
+  --json-out dist/Melodex-linux-runtime-audit.json \
+  --markdown-out dist/Melodex-linux-runtime-audit.md
+python tools/report_bundle_size.py dist/Melodex \
+  --json-out dist/Melodex-linux-bundle-size.json \
+  --markdown-out dist/Melodex-linux-bundle-size.md
 python linux/check_glibc_abi.py "dist/Melodex"
 python frozen_child_smoke.py "dist/Melodex/Melodex"
 
@@ -44,3 +51,11 @@ python linux/build_packages.py "$@" \
   --appimagetool "$APPIMAGETOOL" \
   --runtime-file "$RUNTIME_FILE" \
   --output-dir dist
+
+python tools/check_size_regression.py \
+  --profile Linux-x86_64 \
+  --bundle-report dist/Melodex-linux-bundle-size.json \
+  --deb dist/Melodex-linux-x86_64.deb \
+  --appimage dist/Melodex-linux-x86_64.AppImage \
+  --json-out dist/Melodex-linux-size-regression.json \
+  --markdown-out dist/Melodex-linux-size-regression.md
