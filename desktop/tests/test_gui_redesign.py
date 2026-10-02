@@ -82,6 +82,63 @@ def test_visual_library_defaults_to_album_cards_and_filters():
 
 
 
+def test_library_navigation_reuses_rendered_catalog_until_revision_changes(
+    monkeypatch,
+    tmp_path,
+):
+    try:
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+
+    window = main_window.MainWindow()
+    calls = []
+    original_set_catalog = window.library_browser.set_catalog
+
+    def counted_set_catalog(catalog):
+        calls.append(len(catalog))
+        return original_set_catalog(catalog)
+
+    monkeypatch.setattr(window.library_browser, "set_catalog", counted_set_catalog)
+
+    window._refresh_library()
+    assert len(calls) == 1
+
+    window.library_browser.set_view("artists")
+    window.library_browser.search.setText("remember this")
+    window._refresh_library()
+
+    # Revisiting the same catalog should preserve the existing browser instead
+    # of tearing it down and rebuilding it.
+    assert len(calls) == 1
+    assert window.library_browser.current_view() == "artists"
+    assert window.library_browser.search.text() == "remember this"
+
+    local = window.providers.providers["local"]
+    local.load_cached_tracks(
+        [
+            _track(
+                str(tmp_path / "music" / "01.flac"),
+                "Artist",
+                "Album",
+                "One",
+                1,
+            )
+        ]
+    )
+    window._refresh_library()
+    assert len(calls) == 2
+
+    window.close()
+    app.processEvents()
+
+
 def test_large_library_progressively_renders_widgets():
     try:
         from PySide6.QtWidgets import QApplication

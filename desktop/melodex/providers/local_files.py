@@ -32,6 +32,7 @@ class LocalFilesProvider(MusicProvider):
         }
         self._tracks: list[dict[str, Any]] = []
         self._last_scan_metrics: dict[str, object] = {}
+        self._catalog_revision = 0
         if self.roots and scan_on_init:
             self.scan()
 
@@ -73,6 +74,7 @@ class LocalFilesProvider(MusicProvider):
         for index, track in enumerate(self._tracks):
             if self._override_key(str(track.get("local_path") or "")) == key:
                 self._tracks[index] = self._apply_override(track)
+                self._catalog_revision += 1
                 return dict(self._tracks[index])
         return {}
 
@@ -509,6 +511,7 @@ class LocalFilesProvider(MusicProvider):
     def load_cached_tracks(self, tracks: list[dict[str, Any]]) -> int:
         """Load persisted metadata without probing the underlying audio files."""
         self._tracks = self.prepare_cached_tracks(tracks)
+        self._catalog_revision += 1
         return len(self._tracks)
 
     def apply_scan_snapshot(self, snapshot: dict[str, Any]) -> int:
@@ -521,11 +524,16 @@ class LocalFilesProvider(MusicProvider):
         metrics = dict((snapshot or {}).get("metrics") or {})
         self._tracks = tracks
         self._last_scan_metrics = metrics
+        self._catalog_revision += 1
         return len(tracks)
 
     def scan(self) -> int:
         snapshot = self.scan_snapshot()
         return self.apply_scan_snapshot(snapshot)
+
+    @property
+    def catalog_revision(self) -> int:
+        return int(self._catalog_revision)
 
     @property
     def last_scan_metrics(self) -> dict[str, object]:

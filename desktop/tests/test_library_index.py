@@ -343,3 +343,35 @@ def test_cancelled_index_commit_rolls_back_partial_changes(tmp_path: Path):
     stored = index.load_tracks([root])
     assert len(stored) == 1
     assert stored[0]["title"] == "Old"
+
+
+def test_local_catalog_revision_tracks_live_catalog_changes(tmp_path: Path):
+    provider = LocalFilesProvider(scan_on_init=False)
+    path = tmp_path / "Artist" / "Album" / "01.flac"
+    track = _track(path, title="Original")
+
+    assert provider.catalog_revision == 0
+
+    provider.load_cached_tracks([track])
+    first_revision = provider.catalog_revision
+    assert first_revision == 1
+
+    # Reading/copying the catalog must not invalidate browser state.
+    assert provider.tracks[0]["title"] == "Original"
+    assert provider.catalog_revision == first_revision
+
+    updated = provider.set_metadata_override(
+        path,
+        {"artist": "Corrected Artist"},
+    )
+    assert updated["artist"] == "Corrected Artist"
+    second_revision = provider.catalog_revision
+    assert second_revision == first_revision + 1
+
+    provider.apply_scan_snapshot(
+        {
+            "tracks": [track],
+            "metrics": {"tracks_indexed": 1},
+        }
+    )
+    assert provider.catalog_revision == second_revision + 1
