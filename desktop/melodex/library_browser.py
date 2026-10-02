@@ -1374,6 +1374,13 @@ class LibraryBrowser(QWidget):
         width = max(400, self.album_scroll.viewport().width())
         columns = max(2, min(8, width // 190))
         rendered = self._visible_albums[: self._album_render_limit]
+        rendered_keys = {str(album.get("key") or "") for album in rendered}
+        for key in list(self.cards):
+            if key in rendered_keys:
+                continue
+            card = self.cards.pop(key)
+            card.setParent(None)
+            card.deleteLater()
         for index, album in enumerate(rendered):
             key = str(album.get("key") or "")
             card = self.cards.get(key)
@@ -1403,6 +1410,13 @@ class LibraryBrowser(QWidget):
         width = max(400, self.artist_scroll.viewport().width())
         columns = max(2, min(8, width // 190))
         rendered = self._visible_artists[: self._artist_render_limit]
+        rendered_keys = {str(artist.get("key") or "") for artist in rendered}
+        for key in list(self.artist_cards):
+            if key in rendered_keys:
+                continue
+            card = self.artist_cards.pop(key)
+            card.setParent(None)
+            card.deleteLater()
         for index, artist in enumerate(rendered):
             key = str(artist.get("key") or "")
             card = self.artist_cards.get(key)
@@ -1767,11 +1781,8 @@ class LibraryBrowser(QWidget):
             if card is not None:
                 card.set_cover(path)
 
-            for track_key, album_key in self.track_album_key.items():
-                if str(album_key) != key:
-                    continue
-                row = self.track_rows.get(track_key)
-                if row is not None:
+            for track_key, row in list(self.track_rows.items()):
+                if str(self.track_album_key.get(track_key) or "") == key:
                     row.set_cover(path)
 
     def set_artist_images(self, mapping: dict[str, str]) -> None:
