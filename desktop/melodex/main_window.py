@@ -100,6 +100,7 @@ def _track_text(t: dict[str, Any]) -> str:
 class MainWindow(QMainWindow):
     externalCommand = Signal(str, object, object)
     _PAGE_CONTENT_DELAY_MS = 16
+    _SEARCH_LOADING_DELAY_MS = 200
 
     def __init__(self):
         super().__init__()
@@ -157,6 +158,8 @@ class MainWindow(QMainWindow):
         self._source_config_refresh_in_progress = False
         self._page_refresh_sequence = 0
         self._library_browser_revision = -1
+        self._search_sequence = 0
+        self._search_in_progress = False
         self.externalCommand.connect(self._on_external_command)
 
         self.player = FlowPlayer(
@@ -4615,6 +4618,29 @@ class MainWindow(QMainWindow):
         refresh()
         dialog.exec()
 
+    def _search_has_useful_results(self) -> bool:
+        if not hasattr(self, "results"):
+            return False
+        for index in range(self.results.count()):
+            item=self.results.item(index)
+            if isinstance(item.data(Qt.UserRole),dict):
+                return True
+        return False
+
+    def _show_search_loading_if_needed(self, sequence: int) -> None:
+        if (
+            self._closing
+            or sequence != self._search_sequence
+            or not self._search_in_progress
+            or self._search_has_useful_results()
+        ):
+            return
+        self.results.clear()
+        item=QListWidgetItem("Searching connected sources…")
+        item.setFlags(item.flags() & ~Qt.ItemIsSelectable)
+        item.setForeground(QColor("#8793a4"))
+        self.results.addItem(item)
+
     def _search(self):
         q=self.search_box.text().strip()
         pid=str(self.search_source.currentData() or "all")
@@ -4625,29 +4651,61 @@ class MainWindow(QMainWindow):
             if hasattr(self, "responsiveness")
             else None
         )
-        self.results.clear()
-        self.results.addItem("Searching…")
+
+        self._search_sequence += 1
+        sequence=self._search_sequence
+        self._search_in_progress=True
+        keep_existing=self._search_has_useful_results()
+
+        # Keep useful previous results visible while refreshing. If there is
+        # nothing useful to preserve, delay the loading placeholder so quick
+        # searches do not flash a transient busy state.
+        if not keep_existing:
+            self.results.clear()
+        QTimer.singleShot(
+            self._SEARCH_LOADING_DELAY_MS,
+            lambda seq=sequence:self._show_search_loading_if_needed(seq),
+        )
+
         if hasattr(self,"search_button"):
-            self.search_button.setEnabled(False)
+            self.search_button.setText("Searching…")
         if hasattr(self,"search_status"):
             target=(
                 self.search_source.currentText()
                 if pid!="all"
                 else "your connected sources"
             )
-            self.search_status.setText(f"Searching {target}…")
+            suffix=" · showing previous results" if keep_existing else ""
+            self.search_status.setText(f"Searching {target}…{suffix}")
             self.search_status.setToolTip("")
         if interaction is not None:
             self.responsiveness.end_interaction(interaction)
+
         self._run_async(
             lambda:self.providers.search_report(q,pid,100),
-            self._show_search_report,
-            self._search_report_failed,
+            lambda report,seq=sequence:self._show_search_report(report,seq),
+            lambda error,seq=sequence:self._search_report_failed(error,seq),
         )
 
-    def _search_report_failed(self, error: str) -> None:
+    def _search_report_failed(
+        self,
+        error: str,
+        sequence: int | None = None,
+    ) -> None:
+        if sequence is not None and sequence != self._search_sequence:
+            return
+        self._search_in_progress=False
         if hasattr(self,"search_button"):
-            self.search_button.setEnabled(True)
+            self.search_button.setText("Search")
+
+        if self._search_has_useful_results():
+            if hasattr(self,"search_status"):
+                self.search_status.setText(
+                    "Search update failed · showing previous results"
+                )
+                self.search_status.setToolTip(str(error or ""))
+            return
+
         self.results.clear()
         item=QListWidgetItem("Search could not be completed. Try again in a moment.")
         item.setFlags(item.flags() & ~Qt.ItemIsSelectable)
@@ -4657,9 +4715,16 @@ class MainWindow(QMainWindow):
             self.search_status.setText("Search temporarily unavailable")
             self.search_status.setToolTip(str(error or ""))
 
-    def _show_search_report(self, report):
+    def _show_search_report(
+        self,
+        report,
+        sequence: int | None = None,
+    ):
+        if sequence is not None and sequence != self._search_sequence:
+            return
+        self._search_in_progress=False
         if hasattr(self,"search_button"):
-            self.search_button.setEnabled(True)
+            self.search_button.setText("Search")
 
         data=dict(report or {})
         tracks=[dict(x) for x in list(data.get("items") or []) if isinstance(x,dict)]
