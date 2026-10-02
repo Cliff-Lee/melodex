@@ -47,7 +47,7 @@
     {
       "reviewed_at": "2026-10-02T04:55:00Z",
       "reviewer": "Melodex project",
-      "decision": "example-playback-fix",
+      "decision": "example-baseline",
       "version": "0.1.2",
       "package_sha256": "39d44cf429240b0bc81c496a77270b9f174daeb289809bb03994a97f12ebcd61",
       "summary": "Playback reliability review: Openverse media URLs are resolved to their final HTTP(S) origin before handoff, dynamic media-host access is declared explicitly, and Melodex still constrains the playback gateway to the exact resolved host.",
@@ -58,7 +58,7 @@
         "permissions": true,
         "source_policy": true,
         "tests": true,
-        "playback_redirect_boundary": true
+        "rights_notes": true
       },
       "limitations": [
         "Openverse licence information is index metadata and should be verified at the original source before reuse.",
