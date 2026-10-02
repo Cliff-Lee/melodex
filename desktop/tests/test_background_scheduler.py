@@ -123,6 +123,53 @@ def test_background_work_leaves_one_slot_for_foreground():
         scheduler.shutdown(wait=True)
 
 
+def test_background_can_fill_capacity_once_foreground_is_active():
+    scheduler = BackgroundScheduler(max_workers=4, foreground_reserve=1)
+    release = threading.Event()
+    lock = threading.Lock()
+    started = {"background": 0, "foreground": 0}
+    three_background = threading.Event()
+    foreground_started = threading.Event()
+    fourth_background = threading.Event()
+
+    def background_work():
+        with lock:
+            started["background"] += 1
+            count = started["background"]
+            if count >= 3:
+                three_background.set()
+            if count >= 4:
+                fourth_background.set()
+        release.wait(2)
+
+    def foreground_work():
+        with lock:
+            started["foreground"] += 1
+        foreground_started.set()
+        release.wait(2)
+
+    try:
+        for _ in range(3):
+            scheduler.submit(background_work, priority="background")
+        assert three_background.wait(1)
+
+        scheduler.submit(foreground_work, priority="foreground")
+        assert foreground_started.wait(1)
+        assert scheduler.snapshot()["active_total"] == 4
+
+        # A fourth background task cannot start yet because all four workers
+        # are already occupied, but the reserve is not counted twice.
+        scheduler.submit(background_work, priority="background")
+        time.sleep(0.05)
+        assert fourth_background.is_set() is False
+
+        release.set()
+        assert scheduler.wait_for_idle(2)
+        assert fourth_background.is_set()
+    finally:
+        scheduler.shutdown(wait=True)
+
+
 def test_lane_limit_blocks_same_lane_without_blocking_other_lanes():
     scheduler = BackgroundScheduler(
         max_workers=4,
