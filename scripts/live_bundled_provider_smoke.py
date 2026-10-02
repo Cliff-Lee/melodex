@@ -48,23 +48,31 @@ def _probe(resource: dict, *, timeout: float = 20.0) -> dict:
         raise RuntimeError("resolved resource has no URL")
 
     kind = str(resource.get("kind") or "http").casefold()
+    guarded_external = "_playback_allowed_hosts" in resource
+    needs_gateway = bool(
+        resource.get("headers")
+        or resource.get("cookies")
+        or resource.get("gateway_required")
+        or (guarded_external and kind != "hls")
+    )
+
     gateway = PlaybackGateway()
     try:
-        if kind == "hls":
-            # This mirrors FlowPlayer: HLS can be handed directly to Qt after
-            # the declared-host check when no gateway state is required.
-            url = gateway.validate_resource(resource)
+        if needs_gateway:
+            # Exactly the same decision as FlowPlayer._media_url_for: HTTP
+            # provider resources, or any resource carrying request state, are
+            # exercised through the secure loopback gateway.
+            url = gateway.register(resource)
+            headers = {}
+        else:
+            url = str(resource.get("stream_url") or resource.get("url") or "")
+            if guarded_external:
+                gateway.validate_resource(resource)
             headers = {
                 str(k): str(v)
                 for k, v in dict(resource.get("headers") or {}).items()
                 if str(k).strip()
             }
-        else:
-            # This mirrors normal HTTP playback in FlowPlayer. In particular it
-            # exercises declared-host and redirect validation, which a raw
-            # upstream byte probe cannot catch.
-            url = gateway.register(resource)
-            headers = {}
 
         headers.setdefault(
             "User-Agent",
