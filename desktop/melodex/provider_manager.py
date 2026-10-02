@@ -166,6 +166,10 @@ class ProviderManager:
     def quarantined_legacy_providers(self) -> list[dict[str, str]]:
         return [dict(row) for row in self._quarantined_legacy_providers]
 
+    def quarantined_superseded_providers(self) -> list[dict[str, str]]:
+        """Reference providers hidden because an included replacement exists."""
+        return [dict(row) for row in self._quarantined_superseded_providers]
+
     def _load_settings(self) -> dict[str, Any]:
         try:
             return json.loads(self.settings_path.read_text("utf-8"))
