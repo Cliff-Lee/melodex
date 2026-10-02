@@ -2874,7 +2874,10 @@ class MainWindow(QMainWindow):
 
     def _refresh_library(self):
         if hasattr(self,"library_browser"):
-            self.library_browser.set_catalog(self.providers.local_catalog())
+            self.library_browser.set_catalog(
+                self.providers.local_catalog(),
+                revision=self.providers.local_catalog_revision(),
+            )
 
     def _play_library_track(self, track: object) -> None:
         if not isinstance(track,dict):
