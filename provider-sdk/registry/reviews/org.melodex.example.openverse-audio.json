@@ -43,6 +43,28 @@
       "version": "0.1.1",
       "package_sha256": "28c62dd617a1d48281e5c0705b54f939668a33dfe185848f09ca2553319c1b0b",
       "summary": "Stabilization review after packaged-host/plugin audit: source parsing/boundary fixes, package descriptor, permissions, source policy, adversarial fixtures and rebuilt package bytes were checked for this patch release."
+    },
+    {
+      "reviewed_at": "2026-10-02T03:55:00Z",
+      "reviewer": "Melodex project",
+      "decision": "example-baseline",
+      "version": "0.1.2",
+      "package_sha256": "88fabeb5542d4b8429bc27e3998c5ec985609acda6ac5c3ba44c85752b70d316",
+      "summary": "Playback review after desktop-gateway testing: Openverse media URLs now resolve normal source/CDN redirects before Melodex's guarded playback gateway, with registry/package integrity and deterministic fixture coverage updated for 0.1.2.",
+      "checks": {
+        "registry_schema": true,
+        "package_integrity": true,
+        "manifest_descriptor": true,
+        "permissions": true,
+        "source_policy": true,
+        "tests": true,
+        "rights_notes": true
+      },
+      "limitations": [
+        "Openverse licence information is index metadata and should be verified at the original source before reuse.",
+        "Media is hosted by independent upstream sites; individual items can still become unavailable or reject playback.",
+        "Project-maintained example review; this does not cryptographically verify a publisher identity or provide a legal/content endorsement."
+      ]
     }
   ]
 }
