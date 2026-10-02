@@ -419,6 +419,8 @@ def run_soak(
         app.processEvents()
         time.sleep(0.001)
     monitor.stop()
+    gc.collect()
+    app.processEvents()
 
     responsiveness = monitor.summary()
     scheduler_summary = scheduler.snapshot()
