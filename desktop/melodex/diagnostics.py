@@ -30,6 +30,7 @@ _SCAN_METRIC_FIELDS = (
     "removed_files",
     "stat_failures",
     "metadata_reused",
+    "incomplete_roots",
 )
 
 _CATALOG_METRIC_FIELDS = (
