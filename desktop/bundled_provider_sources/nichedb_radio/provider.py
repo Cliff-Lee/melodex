@@ -162,6 +162,8 @@ def _query_plan(query: str, limit: int) -> tuple[str, dict]:
                     "limit": requested,
                 }
 
+    # Search has no tag filter. Fetch extra candidates so filtering broken
+    # streams does not leave an unnecessarily short Melodex result list.
     return "/search", {
         "q": q,
         "collection": "radio",
