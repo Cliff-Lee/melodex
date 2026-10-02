@@ -1443,7 +1443,8 @@ def test_fast_search_never_flashes_delayed_loading_placeholder(monkeypatch, tmp_
     # A timer firing after completion must be a no-op.
     window._show_delayed_search_loading(sequence, "your connected sources")
     assert window.results.count() == 1
-    assert window.results.item(0).text() == "Fast Artist — Fast Result"
+    assert window.results.item(0).text().startswith("Fast Artist — Fast Result")
+    assert window.results.item(0).data(Qt.UserRole)["track_id"] == "fast"
 
     window.close()
     app.processEvents()
