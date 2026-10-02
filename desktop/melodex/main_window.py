@@ -57,7 +57,7 @@ from .plugin_onboarding import plugin_needs_setup
 from .plugin_health import health_badge, health_summary
 from .diagnostics import write_diagnostics
 from .library_browser import LibraryBrowser
-from .library_scan import ScanControl
+from .library_scan_process import LibraryScanProcess
 from .ux_components import (
     ActionCard,
     CommandPaletteDialog,
@@ -150,7 +150,7 @@ class MainWindow(QMainWindow):
         self._local_scan_in_progress = False
         self._local_scan_pending = False
         self._local_scan_sequence = 0
-        self._local_scan_control: ScanControl | None = None
+        self._local_scan_runner: LibraryScanProcess | None = None
         self._local_scan_signals: WorkerSignals | None = None
         self.externalCommand.connect(self._on_external_command)
 
@@ -3728,29 +3728,31 @@ class MainWindow(QMainWindow):
                 self.home_status.setText(message)
 
     def _toggle_local_scan_pause(self) -> None:
-        control=self._local_scan_control
-        if control is None or not self._local_scan_in_progress:
+        runner=self._local_scan_runner
+        if runner is None or not self._local_scan_in_progress:
             return
-        if control.paused:
-            control.resume()
+        if runner.paused:
+            runner.resume()
             if hasattr(self,"library_browser"):
                 self.library_browser.set_scan_paused(False)
             self.statusBar().showMessage("Music indexing resumed",3000)
         else:
-            control.pause()
+            runner.pause()
             if hasattr(self,"library_browser"):
                 self.library_browser.set_scan_paused(True)
             self.statusBar().showMessage("Music indexing paused",3000)
 
     def _cancel_local_scan(self) -> None:
-        control=self._local_scan_control
-        if control is None or not self._local_scan_in_progress:
+        runner=self._local_scan_runner
+        if runner is None or not self._local_scan_in_progress:
             return
         self._local_scan_pending=False
-        control.cancel()
+        runner.cancel()
         if hasattr(self,"library_browser"):
             self.library_browser.set_scan_cancelling()
-        self.statusBar().showMessage("Stopping music indexing…")
+        self.statusBar().showMessage(
+            "Stopping music indexing… a stuck NAS scanner will be terminated automatically"
+        )
 
     def _start_local_scan(self, reason: str = "scan") -> None:
         roots=self.providers.local_roots()
@@ -3760,10 +3762,24 @@ class MainWindow(QMainWindow):
 
         if self._local_scan_in_progress:
             self._local_scan_pending=True
-            self.statusBar().showMessage(
-                "Music indexing is already running · your latest library change is queued",
-                4000,
+            runner=self._local_scan_runner
+            current_key=self._local_roots_key(roots)
+            running_key=(
+                self._local_roots_key(runner.roots)
+                if runner is not None
+                else ()
             )
+            if runner is not None and current_key != running_key:
+                runner.cancel()
+                self.statusBar().showMessage(
+                    "Music folders changed · stopping the old indexer and restarting…",
+                    5000,
+                )
+            else:
+                self.statusBar().showMessage(
+                    "Music indexing is already running · a fresh rescan is queued",
+                    4000,
+                )
             return
 
         self._local_scan_in_progress=True
@@ -3772,13 +3788,15 @@ class MainWindow(QMainWindow):
         sequence=self._local_scan_sequence
         roots_snapshot=[Path(root) for root in roots]
         roots_key=self._local_roots_key(roots_snapshot)
-        control=ScanControl()
-        self._local_scan_control=control
         if hasattr(self,"library_browser"):
             self.library_browser.begin_scan(reason)
-        self.statusBar().showMessage("Indexing your music in the background…")
+        self.statusBar().showMessage(
+            "Indexing your music in an isolated background scanner…"
+        )
         if hasattr(self,"home_status"):
-            self.home_status.setText("Indexing your music in the background…")
+            self.home_status.setText(
+                "Indexing your music in an isolated background scanner…"
+            )
 
         sig=WorkerSignals()
         self._local_scan_signals=sig
@@ -3792,7 +3810,7 @@ class MainWindow(QMainWindow):
             if sequence != self._local_scan_sequence:
                 return
             self._local_scan_in_progress=False
-            self._local_scan_control=None
+            self._local_scan_runner=None
             current_key=self._local_roots_key(self.providers.local_roots())
             result=dict(snapshot or {})
 
@@ -3801,21 +3819,33 @@ class MainWindow(QMainWindow):
                     self.library_browser.finish_scan("cancelled")
                     QTimer.singleShot(3500,self.library_browser.clear_scan_status)
                 self._show_home()
-                self.statusBar().showMessage(
-                    "Music indexing cancelled · existing library kept",
-                    5000,
-                )
+                if bool(result.get("hard_cancelled")):
+                    self.statusBar().showMessage(
+                        "Music indexing stopped · unresponsive scanner terminated · existing library kept",
+                        6500,
+                    )
+                else:
+                    self.statusBar().showMessage(
+                        "Music indexing cancelled · existing library kept",
+                        5000,
+                    )
                 if self._local_scan_pending:
                     self._local_scan_pending=False
-                    QTimer.singleShot(0,lambda:self._start_local_scan("queued rescan"))
+                    QTimer.singleShot(
+                        0,
+                        lambda:self._start_local_scan("queued rescan"),
+                    )
                 return
 
-            # If the user changed roots while this worker was running, discard
-            # the stale snapshot rather than briefly replacing the catalog with
-            # results from an old root set.
+            # If roots changed while the disposable worker was scanning, its
+            # catalog is not applied. A queued scan immediately rebuilds the
+            # current root set.
             if current_key != roots_key:
                 self._local_scan_pending=False
-                QTimer.singleShot(0,lambda:self._start_local_scan("queued change"))
+                QTimer.singleShot(
+                    0,
+                    lambda:self._start_local_scan("queued change"),
+                )
                 return
 
             count=self.providers.apply_local_scan_snapshot(result)
@@ -3851,13 +3881,16 @@ class MainWindow(QMainWindow):
             )
             if self._local_scan_pending:
                 self._local_scan_pending=False
-                QTimer.singleShot(0,lambda:self._start_local_scan("queued rescan"))
+                QTimer.singleShot(
+                    0,
+                    lambda:self._start_local_scan("queued rescan"),
+                )
 
         def failed(error):
             if sequence != self._local_scan_sequence:
                 return
             self._local_scan_in_progress=False
-            self._local_scan_control=None
+            self._local_scan_runner=None
             if hasattr(self,"library_browser"):
                 self.library_browser.finish_scan("error",error=str(error))
             self._show_home()
@@ -3867,7 +3900,10 @@ class MainWindow(QMainWindow):
             )
             if self._local_scan_pending:
                 self._local_scan_pending=False
-                QTimer.singleShot(0,lambda:self._start_local_scan("queued rescan"))
+                QTimer.singleShot(
+                    0,
+                    lambda:self._start_local_scan("queued rescan"),
+                )
 
         sig.done.connect(
             lambda result: None if self._closing else done(result)
@@ -3876,37 +3912,19 @@ class MainWindow(QMainWindow):
             lambda error: None if self._closing else failed(error)
         )
 
-        def work():
-            try:
-                result=self.providers.scan_local_roots_snapshot(
-                    roots_snapshot,
-                    progress=sig.progress.emit,
-                    control=control,
-                )
-                if not bool(result.get("cancelled")):
-                    sig.progress.emit({
-                        "phase":"saving",
-                        "audio_files_seen":int(
-                            (result.get("metrics") or {}).get("audio_files_seen") or 0
-                        ),
-                    })
-                    self.providers.persist_local_scan_snapshot(
-                        roots_snapshot,
-                        result,
-                    )
-                    result=self.providers.indexed_scan_result(
-                        roots_snapshot,
-                        result,
-                    )
-                sig.done.emit(result)
-            except Exception as exc:
-                sig.error.emit(str(exc))
-
-        threading.Thread(
-            target=work,
-            name="melodex-library-scan",
-            daemon=True,
-        ).start()
+        runner=LibraryScanProcess(
+            self.data_dir,
+            roots_snapshot,
+            on_progress=sig.progress.emit,
+            on_done=sig.done.emit,
+            on_error=sig.error.emit,
+        )
+        self._local_scan_runner=runner
+        try:
+            runner.start()
+        except Exception as exc:
+            self._local_scan_runner=None
+            sig.error.emit(str(exc))
 
     def _jamendo_settings(self):
         value,ok=QInputDialog.getText(self,"Jamendo reference provider","Your Jamendo developer client ID:",text=str(self.providers.settings.get("jamendo_client_id","")))
@@ -6234,5 +6252,9 @@ class MainWindow(QMainWindow):
         if self.music_live_active:
             self._journey_live_stop("application closed")
         self._closing = True
+        runner=self._local_scan_runner
+        if runner is not None:
+            runner.shutdown()
+            self._local_scan_runner=None
         if self.bridge:self.bridge.stop()
         self.player.close(); self.metadata.close(); self.providers.close(); self.flow.close(); self.knowledge.close(); self.state.close(); super().closeEvent(event)

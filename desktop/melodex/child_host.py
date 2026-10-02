@@ -76,6 +76,11 @@ def python_child_command(script: Path) -> list[str]:
     return [sys.executable, "-u", str(script)]
 
 
+def restore_child_stdio() -> bool:
+    """Restore inherited stdio for a frozen/windowed child process."""
+    return _restore_child_stdio()
+
+
 def _line_buffer_stdio() -> None:
     for stream in (sys.stdout, sys.stderr):
         reconfigure = getattr(stream, "reconfigure", None)
@@ -144,6 +149,7 @@ def maybe_run_child_from_argv(argv: Sequence[str] | None = None) -> int | None:
 
 __all__ = [
     "CHILD_FLAG",
+    "restore_child_stdio",
     "python_child_command",
     "run_child_script",
     "maybe_run_child_from_argv",

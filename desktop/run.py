@@ -1,9 +1,15 @@
 import os
 import sys
 
+from melodex.library_scan_process import maybe_run_library_scan_child_from_argv
 from melodex.child_host import maybe_run_child_from_argv
 
-# Frozen provider/plugin workers must be dispatched before Qt imports or GUI startup.
+# Built-in library scanner and provider/plugin workers must be dispatched before
+# Qt imports or GUI startup.
+_scan_exit = maybe_run_library_scan_child_from_argv()
+if _scan_exit is not None:
+    raise SystemExit(_scan_exit)
+
 _child_exit = maybe_run_child_from_argv()
 if _child_exit is not None:
     raise SystemExit(_child_exit)

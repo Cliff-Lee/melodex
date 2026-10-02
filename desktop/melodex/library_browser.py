@@ -494,7 +494,8 @@ class LibraryBrowser(QWidget):
         self.scan_progress_detail.setObjectName("artworkProgressDetail")
         self.scan_progress_detail.setWordWrap(True)
         self.scan_safety_note=QLabel(
-            "Melodex indexes music where it already lives. Audio files are never copied."
+            "Melodex indexes music where it already lives. Audio files are never copied. "
+            "Scanning runs separately so you can keep using Melodex."
         )
         self.scan_safety_note.setObjectName("artworkProgressDetail")
         self.scan_safety_note.setWordWrap(True)

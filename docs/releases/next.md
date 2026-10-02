@@ -43,3 +43,12 @@ This file tracks changes intended for the next release after **v0.7.4**.
 - New, updated, removed and unchanged counts are shown after a scan.
 - Offline or partially enumerated NAS roots keep their previous cached snapshot instead of being mistaken for an empty library.
 - Older indexes without fingerprints are refreshed once and then become incremental.
+
+
+## Large-library reliability — disposable scan process
+
+- GUI library scans now run outside the main Melodex process.
+- If an SMB/NAS filesystem call wedges, Cancel first asks the scanner to stop and then terminates the disposable worker if necessary.
+- The existing live catalog remains available after cancellation or forced termination.
+- Changing music roots during a scan stops the stale worker and restarts against the current root set.
+- Frozen desktop build checks now verify the built-in scan-worker mode.
