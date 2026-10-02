@@ -137,3 +137,36 @@ def test_child_worker_restores_missing_standard_streams(monkeypatch):
     assert child_host.sys.stdin is streams[0]
     assert child_host.sys.stdout is streams[1]
     assert child_host.sys.stderr is streams[2]
+
+def test_scrubbed_child_env_supplies_certifi_for_ssl_workers(monkeypatch):
+    import melodex.process_env as process_env
+
+    env = process_env.scrubbed_child_env(
+        identifier_key="MELODEX_PROVIDER_ID",
+        identifier="org.example.provider",
+        parent={"PATH": "/usr/bin"},
+    )
+    assert env["MELODEX_PROVIDER_ID"] == "org.example.provider"
+    assert env.get("SSL_CERT_FILE")
+    assert Path(env["SSL_CERT_FILE"]).is_file()
+    assert env.get("REQUESTS_CA_BUNDLE") == env["SSL_CERT_FILE"]
+    assert env.get("CURL_CA_BUNDLE") == env["SSL_CERT_FILE"]
+
+
+def test_scrubbed_child_env_preserves_explicit_ssl_bundle(tmp_path: Path):
+    import melodex.process_env as process_env
+
+    custom = tmp_path / "custom-ca.pem"
+    custom.write_text("test", "utf-8")
+    env = process_env.scrubbed_child_env(
+        identifier_key="MELODEX_PROVIDER_ID",
+        identifier="org.example.provider",
+        parent={
+            "PATH": "/usr/bin",
+            "SSL_CERT_FILE": str(custom),
+            "REQUESTS_CA_BUNDLE": str(custom),
+        },
+    )
+    assert env["SSL_CERT_FILE"] == str(custom)
+    assert env["REQUESTS_CA_BUNDLE"] == str(custom)
+
