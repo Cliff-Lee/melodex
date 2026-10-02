@@ -448,3 +448,30 @@ the initial widget counts remain bounded.
 - searching the full catalog works even when the match was outside the original render window
 - changing a search drops no-longer-visible card widgets instead of retaining them indefinitely
 - artwork/cache requests are scoped to rendered albums/artists rather than the whole library
+
+
+## Campaign 10 — permanent large-library acceptance
+
+The original 12,700-FLAC Synology case is now a dedicated CI acceptance gate.
+
+`desktop/tools/verify_large_library_readiness.py` runs four existing probes at
+the permanent **12,700-track** scale and fails if any correctness/scalability
+invariant regresses:
+
+- initial scan indexes all 12,700 synthetic tracks;
+- the persistent SQLite index reloads all 12,700 tracks and remains ready;
+- an unchanged rescan performs **zero metadata reads**;
+- an unchanged rescan rewrites **zero SQLite track rows**;
+- all 12,700 metadata records are reused;
+- the My Music model retains all 12,700 tracks;
+- Albums initially creates at most **120** cards;
+- Tracks initially creates at most **300** rows.
+
+Timing values are recorded in the artifact for trend comparison but are not
+hard CI thresholds because hosted-runner performance varies.
+
+The same workflow also reruns the isolated scan-process tests, including forced
+termination of a deliberately hung worker.
+
+For the external NAS retest procedure, see
+[LARGE_LIBRARY_BETA_RETEST.md](LARGE_LIBRARY_BETA_RETEST.md).
