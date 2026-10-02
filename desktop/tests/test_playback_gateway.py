@@ -67,6 +67,22 @@ class _RedirectTargetHandler(BaseHTTPRequestHandler):
         self.wfile.write(b"should-not-be-reached")
 
 
+
+class _UserAgentHandler(BaseHTTPRequestHandler):
+    seen_user_agent = None
+
+    def log_message(self, _format, *args):
+        return
+
+    def do_GET(self):  # noqa: N802
+        type(self).seen_user_agent = self.headers.get("User-Agent")
+        body = b"audio"
+        self.send_response(200)
+        self.send_header("Content-Type", "audio/mpeg")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
 def test_gateway_forwards_headers_cookies_and_range():
     upstream = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
     thread = threading.Thread(target=upstream.serve_forever, daemon=True)
@@ -210,4 +226,49 @@ def test_gateway_allows_regional_archive_cdn_under_archive_wildcard():
         assert url.startswith("https://dn711108.ca.archive.org/")
     finally:
         gateway.close()
+
+def test_gateway_supplies_descriptive_user_agent_when_provider_omits_one():
+    upstream = ThreadingHTTPServer(("127.0.0.1", 0), _UserAgentHandler)
+    thread = threading.Thread(target=upstream.serve_forever, daemon=True)
+    thread.start()
+    _UserAgentHandler.seen_user_agent = None
+    gateway = PlaybackGateway()
+    try:
+        url = gateway.register(
+            {
+                "url": f"http://127.0.0.1:{upstream.server_address[1]}/audio",
+                "_playback_allowed_hosts": ["127.0.0.1"],
+            }
+        )
+        response = requests.get(url, timeout=3)
+        assert response.status_code == 200
+        assert _UserAgentHandler.seen_user_agent is not None
+        assert _UserAgentHandler.seen_user_agent.startswith("Melodex-Playback-Gateway/")
+    finally:
+        gateway.close()
+        upstream.shutdown()
+        upstream.server_close()
+
+
+def test_gateway_preserves_provider_user_agent():
+    upstream = ThreadingHTTPServer(("127.0.0.1", 0), _UserAgentHandler)
+    thread = threading.Thread(target=upstream.serve_forever, daemon=True)
+    thread.start()
+    _UserAgentHandler.seen_user_agent = None
+    gateway = PlaybackGateway()
+    try:
+        url = gateway.register(
+            {
+                "url": f"http://127.0.0.1:{upstream.server_address[1]}/audio",
+                "headers": {"User-Agent": "Provider-Specific/2.0"},
+                "_playback_allowed_hosts": ["127.0.0.1"],
+            }
+        )
+        response = requests.get(url, timeout=3)
+        assert response.status_code == 200
+        assert _UserAgentHandler.seen_user_agent == "Provider-Specific/2.0"
+    finally:
+        gateway.close()
+        upstream.shutdown()
+        upstream.server_close()
 
