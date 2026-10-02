@@ -1270,6 +1270,110 @@ def test_plain_lyrics_html_uses_explicit_dark_theme_contrast():
 
 
 
+def test_navigation_shell_precedes_page_population(monkeypatch, tmp_path):
+    try:
+        from PySide6.QtCore import QTimer
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+
+    window = main_window.MainWindow()
+    window.show()
+    window._PAGE_CONTENT_DELAY_MS = 200
+
+    refresh_calls = []
+    monkeypatch.setattr(
+        window,
+        "_refresh_library",
+        lambda: refresh_calls.append("library"),
+    )
+    monkeypatch.setattr(window, "_refresh_plugin_presence", lambda: None)
+
+    started_at = time.monotonic()
+    window.open_page("library")
+    foreground_seconds = time.monotonic() - started_at
+
+    assert foreground_seconds < 0.1
+    assert window.current_page == "library"
+    assert window.stack.currentWidget() is window.pages["library"]
+    assert bool(window.nav_buttons["library"].property("active"))
+    assert refresh_calls == []
+
+    event_turn = []
+    QTimer.singleShot(0, lambda: event_turn.append(window.current_page))
+    deadline = time.monotonic() + 0.1
+    while time.monotonic() < deadline and not event_turn:
+        app.processEvents()
+        time.sleep(0.002)
+
+    assert event_turn == ["library"]
+    assert refresh_calls == []
+
+    deadline = time.monotonic() + 0.4
+    while time.monotonic() < deadline and not refresh_calls:
+        app.processEvents()
+        time.sleep(0.005)
+
+    assert refresh_calls == ["library"]
+    interactions = window.responsiveness.summary()["recent_interactions"]
+    assert any(row["label"] == "shell:library" for row in interactions)
+
+    window.close()
+    app.processEvents()
+
+
+def test_rapid_navigation_discards_stale_page_population(monkeypatch, tmp_path):
+    try:
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+
+    window = main_window.MainWindow()
+    window._PAGE_CONTENT_DELAY_MS = 40
+
+    refresh_calls = []
+    monkeypatch.setattr(
+        window,
+        "_refresh_library",
+        lambda: refresh_calls.append("library"),
+    )
+    monkeypatch.setattr(
+        window,
+        "_refresh_playlists",
+        lambda: refresh_calls.append("playlists"),
+    )
+    monkeypatch.setattr(window, "_refresh_plugin_presence", lambda: None)
+
+    window.open_page("library")
+    window.open_page("playlists")
+
+    assert window.current_page == "playlists"
+    assert window.stack.currentWidget() is window.pages["playlists"]
+    assert refresh_calls == []
+
+    deadline = time.monotonic() + 0.3
+    while time.monotonic() < deadline and not refresh_calls:
+        app.processEvents()
+        time.sleep(0.005)
+
+    assert refresh_calls == ["playlists"]
+
+    window.close()
+    app.processEvents()
+
+
 def test_slow_source_config_check_keeps_qt_event_loop_responsive(monkeypatch, tmp_path):
     try:
         from types import SimpleNamespace
