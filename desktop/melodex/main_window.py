@@ -175,6 +175,9 @@ class MainWindow(QMainWindow):
             max_workers=4,
             reserved_foreground_slots=1,
         )
+        self._async_generations: dict[str, int] = {}
+        self._async_invalidations = 0
+        self._async_stale_results_dropped = 0
         self.externalCommand.connect(self._on_external_command)
 
         self.player = FlowPlayer(
@@ -2235,6 +2238,18 @@ class MainWindow(QMainWindow):
     def open_page(self, name: str):
         if name not in self.pages:
             return
+        previous_page = self.current_page
+        if previous_page != name:
+            stale_page_scopes = {
+                "album_wall": ("page:album-wall-model",),
+                "music_map": ("page:music-map-model",),
+                "now_playing": (
+                    "now-playing-visual-analysis",
+                    "now-playing-visual-context",
+                ),
+            }
+            for scope in stale_page_scopes.get(previous_page, ()):
+                self._invalidate_async(scope)
         interaction = (
             self.responsiveness.begin_interaction(f"navigate:{name}")
             if hasattr(self, "responsiveness")
@@ -2387,7 +2402,7 @@ class MainWindow(QMainWindow):
         self._run_async(
             lambda:self.metadata.local_artwork(track),
             lambda result:self._home_continue_art_loaded(token,result),
-        priority="visible", task_name="home-artwork")
+        priority="visible", task_name="home-artwork", replace_key="home-artwork")
 
     def _home_continue_art_loaded(self, token: str, result: object) -> None:
         current=UserState.track_key(dict(getattr(self,"home_recent_track",{}) or {}))
@@ -4345,9 +4360,12 @@ class MainWindow(QMainWindow):
                 ) or {}
             )
         if hasattr(self, "background_scheduler"):
-            ui_metrics["background_scheduler"] = (
-                self.background_scheduler.snapshot()
+            scheduler_metrics = self.background_scheduler.snapshot()
+            scheduler_metrics["async_invalidations"] = self._async_invalidations
+            scheduler_metrics["stale_results_dropped"] = (
+                self._async_stale_results_dropped
             )
+            ui_metrics["background_scheduler"] = scheduler_metrics
         if hasattr(self, "responsiveness"):
             ui_metrics["responsiveness"] = self.responsiveness.summary()
         try:
@@ -4855,7 +4873,7 @@ class MainWindow(QMainWindow):
                 error,
                 token,
             ),
-        priority="foreground", task_name="search")
+        priority="foreground", task_name="search", replace_key="search")
 
     def _search_report_failed(
         self,
@@ -5045,7 +5063,7 @@ class MainWindow(QMainWindow):
                 intent, catalog, seeds, limit=16, adventure=adventure
             ),
             self._show_intelligence_results,
-        priority="foreground", task_name="local-intelligence")
+        priority="foreground", task_name="local-intelligence", replace_key="local-intelligence")
 
     def _show_intelligence_results(self, result: dict[str, Any]) -> None:
         self.intelligence_results.clear()
@@ -5161,7 +5179,7 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("Add local music to build an Album Wall",4000)
             return
         self.statusBar().showMessage("Building Album Wall from local metadata and cached Flow analysis…")
-        self._run_async(self._build_album_wall_payload,self._apply_album_wall_payload, priority="visible", task_name="album-wall-model")
+        self._run_async(self._build_album_wall_payload,self._apply_album_wall_payload, priority="visible", task_name="album-wall-model", replace_key="page:album-wall-model")
 
     def _apply_album_wall_payload(self,payload):
         payload=dict(payload or {})
@@ -5305,7 +5323,7 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("Add local music to build a Music Map",4000)
             return
         self.statusBar().showMessage("Building Music Map from cached Flow analysis…")
-        self._run_async(self._build_music_map_payload,self._apply_music_map_payload, priority="visible", task_name="music-map-model")
+        self._run_async(self._build_music_map_payload,self._apply_music_map_payload, priority="visible", task_name="music-map-model", replace_key="page:music-map-model")
 
     def _apply_music_map_payload(self,payload):
         payload=dict(payload or {})
@@ -6006,7 +6024,7 @@ class MainWindow(QMainWindow):
             result["_live_from_ref"]=current_ref
             result["_live_request_reason"]=request_reason
             return result
-        self._run_async(work,self._journey_live_apply_result, priority="foreground", task_name="journey-live-replan")
+        self._run_async(work,self._journey_live_apply_result, priority="foreground", task_name="journey-live-replan", replace_key="journey-live-replan")
 
     def _journey_live_apply_result(self,result):
         self.music_live_replanning=False
@@ -6182,7 +6200,7 @@ class MainWindow(QMainWindow):
                 start_track=track,
             ),
             lambda plan:self._apply_mind(plan),
-        priority="foreground", task_name="journey-build")
+        priority="foreground", task_name="journey-build", replace_key="journey-build")
 
     # ------------------------------- Flow / Mind
     def _path_for(self,t):
@@ -6195,7 +6213,7 @@ class MainWindow(QMainWindow):
         q=list(self.player.queue)
         if len(q)<2:return
         self.statusBar().showMessage("Planning Flow…")
-        self._run_async(lambda:self.flow.plan_order(q,self._path_for,start_index=max(0,self.player.index),adventurous=0.35),lambda plan:self._apply_flow(plan), priority="foreground", task_name="flow-plan")
+        self._run_async(lambda:self.flow.plan_order(q,self._path_for,start_index=max(0,self.player.index),adventurous=0.35),lambda plan:self._apply_flow(plan), priority="foreground", task_name="flow-plan", replace_key="flow-plan")
 
     def _apply_flow(self,plan):
         tracks=list(plan.get("tracks",[])); self.player.set_queue(tracks,0,True); self.statusBar().showMessage(f"Flow ready · {plan.get('analysed',0)} tracks audio-analysed",5000)
@@ -6205,7 +6223,7 @@ class MainWindow(QMainWindow):
         if not catalog:
             QMessageBox.information(self,"Add music first","Play for Me needs at least some local music. Add a folder, then try again."); return
         self.statusBar().showMessage("Building your journey…")
-        self._run_async(lambda:self.mind.build_session(catalog,self._path_for,minutes=minutes,adventure=adventure,mode=mode),lambda plan:self._apply_mind(plan), priority="foreground", task_name="play-for-me")
+        self._run_async(lambda:self.mind.build_session(catalog,self._path_for,minutes=minutes,adventure=adventure,mode=mode),lambda plan:self._apply_mind(plan), priority="foreground", task_name="play-for-me", replace_key="play-for-me")
 
     def _apply_mind(self,plan):
         tracks=list(plan.get("tracks",[]));
@@ -6224,6 +6242,7 @@ class MainWindow(QMainWindow):
     def _schedule_next_track_prefetch(self) -> None:
         if self._closing:
             return
+        self._invalidate_async("next-track-prefetch")
         self._prefetch_sequence += 1
         sequence=self._prefetch_sequence
         QTimer.singleShot(
@@ -6285,12 +6304,18 @@ class MainWindow(QMainWindow):
                 oldest=next(iter(self._prefetched_track_assets))
                 self._prefetched_track_assets.pop(oldest,None)
 
-        self._run_async(load,apply, priority="prefetch", task_name="next-track-prefetch")
+        self._run_async(load,apply, priority="prefetch", task_name="next-track-prefetch", replace_key="next-track-prefetch")
 
     # ------------------------------- player/taste
     def _on_track_changed(self,t):
         if self._closing:
             return
+        for scope in (
+            "now-playing-artwork",
+            "taste-action-state",
+            "now-playing-visual-analysis",
+        ):
+            self._invalidate_async(scope)
         if self.current_track and self.current_track_started and time.time()-self.current_track_started<30:
             self.state.record_skip(self.current_track)
         self.current_track=dict(t); self.current_track_started=time.time(); self.current_history_id=self.state.record_play(t)
@@ -6360,7 +6385,7 @@ class MainWindow(QMainWindow):
                 self._run_async(
                     lambda:self.metadata.local_artwork(dict(t)),
                     lambda result:self._player_artwork_loaded(token,result),
-                priority="visible", task_name="now-playing-artwork")
+                priority="visible", task_name="now-playing-artwork", replace_key="now-playing-artwork")
         if hasattr(self,"rich_now"):
             self.rich_now.set_track(dict(t))
         if hasattr(self, "living_canvas"):
@@ -6391,14 +6416,22 @@ class MainWindow(QMainWindow):
         if not local_path:
             return
 
-        def lookup() -> None:
+        def lookup() -> object:
             try:
-                analysis = self.flow.cached_analysis_for(Path(local_path))
+                return self.flow.cached_analysis_for(Path(local_path))
             except Exception:
-                analysis = None
-            self._visual_analysis_signals.ready.emit(local_path, analysis)
+                return None
 
-        threading.Thread(target=lookup, daemon=True).start()
+        self._run_async(
+            lookup,
+            lambda analysis, path=local_path: self._visual_analysis_loaded(
+                path,
+                analysis,
+            ),
+            priority="visible",
+            task_name="now-playing-visual-analysis",
+            replace_key="now-playing-visual-analysis",
+        )
 
     def _visual_analysis_loaded(self, local_path: str, analysis: object) -> None:
         current_path = str((self.current_track or {}).get("local_path") or "")
@@ -6433,21 +6466,30 @@ class MainWindow(QMainWindow):
                 })
         limit = 2000 if mode == "memory" else 120
 
-        def load_context() -> None:
+        def load_context() -> object:
             try:
                 recent = self.state.recent_tracks(limit)
                 if mode == "memory":
-                    payload: object = {
+                    return {
                         "scale": scale,
                         "marks": build_visual_memory(recent, scale),
                     }
-                else:
-                    payload = {"queue": queue_candidates, "recent": recent}
+                return {"queue": queue_candidates, "recent": recent}
             except Exception:
-                payload = {"scale": scale, "marks": ()} if mode == "memory" else {"queue": queue_candidates, "recent": []}
-            self._visual_context_signals.ready.emit(sequence, mode, payload)
+                return (
+                    {"scale": scale, "marks": ()}
+                    if mode == "memory"
+                    else {"queue": queue_candidates, "recent": []}
+                )
 
-        threading.Thread(target=load_context, daemon=True).start()
+        self._run_async(
+            load_context,
+            lambda payload, token=sequence, mode_name=mode:
+                self._visual_context_loaded(token, mode_name, payload),
+            priority="visible",
+            task_name="now-playing-visual-context",
+            replace_key="now-playing-visual-context",
+        )
 
     def _visual_context_loaded(self, sequence: int, mode: str, payload: object) -> None:
         if self._closing or sequence != self._visual_context_sequence:
@@ -6550,7 +6592,7 @@ class MainWindow(QMainWindow):
         self._run_async(
             lambda:self.state.track_signal(dict(track)),
             apply,
-        priority="visible", task_name="taste-action-state")
+        priority="visible", task_name="taste-action-state", replace_key="taste-action-state")
 
     def _feedback(self,positive):
         if not self.current_track:
@@ -6953,6 +6995,14 @@ class MainWindow(QMainWindow):
                 except Exception as exc:self.statusBar().showMessage(str(exc),7000)
 
     # ------------------------------- helpers
+    def _invalidate_async(self, replace_key: str) -> int:
+        key = str(replace_key or "").strip()
+        if not key:
+            return 0
+        self._async_generations[key] = self._async_generations.get(key, 0) + 1
+        self._async_invalidations += 1
+        return self.background_scheduler.cancel_pending(key)
+
     def _run_async(
         self,
         fn,
@@ -6961,15 +7011,43 @@ class MainWindow(QMainWindow):
         *,
         priority: str = "foreground",
         task_name: str = "",
+        replace_key: str = "",
     ):
-        sig=WorkerSignals()
-        sig.done.connect(lambda result: None if self._closing else done(result))
-        if on_error is None:
-            sig.error.connect(
-                lambda e: None if self._closing else QMessageBox.warning(self,"Melodex",e)
+        scope = str(replace_key or "").strip()
+        generation = 0
+        if scope:
+            generation = self._async_generations.get(scope, 0) + 1
+            self._async_generations[scope] = generation
+
+        def is_current() -> bool:
+            return (
+                not scope
+                or self._async_generations.get(scope, 0) == generation
             )
-        else:
-            sig.error.connect(lambda e: None if self._closing else on_error(e))
+
+        sig=WorkerSignals()
+
+        def deliver_done(result: object) -> None:
+            if self._closing:
+                return
+            if not is_current():
+                self._async_stale_results_dropped += 1
+                return
+            done(result)
+
+        def deliver_error(error: str) -> None:
+            if self._closing:
+                return
+            if not is_current():
+                self._async_stale_results_dropped += 1
+                return
+            if on_error is None:
+                QMessageBox.warning(self,"Melodex",error)
+            else:
+                on_error(error)
+
+        sig.done.connect(deliver_done)
+        sig.error.connect(deliver_error)
         self._last_worker=sig
 
         def work():
@@ -6983,6 +7061,7 @@ class MainWindow(QMainWindow):
             work,
             priority=priority,
             name=task_name,
+            replace_key=scope,
         )
         if not submitted and not self._closing:
             sig.error.emit("Background work is shutting down")

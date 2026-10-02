@@ -24,6 +24,8 @@ FLUID_GATE_TESTS = [
     "desktop/tests/test_gui_redesign.py::test_large_library_progressively_renders_widgets",
     "desktop/tests/test_gui_redesign.py::test_cached_album_artwork_prioritizes_viewport_and_scroll_target",
     "desktop/tests/test_gui_redesign.py::test_cached_artist_photos_use_same_viewport_priority",
+    "desktop/tests/test_gui_redesign.py::test_run_async_replace_key_drops_stale_completion",
+    "desktop/tests/test_gui_redesign.py::test_navigation_invalidates_hidden_page_build",
     "desktop/tests/test_gui_redesign.py::test_global_scan_activity_persists_across_navigation",
     "desktop/tests/test_gui_redesign.py::test_slow_library_scan_keeps_qt_event_loop_responsive",
     "desktop/tests/test_gui_redesign.py::test_love_and_keep_acknowledge_before_persistence",

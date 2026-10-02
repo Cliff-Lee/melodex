@@ -267,6 +267,9 @@ def test_diagnostics_filters_ui_performance_fields():
                 "submitted": 42,
                 "completed": 37,
                 "failed": 1,
+                "cancelled_pending": 5,
+                "async_invalidations": 7,
+                "stale_results_dropped": 2,
                 "pending_total": 2,
                 "active_by_priority": {
                     "foreground": 0,
@@ -333,6 +336,9 @@ def test_diagnostics_filters_ui_performance_fields():
     scheduler = payload["performance"]["background_scheduler"]
     assert scheduler["max_workers"] == 4
     assert scheduler["reserved_foreground_slots"] == 1
+    assert scheduler["cancelled_pending"] == 5
+    assert scheduler["async_invalidations"] == 7
+    assert scheduler["stale_results_dropped"] == 2
     assert scheduler["active_by_priority"]["background"] == 1
     assert scheduler["pending_by_priority"]["idle"] == 1
     responsiveness = payload["performance"]["ui_responsiveness"]

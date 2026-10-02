@@ -191,6 +191,41 @@ The Fluid Melodex gate now verifies that:
 - background work is serialized rather than spawning freely; and
 - scheduler diagnostics expose only bounded lane counts.
 
+## P8d result — stale work stops mattering
+
+P8c bounded the amount of background work. P8d now prevents superseded work from
+remaining relevant after the user has moved on.
+
+Replaceable async operations use a **latest-wins scope**. When a newer request with the
+same scope is submitted:
+
+- an older queued job is removed before it starts;
+- an older job that is already running may finish safely, but its result/error is
+  discarded instead of updating newer UI state; and
+- diagnostics count both queued cancellations and stale completions that were dropped.
+
+This is applied to the most interaction-sensitive paths, including:
+
+- repeated Search requests;
+- Album Wall and Music Map page-model builds;
+- Play for Me, Flow planning, journey building and live journey replanning;
+- local-intelligence suggestion refreshes;
+- next-track prefetch;
+- current-track artwork and taste-state hydration; and
+- Now Playing visual analysis/context generation.
+
+Navigation away from Album Wall, Music Map or Now Playing explicitly invalidates the
+relevant pending page work. Track changes invalidate old current-track work immediately,
+even when the new track can use prefetched data and therefore does not need to submit a
+replacement job. Queue changes likewise invalidate old next-track prefetch before the
+new debounce period begins.
+
+Now Playing visual analysis and visual-context loading also use the shared P8c scheduler
+instead of creating their own daemon threads.
+
+The Fluid gate verifies both sides of the contract: queued work is genuinely cancelled,
+and already-running stale work cannot apply its completion to the current UI.
+
 ## P8 campaign sequence
 
 ### P8a — Synthetic baseline
