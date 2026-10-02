@@ -48,6 +48,9 @@ class LocalLibraryIndex:
 
     def _initialise(self) -> None:
         with self._connect() as db:
+            current_version = int(db.execute("PRAGMA user_version").fetchone()[0])
+            if current_version == SCHEMA_VERSION:
+                return
             db.execute("PRAGMA journal_mode = WAL")
             db.execute(
                 """
@@ -93,6 +96,7 @@ class LocalLibraryIndex:
                 """,
                 (str(SCHEMA_VERSION),),
             )
+            db.execute(f"PRAGMA user_version = {int(SCHEMA_VERSION)}")
 
     @staticmethod
     def root_id(path: str | Path) -> str:
@@ -126,6 +130,21 @@ class LocalLibraryIndex:
                 )
             else:
                 db.execute("DELETE FROM roots")
+
+    def sync_roots_if_needed(self, roots: list[Path]) -> bool:
+        """Avoid startup writes when configured roots already match the index."""
+        clean = [Path(root) for root in roots]
+        wanted = {_root_id(root): str(root) for root in clean}
+        with self._connect() as db:
+            rows = db.execute("SELECT root_id, path FROM roots").fetchall()
+        current = {
+            str(row["root_id"]): str(row["path"])
+            for row in rows
+        }
+        if current == wanted:
+            return False
+        self.sync_roots(clean)
+        return True
 
     def roots_ready(self, roots: list[Path]) -> bool:
         """True when every configured root has at least one completed scan.

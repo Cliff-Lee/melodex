@@ -13,7 +13,7 @@ import zipfile
 from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from .process_env import scrubbed_child_env
 from .child_host import python_child_command
@@ -155,6 +155,7 @@ class ExternalExtension:
         self._stderr: deque[str] = deque(maxlen=30)
         self._health_lock = threading.Lock()
         self._config: dict[str, Any] = {}
+        self._config_loader: Callable[[], dict[str, Any]] | None = None
         self._health: dict[str, Any] = {
             "status": "idle",
             "calls": 0,
@@ -193,6 +194,21 @@ class ExternalExtension:
     def configure(self, settings: dict[str, Any]) -> None:
         with self._lock:
             self._config = dict(settings or {})
+            self._config_loader = None
+
+    def set_config_loader(
+        self,
+        loader: Callable[[], dict[str, Any]] | None,
+    ) -> None:
+        with self._lock:
+            self._config_loader = loader
+
+    def _ensure_config_loaded(self) -> None:
+        loader = self._config_loader
+        if loader is None:
+            return
+        self._config_loader = None
+        self._config = dict(loader() or {})
 
     def contract(self, capability: str) -> ExtensionContract | None:
         return next(
@@ -293,6 +309,7 @@ class ExternalExtension:
         timeout: float | None = None,
     ) -> Any:
         with self._lock:
+            self._ensure_config_loaded()
             proc = self._ensure()
             self._seq += 1
             request_id = self._seq
@@ -599,11 +616,14 @@ class CapabilityBroker:
         self.settings = self._load_settings()
         self.extensions: dict[str, ExternalExtension] = {}
         for extension in self.installer.load_installed():
-            extension.configure(
-                self.config_broker.values(
-                    extension.info.id, extension.info.configuration
+            declarations = list(extension.info.configuration or [])
+            if declarations:
+                extension.set_config_loader(
+                    lambda ext=extension, fields=declarations: self.config_broker.values(
+                        ext.info.id,
+                        fields,
+                    )
                 )
-            )
             self.extensions[extension.info.id] = extension
 
     def _load_settings(self) -> dict[str, Any]:

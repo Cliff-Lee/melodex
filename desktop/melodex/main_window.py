@@ -105,7 +105,10 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Melodex")
         self.resize(1280, 800)
         self.data_dir = app_data_dir()
-        self.providers = ProviderManager(self.data_dir)
+        self.providers = ProviderManager(
+            self.data_dir,
+            startup_timeline=self._startup_timeline,
+        )
         self._startup_mark("providers_ready")
         self.state = UserState(self.data_dir / "taste.sqlite3")
         self._startup_mark("user_state_ready")
@@ -1183,7 +1186,7 @@ class MainWindow(QMainWindow):
     def _build_now_playing(self):
         from .living_canvas import LivingCanvasView
         from .rich_now_playing import RichNowPlayingWidget
-                
+
         l=self._page_layout(
             "now_playing",
             "Now playing",
@@ -1401,7 +1404,7 @@ class MainWindow(QMainWindow):
 
     def _build_library(self):
         from .library_browser import LibraryBrowser
-        
+
         l=self._page_layout(
             "library",
             "My Music",
@@ -1501,7 +1504,7 @@ class MainWindow(QMainWindow):
 
     def _build_album_wall(self):
         from .album_wall import AlbumWallWidget
-        
+
         l=self._page_layout(
             "album_wall",
             "Album Wall",
@@ -1574,7 +1577,7 @@ class MainWindow(QMainWindow):
 
     def _build_music_map(self):
         from .music_map import MusicMapWidget
-        
+
         l=self._page_layout(
             "music_map",
             "Music Map",
@@ -2447,9 +2450,9 @@ class MainWindow(QMainWindow):
 
     def _show_home(self):
         self._refresh_taste()
-        count=len(self.providers.local_catalog())
+        count=self.providers.local_catalog_count()
         src=len(self.providers.providers)
-        ext=len(self.providers.extensions())
+        ext=len(self.providers.extensions(cached_config=True))
         flow_text = (
             "Flow analysis ready"
             if self.flow.analysis_available
@@ -2477,7 +2480,7 @@ class MainWindow(QMainWindow):
         self._refresh_home_continue()
 
     def _home_primary_action(self) -> None:
-        if self.providers.local_catalog():
+        if self.providers.local_catalog_count():
             self._play_for_me("balanced",60,0.35)
         else:
             self._choose_music_folder()
@@ -4412,7 +4415,7 @@ class MainWindow(QMainWindow):
 
     def _plugin_directory(self, capability: str = ""):
         from .plugin_directory import PluginDirectoryDialog
-        
+
         dialog=PluginDirectoryDialog(
             self.providers,
             on_installed=self._refresh_sources_and_plugin_presence,
@@ -5258,7 +5261,7 @@ class MainWindow(QMainWindow):
     def _build_album_wall_payload(self):
         from .album_wall_model import build_album_wall
         from .music_map_model import build_music_map
-                
+
         catalog=self.providers.local_catalog()
         profiles, _seed_refs, ref_map, _analysed = self.local_intelligence.build_snapshot(
             catalog,
@@ -5402,7 +5405,6 @@ class MainWindow(QMainWindow):
         self._run_async(load,self.album_wall.set_artwork, priority="background", task_name="album-wall-online-artwork")
 
     def _build_music_map_payload(self):
-        from .music_map_model import build_music_map
         from .music_map_model import build_music_map
 
         catalog=self.providers.local_catalog()

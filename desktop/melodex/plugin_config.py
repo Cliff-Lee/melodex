@@ -154,6 +154,39 @@ def _default_secret_store() -> _SecretStore:
         return _MemorySecretStore()
 
 
+class _DeferredSecretStore:
+    """Do not import/probe the OS keyring until a secret is actually needed."""
+
+    def __init__(self) -> None:
+        self._store: _SecretStore | None = None
+        self._lock = threading.RLock()
+
+    def _resolved(self) -> _SecretStore:
+        store = self._store
+        if store is not None:
+            return store
+        with self._lock:
+            if self._store is None:
+                self._store = _default_secret_store()
+            return self._store
+
+    @property
+    def mode(self) -> str:
+        store = self._store
+        if store is None:
+            return "deferred"
+        return str(getattr(store, "mode", "session-only"))
+
+    def get(self, plugin_id: str, key: str) -> str | None:
+        return self._resolved().get(plugin_id, key)
+
+    def set(self, plugin_id: str, key: str, value: str) -> None:
+        self._resolved().set(plugin_id, key, value)
+
+    def delete(self, plugin_id: str, key: str) -> None:
+        self._resolved().delete(plugin_id, key)
+
+
 class PluginConfigBroker:
     """Broker declared plugin configuration without putting secrets in JSON."""
 
@@ -165,7 +198,7 @@ class PluginConfigBroker:
     ):
         self.data_dir = Path(data_dir)
         self.path = self.data_dir / "plugin-config.json"
-        self._secret_store: _SecretStore = secret_store or _default_secret_store()
+        self._secret_store: _SecretStore = secret_store or _DeferredSecretStore()
         self._settings = self._load()
         self._secret_presence: dict[tuple[str, str], bool] = {}
         self._presence_lock = threading.RLock()
