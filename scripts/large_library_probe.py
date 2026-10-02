@@ -185,6 +185,7 @@ def profile_gui(
         "track_view": track_view_metrics,
         "track_filter": track_filter_metrics,
         "track_virtualization": dict(browser.last_track_virtualization_metrics),
+        "artwork_priority": dict(browser.last_artwork_priority_metrics),
         "album_batch_size": int(browser._album_batch_size),
         "artist_batch_size": int(browser._artist_batch_size),
         "track_row_height": int(browser._track_row_height),
