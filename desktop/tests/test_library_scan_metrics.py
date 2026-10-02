@@ -315,7 +315,10 @@ def test_cancelled_scan_never_returns_partial_catalog(
 
     assert snapshot["cancelled"] is True
     assert snapshot["tracks"] == []
-    assert snapshot["metrics"]["tracks_indexed"] == 1
+    # One file was parsed, but cancellation is atomic: no partial track is
+    # considered indexed/applied.
+    assert snapshot["metrics"]["metadata_attempts"] == 1
+    assert snapshot["metrics"]["tracks_indexed"] == 0
     assert calls == ["one.flac"]
     assert provider.tracks == []
 
