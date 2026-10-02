@@ -5,7 +5,7 @@
 Melodex now presents sources by origin rather than as one technical list:
 
 - **Your music & connections** — local files, your own stream URLs, and the optional built-in Jamendo connector.
-- **Included with Melodex** — Internet Archive Audio, LibriVox, Radio Browser, SomaFM, Wikimedia Commons Audio and ccMixter.
+- **Included with Melodex** — Internet Archive Audio, LibriVox, 24-7 Niche Radio, Radio Browser, SomaFM, Wikimedia Commons Audio and ccMixter.
 - **Installed music plugins** — providers you separately installed from the registry or a local package.
 - **Installed enhancements** — artwork, lyrics, metadata, context or recommendation extensions.
 
@@ -33,12 +33,13 @@ Jamendo's API has its own terms and licence requirements; review them before pub
 
 ### Bundled desktop providers
 
-On first launch, the desktop app installs these six providers into the user's local Melodex data folder:
+On first launch, the desktop app installs these seven providers into the user's local Melodex data folder:
 
 | Provider | What it offers | Source notes |
 | --- | --- | --- |
 | ccMixter 0.1.3 | Creative Commons music search and playback | Check each track's licence and attribution. |
 | SomaFM 0.1.1 | Curated live internet radio | Streams come from SomaFM; station terms apply. |
+| 24-7 Niche Radio 0.1.0 | Curated live stations from the 24-7 Niche Radio network | Discovery uses Radio Browser; stream availability and station terms apply. |
 | Radio Browser 0.1.2 | Community radio station search and playback | Availability and rights depend on each station. |
 | Wikimedia Commons Audio 0.1.1 | Openly licensed and public-domain audio | Licence and attribution are specific to each file. |
 | LibriVox 0.1.4 | Public-domain audiobooks and spoken-word audio | Searches the Internet Archive LibriVox collection; public-domain status can depend on jurisdiction. |
