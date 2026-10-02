@@ -208,15 +208,30 @@ knowledge graph helpers, playlist parsers, plugin setup dialogs/onboarding helpe
 diagnostics export code or the library scan process. Those imports now live in the
 methods that actually invoke each feature.
 
+The playback gateway also leaves the Requests HTTP stack cold while Melodex is only
+playing local files. Requests is imported on the first remote/gateway playback request.
+
 Regression tests parse MainWindow's top-level import graph and fail if those optional
 features creep back onto startup. A subprocess regression also verifies that importing
 `melodex.flow` does not import NumPy.
 
 ### Measurement
 
-The existing fresh / warm / 12.7k startup probe remains the acceptance measurement for
-P9d. The important comparison is the cold first-event-loop path and especially
-`main_window_import_ready`, measured on the same runner as its warm counterpart.
+P9d now reports four launch shapes instead of conflating two different kinds of
+"cold":
+
+1. **OS-cold + profile-cold** — the first process in the CI job and a brand-new data
+   directory. This is closest to a literal first-ever launch but is highly sensitive to
+   hosted-runner filesystem cache noise.
+2. **Warm** — the second launch of the same profile.
+3. **Profile-cold after code warm-up** — a brand-new data directory after Python/Qt
+   code pages have already been read. This isolates Melodex's one-time profile setup.
+4. **12.7k cached** — the large-library warm-cache case retained from P9c.
+
+The profile-cold-versus-warm delta is the useful P9d engineering signal. The literal
+OS-cold result is still retained as an end-user worst-case observation, but it is not
+used by itself to judge a code change because runner disk-cache variance can be larger
+than the code change.
 
 ### P9e — packaged-app startup regression gate
 
