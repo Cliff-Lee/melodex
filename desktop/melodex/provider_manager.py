@@ -4,6 +4,7 @@ import hashlib
 import json
 import shutil
 import zipfile
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
@@ -562,26 +563,139 @@ class ProviderManager:
         )
         return provider
 
-    def search(self, query: str, provider_id: str = "all", limit: int = 50) -> list[dict[str, Any]]:
+    @staticmethod
+    def _search_failure_reason(error: Exception | str) -> str:
+        message = str(error or "").strip()
+        lowered = message.casefold()
+        if "timed out" in lowered or "timeout" in lowered:
+            return "Timed out"
+        if "certificate_verify_failed" in lowered or "tls verification failed" in lowered:
+            return "Secure connection failed"
+        if "429" in lowered or "rate limit" in lowered:
+            return "Rate limited"
+        if "name or service not known" in lowered or "nodename nor servname" in lowered:
+            return "Could not reach service"
+        if "connection" in lowered or "urlopen error" in lowered:
+            return "Connection problem"
+        return "Unavailable"
+
+    def search_report(
+        self,
+        query: str,
+        provider_id: str = "all",
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        """Search providers without letting one failure break the whole UX.
+
+        The report keeps technical errors for diagnostics while exposing a short
+        reason that the desktop can present inline instead of using modal error
+        dialogs. All-source searches run providers concurrently so a slow source
+        costs roughly one timeout window rather than one timeout per provider.
+        """
+
+        requested_limit = max(1, min(250, int(limit)))
+        provider_id = str(provider_id or "all")
+
         if provider_id != "all":
             provider = self.providers[provider_id]
             if "search" not in list(provider.info.capabilities or []):
-                return []
-            return provider.search(query, limit)
+                return {
+                    "items": [],
+                    "failures": [],
+                    "searched": 0,
+                    "available": 0,
+                    "provider_ids": [],
+                }
+            try:
+                rows = list(provider.search(query, requested_limit) or [])
+            except Exception as exc:
+                return {
+                    "items": [],
+                    "failures": [
+                        {
+                            "provider_id": provider_id,
+                            "name": provider.info.name,
+                            "reason": self._search_failure_reason(exc),
+                            "error": str(exc),
+                        }
+                    ],
+                    "searched": 1,
+                    "available": 0,
+                    "provider_ids": [provider_id],
+                }
+            return {
+                "items": rows[:requested_limit],
+                "failures": [],
+                "searched": 1,
+                "available": 1,
+                "provider_ids": [provider_id],
+            }
+
         searchable = [
             pid
             for pid in self.provider_order()
-            if "search" in list(self.providers[pid].info.capabilities or [])
+            if pid in self.providers
+            and "search" in list(self.providers[pid].info.capabilities or [])
         ]
+        if not searchable:
+            return {
+                "items": [],
+                "failures": [],
+                "searched": 0,
+                "available": 0,
+                "provider_ids": [],
+            }
+
+        per_provider = max(10, requested_limit // max(1, len(searchable)))
+        results_by_provider: dict[str, list[dict[str, Any]]] = {}
+        failures: list[dict[str, Any]] = []
+
+        max_workers = max(1, min(16, len(searchable)))
+        with ThreadPoolExecutor(
+            max_workers=max_workers,
+            thread_name_prefix="melodex-search",
+        ) as executor:
+            futures = {
+                executor.submit(
+                    self.providers[pid].search,
+                    query,
+                    per_provider,
+                ): pid
+                for pid in searchable
+            }
+            for future in as_completed(futures):
+                pid = futures[future]
+                provider = self.providers[pid]
+                try:
+                    results_by_provider[pid] = list(future.result() or [])
+                except Exception as exc:
+                    failures.append(
+                        {
+                            "provider_id": pid,
+                            "name": provider.info.name,
+                            "reason": self._search_failure_reason(exc),
+                            "error": str(exc),
+                        }
+                    )
+
         out: list[dict[str, Any]] = []
-        per_provider = max(10, limit // max(1, len(searchable)))
         for pid in searchable:
-            provider = self.providers[pid]
-            try:
-                out.extend(provider.search(query, per_provider))
-            except Exception:
-                continue
-        return out[:limit]
+            out.extend(results_by_provider.get(pid, []))
+            if len(out) >= requested_limit:
+                break
+
+        return {
+            "items": out[:requested_limit],
+            "failures": failures,
+            "searched": len(searchable),
+            "available": len(searchable) - len(failures),
+            "provider_ids": searchable,
+        }
+
+    def search(self, query: str, provider_id: str = "all", limit: int = 50) -> list[dict[str, Any]]:
+        return list(
+            self.search_report(query, provider_id, limit).get("items") or []
+        )
 
     def recommend(
         self,

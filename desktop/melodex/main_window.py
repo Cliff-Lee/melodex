@@ -1182,8 +1182,21 @@ class MainWindow(QMainWindow):
         l.addLayout(intel_actions)
 
     def _build_discover(self):
-        l=self._page_layout("discover","Discover","Search all connected music sources. Add a source in Sources if you want more places to search.")
-        row=QHBoxLayout(); self.search_box=QLineEdit(); self.search_box.setPlaceholderText("Artist, track or album…"); self.search_source=QComboBox(); row.addWidget(self.search_box,1); row.addWidget(self.search_source); search=QPushButton("Search"); search.clicked.connect(self._search); row.addWidget(search); l.addLayout(row)
+        l=self._page_layout(
+            "discover",
+            "Discover",
+            "Search all connected music sources. One slow or unavailable source will no longer stop the rest of your search.",
+        )
+        row=QHBoxLayout()
+        self.search_box=QLineEdit()
+        self.search_box.setPlaceholderText("Artist, track or album…")
+        self.search_source=QComboBox()
+        self.search_button=QPushButton("Search")
+        self.search_button.clicked.connect(self._search)
+        row.addWidget(self.search_box,1)
+        row.addWidget(self.search_source)
+        row.addWidget(self.search_button)
+        l.addLayout(row)
         self.search_box.returnPressed.connect(self._search)
 
         self.search_plugin_presence=FeaturePresenceBar(
@@ -1196,8 +1209,26 @@ class MainWindow(QMainWindow):
         )
         l.addWidget(self.search_plugin_presence)
 
-        self.results=QListWidget(); self.results.itemDoubleClicked.connect(self._play_result); l.addWidget(self.results,1)
-        row2=QHBoxLayout(); addq=QPushButton("Add selected to queue"); addq.clicked.connect(self._add_selected_to_queue); source_btn=QPushButton("Open source page"); source_btn.clicked.connect(self._open_selected_source); row2.addWidget(addq); row2.addWidget(source_btn); row2.addStretch(1); l.addLayout(row2)
+        self.search_status=QLabel("Ready to search")
+        self.search_status.setWordWrap(True)
+        self.search_status.setStyleSheet(
+            "color:#9aa7b7;padding:6px 2px 4px 2px;font-size:13px"
+        )
+        l.addWidget(self.search_status)
+
+        self.results=QListWidget()
+        self.results.itemDoubleClicked.connect(self._play_result)
+        l.addWidget(self.results,1)
+
+        row2=QHBoxLayout()
+        addq=QPushButton("Add selected to queue")
+        addq.clicked.connect(self._add_selected_to_queue)
+        source_btn=QPushButton("Open source page")
+        source_btn.clicked.connect(self._open_selected_source)
+        row2.addWidget(addq)
+        row2.addWidget(source_btn)
+        row2.addStretch(1)
+        l.addLayout(row2)
 
     def _build_library(self):
         l=self._page_layout(
@@ -4443,15 +4474,114 @@ class MainWindow(QMainWindow):
         dialog.exec()
 
     def _search(self):
-        q=self.search_box.text().strip(); pid=str(self.search_source.currentData() or "all")
-        if not q:return
-        self.results.clear(); self.results.addItem("Searching…")
-        self._run_async(lambda:self.providers.search(q,pid,100),self._show_results)
+        q=self.search_box.text().strip()
+        pid=str(self.search_source.currentData() or "all")
+        if not q:
+            return
+        self.results.clear()
+        self.results.addItem("Searching…")
+        if hasattr(self,"search_button"):
+            self.search_button.setEnabled(False)
+        if hasattr(self,"search_status"):
+            target=(
+                self.search_source.currentText()
+                if pid!="all"
+                else "your connected sources"
+            )
+            self.search_status.setText(f"Searching {target}…")
+            self.search_status.setToolTip("")
+        self._run_async(
+            lambda:self.providers.search_report(q,pid,100),
+            self._show_search_report,
+            self._search_report_failed,
+        )
 
-    def _show_results(self, tracks):
+    def _search_report_failed(self, error: str) -> None:
+        if hasattr(self,"search_button"):
+            self.search_button.setEnabled(True)
+        self.results.clear()
+        item=QListWidgetItem("Search could not be completed. Try again in a moment.")
+        item.setFlags(item.flags() & ~Qt.ItemIsSelectable)
+        item.setForeground(QColor("#d9a441"))
+        self.results.addItem(item)
+        if hasattr(self,"search_status"):
+            self.search_status.setText("Search temporarily unavailable")
+            self.search_status.setToolTip(str(error or ""))
+
+    def _show_search_report(self, report):
+        if hasattr(self,"search_button"):
+            self.search_button.setEnabled(True)
+
+        data=dict(report or {})
+        tracks=[dict(x) for x in list(data.get("items") or []) if isinstance(x,dict)]
+        failures=[dict(x) for x in list(data.get("failures") or []) if isinstance(x,dict)]
+        searched=int(data.get("searched") or 0)
+        available=int(data.get("available") or 0)
+
         self.results.clear()
         for t in tracks:
-            it=QListWidgetItem(_track_text(t)); it.setData(Qt.UserRole,t); self.results.addItem(it)
+            it=QListWidgetItem(_track_text(t))
+            it.setData(Qt.UserRole,t)
+            self.results.addItem(it)
+
+        failure_labels=[
+            f"{row.get('name') or row.get('provider_id')}: {row.get('reason') or 'Unavailable'}"
+            for row in failures
+        ]
+        technical="\n".join(
+            f"{row.get('name') or row.get('provider_id')}: {row.get('error') or row.get('reason') or 'Unavailable'}"
+            for row in failures
+        )
+
+        if failures:
+            shown=failure_labels[:3]
+            suffix=f" · +{len(failure_labels)-3} more" if len(failure_labels)>3 else ""
+            note=QListWidgetItem(
+                "Some sources were unavailable · " + " · ".join(shown) + suffix
+            )
+            note.setFlags(note.flags() & ~Qt.ItemIsSelectable)
+            note.setForeground(QColor("#d9a441"))
+            note.setToolTip(technical)
+            self.results.addItem(note)
+
+        if not tracks and not failures:
+            empty=QListWidgetItem("No matches found. Try a broader search.")
+            empty.setFlags(empty.flags() & ~Qt.ItemIsSelectable)
+            empty.setForeground(QColor("#8793a4"))
+            self.results.addItem(empty)
+
+        if hasattr(self,"search_status"):
+            if failures and tracks:
+                self.search_status.setText(
+                    f"{len(tracks)} results · {available} of {searched} sources responded · "
+                    f"{len(failures)} temporarily unavailable"
+                )
+            elif failures:
+                names=", ".join(
+                    str(row.get("name") or row.get("provider_id") or "Source")
+                    for row in failures[:3]
+                )
+                more=f" and {len(failures)-3} more" if len(failures)>3 else ""
+                self.search_status.setText(
+                    f"No results yet · {names}{more} unavailable"
+                )
+            else:
+                source_word="source" if searched==1 else "sources"
+                self.search_status.setText(
+                    f"{len(tracks)} results · {searched} {source_word} searched"
+                )
+            self.search_status.setToolTip(technical)
+
+    def _show_results(self, tracks):
+        # Kept for older call sites; search itself now uses _show_search_report.
+        self._show_search_report(
+            {
+                "items": list(tracks or []),
+                "failures": [],
+                "searched": 1,
+                "available": 1,
+            }
+        )
 
     def _play_result(self,item):
         t=dict(item.data(Qt.UserRole) or {}); self.player.set_queue([t],0,True)
