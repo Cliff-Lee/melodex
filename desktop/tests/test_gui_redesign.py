@@ -46,6 +46,12 @@ def test_visual_library_defaults_to_album_cards_and_filters():
 
     assert browser.current_view() == "albums"
     assert len(browser.albums) == 2
+    metrics = browser.last_catalog_metrics
+    assert metrics["track_count"] == 3
+    assert metrics["album_count"] == 2
+    assert metrics["artist_count"] == 2
+    assert metrics["main_thread"] is True
+    assert metrics["total_seconds"] >= metrics["album_model_seconds"]
     assert len(browser.cards) == 2
     assert all(not card.cover.pixmap().isNull() for card in browser.cards.values())
 
