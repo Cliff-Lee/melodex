@@ -25,6 +25,7 @@ FLUID_GATE_TESTS = [
     "desktop/tests/test_gui_redesign.py::test_stale_search_response_cannot_replace_newer_request",
     "desktop/tests/test_gui_redesign.py::test_library_reuses_rendered_state_for_same_catalog_revision",
     "desktop/tests/test_gui_redesign.py::test_large_library_progressively_renders_widgets",
+    "desktop/tests/test_gui_redesign.py::test_filter_clear_reuses_home_cards_and_skips_hidden_layouts",
     "desktop/tests/test_gui_redesign.py::test_cached_album_artwork_prioritizes_viewport_and_scroll_target",
     "desktop/tests/test_gui_redesign.py::test_catalog_replacement_invalidates_inflight_cached_artwork",
     "desktop/tests/test_gui_redesign.py::test_cached_artist_photos_use_same_viewport_priority",

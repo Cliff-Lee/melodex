@@ -282,6 +282,71 @@ stale-error suppression, bounded queue storage, real MainWindow callback suppres
 search latest-wins behavior, viewport artwork invalidation, catalog replacement,
 prefetch invalidation and navigation cancellation.
 
+## P8e result — sustained soak testing
+
+P8e adds a deterministic endurance harness at `scripts/fluid_soak.py` and a dedicated
+**Fluid Melodex soak (12.7k)** CI job. The soak uses a 12,700-track synthetic library
+and repeatedly mixes real Qt view changes, scrolling, filtering, TrackRow hydration,
+viewport-artwork invalidation and P8c/P8d scheduler churn.
+
+The first version of the harness exposed an instrumentation problem rather than a
+product leak: continuous `tracemalloc` plus manually pumping Qt without draining
+`DeferredDelete` events produced artificial multi-gigabyte RSS growth. The harness was
+corrected to drain deferred Qt deletions and to use lightweight retained-memory signals
+(RSS, GC-tracked objects and allocated Python blocks).
+
+With that corrected, the soak showed stable memory and scheduler behaviour but exposed
+one real foreground defect: clearing a narrow My Music search back to the full library
+was rebuilding too much synchronously.
+
+Before the fix, 12,700-track clear-search p95 timings were approximately:
+
+- Albums: **220 ms**;
+- Artists: **228 ms**;
+- Tracks: **224 ms**.
+
+The root cause was twofold:
+
+1. query changes relaid out hidden library views that the user could not see; and
+2. narrow filters destroyed the normal first-page AlbumCard/ArtistCard widgets, so
+   clearing the filter had to recreate up to 120 rich cards.
+
+P8e now keeps a bounded hidden cache of the normal first-page album/artist cards while
+a filter is active, reuses those exact widgets when the filter is cleared, and only
+lays out the currently visible library view.
+
+On the final 12,700-track soak:
+
+- **240 cycles** completed in **22.6 s**;
+- retained RSS grew only **6.0 MiB**;
+- GC-tracked object growth was **38**;
+- allocated Python blocks grew by **3,026**;
+- cycle-time first-to-last-quarter median ratio was **1.027×**;
+- scheduler queue high-water was **5**;
+- **2,016** stale queued jobs were cancelled during deliberate churn;
+- event-loop CI violations (≥250 ms): **0**;
+- serious stalls (≥500 ms): **0**;
+- release blockers (≥1 s): **0**;
+- interaction p95: **57.6 ms**;
+- interactions over 100 ms: **0**;
+- event-loop p99 gap: **119.2 ms**;
+- maximum event-loop gap: **126.7 ms**.
+
+Clear-search p95 after the fix:
+
+- Albums: **58.4 ms**;
+- Artists: **54.3 ms**;
+- Tracks: **16.2 ms**.
+
+Other final p95 interaction timings included approximately 59 ms for Albums/Artists view
+switches, 17 ms for Tracks, 23 ms or less for setting a narrow filter, and sub-millisecond
+scroll acknowledgement.
+
+The soak gate now enforces the existing Fluid Melodex interaction contract directly:
+interaction p95 must stay below **100 ms**, with **zero interactions over 100 ms** in
+this deterministic endurance scenario, in addition to its memory, backlog and
+event-loop stability budgets.
+
 ## P8 campaign sequence
 
 ### P8a — Synthetic baseline
