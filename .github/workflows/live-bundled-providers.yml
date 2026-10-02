@@ -33,6 +33,8 @@ jobs:
             label: NicheDB Radio
           - id: org.melodex.librivox
             label: LibriVox
+          - id: org.melodex.example.openverse-audio
+            label: Openverse Audio
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
