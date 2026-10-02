@@ -1741,6 +1741,104 @@ def test_stale_search_response_cannot_replace_newer_request(monkeypatch, tmp_pat
     app.processEvents()
 
 
+def test_run_async_replace_key_drops_stale_completion(monkeypatch, tmp_path):
+    try:
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+
+    window = main_window.MainWindow()
+    window.background_scheduler.shutdown(wait=True)
+
+    class HeldScheduler:
+        def __init__(self):
+            self.jobs = []
+            self.cancelled = []
+
+        def submit(self, callback, **kwargs):
+            self.jobs.append((callback, dict(kwargs)))
+            return True
+
+        def cancel_pending(self, replace_key):
+            self.cancelled.append(str(replace_key))
+            return 0
+
+        def snapshot(self):
+            return {}
+
+        def shutdown(self, *, wait=False):
+            return None
+
+    scheduler = HeldScheduler()
+    window.background_scheduler = scheduler
+    applied = []
+
+    window._run_async(
+        lambda: "old",
+        lambda result: applied.append(("old", result)),
+        priority="visible",
+        task_name="old-search",
+        replace_key="search",
+    )
+    window._run_async(
+        lambda: "new",
+        lambda result: applied.append(("new", result)),
+        priority="visible",
+        task_name="new-search",
+        replace_key="search",
+    )
+
+    assert [job[1]["replace_key"] for job in scheduler.jobs] == ["search", "search"]
+
+    scheduler.jobs[0][0]()
+    app.processEvents()
+    assert applied == []
+    assert window._async_stale_results_dropped == 1
+
+    scheduler.jobs[1][0]()
+    app.processEvents()
+    assert applied == [("new", "new")]
+
+    window.close()
+    app.processEvents()
+
+
+def test_navigation_invalidates_hidden_page_build(monkeypatch, tmp_path):
+    try:
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+
+    window = main_window.MainWindow()
+    cancelled = []
+    monkeypatch.setattr(
+        window.background_scheduler,
+        "cancel_pending",
+        lambda key: cancelled.append(str(key)) or 1,
+    )
+
+    window.current_page = "album_wall"
+    window.open_page("home")
+
+    assert "page:album-wall-model" in cancelled
+    assert window._async_invalidations >= 1
+
+    window.close()
+    app.processEvents()
+
+
 def test_navigation_motion_happens_after_immediate_shell_change(monkeypatch, tmp_path):
     try:
         from PySide6.QtWidgets import QApplication, QGraphicsOpacityEffect
