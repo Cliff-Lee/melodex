@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import threading
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -166,6 +167,8 @@ class PluginConfigBroker:
         self.path = self.data_dir / "plugin-config.json"
         self._secret_store: _SecretStore = secret_store or _default_secret_store()
         self._settings = self._load()
+        self._secret_presence: dict[tuple[str, str], bool] = {}
+        self._presence_lock = threading.RLock()
 
     @property
     def secret_storage(self) -> str:
@@ -209,18 +212,75 @@ class PluginConfigBroker:
         }
 
     def values(self, plugin_id: str, declarations: Any) -> dict[str, Any]:
+        plugin_id = str(plugin_id)
         fields = self._field_map(declarations)
-        stored = dict(self._settings.get(str(plugin_id), {}))
+        stored = dict(self._settings.get(plugin_id, {}))
         out: dict[str, Any] = {}
         for key, field in fields.items():
             if field["type"] == "secret":
-                value = self._secret_store.get(str(plugin_id), key)
+                value = self._secret_store.get(plugin_id, key)
+                present = value is not None and bool(str(value))
+                with self._presence_lock:
+                    self._secret_presence[(plugin_id, key)] = present
                 if value is not None:
                     out[key] = value
             elif key in stored:
                 value = stored[key]
                 out[key] = bool(value) if field["type"] == "boolean" else str(value)
         return out
+
+    def cached_status(self, plugin_id: str, declarations: Any) -> dict[str, Any]:
+        """Return configuration readiness without touching the system keyring.
+
+        Required secrets that have not been observed in this process are reported
+        as pending rather than missing. This method is safe for read-only UI paths.
+        """
+        plugin_id = str(plugin_id)
+        fields = self._field_map(declarations)
+        stored = dict(self._settings.get(plugin_id, {}))
+        configured: dict[str, bool | None] = {}
+        missing: list[str] = []
+        pending: list[str] = []
+
+        with self._presence_lock:
+            secret_presence = dict(self._secret_presence)
+
+        for key, field in fields.items():
+            if field["type"] == "secret":
+                present = secret_presence.get((plugin_id, key))
+                configured[key] = present
+                if field.get("required"):
+                    if present is False:
+                        missing.append(key)
+                    elif present is None:
+                        pending.append(key)
+                continue
+
+            if field["type"] == "boolean":
+                present = key in stored
+            else:
+                present = bool(str(stored.get(key) or "").strip())
+            configured[key] = present
+            if field.get("required") and not present:
+                missing.append(key)
+
+        ready: bool | None
+        if missing:
+            ready = False
+        elif pending:
+            ready = None
+        else:
+            ready = True
+
+        return {
+            "declared": bool(fields),
+            "configured": configured,
+            "ready": ready,
+            "pending": bool(pending),
+            "pending_required": pending,
+            "missing_required": missing,
+            "secret_storage": self.secret_storage,
+        }
 
     def editable_values(self, plugin_id: str, declarations: Any) -> dict[str, Any]:
         fields = self._field_map(declarations)
@@ -252,6 +312,8 @@ class PluginConfigBroker:
             "declared": bool(fields),
             "configured": configured,
             "ready": not missing,
+            "pending": False,
+            "pending_required": [],
             "missing_required": missing,
             "secret_storage": self.secret_storage,
         }
@@ -280,8 +342,12 @@ class PluginConfigBroker:
                 text = str(value)
                 if text:
                     self._secret_store.set(plugin_id, key, text)
+                    present = True
                 else:
                     self._secret_store.delete(plugin_id, key)
+                    present = False
+                with self._presence_lock:
+                    self._secret_presence[(plugin_id, key)] = present
                 continue
 
             if value is None:
@@ -304,6 +370,8 @@ class PluginConfigBroker:
         for key, field in fields.items():
             if field["type"] == "secret":
                 self._secret_store.delete(plugin_id, key)
+                with self._presence_lock:
+                    self._secret_presence.pop((plugin_id, key), None)
         if plugin_id in self._settings:
             self._settings.pop(plugin_id, None)
             self._save()
