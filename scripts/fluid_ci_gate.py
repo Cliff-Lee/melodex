@@ -17,6 +17,7 @@ FLUID_GATE_TESTS = [
     "desktop/tests/test_fluid_soak_probe.py",
     "desktop/tests/test_gui_redesign.py::test_slow_source_config_check_keeps_qt_event_loop_responsive",
     "desktop/tests/test_gui_redesign.py::test_navigation_shell_changes_before_slow_page_population",
+    "desktop/tests/test_gui_redesign.py::test_heavy_pages_build_once_after_navigation_shell",
     "desktop/tests/test_gui_redesign.py::test_rapid_navigation_drops_stale_page_population",
     "desktop/tests/test_gui_redesign.py::test_search_keeps_previous_results_visible_while_refreshing",
     "desktop/tests/test_gui_redesign.py::test_fast_search_never_flashes_delayed_loading_placeholder",
