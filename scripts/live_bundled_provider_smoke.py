@@ -8,6 +8,7 @@ import urllib.request
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from melodex.playback_gateway import PlaybackGateway
 from melodex.provider_manager import ProviderManager
 
 
@@ -87,6 +88,41 @@ def _probe(resource: dict, *, timeout: float = 20.0) -> dict:
     }
 
 
+def _gateway_url(resource: dict, gateway: PlaybackGateway) -> str:
+    """Mirror FlowPlayer's external-resource routing without importing Qt."""
+    guarded = "_playback_allowed_hosts" in resource
+    kind = str(resource.get("kind") or "http").casefold()
+    needs_gateway = bool(
+        resource.get("headers")
+        or resource.get("cookies")
+        or resource.get("gateway_required")
+        or (guarded and kind != "hls")
+    )
+    if needs_gateway:
+        return gateway.register(resource)
+    if guarded:
+        return gateway.validate_resource(resource)
+    return str(resource.get("stream_url") or resource.get("url") or "").strip()
+
+
+def _probe_through_gateway(resource: dict, *, timeout: float = 20.0) -> dict:
+    gateway = PlaybackGateway()
+    try:
+        url = _gateway_url(resource, gateway)
+        if not url:
+            raise RuntimeError("playback gateway produced no URL")
+        forwarded = dict(resource)
+        forwarded["url"] = url
+        forwarded.pop("stream_url", None)
+        forwarded["headers"] = {}
+        forwarded["cookies"] = {}
+        probe = _probe(forwarded, timeout=timeout)
+        probe["gateway_used"] = url.startswith("http://127.0.0.1:")
+        return probe
+    finally:
+        gateway.close()
+
+
 def _verify_provider(manager: ProviderManager, provider_id: str, query: str) -> dict:
     provider = manager.providers.get(provider_id)
     if provider is None and provider_id in OPTIONAL_PACKAGES:
@@ -110,7 +146,8 @@ def _verify_provider(manager: ProviderManager, provider_id: str, query: str) -> 
         label = f"{track.get('artist') or ''} — {track.get('title') or ''}".strip(" —")
         try:
             resolved = provider.resolve(track)
-            probe = _probe(resolved)
+            direct_probe = _probe(resolved)
+            gateway_probe = _probe_through_gateway(resolved)
             return {
                 "provider_id": provider_id,
                 "provider_name": provider.info.name,
@@ -131,7 +168,8 @@ def _verify_provider(manager: ProviderManager, provider_id: str, query: str) -> 
                 "resolved_url": _compact_url(
                     str(resolved.get("stream_url") or resolved.get("url") or "")
                 ),
-                "probe": probe,
+                "probe": direct_probe,
+                "gateway_probe": gateway_probe,
                 "status": "pass",
             }
         except Exception as exc:
@@ -170,12 +208,13 @@ def main() -> int:
                 try:
                     result = _verify_provider(manager, provider_id, query)
                     results.append(result)
-                    probe = result["probe"]
+                    probe = result["gateway_probe"]
+                    route = "gateway" if probe.get("gateway_used") else "direct"
                     print(
                         "PASS "
                         f"{result['provider_name']} {result['provider_version']} | "
                         f"search={result['search_results']} | "
-                        f"{probe['http_status']} {probe['content_type']} "
+                        f"{route} {probe['http_status']} {probe['content_type']} "
                         f"{probe['bytes_read']} bytes"
                     )
                 except Exception as exc:
