@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DESKTOP = ROOT / "desktop"
 
 FLUID_GATE_TESTS = [
+    "desktop/tests/test_background_scheduler.py",
     "desktop/tests/test_responsiveness.py",
     "desktop/tests/test_responsiveness_gate.py",
     "desktop/tests/test_motion.py",
