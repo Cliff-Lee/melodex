@@ -1,8 +1,8 @@
 # Next release — draft notes
 
-**Development after Melodex v0.7.3.**
+**Development after Melodex v0.7.4.**
 
-This file tracks changes intended for the next release after **v0.7.3**.
+This file tracks changes intended for the next release after **v0.7.4**.
 
 ## Campaign I — Native Lyrics UX
 
