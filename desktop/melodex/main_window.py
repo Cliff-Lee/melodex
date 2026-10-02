@@ -2228,9 +2228,21 @@ class MainWindow(QMainWindow):
         if event.type() == QEvent.WindowStateChange and hasattr(self, "living_canvas"):
             self.living_canvas.set_window_minimized(self.isMinimized())
 
+    def _cancel_stale_page_work(self, destination: str) -> None:
+        if not hasattr(self,"background"):
+            return
+        destination=str(destination or "")
+        if destination!="album_wall":
+            self.background.cancel_key("album-wall-model")
+        if destination!="music_map":
+            self.background.cancel_key("music-map-model")
+        if destination!="now_playing":
+            self.background.cancel_key("visual-context")
+
     def open_page(self, name: str):
         if name not in self.pages:
             return
+        self._cancel_stale_page_work(name)
         interaction = (
             self.responsiveness.begin_interaction(f"navigate:{name}")
             if hasattr(self, "responsiveness")
