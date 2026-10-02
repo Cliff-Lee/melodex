@@ -22,7 +22,7 @@ If an installed release does not contain something described in current document
 
 This distinction is normal for an actively developed project, but it should be stated rather than left for users to infer.
 
-The current release target is **v0.7.6**, a focused provider/playback reliability patch covering search-source deduplication, LibriVox and Internet Archive regional CDN redirects, Wikimedia playback identity, and gateway-level live provider verification. During its release, the stable application version is **0.7.6**; after publication, the next development cycle should use **0.7.7.dev0**.
+The current release target is **v0.7.6**, combining guarded desktop bundle slimming with provider/playback reliability fixes: search-source deduplication, LibriVox and Internet Archive regional CDN redirects, Wikimedia playback identity, and gateway-level live provider verification. During its release, the stable application version is **0.7.6**; after publication, the next development cycle should use **0.7.7.dev0**.
 
 ## App version policy
 
