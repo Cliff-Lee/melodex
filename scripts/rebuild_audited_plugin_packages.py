@@ -19,7 +19,7 @@ PACKAGES = SDK / "registry" / "packages"
 REVIEWS = SDK / "registry" / "reviews"
 
 REVIEWED_AT = "2026-09-29T10:30:00Z"
-REVIEWED_AT_OVERRIDES = {"musical_detours": "2026-09-29T12:48:04Z"}
+REVIEWED_AT_OVERRIDES = {"musical_detours": "2026-09-29T12:48:04Z", "openverse_audio_provider": "2026-10-02T03:55:00Z"}
 
 TARGETS = {
     "bridge_builder": "0.1.1",
@@ -30,7 +30,7 @@ TARGETS = {
     "listenbrainz_tags": "0.1.2",
     "musicbrainz_connections": "0.1.1",
     "musicbrainz_enrichment": "0.1.1",
-    "openverse_audio_provider": "0.1.1",
+    "openverse_audio_provider": "0.1.2",
     "radio_browser_provider": "0.1.1",
     "sonic_neighbours": "0.1.1",
     "wikimedia_artwork": "0.1.1",

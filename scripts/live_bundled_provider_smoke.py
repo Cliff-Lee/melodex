@@ -8,6 +8,7 @@ import urllib.request
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from melodex.playback_gateway import PlaybackGateway
 from melodex.provider_manager import ProviderManager
 
 
@@ -27,7 +28,7 @@ CASES = {
 
 OPTIONAL_PACKAGES = {
     "org.melodex.example.openverse-audio":
-        ROOT / "provider-sdk/registry/packages/openverse-audio-0.1.1.mdxprovider",
+        ROOT / "provider-sdk/registry/packages/openverse-audio-0.1.2.mdxprovider",
 }
 
 
@@ -65,7 +66,13 @@ def _probe(resource: dict, *, timeout: float = 20.0) -> dict:
             content_type = str(response.headers.get("Content-Type") or "")
             final_url = str(response.geturl() or url)
     except urllib.error.HTTPError as exc:
-        raise RuntimeError(f"media probe HTTP {exc.code}") from exc
+        try:
+            detail = exc.read(600).decode("utf-8", errors="replace")
+            detail = " ".join(detail.split())
+        except Exception:
+            detail = ""
+        suffix = f": {detail[:500]}" if detail else ""
+        raise RuntimeError(f"media probe HTTP {exc.code}{suffix}") from exc
     except Exception as exc:
         raise RuntimeError(f"media probe failed: {exc}") from exc
 
@@ -85,6 +92,28 @@ def _probe(resource: dict, *, timeout: float = 20.0) -> dict:
         "bytes_read": len(body),
         "final_url": _compact_url(final_url),
     }
+
+
+def _probe_with_player_policy(resource: dict) -> dict:
+    """Probe media through the same gateway decision used by DesktopPlayer."""
+    gateway = PlaybackGateway()
+    try:
+        guarded = "_playback_allowed_hosts" in resource
+        kind = str(resource.get("kind") or "http").casefold()
+        needs_gateway = bool(
+            resource.get("headers")
+            or resource.get("cookies")
+            or resource.get("gateway_required")
+            or (guarded and kind != "hls")
+        )
+        if needs_gateway:
+            proxy_url = gateway.register(resource)
+            return _probe({"url": proxy_url})
+        if guarded:
+            gateway.validate_resource(resource)
+        return _probe(resource)
+    finally:
+        gateway.close()
 
 
 def _verify_provider(manager: ProviderManager, provider_id: str, query: str) -> dict:
@@ -110,7 +139,7 @@ def _verify_provider(manager: ProviderManager, provider_id: str, query: str) -> 
         label = f"{track.get('artist') or ''} — {track.get('title') or ''}".strip(" —")
         try:
             resolved = provider.resolve(track)
-            probe = _probe(resolved)
+            probe = _probe_with_player_policy(resolved)
             return {
                 "provider_id": provider_id,
                 "provider_name": provider.info.name,
@@ -193,7 +222,7 @@ def main() -> int:
 
     report = {
         "schema_version": 1,
-        "purpose": "live provider search/resolve/playback reachability",
+        "purpose": "live provider search/resolve/player-gateway playback reachability",
         "providers_expected": len(selected_cases),
         "providers_passed": sum(1 for row in results if row.get("status") == "pass"),
         "providers_failed": len(failures),

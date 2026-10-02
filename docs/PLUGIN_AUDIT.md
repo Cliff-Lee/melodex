@@ -36,16 +36,16 @@ The desktop app carries seven audited provider packages and installs them automa
 | Included source | Package version | Main role |
 | --- | ---: | --- |
 | Internet Archive Audio | 0.1.1 | Search/play openly accessible archive audio; lazy metadata resolution keeps search responsive |
-| LibriVox | 0.1.4 | Public-domain audiobooks |
+| LibriVox | 0.1.5 | Public-domain audiobooks |
 | NicheDB Radio | 0.1.2 | Rich daily-refreshed internet-radio discovery |
 | Radio Browser | 0.1.2 | Internet radio directory |
 | SomaFM | 0.1.1 | Curated internet radio |
-| Wikimedia Commons Audio | 0.1.1 | Openly licensed/public-domain audio |
+| Wikimedia Commons Audio | 0.1.2 | Openly licensed/public-domain audio |
 | ccMixter | 0.1.3 | Creative Commons music |
 
 Bundled-package tests verify package identity/version, manifest structure, entrypoints and installation/restore behaviour. The live provider matrix goes further by probing real media bytes for each source independently; Openverse Audio is included in that audit even though it remains an optional registry provider. Use **Sources & plugins → Check connections** for a bounded health check on the current machine/network.
 
-LibriVox 0.1.4 searches the official LibriVox collection hosted by Internet Archive and resolves public-domain audiobook media there. This avoids interactive search pressure on the volunteer-hosted LibriVox API while preserving LibriVox as the content/source identity. Its checked-in source is rebuilt deterministically into the bundled package.
+LibriVox 0.1.5 searches the official LibriVox collection hosted by Internet Archive and resolves public-domain audiobook media there. Guarded playback now permits Internet Archive's regional CDN subdomains rather than assuming all media redirects stay under `*.us.archive.org`. This avoids interactive search pressure on the volunteer-hosted LibriVox API while preserving LibriVox as the content/source identity. Its checked-in source is rebuilt deterministically into the bundled package.
 
 ### Optional registry plugins
 
@@ -70,9 +70,9 @@ Entries marked **Reference** in the Plugin Centre are inspectable examples, not 
 
 ## Duplicate/reference capabilities
 
-Some registry examples deliberately overlap with Core/bundled functionality:
+Some registry examples deliberately overlap with Core/bundled functionality. Reference provider duplicates are not loaded into normal Search when an audited bundled replacement is present:
 
-- Radio Browser and LibriVox are already included sources.
+- Radio Browser and LibriVox are already included sources; older installed `Radio Browser Example` / `LibriVox Example` packages are automatically ignored at runtime.
 - MusicBrainz identity/metadata is already part of Core enrichment.
 - Cover Art Archive is already used by Core artwork enrichment.
 - Wikimedia is already used by Core artist/artwork enrichment.

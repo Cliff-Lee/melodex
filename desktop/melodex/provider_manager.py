@@ -30,6 +30,12 @@ from .plugin_health import (
 )
 
 
+_SUPERSEDED_REFERENCE_PROVIDERS = {
+    "org.melodex.example.radio-browser": "org.melodex.radiobrowser",
+    "org.melodex.example.librivox": "org.melodex.librivox",
+}
+
+
 class ProviderManager:
     def __init__(self, data_dir: Path):
         self.data_dir = Path(data_dir)
@@ -62,7 +68,41 @@ class ProviderManager:
             "streams": UserStreamsProvider(list(self.settings.get("user_streams", []))),
         }
         self._quarantined_legacy_providers: list[dict[str, str]] = []
+        self._quarantined_superseded_providers: list[dict[str, str]] = []
         for provider in self.installer.load_installed():
+            replacement_id = _SUPERSEDED_REFERENCE_PROVIDERS.get(
+                str(provider.info.id or "")
+            )
+            if replacement_id and replacement_id in bundled_ids:
+                replacement_name = replacement_id
+                manifest_path = (
+                    self.installer.providers_dir
+                    / replacement_id
+                    / "manifest.json"
+                )
+                try:
+                    replacement_manifest = json.loads(
+                        manifest_path.read_text("utf-8")
+                    )
+                    replacement_name = str(
+                        replacement_manifest.get("name") or replacement_id
+                    )
+                except Exception:
+                    pass
+                self._quarantined_superseded_providers.append(
+                    {
+                        "id": str(provider.info.id or ""),
+                        "name": str(
+                            provider.info.name or provider.info.id or ""
+                        ),
+                        "replacement_id": replacement_id,
+                        "replacement_name": replacement_name,
+                    }
+                )
+                close = getattr(provider, "close", None)
+                if callable(close):
+                    close()
+                continue
             if self._is_legacy_private_provider(provider):
                 self._quarantined_legacy_providers.append(
                     {
@@ -80,6 +120,22 @@ class ProviderManager:
                 )
             )
             self.providers[provider.info.id] = provider
+        superseded_ids = {
+            str(row.get("id") or "")
+            for row in self._quarantined_superseded_providers
+        }
+        if superseded_ids:
+            old_priority = [
+                str(item)
+                for item in list(self.settings.get("provider_priority") or [])
+            ]
+            new_priority = [
+                item for item in old_priority
+                if item not in superseded_ids
+            ]
+            if new_priority != old_priority:
+                self.settings["provider_priority"] = new_priority
+                self.save()
         self.resolver = UniversalResolver(self)
         self.capabilities = CapabilityBroker(
             self.data_dir, config_broker=self.plugin_config
@@ -109,6 +165,10 @@ class ProviderManager:
 
     def quarantined_legacy_providers(self) -> list[dict[str, str]]:
         return [dict(row) for row in self._quarantined_legacy_providers]
+
+    def quarantined_superseded_providers(self) -> list[dict[str, str]]:
+        """Reference providers hidden because an included replacement exists."""
+        return [dict(row) for row in self._quarantined_superseded_providers]
 
     def _load_settings(self) -> dict[str, Any]:
         try:
