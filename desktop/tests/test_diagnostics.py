@@ -246,6 +246,19 @@ def test_diagnostics_filters_ui_performance_fields():
                 "private_track": "Secret Song",
                 "private_path": "/Users/example/Music/Secret.flac",
             },
+            "artwork_priority": {
+                "kind": "albums",
+                "tier": "visible",
+                "scroll_value": 480,
+                "direction": 1,
+                "visible_candidates": 18,
+                "near_candidates": 20,
+                "distant_candidates": 82,
+                "requested_now": 12,
+                "requested_total": 24,
+                "private_album": "Secret Album",
+                "private_path": "/Users/example/Music/Secret.flac",
+            },
             "responsiveness": {
                 "interval_ms": 50,
                 "long_task_threshold_ms": 50,
@@ -288,6 +301,10 @@ def test_diagnostics_filters_ui_performance_fields():
     assert virtual["model_row_count"] == 12700
     assert virtual["hydrated_row_count"] == 21
     assert virtual["hydrate_seconds"] == 0.041
+    artwork = payload["performance"]["artwork_priority"]
+    assert artwork["kind"] == "albums"
+    assert artwork["requested_now"] == 12
+    assert artwork["distant_candidates"] == 82
     responsiveness = payload["performance"]["ui_responsiveness"]
     assert responsiveness["total_stalls"] == 2
     assert responsiveness["max_delay_ms"] == 620.0
@@ -296,8 +313,10 @@ def test_diagnostics_filters_ui_performance_fields():
     assert "/Users/example/Music" not in text
     assert "Private Album Name" not in text
     assert "Secret Song" not in text
+    assert "Secret Album" not in text
     assert '"query"' not in text
     assert "private_track" not in text
+    assert "private_album" not in text
     assert "private_path" not in text
 
 
