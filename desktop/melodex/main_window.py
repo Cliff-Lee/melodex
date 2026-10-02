@@ -3811,14 +3811,30 @@ class MainWindow(QMainWindow):
                 return
 
             count=self.providers.apply_local_scan_snapshot(result)
+            changes=dict(result.get("changes") or {})
             self._refresh_library()
             self._show_home()
             if hasattr(self,"library_browser"):
-                self.library_browser.finish_scan("complete",count=count)
+                self.library_browser.finish_scan(
+                    "complete",
+                    count=count,
+                    changes=changes,
+                )
                 QTimer.singleShot(3500,self.library_browser.clear_scan_status)
+            summary_parts=[]
+            for key,label in (
+                ("unchanged","unchanged"),
+                ("added","new"),
+                ("changed","updated"),
+                ("removed","removed"),
+            ):
+                value=max(0,int(changes.get(key) or 0))
+                if value:
+                    summary_parts.append(f"{value:,} {label}")
+            suffix=(" · " + " · ".join(summary_parts)) if summary_parts else ""
             self.statusBar().showMessage(
-                f"Music indexing complete · {count:,} tracks",
-                5000,
+                f"Music indexing complete · {count:,} tracks{suffix}",
+                6500,
             )
             if self._local_scan_pending:
                 self._local_scan_pending=False
