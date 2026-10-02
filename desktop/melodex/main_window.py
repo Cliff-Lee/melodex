@@ -57,6 +57,7 @@ from .plugin_onboarding import plugin_needs_setup
 from .plugin_health import health_badge, health_summary
 from .diagnostics import write_diagnostics
 from .responsiveness import UiResponsivenessMonitor
+from .motion import MotionController, FAST_MOTION_MS, STANDARD_MOTION_MS
 from .library_browser import LibraryBrowser
 from .library_scan_process import LibraryScanProcess
 from .ux_components import (
@@ -107,6 +108,11 @@ class MainWindow(QMainWindow):
         self.data_dir = app_data_dir()
         self.providers = ProviderManager(self.data_dir)
         self.state = UserState(self.data_dir / "taste.sqlite3")
+        self.motion = MotionController(
+            self,
+            reduced=self.state.get_bool("reduce_motion", False),
+        )
+        self.page_titles: dict[str, QLabel] = {}
         self.flow = FlowEngine(self.data_dir / "flow.sqlite3")
         self.mind = MindEngine(self.state, self.flow)
         self.local_intelligence = LocalIntelligenceService(
@@ -952,6 +958,7 @@ class MainWindow(QMainWindow):
     def _page_layout(self, page: str, title: str, subtitle: str=""):
         lay=QVBoxLayout(self.pages[page]); lay.setContentsMargins(28,24,28,24)
         t=QLabel(title); t.setStyleSheet("font-size:28px;font-weight:700"); lay.addWidget(t)
+        self.page_titles[page]=t
         if subtitle:
             s=QLabel(subtitle); s.setWordWrap(True); s.setStyleSheet("color:#aab0ba"); lay.addWidget(s)
         return lay
@@ -2234,6 +2241,11 @@ class MainWindow(QMainWindow):
         self.stack.setCurrentWidget(self.pages[name])
         self._update_nav_state(name)
         self.pages[name].update()
+        self.motion.settle(
+            self.page_titles.get(name),
+            duration_ms=FAST_MOTION_MS,
+            start_opacity=0.88,
+        )
         if interaction is not None:
             self.responsiveness.end_interaction(interaction)
 
@@ -6295,6 +6307,11 @@ class MainWindow(QMainWindow):
                 title=album or str(t.get("title") or ""),
                 key=token,
             )
+            self.motion.settle(
+                self.player_cover,
+                duration_ms=STANDARD_MOTION_MS,
+                start_opacity=0.84,
+            )
             if not prefetched.get("artwork_loaded"):
                 self._run_async(
                     lambda:self.metadata.local_artwork(dict(t)),
@@ -6318,6 +6335,11 @@ class MainWindow(QMainWindow):
             str(result.get("path") or ""),
             title=str(current.get("album") or current.get("title") or ""),
             key=token,
+        )
+        self.motion.settle(
+            self.player_cover,
+            duration_ms=STANDARD_MOTION_MS,
+            start_opacity=0.84,
         )
 
     def _request_cached_visual_analysis(self, track: dict[str, Any]) -> None:
@@ -6496,6 +6518,11 @@ class MainWindow(QMainWindow):
             previous_enabled=self.love_button.isEnabled()
             self.love_button.setText("♥ Loved")
             self.love_button.setEnabled(False)
+            self.motion.settle(
+                self.love_button,
+                duration_ms=FAST_MOTION_MS,
+                start_opacity=0.82,
+            )
             self.statusBar().showMessage("Loved",2500)
         else:
             previous_text=""
@@ -6530,6 +6557,11 @@ class MainWindow(QMainWindow):
         if hasattr(self,"keep_button"):
             self.keep_button.setText("✓ Kept")
             self.keep_button.setEnabled(False)
+            self.motion.settle(
+                self.keep_button,
+                duration_ms=FAST_MOTION_MS,
+                start_opacity=0.82,
+            )
         self.statusBar().showMessage("Kept in taste memory",2500)
 
         def persist() -> bool:
