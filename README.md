@@ -215,7 +215,7 @@ The ecosystem is being developed with small examples built around documented, le
 
 | Example | What it demonstrates |
 | --- | --- |
-| Radio Browser | station search + live playback |
+| NicheDB Radio | rich radio discovery + live playback |\n| Radio Browser | station search + live playback |
 | LibriVox | public-domain search + playback + offline |
 | MusicBrainz | canonical identity + metadata provenance |
 | Wikimedia Commons | artwork + per-file licence/attribution |
