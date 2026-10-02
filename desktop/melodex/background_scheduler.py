@@ -187,6 +187,10 @@ class BackgroundScheduler:
                         return
                     task = self._pop_runnable_locked()
                     if task is not None:
+                        if not task.future.set_running_or_notify_cancel():
+                            self._cancelled += 1
+                            task = None
+                            continue
                         self._active_total += 1
                         self._active_by_lane[task.lane] = (
                             self._active_by_lane.get(task.lane, 0) + 1
