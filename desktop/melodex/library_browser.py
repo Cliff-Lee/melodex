@@ -363,6 +363,14 @@ class LibraryBrowser(QWidget):
         self.artist_image_paths: dict[str, str] = {}
         self._visible_albums: list[dict[str, Any]] = []
         self._visible_artists: list[dict[str, Any]] = []
+        self._visible_tracks: list[dict[str, Any]] = []
+        self._album_batch_size = 120
+        self._artist_batch_size = 120
+        self._track_batch_size = 300
+        self._album_render_limit = self._album_batch_size
+        self._artist_render_limit = self._artist_batch_size
+        self._track_render_limit = self._track_batch_size
+        self._track_more_item: QListWidgetItem | None = None
         self._art_requested: set[str] = set()
         self._artist_art_requested: set[str] = set()
         self._artwork_batch_size = 4
@@ -398,7 +406,7 @@ class LibraryBrowser(QWidget):
         self.search = QLineEdit()
         self.search.setPlaceholderText("Search your music…")
         self.search.setClearButtonEnabled(True)
-        self.search.textChanged.connect(self._apply_filter)
+        self.search.textChanged.connect(self._search_changed)
         top.addWidget(self.search, 1)
 
         self.view_group = QButtonGroup(self)
@@ -589,6 +597,11 @@ class LibraryBrowser(QWidget):
         self.album_grid.setAlignment(Qt.AlignTop | Qt.AlignLeft)
         self.album_scroll.setWidget(self.album_container)
         album_page_layout.addWidget(self.album_scroll, 1)
+        self.album_more_button = QPushButton("Show more albums")
+        self.album_more_button.setObjectName("quietButton")
+        self.album_more_button.clicked.connect(self._show_more_albums)
+        self.album_more_button.hide()
+        album_page_layout.addWidget(self.album_more_button, 0, Qt.AlignHCenter)
         self.stack.addWidget(self.album_page)
 
         # Artists
@@ -615,6 +628,11 @@ class LibraryBrowser(QWidget):
         self.artist_grid.setAlignment(Qt.AlignTop | Qt.AlignLeft)
         self.artist_scroll.setWidget(self.artist_container)
         artist_page_layout.addWidget(self.artist_scroll, 1)
+        self.artist_more_button = QPushButton("Show more artists")
+        self.artist_more_button.setObjectName("quietButton")
+        self.artist_more_button.clicked.connect(self._show_more_artists)
+        self.artist_more_button.hide()
+        artist_page_layout.addWidget(self.artist_more_button, 0, Qt.AlignHCenter)
         self.stack.addWidget(self.artist_page)
 
         # Tracks
@@ -656,6 +674,9 @@ class LibraryBrowser(QWidget):
             "track_count": 0,
             "album_count": 0,
             "artist_count": 0,
+            "rendered_album_count": 0,
+            "rendered_artist_count": 0,
+            "rendered_track_count": 0,
             "reset_seconds": 0.0,
             "copy_catalog_seconds": 0.0,
             "album_model_seconds": 0.0,
@@ -679,7 +700,11 @@ class LibraryBrowser(QWidget):
         self._clear_grid(self.album_grid)
         self._clear_grid(self.artist_grid)
         self.track_list.clear()
+        self._track_more_item = None
         self._tracks_built = False
+        self._album_render_limit = self._album_batch_size
+        self._artist_render_limit = self._artist_batch_size
+        self._track_render_limit = self._track_batch_size
         metrics["reset_seconds"] = round(time.perf_counter() - started, 6)
 
         copy_started = time.perf_counter()
@@ -759,6 +784,9 @@ class LibraryBrowser(QWidget):
             time.perf_counter() - layout_started,
             6,
         )
+        metrics["rendered_album_count"] = len(self.cards)
+        metrics["rendered_artist_count"] = len(self.artist_cards)
+        metrics["rendered_track_count"] = len(self.track_rows)
 
         artwork_started = time.perf_counter()
         self._request_artwork()
