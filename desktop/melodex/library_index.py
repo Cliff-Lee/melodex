@@ -178,6 +178,69 @@ class LocalLibraryIndex:
                 tracks.append(value)
         return tracks
 
+    def load_scan_cache(
+        self,
+        roots: list[Path],
+    ) -> dict[str, dict[str, Any]]:
+        """Load cached raw metadata plus cheap file fingerprints.
+
+        Keys are canonical absolute paths so the scanner can compare a newly
+        enumerated file with the previous index without reopening its tags.
+        """
+        if not roots:
+            return {}
+        ids = [_root_id(root) for root in roots]
+        placeholders = ",".join("?" for _ in ids)
+        with self._connect() as db:
+            rows = db.execute(
+                f"""
+                SELECT
+                    t.root_id,
+                    t.relative_path,
+                    t.metadata_json,
+                    t.size,
+                    t.mtime_ns,
+                    r.path AS root_path
+                FROM tracks AS t
+                JOIN roots AS r ON r.root_id = t.root_id
+                WHERE t.root_id IN ({placeholders})
+                """,
+                tuple(ids),
+            ).fetchall()
+
+        cache: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            try:
+                metadata = json.loads(str(row["metadata_json"]))
+            except Exception:
+                continue
+            if not isinstance(metadata, dict):
+                continue
+            root_path = str(row["root_path"] or "")
+            relative = str(row["relative_path"] or "")
+            local_path = str(
+                metadata.get("local_path")
+                or metadata.get("track_id")
+                or (Path(root_path) / relative)
+            )
+            cache[_canonical_path(local_path)] = {
+                "track": metadata,
+                "size": (
+                    int(row["size"])
+                    if row["size"] is not None
+                    else None
+                ),
+                "mtime_ns": (
+                    int(row["mtime_ns"])
+                    if row["mtime_ns"] is not None
+                    else None
+                ),
+                "root_id": str(row["root_id"]),
+                "root_path": root_path,
+                "relative_path": relative,
+            }
+        return cache
+
     @staticmethod
     def _matching_root(
         local_path: str | Path,
@@ -241,18 +304,33 @@ class LocalLibraryIndex:
             available_ids = {_root_id(root) for root in clean_roots}
 
         root_by_id = {_root_id(root): root for root in clean_roots}
-        grouped: dict[str, list[tuple[str, dict[str, Any]]]] = {
+        grouped: dict[
+            str,
+            list[tuple[str, dict[str, Any], int | None, int | None]],
+        ] = {
             root_id: [] for root_id in available_ids if root_id in root_by_id
         }
 
-        stored_tracks = (
-            list((snapshot or {}).get("index_tracks") or [])
-            or list((snapshot or {}).get("tracks") or [])
-        )
-        for raw in stored_tracks:
-            if not isinstance(raw, dict):
-                continue
-            track = dict(raw)
+        index_records = [
+            dict(row)
+            for row in list((snapshot or {}).get("index_records") or [])
+            if isinstance(row, dict) and isinstance(row.get("track"), dict)
+        ]
+        if index_records:
+            stored_records = index_records
+        else:
+            stored_tracks = (
+                list((snapshot or {}).get("index_tracks") or [])
+                or list((snapshot or {}).get("tracks") or [])
+            )
+            stored_records = [
+                {"track": dict(raw), "size": None, "mtime_ns": None}
+                for raw in stored_tracks
+                if isinstance(raw, dict)
+            ]
+
+        for record in stored_records:
+            track = dict(record.get("track") or {})
             local_path = str(track.get("local_path") or track.get("track_id") or "")
             if not local_path:
                 continue
@@ -262,8 +340,15 @@ class LocalLibraryIndex:
             root_id = _root_id(root)
             if root_id not in available_ids:
                 continue
+            size = record.get("size")
+            mtime_ns = record.get("mtime_ns")
             grouped.setdefault(root_id, []).append(
-                (self._relative_path(local_path, root), track)
+                (
+                    self._relative_path(local_path, root),
+                    track,
+                    int(size) if size is not None else None,
+                    int(mtime_ns) if mtime_ns is not None else None,
+                )
             )
 
         now = datetime.now(timezone.utc).isoformat()
@@ -293,7 +378,7 @@ class LocalLibraryIndex:
                             size,
                             mtime_ns
                         )
-                        VALUES(?, ?, ?, NULL, NULL)
+                        VALUES(?, ?, ?, ?, ?)
                         """,
                         [
                             (
@@ -305,8 +390,10 @@ class LocalLibraryIndex:
                                     separators=(",", ":"),
                                     default=str,
                                 ),
+                                size,
+                                mtime_ns,
                             )
-                            for relative_path, track in rows
+                            for relative_path, track, size, mtime_ns in rows
                         ],
                     )
                     db.execute(
