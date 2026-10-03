@@ -287,6 +287,28 @@ def test_diagnostics_filters_ui_performance_fields():
                 },
                 "private_task_name": "Secret Song",
             },
+            "local_scan_session": {
+                "status": "running",
+                "reason": "manual rescan",
+                "phase": "metadata",
+                "running": True,
+                "paused": False,
+                "pending_rescan": False,
+                "elapsed_seconds": 12.5,
+                "files_seen": 14000,
+                "audio_files_seen": 12700,
+                "directories_seen": 508,
+                "completed": 8000,
+                "total": 12700,
+                "unchanged": 7000,
+                "added": 3,
+                "changed": 5,
+                "removed": 2,
+                "stat_failures": 1,
+                "current": "Private Artist",
+                "private_path": "/Volumes/AnotherSecret/Music",
+                "raw_error": "PermissionError: /Volumes/AnotherSecret/Music",
+            },
             "responsiveness": {
                 "interval_ms": 50,
                 "long_task_threshold_ms": 50,
@@ -341,6 +363,13 @@ def test_diagnostics_filters_ui_performance_fields():
     assert scheduler["stale_results_dropped"] == 2
     assert scheduler["active_by_priority"]["background"] == 1
     assert scheduler["pending_by_priority"]["idle"] == 1
+    scan_session = payload["performance"]["local_scan_session"]
+    assert scan_session["status"] == "running"
+    assert scan_session["phase"] == "metadata"
+    assert scan_session["audio_files_seen"] == 12700
+    assert scan_session["completed"] == 8000
+    assert "current" not in scan_session
+    assert "raw_error" not in scan_session
     responsiveness = payload["performance"]["ui_responsiveness"]
     assert responsiveness["total_stalls"] == 2
     assert responsiveness["max_delay_ms"] == 620.0
@@ -361,6 +390,7 @@ def test_write_diagnostics_creates_json_file(tmp_path: Path):
     target = write_diagnostics(tmp_path / "diagnostics.json", FakeManager())
     assert target.is_file()
     payload = json.loads(target.read_text("utf-8"))
-    assert payload["schema_version"] == "0.1"
+    assert payload["schema_version"] == "0.2"
     assert payload["sources"]
     assert payload["extensions"]
+    assert isinstance(payload["system"]["packaged"], bool)
