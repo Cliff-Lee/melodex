@@ -376,3 +376,57 @@ safety contract.
 A later filesystem-specific accelerator may use stronger evidence such as a
 journal/change token or another trusted subtree signal, but the portable default
 must remain correctness-first.
+
+
+## P10g — adaptive storage concurrency
+
+P10g stops treating every music library as though it lives on the same storage.
+
+Changed-file metadata reads now use a small ordered thread pool. The executor has
+a hard maximum of four workers, while an adaptive controller decides how much
+work may actually be in flight from observed filesystem stat latency and
+conservative path hints.
+
+The current policy is intentionally modest:
+
+| Storage signal | Metadata workers | In-flight cap |
+| --- | ---: | ---: |
+| warming / unknown | 2 | 4 |
+| high latency (>= 8 ms avg stat) | 2 | 4 |
+| medium latency (2–8 ms) | 3 | 6 |
+| low latency (< 2 ms) | 4 | 8 |
+| likely network/NAS | starts at 2 | starts at 4 |
+
+A likely network path does not automatically receive more threads. It starts
+conservatively and may move to three workers only after enough very-low-latency
+samples show that the storage can tolerate it.
+
+Metadata reads may complete out of order, but results are committed to the scan
+snapshot in discovery order. This preserves deterministic catalog ordering.
+
+The pool is bounded twice:
+
+1. the P10c discovery queue still caps discovered work;
+2. P10g caps metadata futures separately.
+
+An unchanged rescan creates no metadata futures at all because size+mtime reuse
+still happens before metadata scheduling.
+
+New telemetry:
+
+- `storage_profile`
+- `storage_average_stat_ms`
+- `storage_network_hint`
+- `metadata_worker_limit`
+- `metadata_in_flight_limit`
+- `metadata_max_in_flight`
+
+### Why no aggressive 8+ worker default
+
+More parallelism is not automatically faster. Rotating disks and network shares
+can lose throughput from seeks, SMB/NFS contention, server-side queueing, or
+latency amplification. P10g therefore uses a small hard cap and adapts from
+measurements rather than copying another application's worker count.
+
+Future benchmarks can tune the thresholds without changing the pipeline
+architecture.
