@@ -111,30 +111,123 @@ class VisualQuality:
     detail_scale: float
     max_detail: int
     glow_layers: int
+    max_glows: int
+    max_particles: int
+    artwork_cache_px: int
+    paint_budget_ms: float
     animation_enabled: bool
 
 
 def resolve_visual_quality(requested: str, effective: str = "normal") -> VisualQuality:
-    """Return the rendering budget while preserving the existing UI presets."""
+    """Return the rendering budget while preserving the existing UI presets.
+
+    The limits are deliberately conservative because Visuals share the UI
+    process with playback controls, library navigation and artwork work.
+    """
 
     requested = requested if requested in {"auto", "eco", "high", "battery"} else "auto"
 
     if requested == "battery":
-        return VisualQuality("battery", 0, 1000, 0.45, 24, 1, False)
+        return VisualQuality(
+            "battery", 0, 1000, 0.45, 24, 1, 2, 8, 360, 10.0, False
+        )
     if requested == "eco":
-        return VisualQuality("eco", 10, 100, 0.50, 32, 2, True)
+        return VisualQuality(
+            "eco", 10, 100, 0.50, 32, 2, 4, 12, 480, 10.0, True
+        )
     if requested == "high":
-        return VisualQuality("high", 30, 34, 2.00, 48, 4, True)
+        return VisualQuality(
+            "high", 30, 34, 1.50, 48, 4, 12, 32, 1280, 16.0, True
+        )
 
-    # Auto keeps the existing 15 fps cadence, but can halve scene detail after
-    # repeated slow frames without changing playback or the visual meaning.
     eco = effective == "eco"
+    if eco:
+        return VisualQuality(
+            "auto-eco", 12, 84, 0.55, 32, 2, 4, 16, 640, 10.0, True
+        )
     return VisualQuality(
-        "auto-eco" if eco else "auto",
-        15,
-        67,
-        0.50 if eco else 1.00,
-        32 if eco else 48,
-        2 if eco else 3,
-        True,
+        "auto", 15, 67, 1.00, 48, 3, 8, 24, 960, 12.0, True
     )
+
+
+@dataclass(slots=True)
+class VisualPerformanceGovernor:
+    """Tiny hysteresis governor for Auto visual quality.
+
+    It reacts to repeated expensive paints, not one-off spikes, and recovers
+    only after a sustained run of inexpensive frames.  This keeps visual work
+    opportunistic rather than allowing it to compete with the rest of the UI.
+    """
+
+    effective: str = "normal"
+    frames: int = 0
+    slow_frames: int = 0
+    fast_frames: int = 0
+    ema_ms: float = 0.0
+    peak_ms: float = 0.0
+    reductions: int = 0
+
+    def reset(self, effective: str = "normal") -> None:
+        self.effective = "eco" if effective == "eco" else "normal"
+        self.frames = 0
+        self.slow_frames = 0
+        self.fast_frames = 0
+        self.ema_ms = 0.0
+        self.peak_ms = 0.0
+        self.reductions = 0
+
+    def observe(self, paint_ms: float, requested: str = "auto") -> str | None:
+        try:
+            paint_ms = max(0.0, float(paint_ms))
+        except (TypeError, ValueError, OverflowError):
+            return None
+        if not math.isfinite(paint_ms):
+            return None
+
+        self.frames += 1
+        self.peak_ms = max(self.peak_ms, paint_ms)
+        self.ema_ms = paint_ms if self.frames == 1 else self.ema_ms * 0.88 + paint_ms * 0.12
+
+        if requested != "auto":
+            self.slow_frames = 0
+            self.fast_frames = 0
+            return None
+
+        budget = resolve_visual_quality("auto", self.effective)
+        slow_threshold = budget.paint_budget_ms
+        fast_threshold = min(7.0, slow_threshold * 0.58)
+
+        if paint_ms > slow_threshold:
+            self.slow_frames += 1
+            self.fast_frames = 0
+        elif paint_ms < fast_threshold:
+            self.fast_frames += 1
+            self.slow_frames = 0
+        else:
+            self.slow_frames = 0
+            self.fast_frames = 0
+
+        if self.slow_frames >= 3 and self.effective != "eco":
+            self.effective = "eco"
+            self.reductions += 1
+            self.slow_frames = 0
+            self.fast_frames = 0
+            return "eco"
+
+        if self.fast_frames >= 72 and self.effective == "eco":
+            self.effective = "normal"
+            self.slow_frames = 0
+            self.fast_frames = 0
+            return "normal"
+
+        return None
+
+    def snapshot(self) -> dict[str, float | int | str]:
+        return {
+            "effective": self.effective,
+            "frames": self.frames,
+            "ema_ms": round(self.ema_ms, 3),
+            "peak_ms": round(self.peak_ms, 3),
+            "reductions": self.reductions,
+        }
+
