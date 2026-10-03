@@ -199,7 +199,7 @@ class LivingCanvasView(QWidget):
         ("Lyric Flow", "lyrics"),
         ("Album World", "album_world"),
         ("Sonic Weather", "weather"),
-        ("Visual Memory", "memory"),
+        ("Memory Atlas", "memory"),
         ("Minimal", "minimal"),
     )
 
@@ -244,11 +244,13 @@ class LivingCanvasView(QWidget):
         heading.addWidget(self.mode_combo)
 
         self.memory_scale = QComboBox(self)
-        self.memory_scale.setAccessibleName("Visual Memory time scale")
+        self.memory_scale.setAccessibleName("Memory Atlas grouping")
         for label, value in (("Sessions", "sessions"), ("Albums", "albums"), ("Weeks", "weeks"), ("Years", "years")):
             self.memory_scale.addItem(label, value)
         self.memory_scale.setMinimumHeight(36)
-        self.memory_scale.setToolTip("Zoom the local listening atlas by session, album, week or year.")
+        self.memory_scale.setToolTip(
+            "Group the same chronological listening history into sessions, albums, weeks or years."
+        )
         self.memory_scale.hide()
         heading.addWidget(self.memory_scale)
 
@@ -578,7 +580,10 @@ class LivingCanvasView(QWidget):
                 f"{weather.summary} · atmosphere, density and motion are mapped into a procedural field."
             )
         elif mode == "memory":
-            self.status.setText("A local atlas built from the listening history already stored on this device.")
+            self.status.setText(
+                "Memory Atlas: left-to-right is chronological time, height is average time of day, "
+                "island size is play count; hover a group for details."
+            )
         elif mode == "minimal":
             self.status.setText("A quiet identity scene. Choose Battery quality for a static, low-power view.")
         elif mode == "plugin":
