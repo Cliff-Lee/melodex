@@ -530,3 +530,93 @@ P10h tests cover:
 - successful publication clears staging;
 - incomplete roots cannot delete live tracks;
 - schema v2 → v3 migration.
+
+
+## P10i — 100k to 1m qualification
+
+P10i turns the scaling architecture into a repeatable release qualification
+instead of relying on one-off synthetic timings.
+
+The new harness exercises the real:
+
+- local-file scanner;
+- bounded discovery queue;
+- adaptive metadata pool;
+- size+mtime reuse;
+- directory manifests;
+- SQLite batch writer;
+- delta deletion logic;
+- scan-generation staging; and
+- cancellation/restart path.
+
+It uses a virtual filesystem so release-scale tests can simulate hundreds of
+thousands or one million audio files without creating a million physical FLAC
+files in CI.
+
+### Scenarios
+
+Every profile runs:
+
+1. **cold import**
+2. **unchanged rescan**
+3. **small delta rescan**
+4. **cancelled scan with staged checkpoints**
+5. **restart using staged metadata**
+
+The harness records:
+
+- scan seconds;
+- Python peak memory;
+- process peak RSS when available;
+- metadata-read count;
+- discovery queue peak/capacity;
+- maximum metadata work in flight;
+- SQLite write batches;
+- database size;
+- directory-manifest hits;
+- rows written/deleted on delta;
+- staged rows recovered after cancellation.
+
+### Qualification assertions
+
+A profile fails when any of these invariants fail:
+
+- discovery queue exceeds its configured capacity;
+- unchanged rescan reopens metadata;
+- unchanged rescan rewrites track rows;
+- delta metadata work grows beyond the changed/new portion;
+- cancellation returns a partial successful catalog; or
+- staged rows exist but restart fails to reuse any of them.
+
+### CI tiers
+
+Normal pull requests run the complete P10i scenario at 12,700 tracks and upload
+the JSON result as `p10i-qualification-12700`.
+
+Release-scale testing uses the manual
+`Elastic Library Release Qualification` workflow. Its default profiles are:
+
+- 100,000
+- 250,000
+- 500,000
+- 1,000,000
+
+The workflow also accepts artificial filesystem stat and directory latency so
+NAS-like behavior can be qualified without requiring a specific physical NAS.
+
+Example local runs:
+
+```bash
+cd desktop
+python tools/qualify_large_library.py --profiles 12700  # comma syntax via CLI string
+python tools/qualify_large_library.py --profiles 100000 --json
+python tools/qualify_large_library.py --release-scale --json
+python tools/qualify_large_library.py \
+  --profiles 100000 \
+  --stat-delay-ms 2 \
+  --directory-delay-ms 1
+```
+
+P10i is primarily a measurement campaign. It intentionally adds no new scanner
+optimization unless qualification exposes a concrete failure. The next stage
+can turn observed 100k/1m results into permanent numeric release gates.
