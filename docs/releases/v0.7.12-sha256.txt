@@ -1,0 +1,13 @@
+# Melodex v0.7.12 SHA-256
+# Release commit: 40395ffdf1e8dc02e2f66c05b386a2d4b97300c2
+# Published: 2026-10-03T12:26:05Z
+
+877cd07f7d95c61962d44526aa8b6f4fc551621501fbad24515f7636683aa655  Melodex-Android.aab
+50f8643d66b52fd779233d7f7796da3b9fc484b6ad5b172b82062c43e52f2eb5  Melodex-Android.apk
+9eef67c68270f532d8a5bb58c6be592cc1635d7f299621e35d887cb6ac569c82  Melodex-linux-x86_64.AppImage
+4d5d1558e3fe33945ae3a589074071ecd16e796b6e94502cd500cd3565b9fdfc  Melodex-linux-x86_64.deb
+69376f33eeecf68f80f7959d6dbce6f05733247137b33323f80fa8c4ef56174a  Melodex-macOS-arm64.dmg
+988b64428ca27cf9eaf4fd71fde44cc2e271dd18817852da97c1aee2878bcbb9  Melodex-macOS-intel.dmg
+3d87eb60fa76443ca58307cc261c2c9d3d79955c3569324286fc536becb50d7e  Melodex-v0.7.12-source.zip
+95ea18a791d92f64ca95fa095bc12844641e9bdd822086ee8536b97ac2c06b34  Melodex-Windows-portable.zip
+bf0c0d05bbdfa5175e08fa6a326d6845dfa091be9b4af2e9865f8f06e297e3b9  Melodex-Windows-x64-Setup.exe
