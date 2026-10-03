@@ -153,7 +153,6 @@ Visuals are presented by purpose rather than as one flat experiment list.
 - Profile Pulse
 - Lyric Flow
 - Sonic Weather
-- Album World
 - Minimal
 
 **Explore**
@@ -162,6 +161,10 @@ Visuals are presented by purpose rather than as one flat experiment list.
 - Musical Journey
 
 Personal visualizer recipes appear in their own section when installed.
+
+Album World remains available internally for compatibility, but the P13i visual
+review found it substantially weaker than the new public visual language, so it
+is no longer surfaced as a primary Watch mode.
 
 Track Sigil is no longer a public standalone visualizer. Its fixed geometry is
 reusable identity infrastructure: the same deterministic motif appears beside
