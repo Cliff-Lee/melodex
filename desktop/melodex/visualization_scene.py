@@ -1498,7 +1498,14 @@ class LivingScene(QWidget):
 
         # Each group becomes a small luminous island. Horizontal width shows the
         # actual time span of that group; area/brightness reflect play count.
-        for index, mark in enumerate(self._memory):
+        # Draw the active island first so a hard glow cap never removes the
+        # interaction focus from a dense atlas.
+        draw_indices = list(range(len(self._memory)))
+        if active_index is not None and 0 <= active_index < len(self._memory):
+            draw_indices.remove(active_index)
+            draw_indices.insert(0, active_index)
+        for index in draw_indices:
+            mark = self._memory[index]
             point = positions[index]
             active = index == active_index
             count_scale = math.sqrt(max(1, mark.count) / max(1, max_count))
