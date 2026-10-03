@@ -249,68 +249,71 @@ class JourneyArchive(QObject):
     
     
     def _journey_recipe_save_current(self):
-        from .journey_recipe import make_journey_recipe, save_journey_recipe
-        if not self.music_journey_stages_data:
-            self._status(
-                "Add Journey Designer stages before saving a recipe",3500
-            ); return
-        default_name=str(self.music_active_recipe.get("name") or "Journey recipe")
-        name,ok=QInputDialog.getText(
-                self.page,
+        from .journey_recipe import make_journey_recipe
+
+        design = dict(self._current_design() or {})
+        stages = [
+            dict(stage)
+            for stage in list(design.get("stages") or [])
+            if isinstance(stage, dict)
+        ]
+        if not stages:
+            self._status("Add Journey Designer stages before saving a recipe", 3500)
+            return
+
+        active_recipe = dict(design.get("active_recipe") or {})
+        default_name = str(active_recipe.get("name") or "Journey recipe")
+        name, ok = QInputDialog.getText(
+            self.page,
             "Save journey recipe",
             "Recipe name:",
             text=default_name,
         )
         if not ok or not str(name).strip():
             return
-        description,ok=QInputDialog.getText(
-                self.page,
+
+        description, ok = QInputDialog.getText(
+            self.page,
             "Save journey recipe",
             "Short description (optional):",
-            text=str(self.music_active_recipe.get("description") or ""),
+            text=str(active_recipe.get("description") or ""),
         )
         if not ok:
             return
+
         try:
-            recipe=make_journey_recipe(
+            recipe = make_journey_recipe(
                 name=str(name),
                 description=str(description),
-                mode=str(self.music_path_mode.currentData() or "balanced"),
-                stages=list(self.music_journey_stages_data),
-                ref_map=dict(self.music_map.ref_map or {}),
+                mode=str(design.get("mode") or "balanced"),
+                stages=stages,
+                ref_map=dict(design.get("ref_map") or {}),
             )
         except Exception as exc:
-            QMessageBox.warning(self.page,"Could not save journey recipe",str(exc)); return
-        recipe_id=str(uuid.uuid4())
+            QMessageBox.warning(self.page, "Could not save journey recipe", str(exc))
+            return
+
+        recipe_id = str(uuid.uuid4())
         self.state.save_journey_recipe(
             recipe_id,
             str(recipe.get("name") or name),
             str(recipe.get("description") or ""),
             recipe,
         )
-        self.music_active_recipe_id=recipe_id
-        self.music_active_recipe=dict(recipe)
+        self.recipeActivated.emit(recipe_id, dict(recipe))
         self.refresh()
-        self._status(
-            f"Saved journey recipe · {recipe.get('name')}",4000
-        )
-    
-    
-    
+        self._status(f"Saved journey recipe · {recipe.get('name')}", 4000)
     def _journey_recipe_load_selected(self):
-        record=self._selected_journey_recipe_record()
+        record = self._selected_journey_recipe_record()
         if not record:
-            self._status("Select a journey recipe first",3000); return
-        recipe=dict(record.get("payload") or {})
-        self.pending_journey_recipe={
-            "id":str(record.get("id") or ""),
-            "payload":recipe,
-        }
-        self.designRequested.emit()
-        self._status("Refreshing Music Map before loading recipe…",3500)
-    
-    
-    
+            self._status("Select a journey recipe first", 3000)
+            return
+        self.recipeLoadRequested.emit(
+            {
+                "id": str(record.get("id") or ""),
+                "payload": dict(record.get("payload") or {}),
+            }
+        )
     def _journey_recipe_import(self):
         from .journey_recipe import load_journey_recipe, save_journey_recipe
         filename,_=QFileDialog.getOpenFileName(
@@ -433,25 +436,25 @@ class JourneyArchive(QObject):
     
     
     
-    def _journey_run_replay(self,which):
-        run=self._selected_journey_run_record()
+    def _journey_run_replay(self, which):
+        run = self._selected_journey_run_record()
         if not run:
-            self._status("Select a journey run first",3000); return
-        which=str(which or "final")
-        snapshot=dict(
+            self._status("Select a journey run first", 3000)
+            return
+
+        which = str(which or "final")
+        snapshot = dict(
             run.get("original_route")
-            if which=="original"
-            else run.get("final_route")
-            or {}
+            if which == "original"
+            else run.get("final_route") or {}
         )
         if not snapshot or not list(snapshot.get("tracks") or []):
             self._status(
-                f"This run has no {which} route snapshot to replay",4000
-            ); return
-        self.pending_journey_replay=(snapshot,f"{which.title()} journey replay")
-        self.designRequested.emit()
-        self._status(
-            f"Refreshing Music Map before {which} replay…",3500
+                f"This run has no {which} route snapshot to replay",
+                4000,
+            )
+            return
+        self.replayRequested.emit(
+            snapshot,
+            f"{which.title()} journey replay",
         )
-    
-    
