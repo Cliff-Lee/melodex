@@ -194,6 +194,7 @@ class LocalFilesProvider(MusicProvider):
         progress: Callable[[dict[str, Any]], None] | None = None,
         control: ScanControl | None = None,
         cached_entries: dict[str, dict[str, Any]] | None = None,
+        collect_tracks: bool = True,
     ) -> dict[str, Any]:
         """Scan roots through a bounded discovery/metadata pipeline.
 
@@ -214,8 +215,8 @@ class LocalFilesProvider(MusicProvider):
         control = control or ScanControl()
         throttle = ProgressThrottle()
         tracks: list[dict[str, Any]] = []
-        index_tracks: list[dict[str, Any]] = []
         index_records: list[dict[str, Any]] = []
+        tracks_indexed = 0
         root_states: list[dict[str, Any]] = []
         probe = ScanProbe(len(scan_roots))
         seen_keys: set[str] = set()
@@ -393,8 +394,8 @@ class LocalFilesProvider(MusicProvider):
         current_root_key = ""
         current_root_state: dict[str, Any] | None = None
         current_tracks_start = 0
-        current_index_tracks_start = 0
         current_index_records_start = 0
+        current_tracks_indexed_start = 0
         current_root_seen: set[str] = set()
         root_unchanged = 0
         root_added = 0
@@ -421,8 +422,8 @@ class LocalFilesProvider(MusicProvider):
                     }
                     root_states.append(current_root_state)
                     current_tracks_start = len(tracks)
-                    current_index_tracks_start = len(index_tracks)
                     current_index_records_start = len(index_records)
+                    current_tracks_indexed_start = tracks_indexed
                     current_root_seen = set()
                     root_unchanged = 0
                     root_added = 0
@@ -482,7 +483,6 @@ class LocalFilesProvider(MusicProvider):
                         )
 
                     if raw_metadata:
-                        index_tracks.append(dict(raw_metadata))
                         index_records.append(
                             {
                                 "track": dict(raw_metadata),
@@ -490,7 +490,9 @@ class LocalFilesProvider(MusicProvider):
                                 "mtime_ns": mtime_ns,
                             }
                         )
-                        tracks.append(self._apply_override(raw_metadata))
+                        tracks_indexed += 1
+                        if collect_tracks:
+                            tracks.append(self._apply_override(raw_metadata))
                     emit(
                         "discovering",
                         current=p.parent.name,
@@ -515,8 +517,8 @@ class LocalFilesProvider(MusicProvider):
                         seen_keys.update(current_root_seen)
                     else:
                         del tracks[current_tracks_start:]
-                        del index_tracks[current_index_tracks_start:]
                         del index_records[current_index_records_start:]
+                        tracks_indexed = current_tracks_indexed_start
                     current_root_state = None
                     current_root_key = ""
                     current_root_seen = set()
@@ -548,7 +550,7 @@ class LocalFilesProvider(MusicProvider):
                 control.cancel()
             producer.join(timeout=1.0)
             metrics = probe.finish(
-                tracks_indexed=0 if cancelled else len(tracks)
+                tracks_indexed=0 if cancelled else tracks_indexed
             )
             metrics.update(
                 {
@@ -561,6 +563,8 @@ class LocalFilesProvider(MusicProvider):
                     "streaming_discovery": True,
                     "discovery_buffer_rows": 0,
                     "bounded_pipeline": True,
+                    "collect_tracks": bool(collect_tracks),
+                    "snapshot_track_copies": 2 if collect_tracks else 1,
                     "pipeline_queue_capacity": int(queue_capacity),
                     "pipeline_max_queue_depth": int(max_queue_depth),
                     "pipeline_backpressure_events": int(
@@ -584,7 +588,6 @@ class LocalFilesProvider(MusicProvider):
             )
             return {
                 "tracks": [],
-                "index_tracks": [],
                 "index_records": [],
                 "metrics": metrics,
                 "root_states": root_states,
@@ -594,12 +597,11 @@ class LocalFilesProvider(MusicProvider):
         emit(
             "complete",
             force=True,
-            completed=len(tracks),
-            total=len(tracks),
+            completed=tracks_indexed,
+            total=tracks_indexed,
         )
         return {
             "tracks": tracks,
-            "index_tracks": index_tracks,
             "index_records": index_records,
             "metrics": metrics,
             "root_states": root_states,
