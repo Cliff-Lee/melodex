@@ -404,6 +404,9 @@ class ProviderManager:
             progress=progress,
             control=control,
             cached_entries=self.library_index.load_scan_cache(scan_roots),
+            cached_directories=self.library_index.load_directory_manifests(
+                scan_roots
+            ),
         )
 
     def apply_local_scan_snapshot(self, snapshot: dict[str, Any]) -> int:
