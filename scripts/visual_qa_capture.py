@@ -19,7 +19,11 @@ from PySide6.QtWidgets import QApplication  # noqa: E402
 
 from melodex.living_canvas import LivingCanvasView  # noqa: E402
 from melodex.lyrics_state import LyricFrame  # noqa: E402
-from melodex.visualization_models import MemoryMark, VisualNeighbour  # noqa: E402
+from melodex.visualization_models import (  # noqa: E402
+    MemoryMark,
+    VisualNeighbour,
+    build_constellation,
+)
 from melodex.visualization_profile import build_visual_profile  # noqa: E402
 from melodex.visualization_scene import LivingScene  # noqa: E402
 
@@ -104,34 +108,26 @@ def _scene(width: int, height: int) -> LivingScene:
 
 
 def _neighbours() -> tuple[VisualNeighbour, ...]:
-    relations = (
-        "Same album", "Same artist", "Up next", "Played earlier", "Recently heard"
-    )
-    nodes = []
+    relations = ("Up next", "Played earlier", "Recently heard")
+    candidates = []
+    titles = ("Neon Return", "Parallel Lines", "Afterimage", "Soft Signal")
     for index in range(18):
-        angle = index / 18.0
-        strength = max(0.46, 0.96 - index * 0.026)
-        nodes.append(
-            VisualNeighbour(
-                token=index + 1,
-                artist=(
-                    "Night Transit"
-                    if index < 4
-                    else ("Blue Static" if index < 9 else f"Artist {index + 1}")
-                ),
-                title=(
-                    ("Neon Return", "Parallel Lines", "Afterimage", "Soft Signal")[index]
-                    if index < 4
-                    else f"Track {index + 1}"
-                ),
-                album="Afterimage" if index < 3 else f"Album {1 + index // 3}",
-                relation=relations[index % len(relations)],
-                x=0.10 + 0.80 * ((index * 7) % 17) / 16.0,
-                y=0.13 + 0.72 * ((index * 11) % 17) / 16.0,
-                strength=strength,
-            )
+        artist = (
+            "Night Transit"
+            if index < 4
+            else ("Blue Static" if index < 9 else f"Artist {index + 1}")
         )
-    return tuple(nodes)
+        title = titles[index] if index < 4 else f"Track {index + 1}"
+        candidates.append(
+            {
+                "_visual_token": index + 1,
+                "_visual_relation": relations[index % len(relations)],
+                "artist": artist,
+                "title": title,
+                "album": "Afterimage" if index < 3 else f"Album {1 + index // 3}",
+            }
+        )
+    return build_constellation(TRACK, candidates, limit=18)
 
 
 def _memory() -> tuple[MemoryMark, ...]:
@@ -259,8 +255,11 @@ def capture(out: Path, width: int = 1440, height: int = 900) -> dict[str, object
 
     album = _scene(width, height)
     album.set_mode("album_world")
-    _save_widget(album, out / "08-album-world.png", width, height)
-    record("08-album-world.png", "Album World passive watch scene.")
+    _save_widget(album, out / "08-album-world-legacy.png", width, height)
+    record(
+        "08-album-world-legacy.png",
+        "Legacy/internal Album World compatibility renderer; no longer in the public selector.",
+    )
     album.deleteLater()
 
     minimal = _scene(width, height)
