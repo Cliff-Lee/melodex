@@ -53,6 +53,9 @@ class LivingScene(QWidget):
         self._neighbours: tuple[VisualNeighbour, ...] = ()
         self._memory: tuple[MemoryMark, ...] = ()
         self._memory_scale = "sessions"
+        self._memory_hit_points: tuple[tuple[QPointF, int, float], ...] = ()
+        self._hovered_memory_index: int | None = None
+        self._selected_memory_index: int | None = None
         self._lyrics = LyricFrame("", "", "", False, "")
         self._previous_lyrics = self._lyrics
         self._lyric_transition = 1.0
@@ -99,6 +102,9 @@ class LivingScene(QWidget):
         self._hovered_token = None
         self._selected_token = None
         self._hit_points = ()
+        self._hovered_memory_index = None
+        self._selected_memory_index = None
+        self._memory_hit_points = ()
         self.update()
         self._sync_timer()
 
@@ -180,6 +186,9 @@ class LivingScene(QWidget):
     def set_memory(self, marks: tuple[MemoryMark, ...] | list[MemoryMark], scale: str = "sessions") -> None:
         self._memory = tuple(marks[:128])
         self._memory_scale = str(scale or "sessions")
+        self._hovered_memory_index = None
+        self._selected_memory_index = None
+        self._memory_hit_points = ()
         self.update()
 
     def set_lyrics(self, frame: LyricFrame) -> None:
@@ -1284,73 +1293,258 @@ class LivingScene(QWidget):
                 QColor(132, 145, 161, 135),
             )
 
+    def _active_memory_index(self) -> int | None:
+        return (
+            self._hovered_memory_index
+            if self._hovered_memory_index is not None
+            else self._selected_memory_index
+        )
+
+    def _paint_memory_card(
+        self,
+        painter: QPainter,
+        rect: QRectF,
+        point: QPointF,
+        mark: MemoryMark,
+    ) -> None:
+        width = min(380.0, max(300.0, rect.width() * 0.42))
+        height = 126.0
+        x = point.x() + 26.0
+        if x + width > rect.right() - 8:
+            x = point.x() - width - 26.0
+        x = max(rect.left() + 8.0, min(x, rect.right() - width - 8.0))
+        y = max(rect.top() + 8.0, min(point.y() - height * 0.52, rect.bottom() - height - 8.0))
+        card = QRectF(x, y, width, height)
+
+        leader_end = (
+            QPointF(card.left(), card.center().y())
+            if card.center().x() > point.x()
+            else QPointF(card.right(), card.center().y())
+        )
+        color = QColor.fromHsv(mark.hue, 145, 242)
+        leader = QColor(color)
+        leader.setAlpha(115)
+        painter.setPen(QPen(leader, 1.0, Qt.SolidLine, Qt.RoundCap))
+        painter.drawLine(point, leader_end)
+
+        painter.setPen(QPen(QColor(111, 140, 171, 95), 1.0))
+        painter.setBrush(QColor(7, 12, 20, 234))
+        painter.drawRoundedRect(card, 15, 15)
+
+        accent = QRectF(card.left() + 12, card.top() + 14, 5, card.height() - 28)
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor(color.red(), color.green(), color.blue(), 210))
+        painter.drawRoundedRect(accent, 2.5, 2.5)
+
+        left = accent.right() + 14
+        width_text = card.right() - left - 14
+
+        painter.setFont(QFont("sans-serif", 13, QFont.DemiBold))
+        painter.setPen(QColor("#f3f7fc"))
+        painter.drawText(
+            QRectF(left, card.top() + 13, width_text, 25),
+            Qt.AlignLeft | Qt.AlignVCenter,
+            mark.label[:48],
+        )
+
+        painter.setFont(QFont("sans-serif", 10, QFont.Medium))
+        painter.setPen(QColor("#c6d1dd"))
+        painter.drawText(
+            QRectF(left, card.top() + 39, width_text, 21),
+            Qt.AlignLeft | Qt.AlignVCenter,
+            mark.detail[:64],
+        )
+
+        meta = f"{mark.count} play{'s' if mark.count != 1 else ''}"
+        if mark.daypart:
+            meta += f"  ·  {mark.daypart}"
+        painter.setFont(QFont("sans-serif", 9, QFont.DemiBold))
+        painter.setPen(QColor(color.red(), color.green(), color.blue(), 225))
+        painter.drawText(
+            QRectF(left, card.top() + 63, width_text, 18),
+            Qt.AlignLeft | Qt.AlignVCenter,
+            meta.upper(),
+        )
+
+        painter.setFont(QFont("sans-serif", 9, QFont.Normal))
+        painter.setPen(QColor(166, 179, 194, 190))
+        detail = mark.time_label
+        if mark.representative:
+            detail += ("  ·  " if detail else "") + mark.representative
+        painter.drawText(
+            QRectF(left, card.top() + 84, width_text, 31),
+            Qt.AlignLeft | Qt.AlignTop | Qt.TextWordWrap,
+            detail[:110],
+        )
+
     def _paint_memory(self, painter: QPainter) -> None:
         rect = self._area()
+        self._memory_hit_points = ()
         if not self._memory:
-            painter.setPen(QColor("#aab0ba"))
-            painter.drawText(rect, Qt.AlignCenter, "Your listening atlas starts here.\nMelodex uses the listening history already stored on this device.")
+            painter.setPen(QColor("#b2bfce"))
+            painter.setFont(QFont("sans-serif", 14, QFont.Normal))
+            painter.drawText(
+                rect,
+                Qt.AlignCenter,
+                "Your Memory Atlas starts here.\nListening history will form a chronological landscape.",
+            )
             return
-        line_y = rect.bottom() - rect.height() * 0.20
-        for fraction in (0.0, 0.25, 0.5, 0.75, 1.0):
-            tick_x = rect.left() + rect.width() * fraction
-            guide = QColor("#9badc4")
-            guide.setAlpha(25)
-            painter.setPen(QPen(guide, 1.0, Qt.DotLine))
-            painter.drawLine(QPointF(tick_x, rect.top() + 12), QPointF(tick_x, line_y))
-        painter.setPen(QPen(QColor("#596778"), 1.0))
-        painter.drawLine(QPointF(rect.left(), line_y), QPointF(rect.right(), line_y))
-        ordered = sorted(self._memory, key=lambda mark: mark.x)
-        if len(ordered) > 1:
-            path = QPainterPath()
-            first = QPointF(
-                rect.left() + rect.width() * max(0.0, min(1.0, ordered[0].x)),
-                rect.top() + rect.height() * max(0.0, min(0.78, ordered[0].y)),
+
+        # Vertical position has one explicit meaning everywhere: average time of
+        # day. These bands make the mapping readable instead of mysterious.
+        dayparts = (
+            ("LATE NIGHT", 2.5),
+            ("MORNING", 8.5),
+            ("AFTERNOON", 14.0),
+            ("EVENING", 19.0),
+            ("LATE NIGHT", 23.0),
+        )
+        for label, hour in dayparts:
+            y_fraction = 0.14 + (hour / 24.0) * 0.68
+            y = rect.top() + rect.height() * y_fraction
+            line = QColor("#8fa3ba")
+            line.setAlpha(20)
+            painter.setPen(QPen(line, 1.0, Qt.DotLine))
+            painter.drawLine(
+                QPointF(rect.left() + 72, y),
+                QPointF(rect.right(), y),
             )
-            path.moveTo(first)
-            for index in range(1, len(ordered)):
-                previous = ordered[index - 1]
-                current = ordered[index]
-                start = QPointF(
-                    rect.left() + rect.width() * max(0.0, min(1.0, previous.x)),
-                    rect.top() + rect.height() * max(0.0, min(0.78, previous.y)),
-                )
-                end = QPointF(
-                    rect.left() + rect.width() * max(0.0, min(1.0, current.x)),
-                    rect.top() + rect.height() * max(0.0, min(0.78, current.y)),
-                )
-                midpoint = QPointF((start.x() + end.x()) * 0.5, (start.y() + end.y()) * 0.5)
-                path.quadTo(start, midpoint)
-            last = ordered[-1]
-            path.lineTo(
-                rect.left() + rect.width() * max(0.0, min(1.0, last.x)),
-                rect.top() + rect.height() * max(0.0, min(0.78, last.y)),
+            self._draw_caption(
+                painter,
+                QRectF(rect.left(), y - 8, 66, 16),
+                label,
+                QColor(143, 159, 178, 105),
+                Qt.AlignLeft | Qt.AlignVCenter,
             )
-            guide = QColor(self._color(0))
-            guide.setAlpha(28)
-            painter.setPen(QPen(guide, 1.0, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+
+        ordered_indices = sorted(range(len(self._memory)), key=lambda i: self._memory[i].x)
+        positions: dict[int, QPointF] = {}
+        for index in ordered_indices:
+            mark = self._memory[index]
+            positions[index] = QPointF(
+                rect.left() + rect.width() * max(0.0, min(1.0, mark.x)),
+                rect.top() + rect.height() * max(0.14, min(0.82, mark.y)),
+            )
+
+        # Chronological path: the one line in the view whose meaning is always
+        # "what I listened to next".
+        if len(ordered_indices) > 1:
+            path = QPainterPath(positions[ordered_indices[0]])
+            for position_index, index in enumerate(ordered_indices[1:], start=1):
+                previous = positions[ordered_indices[position_index - 1]]
+                current = positions[index]
+                mid_x = (previous.x() + current.x()) * 0.5
+                path.cubicTo(
+                    QPointF(mid_x, previous.y()),
+                    QPointF(mid_x, current.y()),
+                    current,
+                )
+            trail = QColor(self._color(0))
+            trail.setAlpha(30)
+            painter.setBrush(Qt.NoBrush)
+            painter.setPen(QPen(trail, 1.15, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
             painter.drawPath(path)
+
+        active_index = self._active_memory_index()
+        hit: list[tuple[QPointF, int, float]] = []
+        max_count = max(mark.count for mark in self._memory)
+
+        # Each group becomes a small luminous island. Horizontal width shows the
+        # actual time span of that group; area/brightness reflect play count.
         for index, mark in enumerate(self._memory):
-            x = rect.left() + rect.width() * max(0.0, min(1.0, mark.x))
-            y = rect.top() + rect.height() * max(0.0, min(0.78, mark.y))
-            color = QColor.fromHsv(mark.hue, 155, 238)
-            size = min(22.0, 5.0 + math.sqrt(max(1, mark.count)) * 2.4)
-            color.setAlpha(115 + min(100, mark.count * 3))
-            painter.setPen(QPen(color, 1.0))
-            painter.setBrush(QColor(color.red(), color.green(), color.blue(), 32))
-            painter.drawEllipse(QPointF(x, y), size, size)
-            if index % max(1, len(self._memory) // 12) == 0:
-                label_y = y + size + 5 if index % 2 == 0 else y - size - 22
-                label_color = QColor("#e0e8f3")
-                label_color.setAlpha(224)
-                painter.setPen(label_color)
-                font = QFont("sans-serif", 9, QFont.Medium)
-                font.setItalic(False)
-                painter.setFont(font)
-                painter.drawText(QRectF(x - 62, label_y, 124, 18), Qt.AlignHCenter | Qt.AlignVCenter, mark.label[:21])
+            point = positions[index]
+            active = index == active_index
+            count_scale = math.sqrt(max(1, mark.count) / max(1, max_count))
+            radius_y = 7.0 + 11.0 * count_scale
+            span_width = rect.width() * mark.span
+            radius_x = max(
+                radius_y * 1.20,
+                min(rect.width() * 0.13, span_width * 0.5 + radius_y * 0.80),
+            )
+
+            color = QColor.fromHsv(mark.hue, 145, 242)
+            halo_radius = max(radius_x, radius_y) * (2.4 if active else 1.85)
+            self._draw_glow(
+                painter,
+                point,
+                halo_radius,
+                color,
+                42 if active else 18 + int(18 * count_scale),
+            )
+
+            island = QRadialGradient(point, max(radius_x, radius_y))
+            core = QColor(color)
+            core.setAlpha(125 + int(70 * count_scale) if active else 75 + int(55 * count_scale))
+            edge = QColor(color)
+            edge.setAlpha(22 if not active else 42)
+            fade = QColor(color)
+            fade.setAlpha(0)
+            island.setColorAt(0.0, core)
+            island.setColorAt(0.58, edge)
+            island.setColorAt(1.0, fade)
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(island)
+            painter.drawEllipse(
+                QRectF(
+                    point.x() - radius_x,
+                    point.y() - radius_y,
+                    radius_x * 2,
+                    radius_y * 2,
+                )
+            )
+
+            outline = QColor("#eef6ff")
+            outline.setAlpha(175 if active else 58 + int(45 * count_scale))
+            painter.setPen(QPen(outline, 1.15 if active else 0.65))
+            painter.setBrush(QColor(color.red(), color.green(), color.blue(), 28))
+            painter.drawEllipse(
+                QRectF(
+                    point.x() - radius_x * 0.62,
+                    point.y() - radius_y * 0.62,
+                    radius_x * 1.24,
+                    radius_y * 1.24,
+                )
+            )
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(QColor(247, 251, 255, 185 if active else 105))
+            painter.drawEllipse(point, 1.8 + 1.2 * count_scale, 1.8 + 1.2 * count_scale)
+
+            hit.append((point, index, max(18.0, radius_x)))
+
+        self._memory_hit_points = tuple(hit)
+
+        # Sparse labels only; hover provides the detail card.
+        step = max(1, len(self._memory) // 8)
+        for ordinal, index in enumerate(ordered_indices):
+            if index == active_index or ordinal % step != 0:
+                continue
+            mark = self._memory[index]
+            point = positions[index]
+            label_color = QColor("#dce6f1")
+            label_color.setAlpha(175)
+            painter.setPen(label_color)
+            painter.setFont(QFont("sans-serif", 8, QFont.Medium))
+            painter.drawText(
+                QRectF(point.x() - 60, point.y() + 16, 120, 18),
+                Qt.AlignHCenter | Qt.AlignVCenter,
+                mark.label[:20],
+            )
+
+        if active_index is not None and 0 <= active_index < len(self._memory):
+            mark = self._memory[active_index]
+            self._paint_memory_card(painter, rect, positions[active_index], mark)
+
+        self._draw_caption(
+            painter,
+            QRectF(rect.left(), rect.top() + 2, rect.width(), 16),
+            "MEMORY ATLAS   ·   LEFT → RIGHT IS TIME   ·   HEIGHT IS TIME OF DAY   ·   SIZE IS PLAYS",
+            QColor(165, 182, 202, 145),
+        )
         self._draw_caption(
             painter,
             QRectF(rect.left(), rect.bottom() - 18, rect.width(), 16),
-            f"LOCAL LISTENING ATLAS    ·    {self._memory_scale.upper()}    ·    {len(self._memory)} MARKS",
+            f"{self._memory_scale.upper()}   ·   {len(self._memory)} GROUPS   ·   HOVER TO EXPLORE",
+            QColor(165, 182, 202, 135),
         )
 
     def _paint_minimal(self, painter: QPainter, profile: VisualProfile) -> None:
@@ -1484,7 +1678,31 @@ class LivingScene(QWidget):
                 return token, label
         return None
 
+    def _memory_hit_test(self, point: QPointF) -> int | None:
+        best: tuple[float, int] | None = None
+        for center, index, radius in self._memory_hit_points:
+            distance = math.hypot(point.x() - center.x(), point.y() - center.y())
+            if distance <= max(18.0, radius):
+                if best is None or distance < best[0]:
+                    best = (distance, index)
+        return best[1] if best is not None else None
+
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
+        if self.mode == "memory":
+            index = self._memory_hit_test(event.position())
+            if index != self._hovered_memory_index:
+                self._hovered_memory_index = index
+                if index is not None and 0 <= index < len(self._memory):
+                    mark = self._memory[index]
+                    self.setToolTip(
+                        f"{mark.label} — {mark.detail} — {mark.count} play"
+                        f"{'s' if mark.count != 1 else ''}"
+                    )
+                else:
+                    self.setToolTip("")
+                self.update()
+            event.accept()
+            return
         if self.mode == "constellation":
             found = self._hit_test(event.position())
             token = found[0] if found else None
@@ -1501,6 +1719,10 @@ class LivingScene(QWidget):
         super().mouseMoveEvent(event)
 
     def leaveEvent(self, event) -> None:
+        if self.mode == "memory" and self._hovered_memory_index is not None:
+            self._hovered_memory_index = None
+            self.setToolTip("")
+            self.update()
         if self.mode == "constellation" and self._hovered_token is not None:
             self._hovered_token = None
             self.setToolTip("")
@@ -1508,6 +1730,13 @@ class LivingScene(QWidget):
         super().leaveEvent(event)
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
+        if event.button() == Qt.LeftButton and self.mode == "memory":
+            index = self._memory_hit_test(event.position())
+            self._selected_memory_index = index
+            self._hovered_memory_index = index
+            self.update()
+            event.accept()
+            return
         if event.button() == Qt.LeftButton and self.mode == "constellation":
             found = self._hit_test(event.position())
             if found:
