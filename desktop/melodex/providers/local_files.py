@@ -579,6 +579,7 @@ class LocalFilesProvider(MusicProvider):
                             root_added += 1
                         else:
                             root_changed += 1
+                        probe.metadata_submitted()
                         pending_metadata.append(
                             {
                                 "path": p,
