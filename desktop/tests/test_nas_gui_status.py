@@ -25,6 +25,7 @@ def _browser():
 def test_library_browser_keeps_unavailable_nas_warning_visible():
     app, browser = _browser()
 
+    browser.begin_scan("test")
     browser.finish_scan(
         "degraded",
         count=12700,
@@ -55,6 +56,7 @@ def test_library_browser_keeps_unavailable_nas_warning_visible():
 def test_library_browser_explains_incomplete_network_scan():
     app, browser = _browser()
 
+    browser.begin_scan("test")
     browser.finish_scan(
         "degraded",
         count=12700,
