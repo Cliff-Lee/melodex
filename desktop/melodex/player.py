@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from PySide6.QtCore import QObject, QTimer, QUrl, Signal
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
@@ -76,6 +76,50 @@ class FlowPlayer(QObject):
             return
         self.queue.extend(incoming)
         self.queueChanged.emit(self.queue)
+
+    def queue_snapshot(self) -> list[dict[str, Any]]:
+        return [dict(item) for item in self.queue]
+
+    def jump_to(self, index: int, autoplay: bool = True) -> bool:
+        index = int(index)
+        if not (0 <= index < len(self.queue)):
+            return False
+        self.players[self.active].stop()
+        self._load_index(index, bool(autoplay))
+        return True
+
+    def replace_queue_item(
+        self,
+        index: int,
+        track: dict[str, Any],
+        *,
+        autoplay: bool = False,
+    ) -> bool:
+        index = int(index)
+        if not (0 <= index < len(self.queue)):
+            return False
+        self.queue[index] = dict(track)
+        self.queueChanged.emit(self.queue)
+        if autoplay:
+            self.players[self.active].stop()
+            self._load_index(index, True)
+        return True
+
+    def merge_queue_items(
+        self,
+        predicate: Callable[[dict[str, Any]], bool],
+        changes: dict[str, Any],
+    ) -> int:
+        updated = 0
+        for index, item in enumerate(list(self.queue)):
+            row = dict(item)
+            if not predicate(row):
+                continue
+            self.queue[index] = {**row, **dict(changes)}
+            updated += 1
+        if updated:
+            self.queueChanged.emit(self.queue)
+        return updated
 
     def clear_queue(self) -> None:
         for player in self.players:

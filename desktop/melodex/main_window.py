@@ -3368,10 +3368,10 @@ class MainWindow(QMainWindow):
         updated: dict[str,Any],
     ) -> None:
         path=str(original.get("local_path") or "")
-        for index,item in enumerate(list(self.player.queue)):
-            if str(item.get("local_path") or "")==path:
-                self.player.queue[index]={**item,**updated}
-        self.player.queueChanged.emit(list(self.player.queue))
+        self.player.merge_queue_items(
+            lambda item: str(item.get("local_path") or "")==path,
+            updated,
+        )
 
         if str(self.current_track.get("local_path") or "")==path:
             self.current_track={**self.current_track,**updated}
@@ -5293,9 +5293,8 @@ class MainWindow(QMainWindow):
     def _add_selected_to_queue(self):
         item=self.results.currentItem()
         if not item:return
-        t=dict(item.data(Qt.UserRole) or {}); q=list(self.player.queue)
-        if not q: self.player.set_queue([t],0,False)
-        else: self.player.queue.append(t); self.player.queueChanged.emit(self.player.queue)
+        t=dict(item.data(Qt.UserRole) or {})
+        self.player.append_queue([t],autoplay=False)
 
     # ------------------------------- local intelligence
     def _intelligence_seeds(self, intent: str) -> list[dict[str, Any]]:
@@ -5397,11 +5396,7 @@ class MainWindow(QMainWindow):
         track = self._selected_intelligence_track()
         if not track:
             return
-        if not self.player.queue:
-            self.player.set_queue([track], 0, False)
-        else:
-            self.player.queue.append(track)
-            self.player.queueChanged.emit(self.player.queue)
+        self.player.append_queue([track],autoplay=False)
         self.statusBar().showMessage("Added local-intelligence suggestion to queue", 3000)
 
     def _analyse_library_for_intelligence(self) -> None:
@@ -5899,11 +5894,7 @@ class MainWindow(QMainWindow):
         tracks=self._music_path_tracks()
         if not tracks:
             self.statusBar().showMessage("Find a Pathfinder route first",3000); return
-        if not self.player.queue:
-            self.player.set_queue(tracks,0,False)
-        else:
-            self.player.queue.extend(dict(track) for track in tracks)
-            self.player.queueChanged.emit(self.player.queue)
+        self.player.append_queue(tracks,autoplay=False)
         self.statusBar().showMessage(f"Queued Pathfinder route · {len(tracks)} tracks",4000)
 
     def _music_path_clear(self):
@@ -6480,9 +6471,7 @@ class MainWindow(QMainWindow):
     def _queue_music_map_selected(self):
         track=self._music_map_selected()
         if not track:return
-        if not self.player.queue:self.player.set_queue([track],0,False)
-        else:
-            self.player.queue.append(dict(track)); self.player.queueChanged.emit(self.player.queue)
+        self.player.append_queue([track],autoplay=False)
         self.statusBar().showMessage("Added Music Map track to queue",3000)
 
     def _journey_from_music_map(self):
@@ -7049,8 +7038,10 @@ class MainWindow(QMainWindow):
     def _apply_resolver_match(self,resolved):
         if not isinstance(resolved,dict):return
         idx=self.player.index
-        if idx<0:self.player.set_queue([resolved],0,True); return
-        self.player.queue[idx]=dict(resolved); self.player.queueChanged.emit(self.player.queue); self.player.players[self.player.active].stop(); self.player._load_index(idx,True)
+        if idx<0:
+            self.player.set_queue([resolved],0,True)
+            return
+        self.player.replace_queue_item(idx,resolved,autoplay=True)
         mode=str((resolved.get("_resolution") or {}).get("mode") or "match") if isinstance(resolved.get("_resolution"),dict) else "match"
         self.statusBar().showMessage(f"Resolver match applied · {mode}",4000)
 
@@ -7062,7 +7053,7 @@ class MainWindow(QMainWindow):
             self.living_canvas.refresh_context()
 
     def _queue_jump(self,item):
-        idx=int(item.data(Qt.UserRole)); self.player.players[self.player.active].stop(); self.player._load_index(idx,True)
+        self.player.jump_to(int(item.data(Qt.UserRole)),autoplay=True)
 
     # ------------------------------- LLM
     def _llm_settings(self):
