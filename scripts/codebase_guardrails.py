@@ -11,6 +11,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 FORBIDDEN_MAIN_WINDOW_SNIPPETS = {
+    "def _build_now_playing": "Now Playing construction belongs to PlaybackFeature",
+    "self.current_track": "current-track state belongs to PlaybackFeature",
+    "self.rich_now": "Now Playing widgets belong to PlaybackFeature",
+    "self.living_canvas": "Now Playing visual state belongs to PlaybackFeature",
+    "self.player_cover": "player-bar widgets belong to PlaybackFeature",
+    "def _feedback": "taste playback actions belong to PlaybackFeature",
+    "def _keep": "taste playback actions belong to PlaybackFeature",
+    "def _refresh_queue": "queue presentation belongs to PlaybackFeature",
     "def _build_music_map": "Music Map construction belongs to JourneyWorkspace",
     "self.music_path_start_ref": "Journey route state belongs to JourneyWorkspace",
     "self.music_journey_stages_data": "Journey stage state belongs to JourneyWorkspace",
@@ -37,11 +45,19 @@ FORBIDDEN_JOURNEY_WORKSPACE_SNIPPETS = {
     "from .main_window import": "JourneyWorkspace must not import MainWindow",
 }
 
+FORBIDDEN_PLAYBACK_FEATURE_SNIPPETS = {
+    "self.player.": "PlaybackFeature must request playback through semantic signals",
+    "self.player =": "PlaybackFeature must not own FlowPlayer",
+    "self.main_window": "PlaybackFeature must not retain MainWindow",
+    "from .main_window import": "PlaybackFeature must not import MainWindow",
+    "from .player import FlowPlayer": "PlaybackFeature must not import FlowPlayer",
+}
+
 
 # Baseline is the v0.7.11 main_window.py snapshot from P12a. Lower this number
 # as P12c extracts responsibilities; never raise it to accommodate new work.
 MAX_LINES = {
-    "desktop/melodex/main_window.py": 4488,
+    "desktop/melodex/main_window.py": 3780,
 }
 
 
@@ -82,6 +98,15 @@ def main() -> int:
         if snippet in journey_workspace:
             failures.append(
                 f"desktop/melodex/journey_workspace.py contains {snippet!r}; {reason}."
+            )
+
+    playback_feature = (ROOT / "desktop/melodex/playback_feature.py").read_text(
+        encoding="utf-8"
+    )
+    for snippet, reason in FORBIDDEN_PLAYBACK_FEATURE_SNIPPETS.items():
+        if snippet in playback_feature:
+            failures.append(
+                f"desktop/melodex/playback_feature.py contains {snippet!r}; {reason}."
             )
 
     if failures:
