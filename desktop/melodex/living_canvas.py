@@ -189,6 +189,7 @@ class LivingCanvasView(QWidget):
     seekRequested = Signal(int)
     modeDataRequested = Signal(str)
     neighbourActivated = Signal(int)
+    neighbourPreviewRequested = Signal(int)
 
     _BUILTIN_MODES = (
         ("Living Canvas", "living"),
@@ -398,6 +399,9 @@ class LivingCanvasView(QWidget):
         if self._active_mode == "constellation":
             self._update_status()
 
+    def set_neighbour_artwork(self, token: int, path: str) -> None:
+        self.scene.set_neighbour_artwork(int(token), str(path or ""))
+
     def set_memory_marks(self, marks: tuple[MemoryMark, ...] | list[MemoryMark], scale: str) -> None:
         self.scene.set_memory(marks, scale)
         if self._active_mode == "memory":
@@ -534,7 +538,11 @@ class LivingCanvasView(QWidget):
     def _neighbour_selected(self, token: int) -> None:
         node = next((item for item in self._neighbours if item.token == token), None)
         if node:
-            self.status.setText(f"{node.artist} — {node.title}  ·  {node.relation}  ·  double-click the point to queue it.")
+            self.status.setText(
+                f"{node.artist} — {node.title}  ·  {node.relation}  ·  "
+                "hover reveals artwork, double-click queues"
+            )
+            self.neighbourPreviewRequested.emit(int(token))
 
     def _update_status(self) -> None:
         mode = self._active_mode
@@ -548,7 +556,10 @@ class LivingCanvasView(QWidget):
         elif mode == "journey":
             self.status.setText("Cached Flow energy across the recording. Click or drag the contour below to seek.") if profile.energy_curve else self.status.setText("No cached Flow contour is available yet. Seeking still works from the position control below.")
         elif mode == "constellation":
-            self.status.setText(f"{len(self._neighbours)} nearby queue/history tracks · click to inspect, double-click to queue · local context only.")
+            self.status.setText(
+                f"{len(self._neighbours)} nearby tracks · distance shows relationship strength · "
+                "hover for artwork, click to hold, double-click to queue."
+            )
         elif mode == "lyrics":
             if self._lyrics.synced:
                 self.status.setText("Lyric Flow follows synchronized lyrics with restrained music-reactive glow.")
