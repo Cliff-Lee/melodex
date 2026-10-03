@@ -2252,6 +2252,8 @@ class MainWindow(QMainWindow):
         overview_head.addWidget(overview_title)
         overview_head.addStretch(1)
         self.source_check_all=QPushButton("Check connections")
+        self.source_check_all.setObjectName("quietButton")
+        self.source_check_all.setVisible(self.power_toggle.isChecked())
         self.source_check_all.clicked.connect(self._test_all_plugins)
         set_help(
             self.source_check_all,
@@ -2268,35 +2270,6 @@ class MainWindow(QMainWindow):
         self.sources_overview.setObjectName("mutedText")
         overview_l.addWidget(self.sources_overview)
 
-        summary=QHBoxLayout()
-        summary.setSpacing(10)
-        def summary_card(glyph: str, title: str):
-            card=QFrame()
-            card.setObjectName("sourceSummaryCard")
-            row=QHBoxLayout(card)
-            row.setContentsMargins(12,10,12,10)
-            row.setSpacing(9)
-            icon=QLabel(glyph)
-            icon.setObjectName("sourceSummaryIcon")
-            icon.setAlignment(Qt.AlignCenter)
-            icon.setFixedSize(34,34)
-            row.addWidget(icon)
-            col=QVBoxLayout()
-            col.setSpacing(0)
-            label=QLabel(title)
-            label.setStyleSheet("font-weight:700")
-            value=QLabel("—")
-            value.setObjectName("sourceSummaryValue")
-            col.addWidget(label)
-            col.addWidget(value)
-            row.addLayout(col,1)
-            summary.addWidget(card,1)
-            return value
-
-        self.source_summary_library=summary_card("♫","Your music")
-        self.source_summary_included=summary_card("＋","Included")
-        self.source_summary_enhancements=summary_card("✦","Enhancements")
-        overview_l.addLayout(summary)
         l.addWidget(overview)
 
         actions=QHBoxLayout()
@@ -2311,6 +2284,7 @@ class MainWindow(QMainWindow):
         self.source_primary_button=QPushButton("Use selected")
         self.source_primary_button.clicked.connect(self._source_primary_action)
         self.source_primary_button.setEnabled(False)
+        self.source_primary_button.hide()
         set_help(
             local,
             "Add local music",
@@ -2385,6 +2359,7 @@ class MainWindow(QMainWindow):
         )
         self.source_hint.setWordWrap(True)
         self.source_hint.setObjectName("subtleText")
+        self.source_hint.hide()
         l.addWidget(self.source_hint)
 
         self.legacy_source_notice=QLabel()
@@ -2707,6 +2682,8 @@ class MainWindow(QMainWindow):
         self.state.set_bool("power_tools",enabled)
         if hasattr(self, "source_power_panel"):
             self.source_power_panel.setVisible(enabled)
+        if hasattr(self, "source_check_all"):
+            self.source_check_all.setVisible(enabled)
         if hasattr(self, "explore_ask_button"):
             self.explore_ask_button.setVisible(
                 enabled and bool(self.providers.local_catalog_count())
@@ -2967,10 +2944,15 @@ class MainWindow(QMainWindow):
                 state=dict(extension.get("configuration_status") or {})
                 if state.get("declared") and state.get("ready") is False:
                     setup_needed+=1
+            local_count=len(self.providers.local_catalog())
+            plugin_text=(
+                f"{optional_count} plugin{'s' if optional_count!=1 else ''}"
+                if optional_count else "no plugins"
+            )
             summary=(
-                f"{len(builtins)} built-in connections · "
-                f"{active_included} included sources · "
-                f"{optional_count} installed optional plugin{'s' if optional_count!=1 else ''}"
+                f"{local_count:,} local track{'s' if local_count!=1 else ''} · "
+                f"{active_included} included source{'s' if active_included!=1 else ''} · "
+                f"{plugin_text}"
             )
             if setup_needed:
                 summary+=f" · {setup_needed} need setup"
@@ -3082,13 +3064,13 @@ class MainWindow(QMainWindow):
         enabled=bool(key)
         if hasattr(self,"source_primary_button"):
             self.source_primary_button.setEnabled(enabled)
+            self.source_primary_button.setVisible(enabled)
+        if hasattr(self,"source_hint"):
+            self.source_hint.setVisible(enabled)
         if not hasattr(self,"source_hint"):
             return
         if not key:
             self.source_primary_button.setText("Use selected")
-            self.source_hint.setText(
-                "Select a source or plugin. The main button will show where it is actually used in Melodex; technical controls stay under Power tools."
-            )
             return
 
         if key=="local":
