@@ -573,10 +573,14 @@ class LivingCanvasView(QWidget):
             self._lyric_flow_scene.set_quality(quality)
 
     def _quality_adjusted(self, quality: str) -> None:
+        base = self.status.text().split("  ·  Auto reduced")[0]
         if quality == "eco":
-            self.status.setText(self.status.text().split("  ·  Auto reduced")[0] + "  ·  Auto reduced scene detail after a slow frame.")
+            self.status.setText(
+                base
+                + "  ·  Auto reduced visual work after sustained slow paints."
+            )
         else:
-            self.status.setText(self.status.text().split("  ·  Auto reduced")[0])
+            self.status.setText(base)
 
     def _neighbour_selected(self, token: int) -> None:
         node = next((item for item in self._neighbours if item.token == token), None)
