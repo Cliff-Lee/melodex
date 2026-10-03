@@ -11,6 +11,7 @@ dependencies = ["PySide6>=6.7,<7", "numpy>=2.0", "mutagen>=1.47", "requests>=2.3
 
 [project.optional-dependencies]
 mcp = ["mcp>=2,<3"]
+dev = ["pytest>=8,<9", "ruff>=0.9,<1"]
 
 [project.scripts]
 melodex = "melodex.app:main"
@@ -22,3 +23,12 @@ packages = ["melodex", "melodex.providers"]
 
 [tool.setuptools.package-data]
 melodex = ["bundled_providers/*.mdxprovider", "assets/*.png"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+# P12b starts with correctness-oriented checks only. Broader style rules are
+# intentionally deferred until existing desktop debt is classified.
+select = ["E9", "F63", "F7", "F82"]

@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "allowed": [
+    {
+      "path": "desktop/melodex/bridge_server.py",
+      "code": "F821",
+      "message": "Undefined name `openapi_document`",
+      "source": "return self._send(200, openapi_document())"
+    },
+    {
+      "path": "desktop/melodex/bridge_server.py",
+      "code": "F821",
+      "message": "Undefined name `OPENAI_FUNCTION_TOOLS`",
+      "source": "return self._send(200, OPENAI_FUNCTION_TOOLS)"
+    }
+  ]
+}

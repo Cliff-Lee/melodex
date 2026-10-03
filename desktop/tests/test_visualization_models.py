@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from melodex.visualization_models import (
     build_constellation,
     build_visual_memory,
@@ -24,6 +26,10 @@ def test_constellation_is_bounded_deterministic_and_display_only():
     assert [node.token for node in first] == [7, 8]
     assert first[0].relation == "Up next"
     assert first[0].artist == "North"
+    assert first[0].strength > first[1].strength
+    first_radius = ((first[0].x - 0.5) ** 2 + ((first[0].y - 0.5) / 0.72) ** 2) ** 0.5
+    second_radius = ((first[1].x - 0.5) ** 2 + ((first[1].y - 0.5) / 0.72) ** 2) ** 0.5
+    assert first_radius < second_radius
     assert not hasattr(first[0], "local_path")
     assert all(0 <= node.x <= 1 and 0 <= node.y <= 1 for node in first)
     assert len(build_constellation(current, candidates * 20)) <= 24
@@ -76,10 +82,12 @@ def test_untimed_lyrics_are_paced_across_the_track_and_labelled_unsynced():
 
 
 def test_visual_memory_groups_local_history_at_different_scales():
+    morning = datetime(2026, 10, 1, 8, 0).timestamp()
+    evening = datetime(2026, 10, 1, 20, 0).timestamp()
     rows = [
-        {"_played_at": 1_700_000_000, "artist": "A", "title": "One", "album": "Album"},
-        {"_played_at": 1_700_000_300, "artist": "A", "title": "Two", "album": "Album"},
-        {"_played_at": 1_700_100_000, "artist": "B", "title": "Three", "album": "Other"},
+        {"_played_at": morning, "artist": "A", "title": "One", "album": "Album"},
+        {"_played_at": morning + 300, "artist": "A", "title": "Two", "album": "Album"},
+        {"_played_at": evening, "artist": "B", "title": "Three", "album": "Other"},
     ]
     sessions = build_visual_memory(rows, "sessions")
     albums = build_visual_memory(rows, "albums")
@@ -89,5 +97,11 @@ def test_visual_memory_groups_local_history_at_different_scales():
     assert len(albums) == 2
     assert sum(mark.count for mark in sessions) == len(rows)
     assert build_visual_memory(rows, "albums") == albums
-    assert all(0 <= mark.x <= 1 and 0 <= mark.y <= 1 for mark in sessions + albums + weeks)
+    assert all(0 <= mark.x <= 1 and 0.14 <= mark.y <= 0.82 for mark in sessions + albums + weeks)
+    assert sessions[0].y < sessions[1].y
+    assert sessions[0].daypart == "Morning"
+    assert sessions[1].daypart == "Evening"
+    assert sessions[0].span > 0
+    assert sessions[0].time_label
+    assert "One" in sessions[0].representative
     assert not hasattr(sessions[0], "local_path")

@@ -141,6 +141,7 @@ def test_music_map_defaults_to_selection_focused_relationships():
 def test_spatial_pages_use_progressive_disclosure(monkeypatch, tmp_path: Path):
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     try:
+        from PySide6.QtTest import QTest
         from PySide6.QtWidgets import QApplication
         import melodex.main_window as main_window
     except ImportError as exc:
@@ -157,6 +158,8 @@ def test_spatial_pages_use_progressive_disclosure(monkeypatch, tmp_path: Path):
 
     window.open_page("album_wall")
     app.processEvents()
+    QTest.qWait(window._page_refresh_delay_ms + 10)
+    app.processEvents()
     assert window.album_wall_power_panel.isHidden()
 
     window.power_toggle.setChecked(True)
@@ -169,29 +172,32 @@ def test_spatial_pages_use_progressive_disclosure(monkeypatch, tmp_path: Path):
 
     window.open_page("music_map")
     app.processEvents()
-    assert window.music_map_options_panel.isHidden()
-    assert window.music_map_power_panel.isHidden()
-    assert window.music_map_journey_panel.isHidden()
+    QTest.qWait(window._page_refresh_delay_ms + 10)
+    app.processEvents()
+    journey = window.journey_workspace
+    assert journey.music_map_options_panel.isHidden()
+    assert journey.music_map_power_panel.isHidden()
+    assert journey.music_map_journey_panel.isHidden()
 
     window._power_changed(None, announce=False)
     app.processEvents()
-    assert window.music_map_options_panel.isHidden()
-    assert window.music_map_power_panel.isHidden()
-    assert window.music_map_journey_panel.isHidden()
+    assert journey.music_map_options_panel.isHidden()
+    assert journey.music_map_power_panel.isHidden()
+    assert journey.music_map_journey_panel.isHidden()
 
-    window.music_map_options_button.click()
+    journey.music_map_options_button.click()
     app.processEvents()
-    assert not window.music_map_options_panel.isHidden()
-    assert window.music_map_power_panel.isHidden()
+    assert not journey.music_map_options_panel.isHidden()
+    assert journey.music_map_power_panel.isHidden()
 
-    window.music_map_plan_button.click()
+    journey.music_map_plan_button.click()
     app.processEvents()
-    assert not window.music_map_power_panel.isHidden()
-    assert window.music_map_journey_panel.isHidden()
+    assert not journey.music_map_power_panel.isHidden()
+    assert journey.music_map_journey_panel.isHidden()
 
-    window._toggle_music_journey_options()
+    journey._toggle_music_journey_options()
     app.processEvents()
-    assert not window.music_map_journey_panel.isHidden()
+    assert not journey.music_map_journey_panel.isHidden()
 
     window.close()
     app.processEvents()
