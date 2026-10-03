@@ -26,6 +26,8 @@ def test_p10c_pipeline_queue_is_bounded(monkeypatch, tmp_path: Path):
     root = tmp_path / "music"
     root.mkdir()
     names = [f"track-{index:04d}.flac" for index in range(700)]
+    for name in names:
+        (root / name).write_bytes(b"x")
 
     monkeypatch.setattr(
         local_files.os,
@@ -37,15 +39,6 @@ def test_p10c_pipeline_queue_is_bounded(monkeypatch, tmp_path: Path):
         "_metadata",
         staticmethod(_metadata),
     )
-
-    # Avoid creating hundreds of files while still exercising the producer's
-    # stat/fingerprint path.
-    class _Stat:
-        st_size = 1
-        st_mtime = 1.0
-        st_mtime_ns = 1_000_000_000
-
-    monkeypatch.setattr(Path, "stat", lambda self: _Stat())
 
     provider = LocalFilesProvider(scan_on_init=False)
     snapshot = provider.scan_snapshot([root])
@@ -86,12 +79,7 @@ def test_p10c_progress_reports_queue_without_paths(monkeypatch, tmp_path: Path):
         }),
     )
 
-    class _Stat:
-        st_size = 1
-        st_mtime = 1.0
-        st_mtime_ns = 1_000_000_000
-
-    monkeypatch.setattr(Path, "stat", lambda self: _Stat())
+    (root / "one.flac").write_bytes(b"x")
 
     events: list[dict[str, object]] = []
     provider = LocalFilesProvider(scan_on_init=False)
