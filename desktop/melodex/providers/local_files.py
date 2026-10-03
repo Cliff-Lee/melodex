@@ -236,6 +236,7 @@ class LocalFilesProvider(MusicProvider):
         available_root_keys: set[str] = set()
 
         unchanged = 0
+        resumed = 0
         added = 0
         changed = 0
         removed = 0
@@ -267,6 +268,7 @@ class LocalFilesProvider(MusicProvider):
             completed: int = 0,
             total: int = 0,
             root_unchanged: int = 0,
+            root_resumed: int = 0,
             root_added: int = 0,
             root_changed: int = 0,
         ) -> None:
@@ -284,6 +286,7 @@ class LocalFilesProvider(MusicProvider):
                     "paused": control.paused,
                     "cancelled": control.cancelled,
                     "unchanged": unchanged + root_unchanged,
+                    "resumed": resumed + root_resumed,
                     "added": added + root_added,
                     "changed": changed + root_changed,
                     "removed": removed,
@@ -455,6 +458,7 @@ class LocalFilesProvider(MusicProvider):
         current_tracks_indexed_start = 0
         current_root_seen: set[str] = set()
         root_unchanged = 0
+        root_resumed = 0
         root_added = 0
         root_changed = 0
 
@@ -530,6 +534,7 @@ class LocalFilesProvider(MusicProvider):
                     current_tracks_indexed_start = tracks_indexed
                     current_root_seen = set()
                     root_unchanged = 0
+                    root_resumed = 0
                     root_added = 0
                     root_changed = 0
                     continue
@@ -567,7 +572,10 @@ class LocalFilesProvider(MusicProvider):
                     )
 
                     if reusable:
-                        root_unchanged += 1
+                        if bool(previous.get("resume_staged")):
+                            root_resumed += 1
+                        else:
+                            root_unchanged += 1
                         pending_metadata.append(
                             {
                                 "path": p,
@@ -612,6 +620,7 @@ class LocalFilesProvider(MusicProvider):
                         "discovering",
                         current=p.parent.name,
                         root_unchanged=root_unchanged,
+                        root_resumed=root_resumed,
                         root_added=root_added,
                         root_changed=root_changed,
                     )
@@ -654,6 +663,7 @@ class LocalFilesProvider(MusicProvider):
                     current_root_state["complete"] = complete
                     if complete and bool(current_root_state.get("available")):
                         unchanged += root_unchanged
+                        resumed += root_resumed
                         added += root_added
                         changed += root_changed
                         available_root_keys.add(current_root_key)
@@ -668,7 +678,7 @@ class LocalFilesProvider(MusicProvider):
                     current_root_state = None
                     current_root_key = ""
                     current_root_seen = set()
-                    root_unchanged = root_added = root_changed = 0
+                    root_unchanged = root_resumed = root_added = root_changed = 0
 
             if producer_error:
                 raise producer_error[0]
@@ -706,11 +716,12 @@ class LocalFilesProvider(MusicProvider):
             metrics.update(
                 {
                     "unchanged_files": int(unchanged),
+                    "resumed_files": int(resumed),
                     "added_files": int(added),
                     "changed_files": int(changed),
                     "removed_files": int(removed),
                     "stat_failures": int(stat_failures),
-                    "metadata_reused": int(unchanged),
+                    "metadata_reused": int(unchanged + resumed),
                     "streaming_discovery": True,
                     "discovery_buffer_rows": 0,
                     "bounded_pipeline": True,
@@ -769,6 +780,7 @@ class LocalFilesProvider(MusicProvider):
             "root_states": root_states,
             "changes": {
                 "unchanged": int(unchanged),
+                "resumed": int(resumed),
                 "added": int(added),
                 "changed": int(changed),
                 "removed": int(removed),
