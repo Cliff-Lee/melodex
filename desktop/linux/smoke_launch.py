@@ -2,11 +2,41 @@ from __future__ import annotations
 
 import argparse
 import os
+import signal
 import subprocess
 import sys
 import tempfile
 import time
 from pathlib import Path
+
+
+
+def _stop_process_group(process: subprocess.Popen[str]) -> None:
+    """Stop the packaged app and any child process left by an AppImage wrapper."""
+
+    if os.name == "posix":
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        time.sleep(0.25)
+        try:
+            os.killpg(process.pid, 0)
+        except ProcessLookupError:
+            return
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        return
+
+    if process.poll() is None:
+        process.terminate()
+        try:
+            process.wait(timeout=8)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=3)
 
 
 def main() -> int:
@@ -43,7 +73,13 @@ def main() -> int:
         )
         log_path = temporary / "launch.log"
         with log_path.open("w", encoding="utf-8") as log:
-            first = subprocess.Popen(command, env=env, stdout=log, stderr=log)
+            first = subprocess.Popen(
+                command,
+                env=env,
+                stdout=log,
+                stderr=log,
+                start_new_session=True,
+            )
             lock = data_home / "melodex/melodex-instance.lock"
             deadline = time.monotonic() + 45
             try:
@@ -77,13 +113,11 @@ def main() -> int:
                     )
                 print(f"Packaged GUI launch and single-instance check passed: {executable}")
             finally:
-                if first.poll() is None:
-                    first.terminate()
-                    try:
-                        first.wait(timeout=8)
-                    except subprocess.TimeoutExpired:
-                        first.kill()
-                        first.wait(timeout=3)
+                _stop_process_group(first)
+                try:
+                    first.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    pass
     return 0
 
 
