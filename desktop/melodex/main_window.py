@@ -1520,7 +1520,7 @@ class MainWindow(QMainWindow):
         l=self._page_layout(
             "library",
             "My Music",
-            "Browse the collection you chose to keep on this device. Album artwork and musical identity come first; file details stay out of the way.",
+            "Albums, artists and tracks from your library.",
         )
         self.artwork_plugin_presence=FeaturePresenceBar(
             "Artwork helpers",
@@ -1529,6 +1529,9 @@ class MainWindow(QMainWindow):
         )
         self.artwork_plugin_presence.actionRequested.connect(
             lambda:self._plugin_directory("artwork")
+        )
+        self.artwork_plugin_presence.setVisible(
+            bool(self.providers.local_catalog_count())
         )
         l.addWidget(self.artwork_plugin_presence)
 
@@ -3210,9 +3213,12 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Source priority updated",2500)
 
     def _refresh_library(self):
+        catalog=self.providers.local_catalog()
+        if hasattr(self,"artwork_plugin_presence"):
+            self.artwork_plugin_presence.setVisible(bool(catalog))
         if hasattr(self,"library_browser"):
             self.library_browser.set_catalog(
-                self.providers.local_catalog(),
+                catalog,
                 revision=self.providers.local_catalog_revision(),
             )
 
