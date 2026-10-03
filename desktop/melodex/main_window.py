@@ -4262,7 +4262,18 @@ class MainWindow(QMainWindow):
         self.background_activity_cancel.setEnabled(runner is not None)
         self.background_activity.show()
 
-    def _local_scan_progress(self, sequence: int, payload: object) -> None:
+    def _local_scan_progress(
+        self,
+        sequence_or_payload: int | object,
+        payload: object | None = None,
+    ) -> None:
+        # Keep the old direct-call shape for focused GUI tests and any local
+        # integrations that exercise the progress presenter explicitly.
+        if payload is None:
+            sequence=self.local_scan.sequence
+            payload=sequence_or_payload
+        else:
+            sequence=int(sequence_or_payload)
         if (
             self._closing
             or not self.local_scan.is_current(sequence)
