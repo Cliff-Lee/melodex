@@ -196,3 +196,27 @@ jobs:
         with:
           name: p10i-qualification-12700
           path: p10i-qualification-12700.json
+
+  nas-fault-qualification:
+    name: NAS fault qualification
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install scanner qualification dependencies
+        run: python -m pip install mutagen
+      - name: Run Campaign 11e NAS fault qualification
+        env:
+          PYTHONPATH: desktop
+        run: |
+          python desktop/tools/qualify_nas_faults.py \
+            --tracks 40 \
+            --json > nas-fault-qualification.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nas-fault-qualification
+          path: nas-fault-qualification.json
+

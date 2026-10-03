@@ -9,6 +9,34 @@ from typing import Any
 
 from . import __version__
 
+_SCAN_SESSION_FIELDS = (
+    "status",
+    "reason",
+    "phase",
+    "running",
+    "paused",
+    "pending_rescan",
+    "elapsed_seconds",
+    "files_seen",
+    "audio_files_seen",
+    "directories_seen",
+    "completed",
+    "total",
+    "unchanged",
+    "resumed",
+    "added",
+    "changed",
+    "removed",
+    "stat_failures",
+    "hard_cancelled",
+    "error_type",
+    "storage_state",
+    "root_count",
+    "roots_unavailable",
+    "roots_incomplete",
+    "io_retries",
+)
+
 _SCAN_METRIC_FIELDS = (
     "started_at",
     "thread_name",
@@ -31,6 +59,19 @@ _SCAN_METRIC_FIELDS = (
     "stat_failures",
     "metadata_reused",
     "incomplete_roots",
+    "io_retries",
+    "storage_profile",
+    "storage_average_stat_ms",
+    "storage_network_hint",
+    "metadata_worker_limit",
+    "metadata_in_flight_limit",
+    "metadata_max_in_flight",
+    "pipeline_queue_capacity",
+    "pipeline_max_queue_depth",
+    "pipeline_backpressure_events",
+    "directory_reuse_hits",
+    "directory_reuse_tracks",
+    "resume_staged",
     "process_isolated",
 )
 
@@ -304,6 +345,13 @@ def build_diagnostics(
         performance["local_scan"] = local_scan
 
     supplied_ui = dict(ui_metrics or {})
+    local_scan_session = _metric_summary(
+        supplied_ui.get("local_scan_session"),
+        _SCAN_SESSION_FIELDS,
+    )
+    if local_scan_session:
+        performance["local_scan_session"] = local_scan_session
+
     library_catalog = _metric_summary(
         supplied_ui.get("library_catalog"),
         _CATALOG_METRIC_FIELDS,
@@ -364,7 +412,7 @@ def build_diagnostics(
                 library_index[key] = raw_summary.get(key)
 
     return {
-        "schema_version": "0.1",
+        "schema_version": "0.2",
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "melodex_version": __version__,
         "system": {
@@ -372,6 +420,7 @@ def build_diagnostics(
             "platform_release": platform.release(),
             "machine": platform.machine(),
             "python": platform.python_version(),
+            "packaged": bool(getattr(sys, "frozen", False)),
         },
         "sources": providers,
         "extensions": extensions,
@@ -382,8 +431,9 @@ def build_diagnostics(
             "local library paths, user-stream URLs, playback URLs, headers and cookies.",
             "Package SHA-256 values and public source-repository URLs may be included "
             "to help diagnose installation provenance.",
-            "Performance telemetry contains counts, timings and thread information only; "
+            "Performance telemetry contains counts, timings, aggregate storage state and thread information only; "
             "library root, directory and file names are not included.",
+            "Scan failures include only a coarse error type, never the raw exception message.",
         ],
     }
 

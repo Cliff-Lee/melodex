@@ -17,12 +17,37 @@ from ..storage_concurrency import StorageConcurrencyController
 
 AUDIO_EXTS = {".mp3", ".flac", ".m4a", ".aac", ".ogg", ".opus", ".wav", ".aiff", ".wma"}
 _ORIGINAL_OS_WALK = os.walk
+_NAS_IO_RETRY_DELAYS = (0.05, 0.15)
+
+
+def _retry_oserror(
+    callback: Callable[[], Any],
+    *,
+    on_retry: Callable[[OSError], None] | None = None,
+) -> Any:
+    """Retry brief filesystem hiccups without hiding persistent failures.
+
+    SMB/NFS mounts can transiently fail an otherwise healthy directory or stat
+    operation. Two short retries are cheap on local storage, avoid hammering a
+    struggling NAS, and still let the isolated scan worker fail fast enough for
+    bounded cancellation if the share is genuinely unavailable.
+    """
+    for delay in (*_NAS_IO_RETRY_DELAYS, None):
+        try:
+            return callback()
+        except OSError as exc:
+            if delay is None:
+                raise
+            if on_retry is not None:
+                on_retry(exc)
+            time.sleep(delay)
+    raise RuntimeError("unreachable NAS retry state")
 
 
 def _scandir_walk(
     root: Path,
     *,
-    onerror: Callable[[OSError], None] | None = None,
+    onerror: Callable[[OSError | None, int], None] | None = None,
 ):
     """Yield directory batches using DirEntry stat data when available.
 
@@ -33,33 +58,78 @@ def _scandir_walk(
     stack = [Path(root)]
     while stack:
         base = stack.pop()
+        retries = 0
+
+        def retried(_error: OSError) -> None:
+            nonlocal retries
+            retries += 1
+
         try:
-            with os.scandir(base) as iterator:
-                entries = sorted(iterator, key=lambda entry: entry.name)
+            def read_entries():
+                with os.scandir(base) as iterator:
+                    return sorted(iterator, key=lambda entry: entry.name)
+
+            entries = _retry_oserror(read_entries, on_retry=retried)
+            if retries and onerror is not None:
+                onerror(None, retries)
         except OSError as exc:
             if onerror is not None:
-                onerror(exc)
+                onerror(exc, retries)
             continue
 
         directories: list[Path] = []
         files: list[tuple[str, os.stat_result | None, float | None]] = []
         for entry in entries:
+            entry_retries = 0
+
+            def entry_retried(_error: OSError) -> None:
+                nonlocal entry_retries
+                entry_retries += 1
+
             try:
-                if entry.is_dir(follow_symlinks=False):
+                is_directory = _retry_oserror(
+                    lambda: entry.is_dir(follow_symlinks=False),
+                    on_retry=entry_retried,
+                )
+                if is_directory:
                     directories.append(Path(entry.path))
+                    if entry_retries and onerror is not None:
+                        onerror(None, entry_retries)
                     continue
             except OSError as exc:
                 if onerror is not None:
-                    onerror(exc)
+                    onerror(exc, entry_retries)
+                continue
+
+            if entry_retries and onerror is not None:
+                onerror(None, entry_retries)
+
+            # Avoid an unnecessary network round trip for every non-audio file.
+            # Album folders often contain artwork, cue sheets and text files;
+            # only audio fingerprints participate in the scan/index contract.
+            if Path(entry.name).suffix.lower() not in AUDIO_EXTS:
+                files.append((entry.name, None, None))
                 continue
 
             stat_result = None
             stat_elapsed: float | None = None
+            stat_retries = 0
+
+            def stat_retried(_error: OSError) -> None:
+                nonlocal stat_retries
+                stat_retries += 1
+
             started = time.perf_counter()
             try:
-                stat_result = entry.stat()
-            except OSError:
-                pass
+                stat_result = _retry_oserror(
+                    entry.stat,
+                    on_retry=stat_retried,
+                )
+                if stat_retries and onerror is not None:
+                    onerror(None, stat_retries)
+            except OSError as exc:
+                if onerror is not None:
+                    onerror(exc, stat_retries)
             finally:
                 stat_elapsed = max(0.0, time.perf_counter() - started)
             files.append((entry.name, stat_result, stat_elapsed))
@@ -376,7 +446,17 @@ class LocalFilesProvider(MusicProvider):
             try:
                 for root in scan_roots:
                     control.checkpoint()
-                    exists = root.exists()
+                    root_io_retries = 0
+
+                    def root_retried(_error: OSError) -> None:
+                        nonlocal root_io_retries
+                        root_io_retries += 1
+
+                    try:
+                        _retry_oserror(root.stat, on_retry=root_retried)
+                        exists = True
+                    except OSError:
+                        exists = False
                     probe.root_checked(exists=exists)
                     root_key = self._override_key(root)
                     put_work(
@@ -394,15 +474,21 @@ class LocalFilesProvider(MusicProvider):
                                 "root_key": root_key,
                                 "complete": False,
                                 "walk_errors": 0,
+                                "io_retries": int(root_io_retries),
                             }
                         )
                         continue
 
                     root_walk_errors = 0
 
-                    def on_walk_error(_error: OSError) -> None:
-                        nonlocal root_walk_errors
-                        root_walk_errors += 1
+                    def on_walk_error(
+                        error: OSError | None,
+                        retries: int = 0,
+                    ) -> None:
+                        nonlocal root_walk_errors, root_io_retries
+                        root_io_retries += max(0, int(retries))
+                        if error is not None:
+                            root_walk_errors += 1
 
                     if os.walk is _ORIGINAL_OS_WALK:
                         walker = _scandir_walk(root, onerror=on_walk_error)
@@ -440,11 +526,26 @@ class LocalFilesProvider(MusicProvider):
                             mtime_ns: int | None = None
                             stat_started = time.perf_counter()
                             try:
-                                file_stat = (
-                                    direntry_stat
-                                    if direntry_stat is not None
-                                    else p.stat()
-                                )
+                                if fast_scandir and direntry_stat is None:
+                                    # scandir already exhausted the bounded retry
+                                    # budget and marked this root incomplete.
+                                    stat_failures += 1
+                                    continue
+                                if direntry_stat is not None:
+                                    file_stat = direntry_stat
+                                else:
+                                    legacy_retries = 0
+
+                                    def legacy_stat_retried(_error: OSError) -> None:
+                                        nonlocal legacy_retries
+                                        legacy_retries += 1
+
+                                    file_stat = _retry_oserror(
+                                        p.stat,
+                                        on_retry=legacy_stat_retried,
+                                    )
+                                    if legacy_retries:
+                                        on_walk_error(None, legacy_retries)
                                 size = int(file_stat.st_size)
                                 mtime_ns = int(
                                     getattr(
@@ -457,6 +558,11 @@ class LocalFilesProvider(MusicProvider):
                                     )
                                 )
                             except OSError:
+                                # Custom/monkeypatched os.walk probes historically
+                                # allow virtual files with no real stat result.
+                                # Production NAS traversal uses scandir, where an
+                                # exhausted stat failure has already marked the
+                                # root incomplete before this consumer sees it.
                                 stat_failures += 1
                             finally:
                                 measured_stat = (
@@ -543,6 +649,7 @@ class LocalFilesProvider(MusicProvider):
                             "root_key": root_key,
                             "complete": root_walk_errors == 0,
                             "walk_errors": int(root_walk_errors),
+                            "io_retries": int(root_io_retries),
                         }
                     )
             except BaseException as exc:
@@ -638,6 +745,7 @@ class LocalFilesProvider(MusicProvider):
                         "available": bool(item.get("available")),
                         "complete": False,
                         "walk_errors": 0,
+                        "io_retries": 0,
                     }
                     root_states.append(current_root_state)
                     current_tracks_start = len(tracks)
@@ -804,8 +912,10 @@ class LocalFilesProvider(MusicProvider):
                     if current_root_state is None:
                         continue
                     walk_errors = int(item.get("walk_errors") or 0)
+                    io_retries = int(item.get("io_retries") or 0)
                     complete = bool(item.get("complete"))
                     current_root_state["walk_errors"] = walk_errors
+                    current_root_state["io_retries"] = io_retries
                     current_root_state["complete"] = complete
                     if complete and bool(current_root_state.get("available")):
                         unchanged += root_unchanged
@@ -905,6 +1015,10 @@ class LocalFilesProvider(MusicProvider):
                         for state in root_states
                         if bool(state.get("available"))
                         and not bool(state.get("complete", True))
+                    ),
+                    "io_retries": sum(
+                        int(state.get("io_retries") or 0)
+                        for state in root_states
                     ),
                 }
             )

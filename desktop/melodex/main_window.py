@@ -214,6 +214,12 @@ class MainWindow(QMainWindow):
         self._local_scan_sequence = 0
         self._local_scan_started_at = 0.0
         self._local_scan_last_progress: dict[str, Any] = {}
+        self._local_scan_session: dict[str, Any] = {
+            "status": "idle",
+            "running": False,
+            "pending_rescan": False,
+            "storage_state": "unknown",
+        }
         self._prefetched_track_assets: dict[str, dict[str, Any]] = {}
         self._prefetch_sequence = 0
         self._prefetch_delay_ms = 350
@@ -2313,6 +2319,23 @@ class MainWindow(QMainWindow):
         self.source_hint.setStyleSheet("color:#8793a4")
         l.addWidget(self.source_hint)
 
+        support_row=QHBoxLayout()
+        diagnostics=QPushButton("Export redacted diagnostics…")
+        diagnostics.setObjectName("quietButton")
+        diagnostics.clicked.connect(self._export_diagnostics)
+        set_help(
+            diagnostics,
+            "Export redacted diagnostics",
+            "Save a support snapshot with version, indexing, NAS/storage and responsiveness metrics. "
+            "Melodex omits library paths, filenames, credentials, stream URLs and raw scan errors.",
+        )
+        support_row.addWidget(diagnostics)
+        support_note=QLabel("Useful for beta reports · review the JSON before sharing")
+        support_note.setStyleSheet("color:#8793a4")
+        support_row.addWidget(support_note)
+        support_row.addStretch(1)
+        l.addLayout(support_row)
+
         self.legacy_source_notice=QLabel()
         self.legacy_source_notice.setWordWrap(True)
         self.legacy_source_notice.setStyleSheet(
@@ -2341,13 +2364,10 @@ class MainWindow(QMainWindow):
         ext.clicked.connect(self._install_extension)
         bridge=QPushButton("Provider Bridge…")
         bridge.clicked.connect(self._bridge_dialog)
-        diagnostics=QPushButton("Export diagnostics…")
-        diagnostics.clicked.connect(self._export_diagnostics)
         provider_row.addWidget(jam)
         provider_row.addWidget(inst)
         provider_row.addWidget(ext)
         provider_row.addWidget(bridge)
-        provider_row.addWidget(diagnostics)
         provider_row.addStretch(1)
         power.addLayout(provider_row)
 
@@ -4195,6 +4215,28 @@ class MainWindow(QMainWindow):
         if not isinstance(payload,dict) or not self._local_scan_in_progress:
             return
         self._local_scan_last_progress=dict(payload)
+        elapsed=max(0.0,time.monotonic()-self._local_scan_started_at)
+        self._local_scan_session.update(
+            {
+                "status": "running",
+                "running": True,
+                "paused": bool(payload.get("paused")),
+                "pending_rescan": bool(self._local_scan_pending),
+                "elapsed_seconds": round(elapsed, 3),
+                "phase": str(payload.get("phase") or ""),
+                "files_seen": int(payload.get("files_seen") or 0),
+                "audio_files_seen": int(payload.get("audio_files_seen") or 0),
+                "directories_seen": int(payload.get("directories_seen") or 0),
+                "completed": int(payload.get("completed") or 0),
+                "total": int(payload.get("total") or 0),
+                "unchanged": int(payload.get("unchanged") or 0),
+                "resumed": int(payload.get("resumed") or 0),
+                "added": int(payload.get("added") or 0),
+                "changed": int(payload.get("changed") or 0),
+                "removed": int(payload.get("removed") or 0),
+                "stat_failures": int(payload.get("stat_failures") or 0),
+            }
+        )
         self._refresh_background_scan_activity()
         if hasattr(self,"library_browser"):
             self.library_browser.set_scan_progress(payload)
@@ -4238,12 +4280,14 @@ class MainWindow(QMainWindow):
             return
         if runner.paused:
             runner.resume()
+            self._local_scan_session["paused"]=False
             if hasattr(self,"library_browser"):
                 self.library_browser.set_scan_paused(False)
             self._refresh_background_scan_activity()
             self.statusBar().showMessage("Music indexing resumed",3000)
         else:
             runner.pause()
+            self._local_scan_session["paused"]=True
             if hasattr(self,"library_browser"):
                 self.library_browser.set_scan_paused(True)
             self._refresh_background_scan_activity()
@@ -4254,6 +4298,14 @@ class MainWindow(QMainWindow):
         if runner is None or not self._local_scan_in_progress:
             return
         self._local_scan_pending=False
+        self._local_scan_session.update(
+            {
+                "status": "cancelling",
+                "running": True,
+                "paused": False,
+                "pending_rescan": False,
+            }
+        )
         runner.cancel()
         if hasattr(self,"library_browser"):
             self.library_browser.set_scan_cancelling()
@@ -4275,6 +4327,7 @@ class MainWindow(QMainWindow):
 
         if self._local_scan_in_progress:
             self._local_scan_pending=True
+            self._local_scan_session["pending_rescan"]=True
             runner=self._local_scan_runner
             current_key=self._local_roots_key(roots)
             running_key=(
@@ -4300,6 +4353,31 @@ class MainWindow(QMainWindow):
         self._local_scan_sequence += 1
         self._local_scan_started_at=time.monotonic()
         self._local_scan_last_progress={"phase":"discovering","audio_files_seen":0}
+        self._local_scan_session={
+            "status": "running",
+            "reason": str(reason or "scan")[:80],
+            "phase": "discovering",
+            "running": True,
+            "paused": False,
+            "pending_rescan": False,
+            "elapsed_seconds": 0.0,
+            "files_seen": 0,
+            "audio_files_seen": 0,
+            "directories_seen": 0,
+            "completed": 0,
+            "total": 0,
+            "unchanged": 0,
+            "resumed": 0,
+            "added": 0,
+            "changed": 0,
+            "removed": 0,
+            "stat_failures": 0,
+            "storage_state": "checking",
+            "root_count": len(roots),
+            "roots_unavailable": 0,
+            "roots_incomplete": 0,
+            "io_retries": 0,
+        }
         sequence=self._local_scan_sequence
         roots_snapshot=[Path(root) for root in roots]
         roots_key=self._local_roots_key(roots_snapshot)
@@ -4334,6 +4412,17 @@ class MainWindow(QMainWindow):
             result=dict(snapshot or {})
 
             if bool(result.get("cancelled")):
+                elapsed=max(0.0,time.monotonic()-self._local_scan_started_at)
+                self._local_scan_session.update(
+                    {
+                        "status": "cancelled",
+                        "running": False,
+                        "paused": False,
+                        "pending_rescan": bool(self._local_scan_pending),
+                        "elapsed_seconds": round(elapsed, 3),
+                        "hard_cancelled": bool(result.get("hard_cancelled")),
+                    }
+                )
                 if hasattr(self,"library_browser"):
                     self.library_browser.finish_scan("cancelled")
                     QTimer.singleShot(3500,self.library_browser.clear_scan_status)
@@ -4367,37 +4456,64 @@ class MainWindow(QMainWindow):
                 )
                 return
 
+            from .scan_outcome import scan_storage_message, scan_storage_outcome
+
             count=self.providers.apply_local_scan_snapshot(result)
             changes=dict(result.get("changes") or {})
+            outcome=scan_storage_outcome(result)
+            elapsed=max(0.0,time.monotonic()-self._local_scan_started_at)
+            self._local_scan_session.update(
+                {
+                    "status": "degraded" if outcome["degraded"] else "complete",
+                    "running": False,
+                    "paused": False,
+                    "pending_rescan": bool(self._local_scan_pending),
+                    "elapsed_seconds": round(elapsed, 3),
+                    "phase": "complete",
+                    "completed": count,
+                    "total": count,
+                    "storage_state": str(outcome["state"]),
+                    "root_count": int(outcome["root_count"]),
+                    "roots_unavailable": int(outcome["roots_unavailable"]),
+                    "roots_incomplete": int(outcome["roots_incomplete"]),
+                    "io_retries": int(outcome["io_retries"]),
+                }
+            )
             self._refresh_library()
             self._show_home()
+            storage_message=scan_storage_message(outcome)
             if hasattr(self,"library_browser"):
                 self.library_browser.finish_scan(
-                    "complete",
+                    "degraded" if outcome["degraded"] else "complete",
                     count=count,
                     changes=changes,
+                    storage_outcome=outcome,
                 )
-                QTimer.singleShot(3500,self.library_browser.clear_scan_status)
-            summary_parts=[]
-            for key,label in (
-                ("unchanged","unchanged"),
-                ("added","new"),
-                ("changed","updated"),
-                ("removed","removed"),
-            ):
-                value=max(0,int(changes.get(key) or 0))
-                if value:
-                    summary_parts.append(f"{value:,} {label}")
-            incomplete=max(0,int(changes.get("incomplete_roots") or 0))
-            if incomplete:
-                summary_parts.append(
-                    f"{incomplete} root{'s' if incomplete != 1 else ''} incomplete (cached copy kept)"
+                # Keep degraded NAS status visible until the next scan/user
+                # action; clean completion can fade away as before.
+                if not outcome["degraded"]:
+                    QTimer.singleShot(3500,self.library_browser.clear_scan_status)
+            if outcome["degraded"]:
+                message=f"NAS/library warning · {storage_message}"
+                self.statusBar().showMessage(message,12000)
+                if hasattr(self,"home_status"):
+                    self.home_status.setText(storage_message)
+            else:
+                summary_parts=[]
+                for key,label in (
+                    ("unchanged","unchanged"),
+                    ("added","new"),
+                    ("changed","updated"),
+                    ("removed","removed"),
+                ):
+                    value=max(0,int(changes.get(key) or 0))
+                    if value:
+                        summary_parts.append(f"{value:,} {label}")
+                suffix=(" · " + " · ".join(summary_parts)) if summary_parts else ""
+                self.statusBar().showMessage(
+                    f"Music indexing complete · {count:,} tracks{suffix}",
+                    6500,
                 )
-            suffix=(" · " + " · ".join(summary_parts)) if summary_parts else ""
-            self.statusBar().showMessage(
-                f"Music indexing complete · {count:,} tracks{suffix}",
-                6500,
-            )
             if self._local_scan_pending:
                 self._local_scan_pending=False
                 QTimer.singleShot(
@@ -4412,13 +4528,29 @@ class MainWindow(QMainWindow):
             self._local_scan_runner=None
             self._background_activity_timer.stop()
             self.background_activity.hide()
-            if hasattr(self,"library_browser"):
-                self.library_browser.finish_scan("error",error=str(error))
-            self._show_home()
-            self.statusBar().showMessage(
-                f"Music indexing failed · {error}",
-                7000,
+            elapsed=max(0.0,time.monotonic()-self._local_scan_started_at)
+            error_text=str(error or "")
+            error_type=(error_text.split(":",1)[0].strip() or "scan_error")[:80]
+            self._local_scan_session.update(
+                {
+                    "status": "error",
+                    "running": False,
+                    "paused": False,
+                    "pending_rescan": bool(self._local_scan_pending),
+                    "elapsed_seconds": round(elapsed, 3),
+                    "error_type": error_type,
+                }
             )
+            if hasattr(self,"library_browser"):
+                self.library_browser.finish_scan("error",error=error_type)
+            self._show_home()
+            message=(
+                "Music indexing stopped — your existing library was kept. "
+                "Export redacted diagnostics from Sources & plugins if this repeats."
+            )
+            self.statusBar().showMessage(message,10000)
+            if hasattr(self,"home_status"):
+                self.home_status.setText(message)
             if self._local_scan_pending:
                 self._local_scan_pending=False
                 QTimer.singleShot(
@@ -4564,6 +4696,9 @@ class MainWindow(QMainWindow):
                     {},
                 ) or {}
             )
+        ui_metrics["local_scan_session"] = dict(
+            getattr(self, "_local_scan_session", {}) or {}
+        )
         if hasattr(self, "background_scheduler"):
             scheduler_metrics = self.background_scheduler.snapshot()
             scheduler_metrics["async_invalidations"] = self._async_invalidations

@@ -469,6 +469,7 @@ class LibraryBrowser(QWidget):
         self.last_view_metrics: dict[str, object] = {}
         self._scan_active = False
         self._scan_paused = False
+        self._scan_status_persistent = False
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -923,6 +924,7 @@ class LibraryBrowser(QWidget):
     def begin_scan(self, reason: str = "") -> None:
         self._scan_active = True
         self._scan_paused = False
+        self._scan_status_persistent = False
         self.scan_progress_title.setText("Indexing your music")
         self.scan_progress_summary.setText("Discovering files…")
         self.scan_progress_detail.setText(
@@ -1061,10 +1063,12 @@ class LibraryBrowser(QWidget):
         count: int = 0,
         error: str = "",
         changes: dict[str, Any] | None = None,
+        storage_outcome: dict[str, Any] | None = None,
     ) -> None:
         status=str(status or "complete")
         self._scan_active=False
         self._scan_paused=False
+        self._scan_status_persistent=status in {"degraded","error"}
         self.scan_pause_button.setEnabled(False)
         self.scan_cancel_button.setEnabled(False)
         if status=="cancelled":
@@ -1075,8 +1079,34 @@ class LibraryBrowser(QWidget):
             )
         elif status=="error":
             self.scan_progress_title.setText("Indexing stopped")
-            self.scan_progress_summary.setText("Could not finish")
-            self.scan_progress_detail.setText(str(error or "Unknown scan error"))
+            self.scan_progress_summary.setText("Existing library kept")
+            self.scan_progress_detail.setText(
+                "The scanner stopped safely. Export redacted diagnostics from "
+                "Sources & plugins if this repeats."
+            )
+        elif status=="degraded":
+            outcome=dict(storage_outcome or {})
+            unavailable=max(0,int(outcome.get("roots_unavailable") or 0))
+            incomplete=max(0,int(outcome.get("roots_incomplete") or 0))
+            self.scan_progress_title.setText("Library kept available")
+            if unavailable:
+                noun="location" if unavailable == 1 else "locations"
+                self.scan_progress_summary.setText(
+                    f"{unavailable} music {noun} unavailable"
+                )
+                self.scan_progress_detail.setText(
+                    "Showing your last indexed library. No cached tracks were removed. "
+                    "Reconnect the storage and rescan when ready."
+                )
+            else:
+                noun="location" if incomplete == 1 else "locations"
+                self.scan_progress_summary.setText(
+                    f"Could not finish reading {incomplete} music {noun}"
+                )
+                self.scan_progress_detail.setText(
+                    "Showing your last indexed library. No partial scan was applied. "
+                    "Retry when the storage connection is stable."
+                )
         else:
             self.scan_progress_title.setText("Indexing complete")
             self.scan_progress_summary.setText(
@@ -1103,7 +1133,7 @@ class LibraryBrowser(QWidget):
             )
 
     def clear_scan_status(self) -> None:
-        if not self._scan_active:
+        if not self._scan_active and not self._scan_status_persistent:
             self.scan_progress_panel.hide()
 
     def current_view(self) -> str:
