@@ -208,3 +208,56 @@ Correctness rules are unchanged:
 - cancellation publishes no partial catalog;
 - unchanged fingerprints still avoid metadata reads; and
 - live UI/catalog replacement occurs only after a successful completed scan.
+
+
+## P10d — bounded SQLite index writer
+
+P10d bounds the temporary SQLite write/delete parameter buffers without giving
+up scan atomicity.
+
+Before P10d, each root accumulated every changed row into one `write_rows`
+list and then passed the complete list to SQLite `executemany()`. Very large
+changed imports therefore created another collection-scale temporary structure
+on top of the scan snapshot.
+
+P10d writes and deletes in fixed-size batches. The default is 250 rows:
+
+```text
+scan snapshot
+  ↓
+250 rows → SQLite
+250 rows → SQLite
+250 rows → SQLite
+...
+  ↓
+single COMMIT
+```
+
+All batches remain inside one `BEGIN IMMEDIATE` transaction. A cancellation
+or failure after any batch rolls back the complete transaction, so a partially
+written library is never published.
+
+The index result now reports:
+
+- `batch_size`
+- `write_batches`
+- `delete_batches`
+- `max_batch_rows`
+
+The batch size is explicitly tunable for measurement:
+
+```bash
+cd desktop
+python tools/profile_library_index.py --tracks 12700 --batch-size 250
+python tools/profile_library_index.py --tracks 12700 --batch-size 500
+```
+
+The default 250-row batch is intentionally conservative until benchmark data
+shows a better cross-platform choice. This stage does not perform multiple
+database commits: throughput optimization must not weaken rollback semantics.
+
+P10d removes the old all-changed-rows `write_rows` buffer, but the completed
+scan snapshot itself is still collection-sized. The next persistence stage can
+use this bounded writer as the foundation for progressively feeding SQLite
+instead of retaining `tracks`, `index_tracks`, and `index_records`
+simultaneously for very large libraries.
