@@ -469,6 +469,7 @@ class LibraryBrowser(QWidget):
         self.last_view_metrics: dict[str, object] = {}
         self._scan_active = False
         self._scan_paused = False
+        self._scan_status_persistent = False
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -923,6 +924,7 @@ class LibraryBrowser(QWidget):
     def begin_scan(self, reason: str = "") -> None:
         self._scan_active = True
         self._scan_paused = False
+        self._scan_status_persistent = False
         self.scan_progress_title.setText("Indexing your music")
         self.scan_progress_summary.setText("Discovering files…")
         self.scan_progress_detail.setText(
@@ -1066,6 +1068,7 @@ class LibraryBrowser(QWidget):
         status=str(status or "complete")
         self._scan_active=False
         self._scan_paused=False
+        self._scan_status_persistent=status in {"degraded","error"}
         self.scan_pause_button.setEnabled(False)
         self.scan_cancel_button.setEnabled(False)
         if status=="cancelled":
@@ -1130,7 +1133,7 @@ class LibraryBrowser(QWidget):
             )
 
     def clear_scan_status(self) -> None:
-        if not self._scan_active:
+        if not self._scan_active and not self._scan_status_persistent:
             self.scan_progress_panel.hide()
 
     def current_view(self) -> str:
