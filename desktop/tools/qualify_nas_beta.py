@@ -187,11 +187,21 @@ def run_qualification(
         offline_elapsed = time.monotonic() - offline_started
         offline_count = len(list(offline.get("tracks") or []))
         offline_changes = dict(offline.get("changes") or {})
+        offline_persistence = dict(offline.get("persistence") or {})
+        offline_root_states = [
+            dict(row)
+            for row in list(offline.get("root_states") or [])
+            if isinstance(row, dict)
+        ]
+        unavailable_roots = sum(
+            1 for row in offline_root_states if not bool(row.get("available"))
+        )
         offline_passed = (
             not offline_errors
             and not bool(offline.get("cancelled"))
             and offline_count == expected
-            and int(offline_changes.get("incomplete_roots") or 0) >= 1
+            and unavailable_roots >= 1
+            and int(offline_persistence.get("roots_unavailable") or 0) >= 1
         )
 
         offline_root.rename(root)
@@ -226,6 +236,10 @@ def run_qualification(
                 "expected_tracks": expected,
                 "elapsed_seconds": round(offline_elapsed, 3),
                 "incomplete_roots": int(offline_changes.get("incomplete_roots") or 0),
+                "unavailable_roots": int(unavailable_roots),
+                "persistence_roots_unavailable": int(
+                    offline_persistence.get("roots_unavailable") or 0
+                ),
                 "phases": sorted(set(offline_phases)),
                 "errors": len(offline_errors),
             },
