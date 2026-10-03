@@ -620,3 +620,106 @@ python tools/qualify_large_library.py \
 P10i is primarily a measurement campaign. It intentionally adds no new scanner
 optimization unless qualification exposes a concrete failure. The next stage
 can turn observed 100k/1m results into permanent numeric release gates.
+
+
+## P10j — traversal acceleration and permanent scale gates
+
+P10j targets the bottleneck exposed by the 100k P10i run: once metadata reuse
+was correct, most unchanged-rescan time was spent enumerating and statting files.
+
+### Scandir traversal
+
+Production local scans now use `os.scandir()` rather than an
+`os.walk()` + separate `Path.stat()` call for every file. `DirEntry`
+metadata is reused directly when available.
+
+Tests and synthetic probes that monkeypatch `os.walk` intentionally retain the
+legacy path, so the optimized production traversal does not break existing test
+harnesses.
+
+The real stat duration measured inside `DirEntry.stat()` is propagated back to
+the P10g adaptive-concurrency controller. This prevents fast-path enumeration
+from making a slow NAS look artificially low-latency.
+
+### Safe unchanged-directory bulk reuse
+
+P10f directory manifests now have an operational use.
+
+When a directory's sorted audio filename + size + mtime manifest matches the
+persisted manifest, the scanner emits one directory-reuse record instead of
+materializing every cached track metadata dictionary again.
+
+The filesystem fingerprints are still verified. P10j does **not** trust
+directory mtime alone and does not blindly skip descendant verification.
+
+The SQLite writer understands these preserved directories and excludes their
+existing rows from deletion. The live track count is recalculated from the
+committed database state.
+
+For changed directories, Melodex falls back to normal per-file reuse so only
+actually changed/new files reopen metadata.
+
+A reuse candidate is capped at 5,000 direct audio files. Larger directories
+fall back to streaming file records rather than buffering an unbounded folder.
+
+### 100k evidence
+
+The first P10i 100k baseline before P10j measured approximately:
+
+- cold scan: 38.0 s
+- unchanged rescan: 32.7 s
+- small delta: 33.9 s
+- traced Python peak: about 113 MiB
+- cumulative process RSS report: about 1.17 GiB
+
+The initial scandir comparison reduced the same synthetic workload to roughly:
+
+- cold scan: 20.7 s
+- unchanged rescan: 16.7 s
+- small delta: 17.2 s
+
+while preserving all P10i correctness gates.
+
+A dedicated cold-scan RSS process without `tracemalloc` showed:
+
+- baseline RSS: about 30 MiB
+- post-scan peak RSS: about 151 MiB
+- post-persist peak RSS: about 200 MiB
+
+So the earlier ~1.17 GiB figure was not a representative steady-state scan
+requirement; it was dominated by cumulative multi-scenario/process-profiler
+high-water behavior.
+
+Directory bulk reuse further reduced traced Python memory on unchanged/delta
+100k scans from about 114 MiB to about 47 MiB.
+
+### Permanent scale gates
+
+P10j extends the P10i qualification contract with regression checks for:
+
+- discovery queue <= 256;
+- metadata in-flight <= 8;
+- unchanged rescan performs zero metadata reads;
+- unchanged rescan performs zero track rewrites;
+- delta metadata work follows changed/new files;
+- unchanged rescan is not materially slower than cold import;
+- delta rescan is not materially slower than cold import;
+- traced Python memory stays inside a linear scaling envelope;
+- cancellation publishes no partial catalog; and
+- staged metadata is actually reused on restart.
+
+Wall-time gates are relative rather than absolute because GitHub-hosted runners
+vary. Structural queue/memory/correctness gates remain numeric.
+
+### Release-scale workflow
+
+The manual Elastic Library Release Qualification now runs 100k, 250k, 500k and
+1m in separate matrix jobs. Each profile therefore starts in a fresh process and
+cannot inherit a previous profile's allocator/tracemalloc high-water mark.
+
+Every scale job produces both:
+
+- the full qualification JSON; and
+- a clean cold-scan RSS measurement without `tracemalloc`.
+
+This is the permanent Campaign 10 scale gate for future releases.
