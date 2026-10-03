@@ -442,7 +442,17 @@ class LocalFilesProvider(MusicProvider):
             try:
                 for root in scan_roots:
                     control.checkpoint()
-                    exists = root.exists()
+                    root_io_retries = 0
+
+                    def root_retried(_error: OSError) -> None:
+                        nonlocal root_io_retries
+                        root_io_retries += 1
+
+                    try:
+                        _retry_oserror(root.stat, on_retry=root_retried)
+                        exists = True
+                    except OSError:
+                        exists = False
                     probe.root_checked(exists=exists)
                     root_key = self._override_key(root)
                     put_work(
@@ -460,12 +470,12 @@ class LocalFilesProvider(MusicProvider):
                                 "root_key": root_key,
                                 "complete": False,
                                 "walk_errors": 0,
+                                "io_retries": int(root_io_retries),
                             }
                         )
                         continue
 
                     root_walk_errors = 0
-                    root_io_retries = 0
 
                     def on_walk_error(
                         error: OSError | None,
