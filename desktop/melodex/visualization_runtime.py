@@ -146,7 +146,7 @@ def resolve_visual_quality(requested: str, effective: str = "normal") -> VisualQ
             "auto-eco", 12, 84, 0.55, 32, 2, 4, 16, 640, 10.0, True
         )
     return VisualQuality(
-        "auto", 15, 67, 1.00, 48, 3, 8, 24, 960, 12.0, True
+        "auto", 15, 67, 1.00, 48, 3, 8, 24, 960, 16.0, True
     )
 
 
@@ -166,6 +166,7 @@ class VisualPerformanceGovernor:
     ema_ms: float = 0.0
     peak_ms: float = 0.0
     reductions: int = 0
+    grace_frames: int = 3
 
     def reset(self, effective: str = "normal") -> None:
         self.effective = "eco" if effective == "eco" else "normal"
@@ -187,6 +188,14 @@ class VisualPerformanceGovernor:
         self.frames += 1
         self.peak_ms = max(self.peak_ms, paint_ms)
         self.ema_ms = paint_ms if self.frames == 1 else self.ema_ms * 0.88 + paint_ms * 0.12
+
+        # Qt text/layout and first-use raster caches can make the first few
+        # paints anomalously expensive. They are tracked for diagnostics but do
+        # not immediately demote the visual quality.
+        if self.frames <= self.grace_frames:
+            self.slow_frames = 0
+            self.fast_frames = 0
+            return None
 
         if requested != "auto":
             self.slow_frames = 0
