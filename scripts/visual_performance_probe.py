@@ -118,6 +118,9 @@ def run_probe(width: int, height: int, frames: int, quality: str) -> dict[str, o
 
     results: dict[str, object] = {}
     for mode in MODES:
+        # Reset adaptive state per mode so one expensive static scene cannot
+        # contaminate the measurements for later scenes.
+        scene.set_quality(quality)
         scene.set_mode(mode)
         timings: list[float] = []
 
@@ -137,13 +140,13 @@ def run_probe(width: int, height: int, frames: int, quality: str) -> dict[str, o
             "median_ms": round(statistics.median(timings), 3),
             "p95_ms": round(_percentile(timings, 0.95), 3),
             "peak_ms": round(max(timings), 3),
+            "performance": scene.performance_stats,
         }
 
     payload = {
         "size": [scene.width(), scene.height()],
         "frames_per_mode": max(5, int(frames)),
         "requested_quality": quality,
-        "final_performance": scene.performance_stats,
         "modes": results,
     }
     scene.deleteLater()
