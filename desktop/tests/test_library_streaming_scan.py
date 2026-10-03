@@ -23,21 +23,33 @@ def _metadata_row(path: Path) -> dict[str, object]:
 
 
 def test_p10b_metadata_is_processed_before_walk_finishes(monkeypatch, tmp_path: Path):
+    import threading
+
     root = tmp_path / "music"
     root.mkdir()
+    first = root / "first" / "one.flac"
+    second = root / "second" / "two.flac"
+    first.parent.mkdir()
+    second.parent.mkdir()
+    first.write_bytes(b"one")
+    second.write_bytes(b"two")
+
     metadata_calls: list[str] = []
+    first_metadata_done = threading.Event()
 
     def walk(_root, onerror=None):
-        yield str(root / "first"), [], ["one.flac"]
-        # The scanner should have consumed the first row before asking the
-        # walker for the next directory. The pre-P10b two-phase scanner did not.
-        assert metadata_calls == ["one.flac"]
-        yield str(root / "second"), [], ["two.flac"]
+        yield str(first.parent), [], [first.name]
+        # P10b/P10c may let discovery run ahead, but metadata must be able to
+        # progress before traversal is allowed to finish.
+        assert first_metadata_done.wait(timeout=2)
+        yield str(second.parent), [], [second.name]
 
     monkeypatch.setattr(local_files.os, "walk", walk)
 
     def metadata(path: Path):
         metadata_calls.append(path.name)
+        if path.name == first.name:
+            first_metadata_done.set()
         return _metadata_row(path)
 
     monkeypatch.setattr(LocalFilesProvider, "_metadata", staticmethod(metadata))
