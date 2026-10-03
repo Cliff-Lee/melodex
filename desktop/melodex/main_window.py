@@ -1744,8 +1744,8 @@ class MainWindow(QMainWindow):
 
     def changeEvent(self, event):
         super().changeEvent(event)
-        if event.type() == QEvent.WindowStateChange and hasattr(self, "living_canvas"):
-            self.living_canvas.set_window_minimized(self.isMinimized())
+        if event.type() == QEvent.WindowStateChange:
+            self.playback_feature.set_window_minimized(self.isMinimized())
 
     def open_page(self, name: str):
         self.navigation.open_page(name)
@@ -1759,7 +1759,9 @@ class MainWindow(QMainWindow):
         if hasattr(self,"explore_try_section"):
             self.explore_try_section.setVisible(has_library)
         if hasattr(self,"explore_similar_button"):
-            self.explore_similar_button.setEnabled(bool(self.current_track))
+            self.explore_similar_button.setEnabled(
+                bool(self.playback_feature.current_track())
+            )
         if hasattr(self,"explore_ask_button"):
             self.explore_ask_button.setVisible(
                 has_library and self.power_toggle.isChecked()
@@ -1814,7 +1816,10 @@ class MainWindow(QMainWindow):
         if not hasattr(self,"home_continue_cover"):
             return
         recent = self.state.recent_tracks(1)
-        track = dict(self.current_track or (recent[0] if recent else {}))
+        track = dict(
+            self.playback_feature.current_track()
+            or (recent[0] if recent else {})
+        )
         self.home_recent_track = track
         if not track:
             if hasattr(self,"home_continue_heading"):
@@ -1853,13 +1858,9 @@ class MainWindow(QMainWindow):
             title=str(self.home_recent_track.get("album") or self.home_recent_track.get("title") or ""),
             key=token,
         )
-        current=dict(self.current_track or {})
-        if current and token==UserState.track_key(current) and hasattr(self,"player_cover"):
-            self.player_cover.set_cover(
-                path,
-                title=str(current.get("album") or current.get("title") or ""),
-                key=token,
-            )
+        current=dict(self.playback_feature.current_track() or {})
+        if current and token==UserState.track_key(current):
+            self.playback_feature.apply_cached_artwork(token, path)
 
     def _home_continue_play(self) -> None:
         track=dict(getattr(self,"home_recent_track",{}) or {})
@@ -1875,8 +1876,8 @@ class MainWindow(QMainWindow):
             self.explore_ask_button.setVisible(
                 enabled and bool(self.providers.local_catalog_count())
             )
-        if hasattr(self, "player_power_actions"):
-            self.player_power_actions.setVisible(enabled)
+        if hasattr(self, "playback_feature"):
+            self.playback_feature.set_power_tools_visible(enabled)
         # Spatial browsing uses its own progressive disclosures. Global Power
         # tools must not cover Album Wall or Music Map with controls.
         if announce:
@@ -2089,16 +2090,9 @@ class MainWindow(QMainWindow):
             updated,
         )
 
-        if str(self.current_track.get("local_path") or "")==path:
-            self.current_track={**self.current_track,**updated}
-            self.now_title.setText(str(self.current_track.get("title") or "Unknown track"))
-            pieces=[str(self.current_track.get("artist") or "Unknown artist")]
-            album=str(self.current_track.get("album") or "")
-            if album:
-                pieces.append(album)
-            self.now_meta.setText("   ·   ".join(pieces))
-            if hasattr(self,"rich_now"):
-                self.rich_now.set_track(dict(self.current_track))
+        current=dict(self.playback_feature.current_track() or {})
+        if str(current.get("local_path") or "")==path:
+            self.playback_feature.merge_current_track(updated)
         self._refresh_library()
 
     def _queue_album_data(self, album: object) -> None:
@@ -2918,10 +2912,12 @@ class MainWindow(QMainWindow):
             self.recommendation_plugin_presence.set_items(
                 self.source_policy.active_extension_names("library_suggestions","recommendations")
             )
-        if hasattr(self,"rich_now"):
-            self.rich_now.set_plugin_presence(
+        if hasattr(self, "playback_feature"):
+            self.playback_feature.set_plugin_presence(
                 lyrics=self.source_policy.active_extension_names("lyrics"),
-                context=self.source_policy.active_extension_names("context","metadata","identity"),
+                context=self.source_policy.active_extension_names(
+                    "context", "metadata", "identity"
+                ),
             )
 
     def _search_has_useful_results(self) -> bool:
@@ -3147,14 +3143,14 @@ class MainWindow(QMainWindow):
     def _intelligence_seeds(self, intent: str) -> list[dict[str, Any]]:
         if intent == "rediscover":
             return []
-        current = dict(self.current_track or {})
+        current = dict(self.playback_feature.current_track() or {})
         if not current or not current.get("local_path"):
             return []
         if intent in {"similar", "detour"}:
             return [current]
         if intent == "bridge":
-            idx = int(getattr(self.player, "index", -1))
-            queue = list(getattr(self.player, "queue", []) or [])
+            idx = self.playback_feature.queue_index()
+            queue = self.playback_feature.queue_snapshot()
             if idx < 0 or idx + 1 >= len(queue):
                 return []
             nxt = dict(queue[idx + 1] or {})
@@ -3305,7 +3301,9 @@ class MainWindow(QMainWindow):
     def _refresh_album_wall(self):
         catalog=self.providers.local_catalog()
         if not catalog:
-            self.album_wall.set_model({},self.current_track)
+            self.album_wall.set_model(
+                {}, self.playback_feature.current_track()
+            )
             self.statusBar().showMessage("Add local music to build an Album Wall",4000)
             return
         self.statusBar().showMessage("Building Album Wall from local metadata and cached Flow analysis…")
@@ -3313,7 +3311,9 @@ class MainWindow(QMainWindow):
 
     def _apply_album_wall_payload(self,payload):
         payload=dict(payload or {})
-        self.album_wall.set_model(payload,self.current_track)
+        self.album_wall.set_model(
+            payload, self.playback_feature.current_track()
+        )
         albums=int(payload.get("album_count") or 0)
         analysed=int(payload.get("analysed_albums") or 0)
         if analysed:
@@ -3486,7 +3486,9 @@ class MainWindow(QMainWindow):
             else []
         )
         return {
-            "current_track": llm_track_summary(self.current_track),
+            "current_track": llm_track_summary(
+                self.playback_feature.current_track()
+            ),
             "queue": [llm_track_summary(track) for track in queue],
             "current_page": self.current_page,
             "taste": self.state.taste_summary(),
@@ -3514,9 +3516,15 @@ class MainWindow(QMainWindow):
         elif typ=="play_pause":self.player.play_pause()
         elif typ=="next":self.player.next()
         elif typ=="previous":self.player.previous()
-        elif typ=="flow_queue":self._flow_queue()
+        elif typ=="flow_queue":self.playback_feature.refine_queue()
         elif typ=="save_moment":
-            if self.current_track:self.state.save_moment(self.current_track,self.player.players[self.player.active].position(),str(args.get("label", "")))
+            current=self.playback_feature.current_track()
+            if current:
+                self.state.save_moment(
+                    current,
+                    self.playback_feature.current_position_ms(),
+                    str(args.get("label", "")),
+                )
         elif typ=="open_view":self.open_page(str(args.get("view","home")) if str(args.get("view","home")) in self.pages else "home")
         elif typ=="import_playlist":self._import_ai_playlist(args)
 
@@ -3567,14 +3575,32 @@ class MainWindow(QMainWindow):
             elif action=="clear_queue":self.player.clear_queue(); result=self.player.status()
             elif action=="seek_ms":self.player.seek(int(args.get("value",0))); result=self.player.status()
             elif action=="set_volume":self.player.set_volume(float(args.get("value",1.0))); result=self.player.status()
-            elif action=="flow_queue":self._flow_queue(); result={"started":True,"queue_length":len(self.player.queue)}
-            elif action=="love_current":self._feedback(True); result={"recorded":bool(self.current_track)}
-            elif action=="dislike_current":self._feedback(False); result={"recorded":bool(self.current_track)}
-            elif action=="keep_current":self._keep(); result={"recorded":bool(self.current_track)}
+            elif action=="flow_queue":
+                self.playback_feature.refine_queue()
+                result={"started":True,"queue_length":len(self.player.queue)}
+            elif action=="love_current":
+                current=self.playback_feature.current_track()
+                self.playback_feature.record_feedback(True)
+                result={"recorded":bool(current)}
+            elif action=="dislike_current":
+                current=self.playback_feature.current_track()
+                self.playback_feature.record_feedback(False)
+                result={"recorded":bool(current)}
+            elif action=="keep_current":
+                current=self.playback_feature.current_track()
+                self.playback_feature.keep_current()
+                result={"recorded":bool(current)}
             elif action=="save_moment":
-                if self.current_track:
-                    moment_id=self.state.save_moment(self.current_track,self.player.players[self.player.active].position(),str(args.get("label", ""))); result={"saved":True,"id":moment_id}
-                else:result={"saved":False,"reason":"nothing playing"}
+                current=self.playback_feature.current_track()
+                if current:
+                    moment_id=self.state.save_moment(
+                        current,
+                        self.playback_feature.current_position_ms(),
+                        str(args.get("label", "")),
+                    )
+                    result={"saved":True,"id":moment_id}
+                else:
+                    result={"saved":False,"reason":"nothing playing"}
             elif action=="open_view":
                 view=str(args.get("view","home")); self.open_page(view if view in self.pages else "home"); result={"page":self.current_page}
             else:raise RuntimeError(f"Unsupported control action: {action}")
