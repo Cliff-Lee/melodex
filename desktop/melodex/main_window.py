@@ -1260,7 +1260,7 @@ class MainWindow(QMainWindow):
         l=self._page_layout(
             "now_playing",
             "Now playing",
-            "Stay with the music first. Artwork, lyrics and context are primary; visualisations are there when you want them.",
+            "Artwork, lyrics and context for what is playing now.",
         )
         self.now_views = QTabWidget()
         self.rich_now = RichNowPlayingWidget(
@@ -1596,6 +1596,7 @@ class MainWindow(QMainWindow):
 
         actions=QHBoxLayout()
         self.album_wall_options_button=QPushButton("Wall options…")
+        self.album_wall_options_button.setObjectName("quietButton")
         self.album_wall_options_button.clicked.connect(self._toggle_album_wall_tools)
         self.album_wall_play_button=QPushButton("▶ Play selected")
         self.album_wall_play_button.clicked.connect(self._play_album_wall_selected)
@@ -1670,6 +1671,7 @@ class MainWindow(QMainWindow):
 
         simple=QHBoxLayout()
         self.music_map_options_button=QPushButton("Map options…")
+        self.music_map_options_button.setObjectName("quietButton")
         self.music_map_options_button.clicked.connect(self._toggle_music_map_options)
         self.music_map_play_button=QPushButton("▶ Play selected")
         self.music_map_play_button.clicked.connect(self._play_music_map_selected)
@@ -1678,6 +1680,7 @@ class MainWindow(QMainWindow):
         self.music_map_queue_button.clicked.connect(self._queue_music_map_selected)
         self.music_map_queue_button.setEnabled(False)
         self.music_map_plan_button=QPushButton("Plan a route…")
+        self.music_map_plan_button.setObjectName("secondaryButton")
         self.music_map_plan_button.clicked.connect(self._toggle_music_map_tools)
         set_help(
             self.music_map_options_button,
@@ -1729,8 +1732,10 @@ class MainWindow(QMainWindow):
         start_here=QPushButton("Start listening here")
         start_here.clicked.connect(self._journey_from_music_map)
         journey_options=QPushButton("Journey options…")
+        journey_options.setObjectName("quietButton")
         journey_options.clicked.connect(self._toggle_music_journey_options)
         close_tools=QPushButton("Hide route tools")
+        close_tools.setObjectName("quietButton")
         close_tools.clicked.connect(self._toggle_music_map_tools)
         top.addWidget(power_title)
         top.addStretch(1)
@@ -1752,12 +1757,16 @@ class MainWindow(QMainWindow):
         set_end=QPushButton("Use selected as destination")
         set_end.clicked.connect(self._music_path_set_end)
         find_path=QPushButton("Find route")
+        find_path.setObjectName("primaryButton")
         find_path.clicked.connect(self._music_path_find)
         play_path=QPushButton("▶ Play route")
+        play_path.setObjectName("secondaryButton")
         play_path.clicked.connect(self._music_path_play)
         queue_path=QPushButton("+ Queue route")
+        queue_path.setObjectName("secondaryButton")
         queue_path.clicked.connect(self._music_path_queue)
         clear_path=QPushButton("Clear")
+        clear_path.setObjectName("quietButton")
         clear_path.clicked.connect(self._music_path_clear)
         self.music_path_label=QLabel("Start —  →  Destination —")
         self.music_path_label.setStyleSheet("color:#aab0ba")
