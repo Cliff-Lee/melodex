@@ -47,6 +47,10 @@ def test_library_scan_process_round_trip_persists_index(tmp_path: Path):
     assert result["cancelled"] is False
     assert result["metrics"]["process_isolated"] is True
     assert len(result["tracks"]) == 2
+    assert "index_records" not in result
+    assert "index_tracks" not in result
+    assert result["metrics"]["collect_tracks"] is False
+    assert result["metrics"]["snapshot_track_copies"] == 1
     assert result["persistence"]["tracks_written"] == 2
     assert (data_dir / "library-index.sqlite3").is_file()
     assert "discovering" in phases

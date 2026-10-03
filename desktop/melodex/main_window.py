@@ -4158,6 +4158,13 @@ class MainWindow(QMainWindow):
             self.background_activity_progress.setRange(0,total)
             self.background_activity_progress.setValue(min(completed,total))
             self.background_activity_progress.setFormat("%v / %m")
+        elif phase=="metadata" and completed:
+            stage=(
+                f"Reading tags while discovering · {completed:,} read"
+                + (f" · {found:,} found" if found else "")
+            )
+            self.background_activity_progress.setRange(0,0)
+            self.background_activity_progress.setFormat("")
         elif phase=="saving":
             stage="Saving library index"
             self.background_activity_progress.setRange(0,0)
@@ -4203,7 +4210,13 @@ class MainWindow(QMainWindow):
             total=int(payload.get("total") or 0)
             found=int(payload.get("audio_files_seen") or 0)
             unchanged=int(payload.get("unchanged") or 0)
-            if total==0 and found:
+            if total==0 and completed:
+                message=(
+                    f"Indexing music · reading metadata as files are found · "
+                    f"{completed:,} read"
+                    + (f" · {found:,} found" if found else "")
+                )
+            elif total==0 and found:
                 message=(
                     f"Indexing music · metadata already up to date · "
                     f"{unchanged or found:,} reused"

@@ -101,6 +101,14 @@ def main() -> int:
     print(f"Unchanged rescan:        {second_seconds:.3f} s")
     print(f"Rescan metadata reads:   {second_reads:,}")
     print(f"Metadata reused:         {int(second['changes']['unchanged']):,}")
+    print(
+        "Directory manifest hits: "
+        f"{int(second['metrics'].get('directory_manifest_hits') or 0):,}"
+    )
+    print(
+        "Directory manifest miss: "
+        f"{int(second['metrics'].get('directory_manifest_misses') or 0):,}"
+    )
     print(f"Index rows rewritten:    {int(second_persist['tracks_written']):,}")
     print(f"Index rows reused:       {int(second_persist['tracks_reused']):,}")
     print(f"Index commit:            {persist_seconds:.3f} s")

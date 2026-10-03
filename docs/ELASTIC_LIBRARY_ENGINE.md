@@ -1,0 +1,770 @@
+# Campaign 10 — Elastic Library Engine
+
+Campaign 10 extends the responsiveness work from P8/P9 from the current
+12,700-track stress case toward collections containing hundreds of thousands or
+even one million files.
+
+The objective is **not** to make every user pay for a million-file design.
+Melodex should use the same core architecture at every scale while keeping
+optional large-library machinery cheap or inactive for ordinary collections.
+
+## P10 contract
+
+1. Small libraries must not materially regress while huge-library paths improve.
+2. User interaction remains the priority: p95 acknowledgement target stays below 100 ms.
+3. Playback and navigation never wait for scanning, artwork, analysis or online enrichment.
+4. Scan workers, queues and in-flight state must remain bounded.
+5. Unchanged files must not reread metadata.
+6. Work should scale with the changed portion of a library whenever possible.
+7. An unavailable/incomplete NAS must never be interpreted as mass deletion.
+8. A million-file library must not imply a million UI widgets.
+9. Optional artwork/analysis/enrichment remains independent of the core index.
+10. Optimizations must preserve correctness; a fast scanner that misses changes fails.
+
+## Existing foundation
+
+Campaign 10 starts from a stronger base than the original 12,700-FLAC report.
+Melodex already has:
+
+- persistent SQLite indexing;
+- size + mtime fingerprints;
+- unchanged-file metadata reuse;
+- zero-row rewrites for unchanged indexed tracks;
+- preservation of cached data when NAS roots are unavailable or incomplete;
+- a disposable scan process for hard NAS cancellation;
+- lazy cached-catalog hydration;
+- progressive/virtualized large-library UI rendering;
+- bounded priority scheduling and latest-wins cancellation for UI/background work.
+
+P10 therefore does **not** reimplement those features.
+
+## Current scaling risk
+
+The current scanner intentionally builds a complete atomic snapshot before
+publishing it. During a scan it holds several collection-wide structures,
+including:
+
+- `discovered`;
+- `tracks`;
+- `index_tracks`;
+- `index_records`; and
+- sets used to detect removals.
+
+That model has excellent simple correctness properties at 12.7k tracks, but its
+working set grows with the complete library. P10 must quantify that growth
+before changing it.
+
+## P10a — baseline matrix and contracts
+
+P10a adds a multi-scale benchmark around the current real scanner:
+
+```bash
+cd desktop
+python tools/profile_library_scale_matrix.py
+```
+
+Default profiles:
+
+- 500
+- 5,000
+- 12,700
+- 50,000
+- 100,000 tracks
+
+The expensive release qualification sizes are deliberately opt-in:
+
+```bash
+python tools/profile_library_scale_matrix.py --release-scale --json
+```
+
+which appends:
+
+- 250,000
+- 500,000
+- 1,000,000
+
+The probe records total scan time, throughput, metadata reads, directories/files
+visited, and retained/peak Python memory.
+
+The one-million case is not a normal PR gate yet. P10a exists to measure the
+current architecture and prevent us from optimizing by guesswork.
+
+## Regression matrix
+
+Different scales have different jobs:
+
+| Tracks | Role |
+| ---: | --- |
+| 500 | small-library regression guard |
+| 5,000 | normal enthusiast library |
+| 12,700 | current MusicHoarder stress case |
+| 50,000 | scaling transition |
+| 100,000 | large-library engineering profile |
+| 250k / 500k / 1m | opt-in release/architecture qualification |
+
+Small-library performance is a first-class gate. Future P10 changes should be
+rejected if they buy large-library throughput by materially degrading 500/5k
+behavior.
+
+## Planned stages after P10a
+
+- **P10b — streaming discovery:** stop requiring a complete discovery list before downstream work can proceed.
+- **P10c — bounded pipeline/backpressure:** explicit bounded buffers between discovery, metadata and persistence.
+- **P10d — database writer/batch tuning:** measure transaction size and publication cadence rather than guessing.
+- **P10e — progressive catalog publication:** committed batches become searchable/browsable while indexing continues.
+- **P10f — directory fingerprints:** safely skip unchanged subtrees where filesystem semantics permit it.
+- **P10g — adaptive storage concurrency:** tune SSD/HDD/NAS work without hard-coding another application's worker count.
+- **P10h — deletion/offline correctness:** generation/checkpoint semantics for interruption and disappearing shares.
+- **P10i — 100k/1m qualification:** memory, throughput, cancellation, restart, delta rescan and NAS-failure stress tests.
+- **P10j — permanent scale gates:** lightweight PR profiles plus larger scheduled/release profiles.
+
+The design rule for the whole campaign is:
+
+> Library size may change how long background completion takes; it should not
+> fundamentally change how Melodex feels to use.
+
+
+## P10b — streaming discovery result
+
+P10b removes the collection-wide discovery list from the local scanner.
+
+Before P10b, a scan first accumulated every discovered audio file and its
+fingerprint into a `discovered` list. Only after traversal completed did
+Melodex read changed metadata and construct the final snapshot structures.
+
+P10b changes that flow to:
+
+```text
+walk filesystem
+  ↓
+fingerprint one audio file
+  ↓
+reuse cached metadata or read tags immediately
+  ↓
+append final snapshot row
+  ↓
+continue walking
+```
+
+This removes one complete O(n) copy of per-file discovery state and starts
+metadata work before traversal finishes.
+
+The completed scan is still atomic. Melodex does **not** progressively mutate
+the live catalog in P10b. If a root reports a traversal error, all rows produced
+for that root during the current scan are discarded and its previously indexed
+SQLite snapshot is preserved.
+
+Streaming progress now supports an unknown denominator while discovery is
+still running. The UI reports tags read so far rather than falsely claiming
+metadata is already up to date.
+
+P10b also records:
+
+- `streaming_discovery: true`
+- `discovery_buffer_rows: 0`
+
+in scan metrics, making the new invariant testable.
+
+The remaining large-memory structures are the final atomic snapshot itself
+(`tracks`, `index_tracks`, and `index_records`). Reducing those safely is
+reserved for the bounded-pipeline/database-writer stages rather than combining
+multiple architectural changes into one PR.
+
+
+## P10c — bounded discovery/metadata pipeline
+
+P10c introduces an explicit bounded producer/consumer handoff between
+filesystem discovery and metadata processing.
+
+The scanner now runs discovery in a dedicated producer thread and places
+discovered audio-file work into a fixed-capacity queue. Metadata processing
+consumes from that queue on the scan worker side.
+
+The important invariant is:
+
+```text
+pending discovery work <= queue capacity
+```
+
+When the queue fills, discovery waits. It cannot continue accumulating an
+arbitrarily large backlog in memory.
+
+Current queue capacity is 256 rows. Diagnostics record:
+
+- `bounded_pipeline`
+- `pipeline_queue_capacity`
+- `pipeline_max_queue_depth`
+- `pipeline_backpressure_events`
+
+This stage deliberately keeps the final atomic snapshot model. The bounded
+queue controls in-flight discovery work, while `tracks`, `index_tracks`, and
+`index_records` still grow with the completed library until P10d/P10e move
+persistence/publication further into the pipeline.
+
+Correctness rules are unchanged:
+
+- incomplete roots discard rows produced during the current scan;
+- unavailable roots preserve their previous indexed copy;
+- cancellation publishes no partial catalog;
+- unchanged fingerprints still avoid metadata reads; and
+- live UI/catalog replacement occurs only after a successful completed scan.
+
+
+## P10d — bounded SQLite index writer
+
+P10d bounds the temporary SQLite write/delete parameter buffers without giving
+up scan atomicity.
+
+Before P10d, each root accumulated every changed row into one `write_rows`
+list and then passed the complete list to SQLite `executemany()`. Very large
+changed imports therefore created another collection-scale temporary structure
+on top of the scan snapshot.
+
+P10d writes and deletes in fixed-size batches. The default is 250 rows:
+
+```text
+scan snapshot
+  ↓
+250 rows → SQLite
+250 rows → SQLite
+250 rows → SQLite
+...
+  ↓
+single COMMIT
+```
+
+All batches remain inside one `BEGIN IMMEDIATE` transaction. A cancellation
+or failure after any batch rolls back the complete transaction, so a partially
+written library is never published.
+
+The index result now reports:
+
+- `batch_size`
+- `write_batches`
+- `delete_batches`
+- `max_batch_rows`
+
+The batch size is explicitly tunable for measurement:
+
+```bash
+cd desktop
+python tools/profile_library_index.py --tracks 12700 --batch-size 250
+python tools/profile_library_index.py --tracks 12700 --batch-size 500
+```
+
+The default 250-row batch is intentionally conservative until benchmark data
+shows a better cross-platform choice. This stage does not perform multiple
+database commits: throughput optimization must not weaken rollback semantics.
+
+P10d removes the old all-changed-rows `write_rows` buffer, but the completed
+scan snapshot itself is still collection-sized. The next persistence stage can
+use this bounded writer as the foundation for progressively feeding SQLite
+instead of retaining `tracks`, `index_tracks`, and `index_records`
+simultaneously for very large libraries.
+
+
+## P10e — single-snapshot isolated scanning
+
+P10e removes the largest remaining duplicate structures from the real GUI scan
+path without weakening the existing atomic persistence contract.
+
+Previously the isolated scan child built three collection-sized representations:
+
+- `tracks`
+- `index_tracks`
+- `index_records`
+
+The child only needed one of those sets to persist the scan. After persistence it
+loaded the completed catalog from SQLite anyway.
+
+The isolated production path now calls the scanner in persistence-only mode:
+
+```text
+bounded discovery queue
+  ↓
+index_records only
+  ↓
+batched atomic SQLite transaction
+  ↓
+release index_records
+  ↓
+load completed catalog from SQLite
+  ↓
+send final tracks to GUI
+```
+
+This means the scan child no longer simultaneously retains raw persistence rows,
+a second raw metadata list, and an override-applied UI list for the full library.
+
+Compatibility callers can still request the in-memory `tracks` result by using
+the scanner's default mode. The GUI/disposable-process path explicitly disables
+that duplicate copy.
+
+New scan telemetry records:
+
+- `collect_tracks`
+- `snapshot_track_copies`
+
+For the production isolated scan path, `snapshot_track_copies` is 1 during the
+scan phase.
+
+P10e deliberately does **not** commit partial batches while traversal is still in
+progress. The successful scan remains one atomic transaction, so cancellation,
+an incomplete NAS root, or a worker crash cannot publish a partial library.
+
+The remaining collection-scale memory is now primarily:
+
+- the persistence record set needed for the atomic commit; and
+- the final catalog loaded after that commit.
+
+Those two phases are sequential rather than intentionally retained together.
+Future stages can focus on folder/subtree fingerprints, adaptive storage
+concurrency and release-scale qualification instead of carrying multiple
+full-library Python snapshots.
+
+
+## P10f — safe direct-directory manifests
+
+P10f adds persisted folder fingerprints without relying on unsafe directory
+timestamp shortcuts.
+
+A direct directory manifest is a SHA-256 digest of the supported audio files in
+that directory, using sorted:
+
+- filename
+- file size
+- nanosecond modification time
+
+The manifest is persisted in a new `directories` table alongside the library
+index. The schema upgrades from v1 to v2 in place; existing track rows are
+preserved.
+
+On a later scan Melodex compares the newly computed direct-directory manifest
+with the cached one and records a hit or miss. This gives Melodex a safe
+folder-level identity for album-style layouts and provides a foundation for
+bulk reuse and future traversal accelerators.
+
+Telemetry now includes:
+
+- `directory_manifest_hits`
+- `directory_manifest_misses`
+- `directory_manifests`
+- `directory_manifests_persisted`
+
+The incremental-rescan benchmark reports the hit/miss counts directly.
+
+### Why this does not blindly skip whole subtrees
+
+A parent directory's modification time is not a portable proof that every file
+below it is unchanged. Editing the contents of a file in a nested directory can
+leave ancestor directory mtimes untouched on common filesystems.
+
+Therefore P10f deliberately does **not** implement:
+
+```text
+directory mtime unchanged
+→ skip every descendant
+```
+
+That would be fast but could silently miss real music edits.
+
+P10f still traverses the tree and computes manifests from the same size/mtime
+fingerprints already used for file-level correctness. A matching folder can be
+recognized as unchanged as a unit without weakening the existing per-file
+safety contract.
+
+A later filesystem-specific accelerator may use stronger evidence such as a
+journal/change token or another trusted subtree signal, but the portable default
+must remain correctness-first.
+
+
+## P10g — adaptive storage concurrency
+
+P10g stops treating every music library as though it lives on the same storage.
+
+Changed-file metadata reads now use a small ordered thread pool. The executor has
+a hard maximum of four workers, while an adaptive controller decides how much
+work may actually be in flight from observed filesystem stat latency and
+conservative path hints.
+
+The current policy is intentionally modest:
+
+| Storage signal | Metadata workers | In-flight cap |
+| --- | ---: | ---: |
+| warming / unknown | 2 | 4 |
+| high latency (>= 8 ms avg stat) | 2 | 4 |
+| medium latency (2–8 ms) | 3 | 6 |
+| low latency (< 2 ms) | 4 | 8 |
+| likely network/NAS | starts at 2 | starts at 4 |
+
+A likely network path does not automatically receive more threads. It starts
+conservatively and may move to three workers only after enough very-low-latency
+samples show that the storage can tolerate it.
+
+Metadata reads may complete out of order, but results are committed to the scan
+snapshot in discovery order. This preserves deterministic catalog ordering.
+
+The pool is bounded twice:
+
+1. the P10c discovery queue still caps discovered work;
+2. P10g caps metadata futures separately.
+
+An unchanged rescan creates no metadata futures at all because size+mtime reuse
+still happens before metadata scheduling.
+
+New telemetry:
+
+- `storage_profile`
+- `storage_average_stat_ms`
+- `storage_network_hint`
+- `metadata_worker_limit`
+- `metadata_in_flight_limit`
+- `metadata_max_in_flight`
+
+### Why no aggressive 8+ worker default
+
+More parallelism is not automatically faster. Rotating disks and network shares
+can lose throughput from seeks, SMB/NFS contention, server-side queueing, or
+latency amplification. P10g therefore uses a small hard cap and adapts from
+measurements rather than copying another application's worker count.
+
+Future benchmarks can tune the thresholds without changing the pipeline
+architecture.
+
+
+## P10h — durable scan generations and resumable checkpoints
+
+P10h adds a durable scan-generation layer so interrupted work can be reused
+without ever exposing a partial library.
+
+The SQLite schema advances from v2 to v3 with two new tables:
+
+- `scan_generations` — one durable record per scan attempt;
+- `scan_stage_tracks` — changed-file metadata read successfully during that
+  generation but not yet published to the live library.
+
+### Generation states
+
+A generation can be:
+
+- `running`
+- `interrupted`
+- `cancelled`
+- `error`
+- `completed`
+
+Starting a new scan for the same configured roots automatically marks any stale
+`running` generation as `interrupted`. This is how a hard-killed child process
+is recognized on the next launch.
+
+### Checkpointing
+
+Successfully completed changed-file metadata reads are staged in bounded batches
+of 64 records. The live `tracks` table is not modified.
+
+```text
+changed file
+  ↓
+metadata read succeeds
+  ↓
+checkpoint staging table
+  ↓
+scan continues
+```
+
+If the scan is cancelled or the worker crashes, the next scan loads the newest
+compatible staged metadata and overlays it on the ordinary persistent cache.
+
+A staged row is reusable only when the current file still has exactly the same
+size and nanosecond modification time. If the fingerprint changed again, the
+staged metadata is rejected and the file is reread normally.
+
+This means interruption can waste at most the small unflushed checkpoint batch,
+not every changed metadata read completed since the previous successful scan.
+
+### Publication safety
+
+Staging is never the live library.
+
+The existing publication contract remains:
+
+```text
+scan completes
+  ↓
+atomic SQLite replace_scan transaction
+  ↓
+generation marked completed
+  ↓
+staging cleared
+  ↓
+GUI receives completed catalog
+```
+
+Cancellation, worker failure, or an incomplete root therefore cannot publish a
+partial catalog.
+
+### Deletion safety
+
+Deletion remains generation-safe because only roots positively observed as
+available and completely enumerated are eligible for removal during
+`replace_scan`.
+
+An unavailable or partially traversed NAS root cannot cause absent files to be
+interpreted as deletions. The previous live snapshot is preserved.
+
+### New diagnostics
+
+Scan generations expose path-free state for support/testing:
+
+- generation status;
+- staged record count;
+- start/completion timestamps;
+- number of resumed staged rows reused by the isolated scan.
+
+P10h tests cover:
+
+- abandoned running generation → interrupted;
+- cancelled staging → resumable cache;
+- exact fingerprint required for resume;
+- changed fingerprint forces a fresh metadata read;
+- successful publication clears staging;
+- incomplete roots cannot delete live tracks;
+- schema v2 → v3 migration.
+
+
+## P10i — 100k to 1m qualification
+
+P10i turns the scaling architecture into a repeatable release qualification
+instead of relying on one-off synthetic timings.
+
+The new harness exercises the real:
+
+- local-file scanner;
+- bounded discovery queue;
+- adaptive metadata pool;
+- size+mtime reuse;
+- directory manifests;
+- SQLite batch writer;
+- delta deletion logic;
+- scan-generation staging; and
+- cancellation/restart path.
+
+It uses a virtual filesystem so release-scale tests can simulate hundreds of
+thousands or one million audio files without creating a million physical FLAC
+files in CI.
+
+### Scenarios
+
+Every profile runs:
+
+1. **cold import**
+2. **unchanged rescan**
+3. **small delta rescan**
+4. **cancelled scan with staged checkpoints**
+5. **restart using staged metadata**
+
+The harness records:
+
+- scan seconds;
+- Python peak memory;
+- process peak RSS when available;
+- metadata-read count;
+- discovery queue peak/capacity;
+- maximum metadata work in flight;
+- SQLite write batches;
+- database size;
+- directory-manifest hits;
+- rows written/deleted on delta;
+- staged rows recovered after cancellation.
+
+### Qualification assertions
+
+A profile fails when any of these invariants fail:
+
+- discovery queue exceeds its configured capacity;
+- unchanged rescan reopens metadata;
+- unchanged rescan rewrites track rows;
+- delta metadata work grows beyond the changed/new portion;
+- cancellation returns a partial successful catalog; or
+- staged rows exist but restart fails to reuse any of them.
+
+### CI tiers
+
+Normal pull requests run the complete P10i scenario at 12,700 tracks and upload
+the JSON result as `p10i-qualification-12700`.
+
+Release-scale testing uses the manual
+`Elastic Library Release Qualification` workflow. Its default profiles are:
+
+- 100,000
+- 250,000
+- 500,000
+- 1,000,000
+
+The workflow also accepts artificial filesystem stat and directory latency so
+NAS-like behavior can be qualified without requiring a specific physical NAS.
+
+Example local runs:
+
+```bash
+cd desktop
+python tools/qualify_large_library.py --profiles 12700  # comma syntax via CLI string
+python tools/qualify_large_library.py --profiles 100000 --json
+python tools/qualify_large_library.py --release-scale --json
+python tools/qualify_large_library.py \
+  --profiles 100000 \
+  --stat-delay-ms 2 \
+  --directory-delay-ms 1
+```
+
+P10i is primarily a measurement campaign. It intentionally adds no new scanner
+optimization unless qualification exposes a concrete failure. The next stage
+can turn observed 100k/1m results into permanent numeric release gates.
+
+
+## P10j — traversal acceleration and permanent scale gates
+
+P10j targets the bottleneck exposed by the 100k P10i run: once metadata reuse
+was correct, most unchanged-rescan time was spent enumerating and statting files.
+
+### Scandir traversal
+
+Production local scans now use `os.scandir()` rather than an
+`os.walk()` + separate `Path.stat()` call for every file. `DirEntry`
+metadata is reused directly when available.
+
+Tests and synthetic probes that monkeypatch `os.walk` intentionally retain the
+legacy path, so the optimized production traversal does not break existing test
+harnesses.
+
+The real stat duration measured inside `DirEntry.stat()` is propagated back to
+the P10g adaptive-concurrency controller. This prevents fast-path enumeration
+from making a slow NAS look artificially low-latency.
+
+### Safe unchanged-directory bulk reuse
+
+P10f directory manifests now have an operational use.
+
+When a directory's sorted audio filename + size + mtime manifest matches the
+persisted manifest, the scanner emits one directory-reuse record instead of
+materializing every cached track metadata dictionary again.
+
+The filesystem fingerprints are still verified. P10j does **not** trust
+directory mtime alone and does not blindly skip descendant verification.
+
+The SQLite writer understands these preserved directories and excludes their
+existing rows from deletion. The live track count is recalculated from the
+committed database state.
+
+For changed directories, Melodex falls back to normal per-file reuse so only
+actually changed/new files reopen metadata.
+
+A reuse candidate is capped at 5,000 direct audio files. Larger directories
+fall back to streaming file records rather than buffering an unbounded folder.
+
+### 100k evidence
+
+The first P10i 100k baseline before P10j measured approximately:
+
+- cold scan: 38.0 s
+- unchanged rescan: 32.7 s
+- small delta: 33.9 s
+- traced Python peak: about 113 MiB
+- cumulative process RSS report: about 1.17 GiB
+
+The initial scandir comparison reduced the same synthetic workload to roughly:
+
+- cold scan: 20.7 s
+- unchanged rescan: 16.7 s
+- small delta: 17.2 s
+
+while preserving all P10i correctness gates.
+
+A dedicated cold-scan RSS process without `tracemalloc` showed:
+
+- baseline RSS: about 30 MiB
+- post-scan peak RSS: about 151 MiB
+- post-persist peak RSS: about 200 MiB
+
+So the earlier ~1.17 GiB figure was not a representative steady-state scan
+requirement; it was dominated by cumulative multi-scenario/process-profiler
+high-water behavior.
+
+Directory bulk reuse further reduced traced Python memory on unchanged/delta
+100k scans from about 114 MiB to about 47 MiB.
+
+### Permanent scale gates
+
+P10j extends the P10i qualification contract with regression checks for:
+
+- discovery queue <= 256;
+- metadata in-flight <= 8;
+- unchanged rescan performs zero metadata reads;
+- unchanged rescan performs zero track rewrites;
+- delta metadata work follows changed/new files;
+- unchanged rescan is not materially slower than cold import;
+- delta rescan is not materially slower than cold import;
+- traced Python memory stays inside a linear scaling envelope;
+- cancellation publishes no partial catalog; and
+- staged metadata is actually reused on restart.
+
+Wall-time gates are relative rather than absolute because GitHub-hosted runners
+vary. Structural queue/memory/correctness gates remain numeric.
+
+### Release-scale workflow
+
+The manual Elastic Library Release Qualification now runs 100k, 250k, 500k and
+1m in separate matrix jobs. Each profile therefore starts in a fresh process and
+cannot inherit a previous profile's allocator/tracemalloc high-water mark.
+
+Every scale job produces both:
+
+- the full qualification JSON; and
+- a clean cold-scan RSS measurement without `tracemalloc`.
+
+This is the permanent Campaign 10 scale gate for future releases.
+
+
+### Release-scale qualification results
+
+The first full P10j release matrix completed successfully at 250k, 500k and
+1,000,000 tracks. Every profile passed all permanent qualification gates.
+
+Clean cold-scan measurements below are from the dedicated RSS process without
+`tracemalloc`:
+
+| Tracks | Cold scan | Persist | Scan RSS peak | Post-persist RSS peak | SQLite DB |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 250,000 | 29.2 s | 10.2 s | 329 MiB | 455 MiB | 157 MiB |
+| 500,000 | 26.8 s | 15.6 s | 625 MiB | 876 MiB | 315 MiB |
+| 1,000,000 | 74.6 s | 38.7 s | 1,218 MiB | 1,720 MiB | 629 MiB |
+
+Runner variability means wall times are not expected to scale monotonically
+between independent GitHub-hosted jobs. Memory and database size show the more
+important result: approximately linear scaling.
+
+The full traced qualification at one million tracks also passed:
+
+- discovery queue peak: 256 / 256;
+- metadata in flight: 8 maximum;
+- unchanged rescan metadata reads: 0;
+- unchanged track rewrites: 0;
+- 50 changed + 50 added + 10 deleted produced exactly 100 metadata reads,
+  100 writes and 10 deletes;
+- cancellation returned no partial catalog;
+- 256 staged rows were resumed successfully after restart;
+- unchanged/delta traced Python peak was about 455 MiB;
+- cold traced Python peak was about 1.10 GiB, inside the 1.282 GiB linear gate;
+- SQLite index size was about 629 MiB.
+
+The traced one-million-track qualification took about 302 s for the cold scan
+and about 132–134 s for unchanged/delta scenarios. Those timings are
+intentionally not representative of end-user performance because
+`tracemalloc` heavily distorts a million-object workload. The clean RSS probe
+is the relevant cold-path timing: about 74.6 s scan plus 38.7 s persistence on
+that GitHub runner.
+
+This establishes that Campaign 10's architecture remains bounded and correct at
+one million synthetic tracks. It does not claim that every physical NAS or
+filesystem will match CI wall times; the release workflow retains latency
+injection for those storage-specific qualifications.

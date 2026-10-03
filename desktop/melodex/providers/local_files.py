@@ -1,15 +1,73 @@
 from __future__ import annotations
 
+import hashlib
 import os
+import queue
 import threading
+import time
+from collections import deque
+from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Callable
 
 from ..provider import MusicProvider, ProviderInfo
 from ..library_scan import ProgressThrottle, ScanCancelled, ScanControl
 from ..scan_metrics import ScanProbe
+from ..storage_concurrency import StorageConcurrencyController
 
 AUDIO_EXTS = {".mp3", ".flac", ".m4a", ".aac", ".ogg", ".opus", ".wav", ".aiff", ".wma"}
+_ORIGINAL_OS_WALK = os.walk
+
+
+def _scandir_walk(
+    root: Path,
+    *,
+    onerror: Callable[[OSError], None] | None = None,
+):
+    """Yield directory batches using DirEntry stat data when available.
+
+    Production uses scandir to avoid constructing a Path and issuing a separate
+    Path.stat call for every discovered file. If os.walk has been monkeypatched
+    (tests/custom probes), callers deliberately fall back to that walker.
+    """
+    stack = [Path(root)]
+    while stack:
+        base = stack.pop()
+        try:
+            with os.scandir(base) as iterator:
+                entries = sorted(iterator, key=lambda entry: entry.name)
+        except OSError as exc:
+            if onerror is not None:
+                onerror(exc)
+            continue
+
+        directories: list[Path] = []
+        files: list[tuple[str, os.stat_result | None, float | None]] = []
+        for entry in entries:
+            try:
+                if entry.is_dir(follow_symlinks=False):
+                    directories.append(Path(entry.path))
+                    continue
+            except OSError as exc:
+                if onerror is not None:
+                    onerror(exc)
+                continue
+
+            stat_result = None
+            stat_elapsed: float | None = None
+            started = time.perf_counter()
+            try:
+                stat_result = entry.stat()
+            except OSError:
+                pass
+            finally:
+                stat_elapsed = max(0.0, time.perf_counter() - started)
+            files.append((entry.name, stat_result, stat_elapsed))
+
+        # os.walk is depth-first in practice. Reverse the sorted children so
+        # popping the stack visits them in ascending lexical order.
+        stack.extend(reversed(directories))
+        yield str(base), files
 
 
 class LocalFilesProvider(MusicProvider):
@@ -193,41 +251,71 @@ class LocalFilesProvider(MusicProvider):
         progress: Callable[[dict[str, Any]], None] | None = None,
         control: ScanControl | None = None,
         cached_entries: dict[str, dict[str, Any]] | None = None,
+        cached_directories: dict[str, dict[str, Any]] | None = None,
+        collect_tracks: bool = True,
+        checkpoint: Callable[[dict[str, Any]], None] | None = None,
     ) -> dict[str, Any]:
-        """Scan roots, reusing cached tags for files whose fingerprint is unchanged.
+        """Scan roots through a bounded discovery/metadata pipeline.
 
-        The cheap fingerprint is file size + nanosecond modification time. A
-        cache entry without a complete fingerprint is deliberately treated as
-        changed, so the first rescan after upgrading populates trustworthy
-        fingerprints for future incremental scans.
+        P10c separates filesystem discovery from metadata consumption with a
+        fixed-size queue. Discovery may run ahead only to the queue capacity;
+        once full, the producer waits for metadata/index work to catch up.
+
+        The live catalog remains atomic. Final snapshot rows are accumulated
+        until a successful scan completes, and incomplete roots roll back their
+        rows before persistence.
         """
         scan_roots = [Path(x) for x in (self.roots if roots is None else roots)]
-        overrides = {
-            str(key): dict(value)
-            for key, value in self.overrides.items()
-            if isinstance(value, dict)
-        }
         cached = {
             self._override_key(key): dict(value)
             for key, value in dict(cached_entries or {}).items()
             if isinstance(value, dict)
         }
+        cached_dirs = {
+            self._override_key(key): dict(value)
+            for key, value in dict(cached_directories or {}).items()
+            if isinstance(value, dict)
+        }
         control = control or ScanControl()
         throttle = ProgressThrottle()
-        discovered: list[dict[str, Any]] = []
         tracks: list[dict[str, Any]] = []
-        index_tracks: list[dict[str, Any]] = []
         index_records: list[dict[str, Any]] = []
+        directory_manifests: list[dict[str, Any]] = []
+        preserve_directories: list[dict[str, Any]] = []
+        tracks_indexed = 0
         root_states: list[dict[str, Any]] = []
         probe = ScanProbe(len(scan_roots))
         seen_keys: set[str] = set()
+        preserved_directory_keys: set[str] = set()
         available_root_keys: set[str] = set()
 
         unchanged = 0
+        resumed = 0
         added = 0
         changed = 0
         removed = 0
         stat_failures = 0
+
+        queue_capacity = 256
+        work_queue: queue.Queue[dict[str, Any]] = queue.Queue(
+            maxsize=queue_capacity
+        )
+        producer_done = threading.Event()
+        producer_error: list[BaseException] = []
+        max_queue_depth = 0
+        queue_backpressure_events = 0
+        directory_manifest_hits = 0
+        directory_manifest_misses = 0
+        directory_reuse_hits = 0
+        directory_reuse_tracks = 0
+        scandir_directories = 0
+        concurrency = StorageConcurrencyController(scan_roots)
+        metadata_executor = ThreadPoolExecutor(
+            max_workers=4,
+            thread_name_prefix="melodex-metadata",
+        )
+        pending_metadata: deque[dict[str, Any]] = deque()
+        max_metadata_in_flight = 0
 
         def emit(
             phase: str,
@@ -236,6 +324,10 @@ class LocalFilesProvider(MusicProvider):
             current: str = "",
             completed: int = 0,
             total: int = 0,
+            root_unchanged: int = 0,
+            root_resumed: int = 0,
+            root_added: int = 0,
+            root_changed: int = 0,
         ) -> None:
             if progress is None or not throttle.ready(force=force):
                 return
@@ -250,207 +342,569 @@ class LocalFilesProvider(MusicProvider):
                     "current": Path(current).name if current else "",
                     "paused": control.paused,
                     "cancelled": control.cancelled,
-                    "unchanged": unchanged,
-                    "added": added,
-                    "changed": changed,
+                    "unchanged": unchanged + root_unchanged,
+                    "resumed": resumed + root_resumed,
+                    "added": added + root_added,
+                    "changed": changed + root_changed,
                     "removed": removed,
                     "stat_failures": stat_failures,
+                    "streaming": True,
+                    "queue_depth": work_queue.qsize(),
+                    "queue_capacity": queue_capacity,
                 }
             )
 
-        cancelled = False
-        emit("discovering", force=True)
-        try:
-            for root in scan_roots:
+        def put_work(item: dict[str, Any]) -> None:
+            nonlocal max_queue_depth, queue_backpressure_events
+            while True:
                 control.checkpoint()
-                exists = root.exists()
-                probe.root_checked(exists=exists)
-                root_state = {
-                    "path": str(root),
-                    "available": bool(exists),
-                    "complete": False,
-                    "walk_errors": 0,
-                }
-                root_states.append(root_state)
-                if not exists:
-                    continue
-
-                root_key = self._override_key(root)
-                root_start = len(discovered)
-                root_seen: set[str] = set()
-                root_walk_errors = 0
-
-                def on_walk_error(_error: OSError) -> None:
-                    nonlocal root_walk_errors
-                    root_walk_errors += 1
-
                 try:
-                    walker = os.walk(root, onerror=on_walk_error)
-                except TypeError:
-                    # Keeps simple monkeypatched walkers in unit tests working;
-                    # the real os.walk supports onerror.
-                    walker = os.walk(root)
+                    work_queue.put_nowait(item)
+                    max_queue_depth = max(max_queue_depth, work_queue.qsize())
+                    return
+                except queue.Full:
+                    queue_backpressure_events += 1
+                    try:
+                        work_queue.put(item, timeout=0.05)
+                        max_queue_depth = max(max_queue_depth, work_queue.qsize())
+                        return
+                    except queue.Full:
+                        continue
 
-                for base, _, files in walker:
+        def discover() -> None:
+            nonlocal stat_failures
+            try:
+                for root in scan_roots:
                     control.checkpoint()
-                    probe.directory_seen()
-                    for name in files:
-                        control.checkpoint()
-                        p = Path(base) / name
-                        is_audio = p.suffix.lower() in AUDIO_EXTS
-                        probe.file_seen(audio=is_audio)
-                        if not is_audio:
-                            emit("discovering", current=Path(base).name)
-                            continue
-
-                        key = self._override_key(p)
-                        root_seen.add(key)
-                        size: int | None = None
-                        mtime_ns: int | None = None
-                        try:
-                            file_stat = p.stat()
-                            size = int(file_stat.st_size)
-                            mtime_ns = int(
-                                getattr(
-                                    file_stat,
-                                    "st_mtime_ns",
-                                    int(float(file_stat.st_mtime) * 1_000_000_000),
-                                )
-                            )
-                        except OSError:
-                            stat_failures += 1
-
-                        previous = cached.get(key)
-                        previous_size = (
-                            previous.get("size")
-                            if isinstance(previous, dict)
-                            else None
-                        )
-                        previous_mtime = (
-                            previous.get("mtime_ns")
-                            if isinstance(previous, dict)
-                            else None
-                        )
-                        previous_track = (
-                            dict(previous.get("track") or {})
-                            if isinstance(previous, dict)
-                            else {}
-                        )
-                        reusable = bool(
-                            previous_track
-                            and size is not None
-                            and mtime_ns is not None
-                            and previous_size is not None
-                            and previous_mtime is not None
-                            and int(previous_size) == size
-                            and int(previous_mtime) == mtime_ns
-                        )
-
-                        if reusable:
-                            kind = "unchanged"
-                            unchanged += 1
-                        elif previous is None:
-                            kind = "added"
-                            added += 1
-                        else:
-                            kind = "changed"
-                            changed += 1
-
-                        discovered.append(
+                    exists = root.exists()
+                    probe.root_checked(exists=exists)
+                    root_key = self._override_key(root)
+                    put_work(
+                        {
+                            "type": "root_start",
+                            "path": str(root),
+                            "root_key": root_key,
+                            "available": bool(exists),
+                        }
+                    )
+                    if not exists:
+                        put_work(
                             {
+                                "type": "root_end",
+                                "root_key": root_key,
+                                "complete": False,
+                                "walk_errors": 0,
+                            }
+                        )
+                        continue
+
+                    root_walk_errors = 0
+
+                    def on_walk_error(_error: OSError) -> None:
+                        nonlocal root_walk_errors
+                        root_walk_errors += 1
+
+                    if os.walk is _ORIGINAL_OS_WALK:
+                        walker = _scandir_walk(root, onerror=on_walk_error)
+                        fast_scandir = True
+                    else:
+                        try:
+                            legacy = os.walk(root, onerror=on_walk_error)
+                        except TypeError:
+                            legacy = os.walk(root)
+                        walker = (
+                            (base, [(name, None, None) for name in files])
+                            for base, _, files in legacy
+                        )
+                        fast_scandir = False
+
+                    for base, files in walker:
+                        control.checkpoint()
+                        probe.directory_seen()
+                        manifest = hashlib.sha256()
+                        audio_count = 0
+                        directory_key = self._override_key(base)
+                        previous_dir = cached_dirs.get(directory_key)
+                        reuse_candidate = previous_dir is not None
+                        file_work: list[dict[str, Any]] = []
+                        for name, direntry_stat, direntry_stat_elapsed in files:
+                            control.checkpoint()
+                            p = Path(base) / name
+                            is_audio = p.suffix.lower() in AUDIO_EXTS
+                            probe.file_seen(audio=is_audio)
+                            if not is_audio:
+                                continue
+
+                            key = self._override_key(p)
+                            size: int | None = None
+                            mtime_ns: int | None = None
+                            stat_started = time.perf_counter()
+                            try:
+                                file_stat = (
+                                    direntry_stat
+                                    if direntry_stat is not None
+                                    else p.stat()
+                                )
+                                size = int(file_stat.st_size)
+                                mtime_ns = int(
+                                    getattr(
+                                        file_stat,
+                                        "st_mtime_ns",
+                                        int(
+                                            float(file_stat.st_mtime)
+                                            * 1_000_000_000
+                                        ),
+                                    )
+                                )
+                            except OSError:
+                                stat_failures += 1
+                            finally:
+                                measured_stat = (
+                                    direntry_stat_elapsed
+                                    if direntry_stat_elapsed is not None
+                                    else time.perf_counter() - stat_started
+                                )
+                                concurrency.observe_stat(measured_stat)
+
+                            audio_count += 1
+                            manifest.update(
+                                (
+                                    name
+                                    + "\0"
+                                    + str(size if size is not None else "?")
+                                    + "\0"
+                                    + str(
+                                        mtime_ns
+                                        if mtime_ns is not None
+                                        else "?"
+                                    )
+                                    + "\n"
+                                ).encode("utf-8", errors="surrogatepass")
+                            )
+                            work_item = {
+                                "type": "file",
                                 "path": p,
                                 "key": key,
                                 "size": size,
                                 "mtime_ns": mtime_ns,
-                                "kind": kind,
                                 "root_key": root_key,
-                                "raw_track": previous_track if reusable else {},
                             }
+                            if reuse_candidate:
+                                file_work.append(work_item)
+                                if len(file_work) > 5000:
+                                    for buffered_item in file_work:
+                                        put_work(buffered_item)
+                                    file_work.clear()
+                                    reuse_candidate = False
+                            else:
+                                put_work(work_item)
+
+                        manifest_value = manifest.hexdigest()
+                        reusable_directory = bool(
+                            reuse_candidate
+                            and previous_dir
+                            and str(previous_dir.get("manifest") or "")
+                            == manifest_value
+                            and int(previous_dir.get("file_count") or 0)
+                            == audio_count
                         )
-                        emit("discovering", current=Path(base).name)
 
-                root_state["walk_errors"] = int(root_walk_errors)
-                root_state["complete"] = root_walk_errors == 0
-                if root_walk_errors:
-                    # Never apply a partial root. Undo its discovery/change
-                    # counters and preserve the root's previous SQLite snapshot.
-                    partial_rows = discovered[root_start:]
-                    for row in partial_rows:
-                        kind = str(row.get("kind") or "")
-                        if kind == "unchanged":
-                            unchanged = max(0, unchanged - 1)
-                        elif kind == "added":
-                            added = max(0, added - 1)
-                        elif kind == "changed":
-                            changed = max(0, changed - 1)
-                    del discovered[root_start:]
-                    continue
+                        if reusable_directory:
+                            put_work(
+                                {
+                                    "type": "directory_reuse",
+                                    "path": str(base),
+                                    "root_path": str(root),
+                                    "root_key": root_key,
+                                    "manifest": manifest_value,
+                                    "file_count": audio_count,
+                                    "fast_scandir": fast_scandir,
+                                }
+                            )
+                        else:
+                            if reuse_candidate:
+                                for work_item in file_work:
+                                    put_work(work_item)
+                            put_work(
+                                {
+                                    "type": "directory_manifest",
+                                    "path": str(base),
+                                    "root_path": str(root),
+                                    "root_key": root_key,
+                                    "manifest": manifest_value,
+                                    "file_count": audio_count,
+                                    "fast_scandir": fast_scandir,
+                                }
+                            )
 
-                available_root_keys.add(root_key)
-                seen_keys.update(root_seen)
+                    put_work(
+                        {
+                            "type": "root_end",
+                            "root_key": root_key,
+                            "complete": root_walk_errors == 0,
+                            "walk_errors": int(root_walk_errors),
+                        }
+                    )
+            except BaseException as exc:
+                producer_error.append(exc)
+            finally:
+                producer_done.set()
 
-            # A cached file is considered removed only when its root was
-            # positively available and fully enumerated in this scan.
-            for key, previous in cached.items():
-                if key in seen_keys:
-                    continue
-                root_path = str(previous.get("root_path") or "")
-                if root_path and self._override_key(root_path) in available_root_keys:
-                    removed += 1
+        cancelled = False
+        emit("discovering", force=True)
 
-            pending = [
-                row for row in discovered
-                if not dict(row.get("raw_track") or {})
-            ]
-            emit(
-                "metadata",
-                force=True,
-                completed=0,
-                total=len(pending),
-            )
-            for index, row in enumerate(pending, start=1):
-                control.checkpoint()
-                p = Path(row["path"])
-                with probe.metadata_read():
-                    row["raw_track"] = self._metadata(p)
+        producer = threading.Thread(
+            target=discover,
+            name="melodex-library-discovery",
+            daemon=True,
+        )
+        producer.start()
+
+        current_root_key = ""
+        current_root_state: dict[str, Any] | None = None
+        current_tracks_start = 0
+        current_index_records_start = 0
+        current_directory_manifests_start = 0
+        current_preserve_directories_start = 0
+        current_tracks_indexed_start = 0
+        current_root_seen: set[str] = set()
+        current_root_preserved_dirs: set[str] = set()
+        root_unchanged = 0
+        root_resumed = 0
+        root_added = 0
+        root_changed = 0
+
+        def read_metadata(path: Path) -> tuple[dict[str, Any], float]:
+            started = time.perf_counter()
+            value = self._metadata(path)
+            return value, max(0.0, time.perf_counter() - started)
+
+        def flush_one_metadata() -> None:
+            nonlocal tracks_indexed, max_metadata_in_flight
+            if not pending_metadata:
+                return
+            row = pending_metadata.popleft()
+            raw_metadata = dict(row.get("raw_metadata") or {})
+            future = row.get("future")
+            p = Path(row["path"])
+            if isinstance(future, Future):
+                raw_metadata, elapsed = future.result()
+                probe.record_metadata_result(elapsed)
                 emit(
                     "metadata",
                     current=p.name,
-                    completed=index,
-                    total=len(pending),
+                    completed=probe.metrics.metadata_attempts,
+                    total=0,
+                    root_unchanged=root_unchanged,
+                    root_added=root_added,
+                    root_changed=root_changed,
                 )
+            if raw_metadata:
+                record = {
+                    "track": dict(raw_metadata),
+                    "size": row.get("size"),
+                    "mtime_ns": row.get("mtime_ns"),
+                }
+                if bool(row.get("checkpoint")) and checkpoint is not None:
+                    checkpoint(dict(record))
+                index_records.append(record)
+                tracks_indexed += 1
+                if collect_tracks:
+                    tracks.append(self._apply_override(raw_metadata))
 
-            # Build one complete snapshot in discovery order. Cached metadata is
-            # raw file metadata; Melodex-only corrections are applied separately.
-            for row in discovered:
-                raw_metadata = dict(row.get("raw_track") or {})
-                if not raw_metadata:
+        def drain_metadata() -> None:
+            while pending_metadata:
+                control.checkpoint()
+                flush_one_metadata()
+
+        try:
+            while not producer_done.is_set() or not work_queue.empty():
+                control.checkpoint()
+                try:
+                    item = work_queue.get(timeout=0.05)
+                except queue.Empty:
+                    if pending_metadata:
+                        flush_one_metadata()
+                        continue
+                    if producer_error:
+                        raise producer_error[0]
                     continue
-                index_tracks.append(dict(raw_metadata))
-                index_records.append(
-                    {
-                        "track": dict(raw_metadata),
-                        "size": row.get("size"),
-                        "mtime_ns": row.get("mtime_ns"),
+
+                item_type = str(item.get("type") or "")
+                if item_type == "root_start":
+                    current_root_key = str(item.get("root_key") or "")
+                    current_root_state = {
+                        "path": str(item.get("path") or ""),
+                        "available": bool(item.get("available")),
+                        "complete": False,
+                        "walk_errors": 0,
                     }
-                )
-                tracks.append(self._apply_override(raw_metadata))
+                    root_states.append(current_root_state)
+                    current_tracks_start = len(tracks)
+                    current_index_records_start = len(index_records)
+                    current_directory_manifests_start = len(directory_manifests)
+                    current_preserve_directories_start = len(preserve_directories)
+                    current_tracks_indexed_start = tracks_indexed
+                    current_root_seen = set()
+                    current_root_preserved_dirs = set()
+                    root_unchanged = 0
+                    root_resumed = 0
+                    root_added = 0
+                    root_changed = 0
+                    continue
+
+                if item_type == "file":
+                    p = Path(item["path"])
+                    key = str(item.get("key") or "")
+                    current_root_seen.add(key)
+                    size = item.get("size")
+                    mtime_ns = item.get("mtime_ns")
+                    previous = cached.get(key)
+                    previous_size = (
+                        previous.get("size")
+                        if isinstance(previous, dict)
+                        else None
+                    )
+                    previous_mtime = (
+                        previous.get("mtime_ns")
+                        if isinstance(previous, dict)
+                        else None
+                    )
+                    previous_track = (
+                        dict(previous.get("track") or {})
+                        if isinstance(previous, dict)
+                        else {}
+                    )
+                    reusable = bool(
+                        previous_track
+                        and size is not None
+                        and mtime_ns is not None
+                        and previous_size is not None
+                        and previous_mtime is not None
+                        and int(previous_size) == int(size)
+                        and int(previous_mtime) == int(mtime_ns)
+                    )
+
+                    if reusable:
+                        if bool(previous.get("resume_staged")):
+                            root_resumed += 1
+                        else:
+                            root_unchanged += 1
+                        pending_metadata.append(
+                            {
+                                "path": p,
+                                "size": size,
+                                "mtime_ns": mtime_ns,
+                                "raw_metadata": previous_track,
+                            }
+                        )
+                    else:
+                        if previous is None:
+                            root_added += 1
+                        else:
+                            root_changed += 1
+                        probe.metadata_submitted()
+                        pending_metadata.append(
+                            {
+                                "path": p,
+                                "size": size,
+                                "mtime_ns": mtime_ns,
+                                "future": metadata_executor.submit(
+                                    read_metadata,
+                                    p,
+                                ),
+                                "checkpoint": True,
+                            }
+                        )
+
+                    decision = concurrency.decision()
+                    max_metadata_in_flight = max(
+                        max_metadata_in_flight,
+                        sum(
+                            1
+                            for row in pending_metadata
+                            if isinstance(row.get("future"), Future)
+                        ),
+                    )
+                    while len(pending_metadata) >= decision.in_flight_limit:
+                        control.checkpoint()
+                        flush_one_metadata()
+
+                    emit(
+                        "discovering",
+                        current=p.parent.name,
+                        root_unchanged=root_unchanged,
+                        root_resumed=root_resumed,
+                        root_added=root_added,
+                        root_changed=root_changed,
+                    )
+                    continue
+
+                if item_type == "directory_reuse":
+                    directory_path = str(item.get("path") or "")
+                    manifest_value = str(item.get("manifest") or "")
+                    file_count = max(0, int(item.get("file_count") or 0))
+                    if bool(item.get("fast_scandir")):
+                        scandir_directories += 1
+                    directory_manifest_hits += 1
+                    directory_reuse_hits += 1
+                    directory_reuse_tracks += file_count
+                    root_unchanged += file_count
+                    tracks_indexed += file_count
+                    canonical_dir = self._override_key(directory_path)
+                    current_root_preserved_dirs.add(canonical_dir)
+                    preserve_directories.append(
+                        {
+                            "path": directory_path,
+                            "root_path": str(item.get("root_path") or ""),
+                            "file_count": file_count,
+                        }
+                    )
+                    directory_manifests.append(
+                        {
+                            "path": directory_path,
+                            "root_path": str(item.get("root_path") or ""),
+                            "manifest": manifest_value,
+                            "file_count": file_count,
+                        }
+                    )
+                    continue
+
+                if item_type == "directory_manifest":
+                    if bool(item.get("fast_scandir")):
+                        scandir_directories += 1
+                    directory_path = str(item.get("path") or "")
+                    manifest_value = str(item.get("manifest") or "")
+                    file_count = max(0, int(item.get("file_count") or 0))
+                    previous_dir = cached_dirs.get(
+                        self._override_key(directory_path)
+                    )
+                    if (
+                        previous_dir
+                        and str(previous_dir.get("manifest") or "")
+                        == manifest_value
+                        and int(previous_dir.get("file_count") or 0)
+                        == file_count
+                    ):
+                        directory_manifest_hits += 1
+                    else:
+                        directory_manifest_misses += 1
+                    directory_manifests.append(
+                        {
+                            "path": directory_path,
+                            "root_path": str(item.get("root_path") or ""),
+                            "manifest": manifest_value,
+                            "file_count": file_count,
+                        }
+                    )
+                    continue
+
+                if item_type == "root_end":
+                    drain_metadata()
+                    if current_root_state is None:
+                        continue
+                    walk_errors = int(item.get("walk_errors") or 0)
+                    complete = bool(item.get("complete"))
+                    current_root_state["walk_errors"] = walk_errors
+                    current_root_state["complete"] = complete
+                    if complete and bool(current_root_state.get("available")):
+                        unchanged += root_unchanged
+                        resumed += root_resumed
+                        added += root_added
+                        changed += root_changed
+                        available_root_keys.add(current_root_key)
+                        seen_keys.update(current_root_seen)
+                        preserved_directory_keys.update(
+                            current_root_preserved_dirs
+                        )
+                    else:
+                        del tracks[current_tracks_start:]
+                        del index_records[current_index_records_start:]
+                        del directory_manifests[
+                            current_directory_manifests_start:
+                        ]
+                        del preserve_directories[
+                            current_preserve_directories_start:
+                        ]
+                        tracks_indexed = current_tracks_indexed_start
+                    current_root_state = None
+                    current_root_key = ""
+                    current_root_seen = set()
+                    current_root_preserved_dirs = set()
+                    root_unchanged = root_resumed = root_added = root_changed = 0
+
+            if producer_error:
+                raise producer_error[0]
+
+            for key, previous in cached.items():
+                if key in seen_keys:
+                    continue
+                if self._override_key(os.path.dirname(key)) in preserved_directory_keys:
+                    continue
+                root_path = str(previous.get("root_path") or "")
+                if (
+                    root_path
+                    and self._override_key(root_path) in available_root_keys
+                ):
+                    removed += 1
+
+            emit(
+                "metadata",
+                force=True,
+                completed=probe.metrics.metadata_attempts,
+                total=probe.metrics.metadata_attempts,
+            )
         except ScanCancelled:
             cancelled = True
         finally:
-            metrics = probe.finish(tracks_indexed=len(tracks))
+            if cancelled:
+                control.cancel()
+            producer.join(timeout=1.0)
+            metadata_executor.shutdown(
+                wait=not cancelled,
+                cancel_futures=cancelled,
+            )
+            final_concurrency = concurrency.decision()
+            metrics = probe.finish(
+                tracks_indexed=0 if cancelled else tracks_indexed
+            )
             metrics.update(
                 {
                     "unchanged_files": int(unchanged),
+                    "resumed_files": int(resumed),
                     "added_files": int(added),
                     "changed_files": int(changed),
                     "removed_files": int(removed),
                     "stat_failures": int(stat_failures),
-                    "metadata_reused": int(unchanged),
+                    "metadata_reused": int(unchanged + resumed),
+                    "streaming_discovery": True,
+                    "discovery_buffer_rows": 0,
+                    "bounded_pipeline": True,
+                    "collect_tracks": bool(collect_tracks),
+                    "snapshot_track_copies": 2 if collect_tracks else 1,
+                    "directory_manifest_hits": int(directory_manifest_hits),
+                    "directory_manifest_misses": int(directory_manifest_misses),
+                    "directory_reuse_hits": int(directory_reuse_hits),
+                    "directory_reuse_tracks": int(directory_reuse_tracks),
+                    "directory_manifests": len(directory_manifests),
+                    "scandir_directories": int(scandir_directories),
+                    "scandir_enabled": bool(scandir_directories),
+                    "storage_profile": final_concurrency.profile,
+                    "storage_average_stat_ms": final_concurrency.average_stat_ms,
+                    "storage_network_hint": final_concurrency.network_hint,
+                    "metadata_worker_limit": final_concurrency.metadata_workers,
+                    "metadata_in_flight_limit": final_concurrency.in_flight_limit,
+                    "metadata_max_in_flight": int(max_metadata_in_flight),
+                    "pipeline_queue_capacity": int(queue_capacity),
+                    "pipeline_max_queue_depth": int(max_queue_depth),
+                    "pipeline_backpressure_events": int(
+                        queue_backpressure_events
+                    ),
                     "incomplete_roots": sum(
                         1
                         for state in root_states
-                        if bool(state.get("available")) and not bool(state.get("complete", True))
+                        if bool(state.get("available"))
+                        and not bool(state.get("complete", True))
                     ),
                 }
             )
@@ -464,8 +918,9 @@ class LocalFilesProvider(MusicProvider):
             )
             return {
                 "tracks": [],
-                "index_tracks": [],
                 "index_records": [],
+                "directory_manifests": [],
+                "preserve_directories": [],
                 "metrics": metrics,
                 "root_states": root_states,
                 "cancelled": True,
@@ -474,17 +929,19 @@ class LocalFilesProvider(MusicProvider):
         emit(
             "complete",
             force=True,
-            completed=len(tracks),
-            total=len(tracks),
+            completed=tracks_indexed,
+            total=tracks_indexed,
         )
         return {
             "tracks": tracks,
-            "index_tracks": index_tracks,
             "index_records": index_records,
+            "directory_manifests": directory_manifests,
+            "preserve_directories": preserve_directories,
             "metrics": metrics,
             "root_states": root_states,
             "changes": {
                 "unchanged": int(unchanged),
+                "resumed": int(resumed),
                 "added": int(added),
                 "changed": int(changed),
                 "removed": int(removed),
