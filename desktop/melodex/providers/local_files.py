@@ -70,6 +70,8 @@ def _scandir_walk(
                     return sorted(iterator, key=lambda entry: entry.name)
 
             entries = _retry_oserror(read_entries, on_retry=retried)
+            if retries and onerror is not None:
+                onerror(None, retries)
         except OSError as exc:
             if onerror is not None:
                 onerror(exc, retries)
@@ -123,6 +125,8 @@ def _scandir_walk(
                     entry.stat,
                     on_retry=stat_retried,
                 )
+                if stat_retries and onerror is not None:
+                    onerror(None, stat_retries)
             except OSError as exc:
                 if onerror is not None:
                     onerror(exc, stat_retries)
@@ -553,9 +557,13 @@ class LocalFilesProvider(MusicProvider):
                                         ),
                                     )
                                 )
-                            except OSError as exc:
+                            except OSError:
+                                # Custom/monkeypatched os.walk probes historically
+                                # allow virtual files with no real stat result.
+                                # Production NAS traversal uses scandir, where an
+                                # exhausted stat failure has already marked the
+                                # root incomplete before this consumer sees it.
                                 stat_failures += 1
-                                on_walk_error(exc)
                             finally:
                                 measured_stat = (
                                     direntry_stat_elapsed
