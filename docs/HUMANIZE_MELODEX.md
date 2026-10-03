@@ -169,3 +169,31 @@ Rules:
 - diagnostics and provenance remain available where they are genuinely useful.
 
 The first H4 pass applies these rules to My Music scanning and rich Now Playing.
+
+
+## H5 first-run usability
+
+The H5 walkthrough uses five tasks:
+
+1. add music;
+2. play an album;
+3. find another artist;
+4. understand what is playing;
+5. discover one deeper feature without being prompted.
+
+The first pass found that Home still exposed source counts, plugin counts,
+Flow-analysis state and an ffmpeg hint before a new listener needed any of that.
+
+H5 therefore changes the first-run contract:
+
+- Home reports only the size/readiness of the listener's library;
+- when there is no library, Home asks for a music folder rather than explaining
+  the system;
+- adding a folder from Home moves into My Music so the indexing state is visible
+  where the user expects their collection to appear;
+- source/plugin health, Flow analysis and ffmpeg remain available in their
+  relevant advanced surfaces rather than competing with the first listening
+  task.
+
+The deeper-feature discovery task is already supported by the Home/Explore
+cards: Album Wall and Music Map can be discovered after ordinary playback works.
