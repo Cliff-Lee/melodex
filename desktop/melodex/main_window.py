@@ -6,7 +6,7 @@ import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any, TYPE_CHECKING
+from typing import Any
 
 from PySide6.QtCore import QEvent, Qt, QTimer, Signal, Slot, QObject
 from PySide6.QtGui import QAction, QColor, QDesktopServices, QKeySequence, QPixmap, QShortcut
@@ -28,6 +28,7 @@ from .plugin_health import health_badge, health_summary
 from .responsiveness import UiResponsivenessMonitor
 from .background_scheduler import BackgroundScheduler
 from .motion import MotionController, FAST_MOTION_MS, STANDARD_MOTION_MS
+from .library_scan_controller import LibraryScanController
 from .library_scan_status import (
     idle_scan_session,
     scan_activity_state,
@@ -46,16 +47,6 @@ from .ux_components import (
     SourceCard,
     set_help,
 )
-
-if TYPE_CHECKING:
-    from .library_scan_process import LibraryScanProcess
-
-
-class WorkerSignals(QObject):
-    done = Signal(object)
-    error = Signal(str)
-    progress = Signal(object)
-
 
 class _UiCallbackDispatcher(QObject):
     """Long-lived queued bridge from worker threads back to the Qt UI thread.
@@ -221,17 +212,16 @@ class MainWindow(QMainWindow):
         self.pending_journey_replay: tuple[dict[str, Any], str] | None = None
         self.current_page = "home"
         self._closing = False
-        self._local_scan_in_progress = False
-        self._local_scan_pending = False
-        self._local_scan_sequence = 0
         self._local_scan_started_at = 0.0
         self._local_scan_last_progress: dict[str, Any] = {}
         self._local_scan_session: dict[str, Any] = idle_scan_session()
+        self.local_scan = LibraryScanController(self.data_dir, self)
+        self.local_scan.progress.connect(self._local_scan_progress)
+        self.local_scan.done.connect(self._local_scan_done)
+        self.local_scan.failed.connect(self._local_scan_failed)
         self._prefetched_track_assets: dict[str, dict[str, Any]] = {}
         self._prefetch_sequence = 0
         self._prefetch_delay_ms = 350
-        self._local_scan_runner: LibraryScanProcess | None = None
-        self._local_scan_signals: WorkerSignals | None = None
         self._source_config_refresh_in_progress = False
         self._navigation_generation = 0
         self._page_refresh_delay_ms = 16
@@ -4248,12 +4238,12 @@ class MainWindow(QMainWindow):
         self._start_local_scan("rescan")
 
     def _refresh_background_scan_activity(self) -> None:
-        if not self._local_scan_in_progress:
+        if not self.local_scan.active:
             self.background_activity.hide()
             self._background_activity_timer.stop()
             return
 
-        runner=self._local_scan_runner
+        runner=self.local_scan.runner
         view=scan_activity_state(
             self._local_scan_last_progress,
             elapsed_seconds=(
@@ -4272,15 +4262,20 @@ class MainWindow(QMainWindow):
         self.background_activity_cancel.setEnabled(runner is not None)
         self.background_activity.show()
 
-    def _local_scan_progress(self, payload: object) -> None:
-        if not isinstance(payload,dict) or not self._local_scan_in_progress:
+    def _local_scan_progress(self, sequence: int, payload: object) -> None:
+        if (
+            self._closing
+            or not self.local_scan.is_current(sequence)
+            or not isinstance(payload,dict)
+            or not self.local_scan.active
+        ):
             return
         self._local_scan_last_progress=dict(payload)
         self._local_scan_session.update(
             scan_progress_patch(
                 payload,
                 elapsed_seconds=time.monotonic()-self._local_scan_started_at,
-                pending_rescan=self._local_scan_pending,
+                pending_rescan=self.local_scan.pending,
             )
         )
         self._refresh_background_scan_activity()
@@ -4293,29 +4288,21 @@ class MainWindow(QMainWindow):
                 self.home_status.setText(message)
 
     def _toggle_local_scan_pause(self) -> None:
-        runner=self._local_scan_runner
-        if runner is None or not self._local_scan_in_progress:
+        paused=self.local_scan.toggle_pause()
+        if paused is None:
             return
-        if runner.paused:
-            runner.resume()
-            self._local_scan_session["paused"]=False
-            if hasattr(self,"library_browser"):
-                self.library_browser.set_scan_paused(False)
-            self._refresh_background_scan_activity()
-            self.statusBar().showMessage("Music indexing resumed",3000)
-        else:
-            runner.pause()
-            self._local_scan_session["paused"]=True
-            if hasattr(self,"library_browser"):
-                self.library_browser.set_scan_paused(True)
-            self._refresh_background_scan_activity()
-            self.statusBar().showMessage("Music indexing paused",3000)
+        self._local_scan_session["paused"]=paused
+        if hasattr(self,"library_browser"):
+            self.library_browser.set_scan_paused(paused)
+        self._refresh_background_scan_activity()
+        self.statusBar().showMessage(
+            "Music indexing paused" if paused else "Music indexing resumed",
+            3000,
+        )
 
     def _cancel_local_scan(self) -> None:
-        runner=self._local_scan_runner
-        if runner is None or not self._local_scan_in_progress:
+        if not self.local_scan.cancel(clear_pending=True):
             return
-        self._local_scan_pending=False
         self._local_scan_session.update(
             {
                 "status": "cancelling",
@@ -4324,7 +4311,6 @@ class MainWindow(QMainWindow):
                 "pending_rescan": False,
             }
         )
-        runner.cancel()
         if hasattr(self,"library_browser"):
             self.library_browser.set_scan_cancelling()
         self.background_activity_pause.setEnabled(False)
@@ -4343,18 +4329,10 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("Add a music folder first",3000)
             return
 
-        if self._local_scan_in_progress:
-            self._local_scan_pending=True
+        if self.local_scan.active:
             self._local_scan_session["pending_rescan"]=True
-            runner=self._local_scan_runner
-            current_key=scan_roots_key(roots)
-            running_key=(
-                scan_roots_key(runner.roots)
-                if runner is not None
-                else ()
-            )
-            if runner is not None and current_key != running_key:
-                runner.cancel()
+            roots_changed=self.local_scan.queue_rescan(roots)
+            if roots_changed:
                 self.statusBar().showMessage(
                     "Music folders changed · stopping the old indexer and restarting…",
                     5000,
@@ -4366,13 +4344,9 @@ class MainWindow(QMainWindow):
                 )
             return
 
-        self._local_scan_in_progress=True
-        self._local_scan_pending=False
-        self._local_scan_sequence += 1
         self._local_scan_started_at=time.monotonic()
         self._local_scan_last_progress={"phase":"discovering","audio_files_seen":0}
         self._local_scan_session=start_scan_session(reason,len(roots))
-        sequence=self._local_scan_sequence
         roots_snapshot=[Path(root) for root in roots]
         roots_key=scan_roots_key(roots_snapshot)
         if hasattr(self,"library_browser"):
@@ -4387,32 +4361,28 @@ class MainWindow(QMainWindow):
                 "Indexing your music in an isolated background scanner…"
             )
 
-        sig=WorkerSignals()
-        self._local_scan_signals=sig
-        sig.progress.connect(
-            lambda payload: None
-            if self._closing or sequence != self._local_scan_sequence
-            else self._local_scan_progress(payload)
-        )
+        try:
+            sequence=self.local_scan.start(roots_snapshot)
+        except Exception as exc:
+            self._local_scan_failed(self.local_scan.sequence,str(exc))
+            return
 
-        def done(snapshot):
-            if sequence != self._local_scan_sequence:
-                return
-            self._local_scan_in_progress=False
-            self._local_scan_runner=None
-            self._background_activity_timer.stop()
-            self.background_activity.hide()
-            current_key=scan_roots_key(self.providers.local_roots())
-            result=dict(snapshot or {})
+    def _local_scan_done(self, sequence: int, snapshot: object) -> None:
+        if self._closing or not self.local_scan.finish(sequence):
+            return
+        self._background_activity_timer.stop()
+        self.background_activity.hide()
+        current_key=scan_roots_key(self.providers.local_roots())
+        result=dict(snapshot or {})
 
-            if bool(result.get("cancelled")):
+        if bool(result.get("cancelled")):
                 elapsed=max(0.0,time.monotonic()-self._local_scan_started_at)
                 self._local_scan_session.update(
                     {
                         "status": "cancelled",
                         "running": False,
                         "paused": False,
-                        "pending_rescan": bool(self._local_scan_pending),
+                        "pending_rescan": bool(self.local_scan.pending),
                         "elapsed_seconds": round(elapsed, 3),
                         "hard_cancelled": bool(result.get("hard_cancelled")),
                     }
@@ -4431,8 +4401,8 @@ class MainWindow(QMainWindow):
                         "Music indexing cancelled · existing library kept",
                         5000,
                     )
-                if self._local_scan_pending:
-                    self._local_scan_pending=False
+                if self.local_scan.pending:
+                    self.local_scan.clear_pending()
                     QTimer.singleShot(
                         0,
                         lambda:self._start_local_scan("queued rescan"),
@@ -4443,7 +4413,7 @@ class MainWindow(QMainWindow):
             # catalog is not applied. A queued scan immediately rebuilds the
             # current root set.
             if current_key != roots_key:
-                self._local_scan_pending=False
+                self.local_scan.clear_pending()
                 QTimer.singleShot(
                     0,
                     lambda:self._start_local_scan("queued change"),
@@ -4461,7 +4431,7 @@ class MainWindow(QMainWindow):
                     "status": "degraded" if outcome["degraded"] else "complete",
                     "running": False,
                     "paused": False,
-                    "pending_rescan": bool(self._local_scan_pending),
+                    "pending_rescan": bool(self.local_scan.pending),
                     "elapsed_seconds": round(elapsed, 3),
                     "phase": "complete",
                     "completed": count,
@@ -4498,71 +4468,46 @@ class MainWindow(QMainWindow):
                     f"Music indexing complete · {count:,} tracks{suffix}",
                     6500,
                 )
-            if self._local_scan_pending:
-                self._local_scan_pending=False
+            if self.local_scan.pending:
+                self.local_scan.clear_pending()
                 QTimer.singleShot(
                     0,
                     lambda:self._start_local_scan("queued rescan"),
                 )
 
-        def failed(error):
-            if sequence != self._local_scan_sequence:
-                return
-            self._local_scan_in_progress=False
-            self._local_scan_runner=None
-            self._background_activity_timer.stop()
-            self.background_activity.hide()
-            elapsed=max(0.0,time.monotonic()-self._local_scan_started_at)
-            error_text=str(error or "")
-            error_type=(error_text.split(":",1)[0].strip() or "scan_error")[:80]
-            self._local_scan_session.update(
-                {
-                    "status": "error",
-                    "running": False,
-                    "paused": False,
-                    "pending_rescan": bool(self._local_scan_pending),
-                    "elapsed_seconds": round(elapsed, 3),
-                    "error_type": error_type,
-                }
+    def _local_scan_failed(self, sequence: int, error: str) -> None:
+        if self._closing or not self.local_scan.finish(sequence):
+            return
+        self._background_activity_timer.stop()
+        self.background_activity.hide()
+        elapsed=max(0.0,time.monotonic()-self._local_scan_started_at)
+        error_text=str(error or "")
+        error_type=(error_text.split(":",1)[0].strip() or "scan_error")[:80]
+        self._local_scan_session.update(
+            {
+                "status": "error",
+                "running": False,
+                "paused": False,
+                "pending_rescan": bool(self.local_scan.pending),
+                "elapsed_seconds": round(elapsed, 3),
+                "error_type": error_type,
+            }
+        )
+        if hasattr(self,"library_browser"):
+            self.library_browser.finish_scan("error",error=error_type)
+        self._show_home()
+        message=(
+            "Music indexing stopped — your existing library was kept. "
+            "Export redacted diagnostics from Sources & plugins if this repeats."
+        )
+        self.statusBar().showMessage(message,10000)
+        if hasattr(self,"home_status"):
+            self.home_status.setText(message)
+        if self.local_scan.take_pending():
+            QTimer.singleShot(
+                0,
+                lambda:self._start_local_scan("queued rescan"),
             )
-            if hasattr(self,"library_browser"):
-                self.library_browser.finish_scan("error",error=error_type)
-            self._show_home()
-            message=(
-                "Music indexing stopped — your existing library was kept. "
-                "Export redacted diagnostics from Sources & plugins if this repeats."
-            )
-            self.statusBar().showMessage(message,10000)
-            if hasattr(self,"home_status"):
-                self.home_status.setText(message)
-            if self._local_scan_pending:
-                self._local_scan_pending=False
-                QTimer.singleShot(
-                    0,
-                    lambda:self._start_local_scan("queued rescan"),
-                )
-
-        sig.done.connect(
-            lambda result: None if self._closing else done(result)
-        )
-        sig.error.connect(
-            lambda error: None if self._closing else failed(error)
-        )
-
-        runner=LibraryScanProcess(
-            self.data_dir,
-            roots_snapshot,
-            on_progress=sig.progress.emit,
-            on_done=sig.done.emit,
-            on_error=sig.error.emit,
-        )
-        self._local_scan_runner=runner
-        self._refresh_background_scan_activity()
-        try:
-            runner.start()
-        except Exception as exc:
-            self._local_scan_runner=None
-            sig.error.emit(str(exc))
 
     def _jamendo_settings(self):
         value,ok=QInputDialog.getText(self,"Jamendo reference provider","Your Jamendo developer client ID:",text=str(self.providers.settings.get("jamendo_client_id","")))
@@ -6610,7 +6555,7 @@ class MainWindow(QMainWindow):
         if (
             self._closing
             or sequence != self._prefetch_sequence
-            or self._local_scan_in_progress
+            or self.local_scan.active
         ):
             return
         track=self._next_queue_track()
@@ -7500,10 +7445,7 @@ class MainWindow(QMainWindow):
         self._closing = True
         if hasattr(self, "background_scheduler"):
             self.background_scheduler.shutdown(wait=False)
-        runner=self._local_scan_runner
-        if runner is not None:
-            runner.shutdown()
-            self._local_scan_runner=None
+        self.local_scan.shutdown()
         if self.bridge:self.bridge.stop()
         self.player.close()
         if self._metadata is not None:
