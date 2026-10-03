@@ -1298,7 +1298,7 @@ class MainWindow(QMainWindow):
         l=self._page_layout(
             "now_playing",
             "Now playing",
-            "Stay with the music first. Artwork, lyrics and context are primary; visualisations are there when you want them.",
+            "Artwork, lyrics and context for what is playing now.",
         )
         self.now_views = QTabWidget()
         self.rich_now = RichNowPlayingWidget(
@@ -1621,6 +1621,7 @@ class MainWindow(QMainWindow):
 
         actions=QHBoxLayout()
         self.album_wall_options_button=QPushButton("Wall options…")
+        self.album_wall_options_button.setObjectName("quietButton")
         self.album_wall_options_button.clicked.connect(self._toggle_album_wall_tools)
         self.album_wall_play_button=QPushButton("▶ Play selected")
         self.album_wall_play_button.clicked.connect(self._play_album_wall_selected)
@@ -1695,6 +1696,7 @@ class MainWindow(QMainWindow):
 
         simple=QHBoxLayout()
         self.music_map_options_button=QPushButton("Map options…")
+        self.music_map_options_button.setObjectName("quietButton")
         self.music_map_options_button.clicked.connect(self._toggle_music_map_options)
         self.music_map_play_button=QPushButton("▶ Play selected")
         self.music_map_play_button.clicked.connect(self._play_music_map_selected)
@@ -1703,6 +1705,7 @@ class MainWindow(QMainWindow):
         self.music_map_queue_button.clicked.connect(self._queue_music_map_selected)
         self.music_map_queue_button.setEnabled(False)
         self.music_map_plan_button=QPushButton("Plan a route…")
+        self.music_map_plan_button.setObjectName("secondaryButton")
         self.music_map_plan_button.clicked.connect(self._toggle_music_map_tools)
         set_help(
             self.music_map_options_button,
@@ -1754,8 +1757,10 @@ class MainWindow(QMainWindow):
         start_here=QPushButton("Start listening here")
         start_here.clicked.connect(self._journey_from_music_map)
         journey_options=QPushButton("Journey options…")
+        journey_options.setObjectName("quietButton")
         journey_options.clicked.connect(self._toggle_music_journey_options)
         close_tools=QPushButton("Hide route tools")
+        close_tools.setObjectName("quietButton")
         close_tools.clicked.connect(self._toggle_music_map_tools)
         top.addWidget(power_title)
         top.addStretch(1)
@@ -1777,12 +1782,16 @@ class MainWindow(QMainWindow):
         set_end=QPushButton("Use selected as destination")
         set_end.clicked.connect(self._music_path_set_end)
         find_path=QPushButton("Find route")
+        find_path.setObjectName("primaryButton")
         find_path.clicked.connect(self._music_path_find)
         play_path=QPushButton("▶ Play route")
+        play_path.setObjectName("secondaryButton")
         play_path.clicked.connect(self._music_path_play)
         queue_path=QPushButton("+ Queue route")
+        queue_path.setObjectName("secondaryButton")
         queue_path.clicked.connect(self._music_path_queue)
         clear_path=QPushButton("Clear")
+        clear_path.setObjectName("quietButton")
         clear_path.clicked.connect(self._music_path_clear)
         self.music_path_label=QLabel("Start —  →  Destination —")
         self.music_path_label.setStyleSheet("color:#aab0ba")
@@ -2279,7 +2288,7 @@ class MainWindow(QMainWindow):
         local.clicked.connect(self._choose_music_folder)
         directory=QPushButton("Add features…")
         directory.setObjectName("secondaryButton")
-        directory.clicked.connect(self._plugin_directory)
+        directory.clicked.connect(self._toggle_source_feature_picker)
         streams=QPushButton("My streams")
         streams.clicked.connect(self._user_streams_dialog)
         self.source_primary_button=QPushButton("Use selected")
@@ -2312,9 +2321,9 @@ class MainWindow(QMainWindow):
         actions.addWidget(self.source_primary_button)
         l.addLayout(actions)
 
-        feature_picker=QFrame()
-        feature_picker.setObjectName("pluginFeaturePicker")
-        feature_l=QHBoxLayout(feature_picker)
+        self.source_feature_picker=QFrame()
+        self.source_feature_picker.setObjectName("pluginFeaturePicker")
+        feature_l=QHBoxLayout(self.source_feature_picker)
         feature_l.setContentsMargins(14,10,14,10)
         feature_l.setSpacing(8)
         feature_text=QVBoxLayout()
@@ -2331,6 +2340,7 @@ class MainWindow(QMainWindow):
 
         self.source_feature_buttons={}
         for label,capability in (
+            ("All features",""),
             ("More music","search"),
             ("Lyrics","lyrics"),
             ("Artwork","artwork"),
@@ -2344,7 +2354,8 @@ class MainWindow(QMainWindow):
             )
             self.source_feature_buttons[capability]=button
             feature_l.addWidget(button)
-        l.addWidget(feature_picker)
+        self.source_feature_picker.hide()
+        l.addWidget(self.source_feature_picker)
 
         self.sources_list=QListWidget()
         self.sources_list.setObjectName("sourcesList")
@@ -4550,6 +4561,16 @@ class MainWindow(QMainWindow):
     def _refresh_sources_and_plugin_presence(self) -> None:
         self._refresh_sources()
         self._refresh_plugin_presence()
+
+    def _toggle_source_feature_picker(self) -> None:
+        if not hasattr(self, "source_feature_picker"):
+            return
+        visible = not self.source_feature_picker.isVisible()
+        self.source_feature_picker.setVisible(visible)
+        self.statusBar().showMessage(
+            "Choose what you want to add" if visible else "Feature picker hidden",
+            1800,
+        )
 
     def _plugin_directory(self, capability: str = ""):
         from .plugin_directory import PluginDirectoryDialog
