@@ -14,6 +14,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QSizePolicy, QWidget
 
+from .track_sigil import paint_track_sigil
 from .visualization_models import LyricFrame, MemoryMark, VisualNeighbour, describe_weather
 from .visualization_profile import VisualProfile, energy_at
 from .visualization_runtime import VisualState, resolve_visual_quality, sample_visual_state
@@ -868,17 +869,21 @@ class LivingScene(QWidget):
         )
         painter.setPen(Qt.NoPen)
         core_halo = QColor(current)
-        core_halo.setAlpha(72 + int(45 * state.glow))
+        core_halo.setAlpha(52 + int(38 * state.glow))
         painter.setBrush(core_halo)
-        painter.drawEllipse(center, 18 + state.pulse * 2.2, 18 + state.pulse * 2.2)
-        rim = QColor("#eaf5ff")
-        rim.setAlpha(158)
-        painter.setPen(QPen(rim, 1.2))
-        painter.setBrush(QColor(current.red(), current.green(), current.blue(), 232))
-        painter.drawEllipse(center, 8.5, 8.5)
-        painter.setPen(Qt.NoPen)
-        painter.setBrush(QColor("#f7fbff"))
-        painter.drawEllipse(center, 2.5, 2.5)
+        painter.drawEllipse(center, 20 + state.pulse * 2.4, 20 + state.pulse * 2.4)
+
+        # The centre reuses the same deterministic Track Sigil geometry shown in
+        # the header. Geometry is identity; glow/pulse is playback state.
+        sigil_rect = QRectF(center.x() - 15, center.y() - 15, 30, 30)
+        paint_track_sigil(
+            painter,
+            sigil_rect,
+            profile.seed,
+            current,
+            glow=0.25 + 0.45 * state.glow,
+            compact=True,
+        )
 
         for index, node in enumerate(self._neighbours):
             point = positions[node.token]
