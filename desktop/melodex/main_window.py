@@ -30,6 +30,7 @@ from .background_scheduler import BackgroundScheduler
 from .motion import MotionController, FAST_MOTION_MS, STANDARD_MOTION_MS
 from .library_scan_controller import LibraryScanController
 from .navigation_controller import NavigationController
+from .source_policy_controller import SourcePolicyController
 from .library_scan_status import (
     idle_scan_session,
     scan_activity_state,
@@ -164,6 +165,7 @@ class MainWindow(QMainWindow):
             startup_timeline=self._startup_timeline,
         )
         self._startup_mark("providers_ready")
+        self.source_policy = SourcePolicyController(self.providers)
         self.state = UserState(self.data_dir / "taste.sqlite3")
         self._startup_mark("user_state_ready")
         self.motion = MotionController(
@@ -2775,7 +2777,7 @@ class MainWindow(QMainWindow):
                     status="Not tested"
 
                 raw_capabilities=[str(x) for x in list(extension.get("capabilities") or []) if x]
-                capabilities=", ".join(self._capability_label(x) for x in raw_capabilities) or "Adds extra Melodex capabilities"
+                capabilities=", ".join(self.source_policy.capability_label(x) for x in raw_capabilities) or "Adds extra Melodex capabilities"
                 description=str(extension.get("description") or capabilities)
                 if "library_suggestions" in raw_capabilities:
                     kind="Recommendations"; icon_key="recommendation"
@@ -2895,49 +2897,7 @@ class MainWindow(QMainWindow):
 
         self._run_async(load, done, failed, priority="visible", task_name="source-config-status")
 
-    @staticmethod
-    def _capability_label(capability: str) -> str:
-        return {
-            "library_suggestions":"recommendations",
-            "artwork":"artwork",
-            "lyrics":"lyrics",
-            "context":"context",
-            "metadata":"metadata",
-            "identity":"identity",
-        }.get(str(capability or ""), str(capability or "").replace("_"," "))
-
-    def _extension_record(self, extension_id: str) -> dict[str,Any]:
-        from .plugin_onboarding import plugin_needs_setup
-        return next(
-            (
-                dict(row)
-                for row in self.providers.extensions(cached_config=True)
-                if str(row.get("id") or "") == str(extension_id or "")
-            ),
-            {},
-        )
-
-    def _plugin_needs_setup_here(self, plugin_id: str) -> bool:
-        if not plugin_id:
-            return False
-        if plugin_id.startswith("extension:"):
-            row=self._extension_record(plugin_id.split(":",1)[1])
-            status=dict(row.get("configuration_status") or {})
-            return bool(
-                status.get("declared")
-                and status.get("ready") is False
-            )
-        provider=self.providers.providers.get(plugin_id)
-        if provider is None or not provider.info.configuration:
-            return False
-        status=self.providers.plugin_config.cached_status(
-            plugin_id,
-            provider.info.configuration,
-        )
-        return status.get("ready") is False
-
     def _source_selection_changed(self) -> None:
-        from .plugin_onboarding import plugin_needs_setup
         if hasattr(self, "responsiveness"):
             self.responsiveness.mark_action("sources:selection")
         item=self.sources_list.currentItem() if hasattr(self,"sources_list") else None
@@ -2950,69 +2910,11 @@ class MainWindow(QMainWindow):
             self.source_hint.setVisible(enabled)
         if not hasattr(self,"source_hint"):
             return
-        if not key:
-            self.source_primary_button.setText("Use selected")
-            return
 
-        if key=="local":
-            self.source_primary_button.setText("Add music")
-            self.source_hint.setText(
-                "This computer · add another folder here, or browse the collection in My Music."
-            )
-            return
-        if key=="jamendo":
-            if self._plugin_needs_setup_here(key) or not str(self.providers.settings.get("jamendo_client_id","")).strip():
-                self.source_primary_button.setText("Set up Jamendo")
-                self.source_hint.setText(
-                    "Jamendo is an optional online source. Set it up once, then use it from Explore → Search everything."
-                )
-            else:
-                self.source_primary_button.setText("Search Jamendo")
-                self.source_hint.setText(
-                    "Jamendo is a music source. Use it in Explore → Search everything; Melodex will open Search already filtered to Jamendo."
-                )
-            return
-        if key=="streams":
-            self.source_primary_button.setText("Manage streams")
-            self.source_hint.setText(
-                "My streams contains direct radio/audio URLs you add yourself."
-            )
-            return
-
-        if key.startswith("extension:"):
-            extension_id=key.split(":",1)[1]
-            row=self._extension_record(extension_id)
-            capabilities=[str(x) for x in list(row.get("capabilities") or []) if x]
-            if self._plugin_needs_setup_here(key):
-                self.source_primary_button.setText("Set up plugin")
-                self.source_hint.setText(
-                    "This plugin is installed but needs setup before Melodex can use it."
-                )
-                return
-            self.source_primary_button.setText("Use plugin")
-            labels=", ".join(self._capability_label(x) for x in capabilities) or "extra capabilities"
-            self.source_hint.setText(
-                f"This plugin provides {labels}. Choose Use plugin and Melodex will open the feature where it participates."
-            )
-            return
-
-        provider=self.providers.providers.get(key)
-        if self._plugin_needs_setup_here(key):
-            self.source_primary_button.setText("Set up source")
-            self.source_hint.setText(
-                "This provider is installed but needs setup before it can search or play."
-            )
-        elif provider is not None and "search" in list(provider.info.capabilities or []):
-            self.source_primary_button.setText("Search this source")
-            self.source_hint.setText(
-                "This provider is used from Explore → Search everything. The button will open Search already filtered to this source."
-            )
-        else:
-            self.source_primary_button.setText("Use source")
-            self.source_hint.setText(
-                "This provider is active. Choose Use source to open the closest matching Melodex feature."
-            )
-
+        presentation=self.source_policy.selection_presentation(key)
+        self.source_primary_button.setText(presentation.button_text)
+        if presentation.hint:
+            self.source_hint.setText(presentation.hint)
     def _open_provider_search(self, provider_id: str) -> None:
         self.open_page("discover")
         self._refresh_source_combo()
@@ -3028,7 +2930,7 @@ class MainWindow(QMainWindow):
         )
 
     def _use_extension(self, extension_id: str) -> None:
-        row=self._extension_record(extension_id)
+        row=self.source_policy.extension_record(extension_id)
         capabilities=[str(x) for x in list(row.get("capabilities") or []) if x]
         name=str(row.get("name") or extension_id)
 
@@ -3048,7 +2950,7 @@ class MainWindow(QMainWindow):
             return
         if any(cap in capabilities for cap in ("lyrics","context","metadata","identity")):
             self.open_page("now_playing")
-            labels=", ".join(self._capability_label(x) for x in capabilities)
+            labels=", ".join(self.source_policy.capability_label(x) for x in capabilities)
             self.statusBar().showMessage(
                 f"{name} provides {labels} automatically for the current track",
                 6500,
@@ -3062,40 +2964,24 @@ class MainWindow(QMainWindow):
         )
 
     def _source_primary_action(self) -> None:
-        from .plugin_onboarding import plugin_needs_setup
         item=self.sources_list.currentItem() if hasattr(self,"sources_list") else None
         key=str(item.data(Qt.UserRole) or "") if item else ""
-        if not key:
-            return
-        if key=="local":
+        action=self.source_policy.primary_action(key)
+
+        if action.kind=="choose_music_folder":
             self._choose_music_folder()
-            return
-        if key=="jamendo":
-            if self._plugin_needs_setup_here(key) or not str(self.providers.settings.get("jamendo_client_id","")).strip():
-                self._jamendo_settings()
-            else:
-                self._open_provider_search(key)
-            return
-        if key=="streams":
+        elif action.kind=="jamendo_settings":
+            self._jamendo_settings()
+        elif action.kind=="manage_streams":
             self._user_streams_dialog()
-            return
-        if key.startswith("extension:"):
-            extension_id=key.split(":",1)[1]
-            if self._plugin_needs_setup_here(key):
-                self._configure_selected_plugin()
-            else:
-                self._use_extension(extension_id)
-            return
-
-        if self._plugin_needs_setup_here(key):
+        elif action.kind=="configure_plugin":
             self._configure_selected_plugin()
-            return
-        provider=self.providers.providers.get(key)
-        if provider is not None and "search" in list(provider.info.capabilities or []):
-            self._open_provider_search(key)
-        else:
+        elif action.kind=="use_extension":
+            self._use_extension(action.target)
+        elif action.kind=="open_provider_search":
+            self._open_provider_search(action.target)
+        elif action.kind=="test_plugin":
             self._test_selected_plugin()
-
     def _move_source(self, delta):
         item=self.sources_list.currentItem()
         if not item:return
@@ -4378,52 +4264,21 @@ class MainWindow(QMainWindow):
         if ok:
             self.providers.set_jamendo_client_id(value.strip()); self.statusBar().showMessage("Jamendo source updated",3000)
 
-    def _active_extension_names(self, *capabilities: str) -> list[str]:
-        wanted={str(value) for value in capabilities if str(value)}
-        names=[]
-        for row in self.providers.extensions(cached_config=True):
-            if not bool(row.get("enabled",True)):
-                continue
-            config=dict(row.get("configuration_status") or {})
-            if config.get("declared") and config.get("ready") is False:
-                continue
-            caps={str(value) for value in list(row.get("capabilities") or []) if value}
-            if wanted and not (wanted & caps):
-                continue
-            name=str(row.get("name") or row.get("id") or "").strip()
-            if name:
-                names.append(name)
-        return names
-
-    def _searchable_source_names(self) -> list[str]:
-        from .plugin_onboarding import plugin_needs_setup
-        names=[]
-        for pid in self.providers.searchable_provider_ids():
-            provider=self.providers.providers.get(pid)
-            if provider is None:
-                continue
-            if self._plugin_needs_setup_here(pid):
-                continue
-            name=str(provider.info.name or pid).replace(" (reference provider)","").strip()
-            if name:
-                names.append(name)
-        return names
-
     def _refresh_plugin_presence(self) -> None:
         if hasattr(self,"search_plugin_presence"):
-            self.search_plugin_presence.set_items(self._searchable_source_names())
+            self.search_plugin_presence.set_items(self.source_policy.searchable_source_names())
         if hasattr(self,"artwork_plugin_presence"):
             self.artwork_plugin_presence.set_items(
-                self._active_extension_names("artwork")
+                self.source_policy.active_extension_names("artwork")
             )
         if hasattr(self,"recommendation_plugin_presence"):
             self.recommendation_plugin_presence.set_items(
-                self._active_extension_names("library_suggestions","recommendations")
+                self.source_policy.active_extension_names("library_suggestions","recommendations")
             )
         if hasattr(self,"rich_now"):
             self.rich_now.set_plugin_presence(
-                lyrics=self._active_extension_names("lyrics"),
-                context=self._active_extension_names("context","metadata","identity"),
+                lyrics=self.source_policy.active_extension_names("lyrics"),
+                context=self.source_policy.active_extension_names("context","metadata","identity"),
             )
 
     def _refresh_sources_and_plugin_presence(self) -> None:
@@ -4582,13 +4437,8 @@ class MainWindow(QMainWindow):
 
     def _selected_plugin_id(self) -> str:
         item=self.sources_list.currentItem()
-        if not item:
-            return ""
-        value=str(item.data(Qt.UserRole) or "")
-        if value.startswith("extension:"):
-            return value.split(":",1)[1]
-        return value if value not in {"local", "jamendo", "streams"} else ""
-
+        value=str(item.data(Qt.UserRole) or "") if item else ""
+        return self.source_policy.selected_plugin_id(value)
     def _test_all_plugins(self):
         plugin_ids=[
             pid for pid in self.providers.provider_order()
