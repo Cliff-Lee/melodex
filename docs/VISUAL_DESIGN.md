@@ -142,9 +142,16 @@ shape amplitude, radius, glow and edge detail; it should feel organic rather
 than like a static radar chart.
 
 ### P13f — Memory Atlas
-Every spatial encoding must be explainable.  Time should be obvious; sessions
+Every spatial encoding must be explainable. Time should be obvious; sessions
 and repeated listening should form readable clusters/islands; chronological
 paths should reveal how listening moved.
+
+Current public semantics are:
+- left → right = chronological time
+- height = average time of day
+- colour reinforces daypart
+- size = play count
+- width = grouped listening span
 
 ### P13g — visual information architecture
 Visuals are presented by purpose rather than as one flat experiment list.
