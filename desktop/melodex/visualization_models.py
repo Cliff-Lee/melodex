@@ -46,6 +46,7 @@ class VisualNeighbour:
     relation: str
     x: float
     y: float
+    strength: float = 0.5
 
 
 def build_constellation(
@@ -54,18 +55,30 @@ def build_constellation(
     *,
     limit: int = 24,
 ) -> tuple[VisualNeighbour, ...]:
-    """Lay out queue/history neighbours deterministically around the current track.
+    """Lay out queue/history neighbours as an organic musical neighbourhood.
 
-    Candidates may carry an integer ``_visual_token`` that the UI can map back
-    to its private playback record. The renderer receives only display fields.
+    The renderer receives only display fields and a normalized relationship
+    strength. Stronger relationships sit nearer the current track while a
+    deterministic golden-angle layout avoids the old equal-radius spoke wheel.
+    Candidates may carry an integer visual token that the UI privately maps
+    back to its playback record.
     """
 
     current = current if isinstance(current, Mapping) else {}
     current_artist = _key(current.get("artist"))
     current_album = _key(current.get("album"))
     current_key = _identity(current)
-    clean: list[tuple[int, dict[str, str], str]] = []
+    clean: list[tuple[int, dict[str, str], str, float]] = []
     seen = {current_key} if current_key else set()
+
+    relation_strength = {
+        "Same album": 0.96,
+        "Same artist": 0.88,
+        "Up next": 0.76,
+        "Played earlier": 0.66,
+        "Recently heard": 0.54,
+    }
+
     for ordinal, raw in enumerate(candidates):
         if not isinstance(raw, Mapping):
             continue
@@ -78,32 +91,51 @@ def build_constellation(
             token = int(raw.get("_visual_token", ordinal))
         except (TypeError, ValueError, OverflowError):
             token = ordinal
+
         artist = _text(track.get("artist"))
         title = _text(track.get("title"))
         album = _text(track.get("album"))
+        same_album = bool(current_album and _key(album) == current_album)
+        same_artist = bool(current_artist and _key(artist) == current_artist)
         explicit = _text(raw.get("_visual_relation"))
+
         if explicit in {"Up next", "Played earlier"}:
             relation = explicit
-        elif current_album and _key(album) == current_album:
+        elif same_album:
             relation = "Same album"
-        elif current_artist and _key(artist) == current_artist:
+        elif same_artist:
             relation = "Same artist"
         else:
             relation = "Recently heard"
+
+        strength = relation_strength[relation]
+        if same_album:
+            strength = max(strength, relation_strength["Same album"])
+        elif same_artist:
+            strength = max(strength, relation_strength["Same artist"])
+
+        seed = int.from_bytes(_digest(key)[:4], "big")
+        variation = ((seed % 1001) / 1000.0 - 0.5) * 0.06
+        strength = max(0.40, min(0.99, strength + variation))
         item = {"artist": artist, "title": title, "album": album}
-        clean.append((token, item, relation))
+        clean.append((token, item, relation, strength))
 
     clean = clean[: max(0, min(24, int(limit)))]
     if not clean:
         return ()
+
     phase = int.from_bytes(_digest(current_key or "melodex")[:4], "big") / 2**32 * math.tau
-    count = len(clean)
+    golden_angle = math.pi * (3.0 - math.sqrt(5.0))
     result: list[VisualNeighbour] = []
-    for index, (token, track, relation) in enumerate(clean):
+    for index, (token, track, relation, strength) in enumerate(clean):
         seed = int.from_bytes(_digest("\x1f".join((track["artist"], track["title"])))[:4], "big")
-        angle = phase + math.tau * index / count
-        wobble = (seed % 1000) / 1000.0
-        radius = 0.28 + 0.13 * wobble
+        jitter = (seed % 1000) / 1000.0
+        angle = phase + index * golden_angle + (jitter - 0.5) * 0.68
+
+        radius = 0.15 + (1.0 - strength) * 0.48 + 0.035 * jitter
+        x = 0.5 + math.cos(angle) * radius
+        y = 0.5 + math.sin(angle) * radius * 0.72
+
         result.append(
             VisualNeighbour(
                 token=token,
@@ -111,8 +143,9 @@ def build_constellation(
                 title=track["title"],
                 album=track["album"],
                 relation=relation,
-                x=max(0.08, min(0.92, 0.5 + radius * math.cos(angle))),
-                y=max(0.10, min(0.90, 0.5 + radius * 0.70 * math.sin(angle))),
+                x=max(0.07, min(0.93, x)),
+                y=max(0.09, min(0.91, y)),
+                strength=strength,
             )
         )
     return tuple(result)
