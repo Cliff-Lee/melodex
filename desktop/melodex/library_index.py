@@ -742,6 +742,36 @@ class LocalLibraryIndex:
         directory_rows: dict[str, list[tuple[str, str, int]]] = {
             root_id: [] for root_id in available_ids if root_id in root_by_id
         }
+        preserve_dirs: dict[str, set[str]] = {
+            root_id: set() for root_id in available_ids if root_id in root_by_id
+        }
+        preserve_counts: dict[str, int] = {
+            root_id: 0 for root_id in available_ids if root_id in root_by_id
+        }
+        for row in list((snapshot or {}).get("preserve_directories") or []):
+            if not isinstance(row, dict):
+                continue
+            root_path = str(row.get("root_path") or "")
+            directory_path = str(row.get("path") or "")
+            if not root_path or not directory_path:
+                continue
+            root_id = _root_id(root_path)
+            root = root_by_id.get(root_id)
+            if root is None or root_id not in available_ids:
+                continue
+            try:
+                relative_dir = os.path.relpath(
+                    _canonical_path(directory_path),
+                    _canonical_path(root),
+                )
+            except ValueError:
+                continue
+            preserve_dirs.setdefault(root_id, set()).add(relative_dir)
+            preserve_counts[root_id] = preserve_counts.get(root_id, 0) + max(
+                0,
+                int(row.get("file_count") or 0),
+            )
+
         for row in list((snapshot or {}).get("directory_manifests") or []):
             if not isinstance(row, dict):
                 continue
@@ -816,6 +846,7 @@ class LocalLibraryIndex:
         write_batches = 0
         delete_batches = 0
         max_batch_rows = 0
+        tracks_persisted_total = 0
 
         with self._connect() as db:
             db.execute("BEGIN IMMEDIATE")
@@ -874,8 +905,21 @@ class LocalLibraryIndex:
                     }
 
                     rows = grouped.get(root_id, [])
-                    incoming_paths = {relative_path for relative_path, _, _, _ in rows}
-                    removed_paths = set(existing) - incoming_paths
+                    incoming_paths = {
+                        relative_path for relative_path, _, _, _ in rows
+                    }
+                    preserved = preserve_dirs.get(root_id, set())
+                    preserved_existing_paths = {
+                        relative_path
+                        for relative_path in existing
+                        if os.path.dirname(relative_path) in preserved
+                    }
+                    tracks_reused += len(preserved_existing_paths)
+                    removed_paths = (
+                        set(existing)
+                        - incoming_paths
+                        - preserved_existing_paths
+                    )
                     if removed_paths:
                         delete_batch: list[tuple[str, str]] = []
                         for relative_path in removed_paths:
@@ -1047,13 +1091,24 @@ class LocalLibraryIndex:
                             ],
                         )
 
+                    current_track_count = int(
+                        db.execute(
+                            """
+                            SELECT COUNT(*)
+                            FROM tracks
+                            WHERE root_id = ?
+                            """,
+                            (root_id,),
+                        ).fetchone()[0]
+                    )
+                    tracks_persisted_total += current_track_count
                     db.execute(
                         """
                         UPDATE roots
                         SET last_scan_at = ?, last_track_count = ?
                         WHERE root_id = ?
                         """,
-                        (now, len(rows), root_id),
+                        (now, current_track_count, root_id),
                     )
                 if cancelled is not None and cancelled():
                     db.rollback()
@@ -1074,10 +1129,7 @@ class LocalLibraryIndex:
 
         return {
             "roots_persisted": len(available_ids),
-            "tracks_persisted": sum(
-                len(rows) for root_id, rows in grouped.items()
-                if root_id in available_ids
-            ),
+            "tracks_persisted": int(tracks_persisted_total),
             "tracks_written": tracks_written,
             "tracks_reused": tracks_reused,
             "tracks_deleted": tracks_deleted,
@@ -1088,6 +1140,10 @@ class LocalLibraryIndex:
             "directory_manifests_persisted": sum(
                 len(rows) for rows in directory_rows.values()
             ),
+            "preserved_directories": sum(
+                len(rows) for rows in preserve_dirs.values()
+            ),
+            "preserved_tracks": sum(preserve_counts.values()),
             "roots_unavailable": sum(
                 1 for row in state_rows
                 if not bool(row.get("available"))
