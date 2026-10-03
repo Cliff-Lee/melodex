@@ -13,7 +13,8 @@ from PySide6.QtWidgets import (
     QSlider, QVBoxLayout, QWidget,
 )
 
-from .visualization_models import LyricFrame, MemoryMark, VisualNeighbour, describe_weather, lyric_frame
+from .lyrics_state import LyricsDocument, build_lyrics_document
+from .visualization_models import MemoryMark, VisualNeighbour, describe_weather
 from .visualization_profile import VisualProfile, build_visual_profile
 from .visualization_scene import LivingScene
 from .visualizer_plugins import installed_visualizers, install_visualizer_file
@@ -208,7 +209,7 @@ class LivingCanvasView(QWidget):
         self._duration_ms = 0
         self._position_ms = 0
         self._syncing_slider = False
-        self._lyrics: dict[str, Any] = {}
+        self._lyrics = LyricsDocument.empty()
         self._visualizer_dir = Path(visualizer_dir or Path.home() / ".melodex" / "visualizers")
         self._plugins: dict[str, Any] = {}
         self._neighbours: tuple[VisualNeighbour, ...] = ()
@@ -305,8 +306,8 @@ class LivingCanvasView(QWidget):
 
     def set_track(self, track: dict[str, Any], analysis: Any = None) -> None:
         self._track = dict(track or {})
-        self._lyrics = {}
-        self.scene.set_lyrics(LyricFrame("", "", "", False, ""))
+        self._lyrics = LyricsDocument.empty()
+        self.scene.set_lyrics(self._lyrics.frame(0, 0))
         self._profile = build_visual_profile(self._track, analysis)
         self.scene.set_profile(self._profile)
         self.journey.set_curve(self._profile.energy_curve)
@@ -357,7 +358,7 @@ class LivingCanvasView(QWidget):
         self.scene.set_window_minimized(minimized)
 
     def set_lyrics(self, lyrics: object) -> None:
-        self._lyrics = dict(lyrics) if isinstance(lyrics, dict) else {}
+        self._lyrics = build_lyrics_document(lyrics)
         self._update_lyric_frame()
         self._update_status()
 
@@ -405,8 +406,7 @@ class LivingCanvasView(QWidget):
         self._update_lyric_frame()
 
     def _update_lyric_frame(self) -> None:
-        frame = lyric_frame(self._lyrics, self._position_ms, self._duration_ms)
-        self.scene.set_lyrics(frame)
+        self.scene.set_lyrics(self._lyrics.frame(self._position_ms, self._duration_ms))
 
     def _mode_changed(self, _index: int) -> None:
         data = self.mode_combo.currentData()
