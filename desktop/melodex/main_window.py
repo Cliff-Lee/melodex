@@ -224,7 +224,12 @@ class MainWindow(QMainWindow):
         self._prefetch_sequence = 0
         self._prefetch_delay_ms = 350
         self._source_config_refresh_in_progress = False
-        self.navigation = NavigationController(self, refresh_delay_ms=16)
+        self.navigation = NavigationController(
+            self,
+            refresh_delay_ms=16,
+            settle_duration_ms=FAST_MOTION_MS,
+            schedule=QTimer.singleShot,
+        )
         # Compatibility aliases for focused GUI probes. The controller owns
         # these mutable collections and timing values.
         self._page_refresh_delay_ms = self.navigation.refresh_delay_ms
