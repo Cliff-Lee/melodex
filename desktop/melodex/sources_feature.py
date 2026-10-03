@@ -166,7 +166,9 @@ class SourcesFeature(QWidget):
         actions = QHBoxLayout()
         local = QPushButton("+ Add my music")
         local.setObjectName("primaryButton")
-        local.clicked.connect(self.musicFolderRequested.emit)
+        local.clicked.connect(
+            lambda _checked=False: self.musicFolderRequested.emit()
+        )
         directory = QPushButton("Add features…")
         directory.setObjectName("secondaryButton")
         directory.clicked.connect(self.toggle_feature_picker)
@@ -292,7 +294,9 @@ class SourcesFeature(QWidget):
         ext = QPushButton("Install .mdxplugin…")
         ext.clicked.connect(self.install_extension)
         bridge = QPushButton("Provider Bridge…")
-        bridge.clicked.connect(self.bridgeRequested.emit)
+        bridge.clicked.connect(
+            lambda _checked=False: self.bridgeRequested.emit()
+        )
         provider_row.addWidget(jam)
         provider_row.addWidget(inst)
         provider_row.addWidget(ext)
@@ -749,7 +753,6 @@ class SourcesFeature(QWidget):
         )
         if ok:
             self.providers.set_jamendo_client_id(value.strip())
-            self.refresh()
             self._status("Jamendo source updated", 3000)
 
     def toggle_feature_picker(self) -> None:
