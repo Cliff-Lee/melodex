@@ -188,6 +188,17 @@ class JourneyWorkspace(QObject):
     def refresh_journeys(self) -> None:
         self.archive.refresh()
 
+    def refresh_knowledge_graph(self) -> None:
+        if not self.music_map_built or not hasattr(self, "music_map"):
+            return
+        from .music_knowledge import build_knowledge_graph
+
+        ref_map = dict(self.music_map.ref_map or {})
+        knowledge = self.knowledge.snapshot(ref_map)
+        self.music_map.set_knowledge_graph(
+            build_knowledge_graph(ref_map, knowledge)
+        )
+
     def open_designer(self) -> None:
         self.navigationRequested.emit("music_map")
         if self.music_map_built:
