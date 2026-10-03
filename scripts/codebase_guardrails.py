@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # Baseline is the v0.7.11 main_window.py snapshot from P12a. Lower this number
 # as P12c extracts responsibilities; never raise it to accommodate new work.
 MAX_LINES = {
-    "desktop/melodex/main_window.py": 7469,
+    "desktop/melodex/main_window.py": 7458,
 }
 
 
