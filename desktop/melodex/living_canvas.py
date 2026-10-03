@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
 )
 
 from .lyrics_state import LyricsDocument, build_lyrics_document
+from .track_sigil import TrackSigilBadge
 from .visualization_models import MemoryMark, VisualNeighbour, describe_weather
 from .visualization_profile import VisualProfile, build_visual_profile
 from .visualization_scene import LivingScene
@@ -191,16 +192,35 @@ class LivingCanvasView(QWidget):
     neighbourActivated = Signal(int)
     neighbourPreviewRequested = Signal(int)
 
+    _MODE_GROUPS = (
+        (
+            "WATCH",
+            (
+                ("Profile Pulse", "living"),
+                ("Lyric Flow", "lyrics"),
+                ("Sonic Weather", "weather"),
+                ("Album World", "album_world"),
+                ("Minimal", "minimal"),
+            ),
+        ),
+        (
+            "EXPLORE",
+            (
+                ("Constellation", "constellation"),
+                ("Memory Atlas", "memory"),
+                ("Musical Journey", "journey"),
+            ),
+        ),
+    )
     _BUILTIN_MODES = (
         ("Profile Pulse", "living"),
-        ("Song Fingerprint", "fingerprint"),
-        ("Musical Journey", "journey"),
-        ("Constellation", "constellation"),
         ("Lyric Flow", "lyrics"),
-        ("Album World", "album_world"),
         ("Sonic Weather", "weather"),
-        ("Memory Atlas", "memory"),
+        ("Album World", "album_world"),
         ("Minimal", "minimal"),
+        ("Constellation", "constellation"),
+        ("Memory Atlas", "memory"),
+        ("Musical Journey", "journey"),
     )
 
     def __init__(self, parent=None, visualizer_dir: Path | None = None):
@@ -230,17 +250,17 @@ class LivingCanvasView(QWidget):
 
         heading = QHBoxLayout()
         heading.setSpacing(8)
-        title = QLabel("Every song has a place")
+        title = QLabel("Visuals")
         title.setStyleSheet("font-size:21px;font-weight:700;color:#f3f6fb;letter-spacing:.2px")
         heading.addWidget(title)
         heading.addStretch(1)
         self.mode_combo = QComboBox(self)
-        self.mode_combo.setAccessibleName("Living Canvas visualizer mode")
-        self.mode_combo.setToolTip("Choose a visual scene for this track.")
-        for label, mode in self._BUILTIN_MODES:
-            self.mode_combo.addItem(label, mode)
+        self.mode_combo.setAccessibleName("Melodex visual experience")
+        self.mode_combo.setToolTip(
+            "Watch music-reactive scenes or Explore your listening and nearby tracks."
+        )
         self.mode_combo.setMinimumHeight(36)
-        self.mode_combo.setMinimumWidth(148)
+        self.mode_combo.setMinimumWidth(172)
         heading.addWidget(self.mode_combo)
 
         self.memory_scale = QComboBox(self)
@@ -276,11 +296,27 @@ class LivingCanvasView(QWidget):
         heading.addWidget(self.remove_button)
         layout.addLayout(heading)
 
+        track_row = QHBoxLayout()
+        track_row.setContentsMargins(0, 0, 0, 0)
+        track_row.setSpacing(9)
+        self.track_sigil = TrackSigilBadge(self)
+        track_row.addWidget(self.track_sigil, 0, Qt.AlignVCenter)
+
+        track_text = QVBoxLayout()
+        track_text.setContentsMargins(0, 0, 0, 0)
+        track_text.setSpacing(1)
         self.track_label = QLabel("Waiting for music")
         self.track_label.setTextFormat(Qt.RichText)
         self.track_label.setStyleSheet("font-size:13px;color:#c8ccd2;padding-left:2px")
         self.track_label.setWordWrap(True)
-        layout.addWidget(self.track_label)
+        track_text.addWidget(self.track_label)
+        self.sigil_caption = QLabel("TRACK SIGIL · stable recording identity")
+        self.sigil_caption.setStyleSheet(
+            "font-size:9px;font-weight:600;letter-spacing:.8px;color:#75869a;padding-left:2px"
+        )
+        track_text.addWidget(self.sigil_caption)
+        track_row.addLayout(track_text, 1)
+        layout.addLayout(track_row)
 
         self.scene = LivingScene(self)
         self.scene.neighbourSelected.connect(self._neighbour_selected)
@@ -288,7 +324,7 @@ class LivingCanvasView(QWidget):
         self.scene.qualityAdjusted.connect(self._quality_adjusted)
         layout.addWidget(self.scene, 1)
 
-        self.status = QLabel("The same track returns to the same visual fingerprint.")
+        self.status = QLabel("Choose a Watch scene or Explore map.")
         self.status.setWordWrap(True)
         self.status.setStyleSheet("color:#a6b2c1;font-size:12px;padding-left:2px")
         layout.addWidget(self.status)
@@ -320,6 +356,10 @@ class LivingCanvasView(QWidget):
         self.scene.set_lyrics(self._lyrics.frame(0, 0))
         self._profile = build_visual_profile(self._track, analysis)
         self.scene.set_profile(self._profile)
+        self.track_sigil.set_profile(self._profile)
+        self.sigil_caption.setText(
+            f"TRACK SIGIL · {self._profile.fingerprint[:12].upper()} · stable recording identity"
+        )
         if self._lyric_flow_scene is not None:
             self._lyric_flow_scene.set_profile(self._profile)
             self._lyric_flow_scene.set_lyrics(self._lyrics.frame(0, 0))
@@ -362,6 +402,7 @@ class LivingCanvasView(QWidget):
         self._accent_color = QColor(color)
         self.scene.set_accent_color(color)
         self.journey.set_accent_color(color)
+        self.track_sigil.set_accent_color(color)
         if self._lyric_flow_scene is not None:
             self._lyric_flow_scene.set_accent_color(color)
 
@@ -557,7 +598,9 @@ class LivingCanvasView(QWidget):
                 "the geometry remains deterministic for this recording."
             )
         elif mode == "fingerprint":
-            self.status.setText(f"Stable track fingerprint · {profile.fingerprint[:12].upper()} · repeatable for this recording.")
+            self.status.setText(
+                f"Track Sigil · {profile.fingerprint[:12].upper()} · identity-only compatibility view."
+            )
         elif mode == "journey":
             self.status.setText("Cached Flow energy across the recording. Click or drag the contour below to seek.") if profile.energy_curve else self.status.setText("No cached Flow contour is available yet. Seeking still works from the position control below.")
         elif mode == "constellation":
@@ -590,20 +633,61 @@ class LivingCanvasView(QWidget):
             recipe = self._plugins.get(self._active_plugin_id)
             self.status.setText((recipe.description or recipe.name) + "  ·  validated local scene recipe") if recipe else self.status.setText("This visualizer recipe could not be loaded.")
 
+    def _add_mode_section(self, label: str) -> None:
+        self.mode_combo.addItem(label)
+        index = self.mode_combo.count() - 1
+        model = self.mode_combo.model()
+        item = model.item(index) if hasattr(model, "item") else None
+        if item is not None:
+            item.setEnabled(False)
+            item.setSelectable(False)
+            item.setForeground(QColor("#77889d"))
+
     def _reload_plugins(self, select_id: str = "") -> None:
         self._plugins = {recipe.id: recipe for recipe, _path in installed_visualizers(self._visualizer_dir)}
         old = self.mode_combo.blockSignals(True)
         current = self.mode_combo.currentData()
         self.mode_combo.clear()
-        for label, mode in self._BUILTIN_MODES:
-            self.mode_combo.addItem(label, mode)
-        for plugin_id, recipe in self._plugins.items():
-            self.mode_combo.addItem(recipe.name, ("plugin", plugin_id))
-        target_id = select_id or (current[1] if isinstance(current, tuple) and current[0] == "plugin" else "")
+
+        for section, modes in self._MODE_GROUPS:
+            self._add_mode_section(section)
+            for label, mode in modes:
+                self.mode_combo.addItem(label, mode)
+
+        if self._plugins:
+            self._add_mode_section("PERSONAL")
+            for plugin_id, recipe in self._plugins.items():
+                self.mode_combo.addItem(recipe.name, ("plugin", plugin_id))
+
+        target = current
+        target_id = select_id or (
+            current[1]
+            if isinstance(current, tuple) and current[0] == "plugin"
+            else ""
+        )
         if target_id:
-            index = next((i for i in range(self.mode_combo.count()) if self.mode_combo.itemData(i) == ("plugin", target_id)), -1)
-            if index >= 0:
-                self.mode_combo.setCurrentIndex(index)
+            target = ("plugin", target_id)
+        if target is None:
+            target = "living"
+
+        index = next(
+            (
+                i
+                for i in range(self.mode_combo.count())
+                if self.mode_combo.itemData(i) == target
+            ),
+            -1,
+        )
+        if index < 0:
+            index = next(
+                (
+                    i
+                    for i in range(self.mode_combo.count())
+                    if self.mode_combo.itemData(i) == "living"
+                ),
+                0,
+            )
+        self.mode_combo.setCurrentIndex(index)
         self.mode_combo.blockSignals(old)
         self._mode_changed(self.mode_combo.currentIndex())
 
