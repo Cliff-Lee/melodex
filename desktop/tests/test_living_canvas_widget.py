@@ -144,11 +144,22 @@ def test_canvas_modes_plugins_and_analysis_refresh_keep_lyrics(tmp_path):
     recipe, _ = install_visualizer_file(sample, tmp_path / "visualizers")
     view = LivingCanvasView(visualizer_dir=tmp_path / "visualizers")
     view.set_track({"artist": "Example", "title": "Test", "duration": 100}, None)
-    modes = [view.mode_combo.itemData(i) for i in range(9)]
-    assert modes == [
-        "living", "fingerprint", "journey", "constellation", "lyrics",
-        "album_world", "weather", "memory", "minimal",
+    modes = [
+        view.mode_combo.itemData(i)
+        for i in range(view.mode_combo.count())
+        if isinstance(view.mode_combo.itemData(i), str)
     ]
+    assert modes == [
+        "living", "lyrics", "weather", "album_world", "minimal",
+        "constellation", "memory", "journey",
+    ]
+    assert "fingerprint" not in modes
+    sections = [
+        view.mode_combo.itemText(i)
+        for i in range(view.mode_combo.count())
+        if view.mode_combo.itemData(i) is None
+    ]
+    assert sections[:2] == ["WATCH", "EXPLORE"]
     plugin_index = next(i for i in range(view.mode_combo.count()) if view.mode_combo.itemData(i) == ("plugin", recipe.id))
     view.mode_combo.setCurrentIndex(plugin_index)
     assert view.active_mode == "plugin"
