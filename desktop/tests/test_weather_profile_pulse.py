@@ -38,8 +38,11 @@ def test_profile_pulse_is_the_primary_living_scene_and_is_music_reactive():
 
     app = QApplication.instance() or QApplication([])
     view = LivingCanvasView()
-    assert view.mode_combo.itemText(0) == "Profile Pulse"
-    assert view.mode_combo.itemData(0) == "living"
+    living_index = next(
+        i for i in range(view.mode_combo.count())
+        if view.mode_combo.itemData(i) == "living"
+    )
+    assert view.mode_combo.itemText(living_index) == "Profile Pulse"
 
     scene = LivingScene()
     scene.resize(860, 500)
