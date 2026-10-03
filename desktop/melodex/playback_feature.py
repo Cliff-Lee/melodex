@@ -1023,7 +1023,7 @@ class PlaybackFeature(QObject):
     
         endpoint=str(settings.endpoint or LLMClient.default_endpoint(settings.provider))
         answer=QMessageBox.question(
-            self,
+            self._dialog_parent(),
             "Send lyrics for translation?",
             "This sends the currently displayed lyric text to your configured LLM "
             f"endpoint for this one request:\n\n{endpoint}\n\n"
