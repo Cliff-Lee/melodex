@@ -1297,7 +1297,7 @@ class MainWindow(QMainWindow):
         l=self._page_layout(
             "for_you",
             "Tune your listening",
-            "These controls are optional. Start simple, then adjust how long the session lasts and how far Melodex should move from familiar music.",
+            "Choose how long to listen and how adventurous the session should be.",
         )
 
         row=QHBoxLayout()
@@ -1355,18 +1355,18 @@ class MainWindow(QMainWindow):
 
         self.taste_label=QLabel()
         self.taste_label.setWordWrap(True)
-        self.taste_label.setStyleSheet("color:#8490a1")
+        self.taste_label.setObjectName("subtleText")
         l.addWidget(self.taste_label)
 
-        intel_title=QLabel("More ways to explore")
+        intel_title=QLabel("From your library")
         intel_title.setStyleSheet("font-size:18px;font-weight:650;margin-top:10px")
         l.addWidget(intel_title)
 
         intel_help=QLabel(
-            "These suggestions use your own library and listening history. Audio analysis stays on this computer."
+            "Local suggestions based on what you have and what you play."
         )
         intel_help.setWordWrap(True)
-        intel_help.setStyleSheet("color:#aab0ba")
+        intel_help.setObjectName("mutedText")
         l.addWidget(intel_help)
 
         self.recommendation_plugin_presence=FeaturePresenceBar(
@@ -1427,7 +1427,7 @@ class MainWindow(QMainWindow):
         l=self._page_layout(
             "discover",
             "Discover",
-            "Search all connected music sources. One slow or unavailable source will no longer stop the rest of your search.",
+            "Search your library and connected sources.",
         )
         row=QHBoxLayout()
         self.search_box=QLineEdit()
@@ -1936,7 +1936,7 @@ class MainWindow(QMainWindow):
         l=self._page_layout(
             "journeys",
             "Journeys",
-            "A journey is a listening route that develops gradually instead of shuffling randomly. Save designs you want to reuse; run history stays private on this computer.",
+            "Build a listening route that changes gradually as it plays.",
         )
 
         top=QHBoxLayout()
@@ -1967,10 +1967,10 @@ class MainWindow(QMainWindow):
         saved_l=QVBoxLayout(saved)
         saved_l.setContentsMargins(0,10,0,0)
         saved_help=QLabel(
-            "Saved journeys remember the route idea. When you reuse one, Melodex can resolve it against the music available now."
+            "Routes you want to use again."
         )
         saved_help.setWordWrap(True)
-        saved_help.setStyleSheet("color:#8f9bad")
+        saved_help.setObjectName("mutedText")
         saved_l.addWidget(saved_help)
         self.journey_recipes_stack=QStackedWidget()
         self.journey_recipes_list=QListWidget()
@@ -2010,10 +2010,10 @@ class MainWindow(QMainWindow):
         runs_l=QVBoxLayout(runs)
         runs_l.setContentsMargins(0,10,0,0)
         runs_help=QLabel(
-            "Recent runs show what actually happened after skips, steering and live replanning. This history is local to Melodex."
+            "What actually played, including any changes you made on the way."
         )
         runs_help.setWordWrap(True)
-        runs_help.setStyleSheet("color:#8f9bad")
+        runs_help.setObjectName("mutedText")
         runs_l.addWidget(runs_help)
         self.journey_runs_stack=QStackedWidget()
         self.journey_runs_list=QListWidget()
@@ -2056,14 +2056,15 @@ class MainWindow(QMainWindow):
         l=self._page_layout(
             "playlists",
             "Playlists",
-            "Keep ordinary playlists alongside AI-generated or imported ones. Melodex stores them locally and resolves tracks through the sources you have connected.",
+            "Keep playlists here, whether you made them elsewhere or built them in Melodex.",
         )
 
         top=QHBoxLayout()
         imp=QPushButton("Import playlist…")
+        imp.setObjectName("primaryButton")
         imp.clicked.connect(self._import_playlist_file)
         ai=QPushButton("Paste from AI…")
-        ai.setObjectName("primaryButton")
+        ai.setObjectName("secondaryButton")
         ai.clicked.connect(self._open_ai_playlist_import)
         set_help(
             imp,
@@ -2075,8 +2076,8 @@ class MainWindow(QMainWindow):
             "Paste from AI",
             "Paste a playlist generated in ChatGPT, Claude, Gemini or another AI. No AI account is connected and the pasted text is not sent back to an AI service.",
         )
-        top.addWidget(ai)
         top.addWidget(imp)
+        top.addWidget(ai)
         top.addStretch(1)
         l.addLayout(top)
 
@@ -2086,10 +2087,10 @@ class MainWindow(QMainWindow):
         self.playlists_list.itemSelectionChanged.connect(self._playlist_selection_changed)
         self.playlists_empty=EmptyState(
             "No playlists yet",
-            "Paste one from an AI chat, import an existing playlist, or export the music already in your queue.",
-            "Paste from AI",
+            "Import a playlist, or save music from your current queue.",
+            "Import playlist",
         )
-        self.playlists_empty.actionRequested.connect(self._open_ai_playlist_import)
+        self.playlists_empty.actionRequested.connect(self._import_playlist_file)
         self.playlists_stack.addWidget(self.playlists_list)
         self.playlists_stack.addWidget(self.playlists_empty)
         l.addWidget(self.playlists_stack,1)
