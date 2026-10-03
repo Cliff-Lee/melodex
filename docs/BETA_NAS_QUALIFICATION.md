@@ -1,24 +1,37 @@
-# Campaign 11c — NAS / network beta qualification
+# Campaign 11c–11d — NAS resilience and beta qualification
 
-Campaign 11c prepares Melodex for external testers with NAS, SMB, NFS and other
-network-mounted music libraries.
+Campaign 11 prepares Melodex for external testers with NAS, SMB, NFS and other
+network-mounted music libraries. Campaign 10 established the scalable library
+engine; Campaign 11 now hardens that engine against real network-storage
+failure modes and defines the user-facing acceptance contract.
 
-It deliberately does **not** tune scanner internals. Campaign 10 owns the
-elastic scanner engine and may still be changing queueing, indexing,
-fingerprinting and metadata concurrency. Campaign 11c defines the user-facing
-contract that the finished engine must satisfy.
-
-## Why this campaign can run beside Campaign 10
-
-The two campaigns have different ownership:
-
-| Campaign | Owns |
+| Stage | Owns |
 | --- | --- |
-| 10 | scanner/index implementation and scaling |
-| 11c | repeatable stress scenarios, recovery behavior and beta acceptance |
+| 11c | repeatable offline/reconnect/cancellation qualification |
+| 11d | bounded transient-I/O retry and fail-safe NAS traversal |
 
-That separation lets scanner work continue on one branch while beta-readiness
-qualification evolves independently.
+The qualification harness is intentionally small and deterministic. Real SMB/NFS
+latency, server firmware and mount behavior still require external beta testing.
+
+
+## Campaign 11d hardening
+
+The v0.7.9 scanner already isolates filesystem work from the GUI and preserves
+unavailable/incomplete roots. P11d adds a conservative network-I/O layer:
+
+- root preflight, directory enumeration and audio-file stat operations get two
+  short retries (50 ms then 150 ms) before being treated as failed;
+- recovered retries are counted in scan metrics for diagnostics;
+- exhausted directory/stat failures mark the root incomplete, so the previous
+  committed SQLite catalog remains authoritative instead of publishing a
+  partial network view;
+- production scandir traversal no longer performs a network `stat()` for
+  non-audio sidecars such as cover images, cue sheets and text files;
+- cancellation remains bounded because all traversal still runs in the
+  disposable scan worker.
+
+The retry budget is intentionally small. Melodex should absorb momentary SMB/NFS
+hiccups, not hide a genuinely disconnected or unhealthy share for minutes.
 
 ## Automated NAS qualification harness
 
@@ -67,7 +80,8 @@ Pass conditions:
 
 - the rescan completes without destroying the index;
 - previously cached tracks remain available;
-- the result marks at least one incomplete root;
+- the result explicitly reports at least one unavailable root;
+- SQLite persistence reports that unavailable root without replacing it;
 - an unavailable root is not treated as an empty/deleted library.
 
 This is the most important data-safety rule for real NAS testers.
@@ -139,10 +153,7 @@ of these:
 
 ## Relationship to Campaign 10
 
-When Campaign 10's scanner branch is ready, run this qualification harness
-against that head before recruitment. If Campaign 10 changes implementation but
-11c still passes, the user-facing resilience contract has remained intact.
-
-If a Campaign 10 change breaks a 11c scenario, fix the scanner branch rather
-than weakening the qualification rule unless the product behavior itself has
-been intentionally redesigned.
+Campaign 10 is now the released v0.7.9 Elastic Library Engine. Campaign 11 runs
+on top of that implementation. A NAS-hardening change must preserve the
+permanent Campaign 10 scaling gates as well as the Campaign 11 resilience
+contract; neither set of tests should be weakened to make the other pass.
