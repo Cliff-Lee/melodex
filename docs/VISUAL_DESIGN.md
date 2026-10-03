@@ -147,8 +147,28 @@ and repeated listening should form readable clusters/islands; chronological
 paths should reveal how listening moved.
 
 ### P13g — visual information architecture
-Reorganize Visuals into Watch / Explore and demote Track Sigil into reusable
-identity infrastructure.
+Visuals are presented by purpose rather than as one flat experiment list.
+
+**Watch**
+- Profile Pulse
+- Lyric Flow
+- Sonic Weather
+- Album World
+- Minimal
+
+**Explore**
+- Constellation
+- Memory Atlas
+- Musical Journey
+
+Personal visualizer recipes appear in their own section when installed.
+
+Track Sigil is no longer a public standalone visualizer. Its fixed geometry is
+reusable identity infrastructure: the same deterministic motif appears beside
+the current track and at the centre of Constellation. Geometry stays fixed for
+the recording; only surrounding glow may reflect playback state. The legacy
+fingerprint renderer remains available internally for compatibility, but it is
+not surfaced as a primary four-minute experience.
 
 ### P13h — performance pass
 Profile representative tracks and hardware.  Bound particle count, glow layers,
