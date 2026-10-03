@@ -131,6 +131,17 @@ class PlaybackFeature(QObject):
     def current_position_ms(self) -> int:
         return int(self._visual_position_ms)
 
+    def current_history_id(self) -> int:
+        return int(self._current_history_id)
+
+    def on_position(self, position_ms: int, duration_ms: int) -> None:
+        self._on_position(position_ms, duration_ms)
+
+    def on_track_changed(self, track: object) -> None:
+        row = dict(track or {}) if isinstance(track, dict) else {}
+        if row:
+            self._on_track_changed(row)
+
     def queue_snapshot(self) -> list[dict[str, Any]]:
         return [dict(track) for track in self._queue]
 
@@ -357,14 +368,13 @@ class PlaybackFeature(QObject):
         from .rich_now_playing import RichNowPlayingWidget
     
         l=self._page_layout(
-            "now_playing",
             "Now playing",
             "Artwork, lyrics and context for what is playing now.",
         )
         self.now_views = QTabWidget()
         self.rich_now = RichNowPlayingWidget(
             self.metadata,
-            self,
+            self.now_playing_page,
             auto_online_lyrics=self.state.get_bool("auto_online_lyrics", False),
         )
         self.living_canvas = LivingCanvasView(self.now_playing_page, self.data_dir / "visualizers")
@@ -375,10 +385,10 @@ class PlaybackFeature(QObject):
         self.rich_now.lyricsSeekRequested.connect(self.seekRequested.emit)
         self.rich_now.lyricsTranslationRequested.connect(self._translate_lyrics)
         self.rich_now.lyricsPluginRequested.connect(
-            lambda: self.sources_feature.open_plugin_directory("lyrics")
+            lambda: self.pluginDirectoryRequested.emit("lyrics")
         )
         self.rich_now.contextPluginRequested.connect(
-            lambda: self.sources_feature.open_plugin_directory("context")
+            lambda: self.pluginDirectoryRequested.emit("context")
         )
         self.rich_now.onlineLyricsPreferenceChanged.connect(
             lambda enabled: self.state.set_bool("auto_online_lyrics", bool(enabled))
@@ -386,15 +396,19 @@ class PlaybackFeature(QObject):
         self.living_canvas.seekRequested.connect(self.seekRequested.emit)
         self.living_canvas.modeDataRequested.connect(self._request_visual_mode_data)
         self.living_canvas.neighbourActivated.connect(self._queue_visual_neighbour)
-        self.player.playingChanged.connect(self.living_canvas.set_playing)
         self.now_views.addTab(self.rich_now, "Now Playing")
         self.now_views.addTab(self.living_canvas, "Visuals")
         l.addWidget(self.now_views, 1)
     
     
     
+    @staticmethod
+    def _path_for(track):
+        path=str(track.get("local_path") or "")
+        return Path(path) if path else None
+
     def _flow_queue(self):
-        q=list(self.player.queue)
+        q=[dict(track) for track in self._queue]
         if len(q)<2:return
         self._status("Planning Flow…")
         self._run_async(lambda:self.flow.plan_order(q,self._path_for,start_index=max(0,self._queue_index),adventurous=0.35),lambda plan:self._apply_flow(plan), priority="foreground", task_name="flow-plan", replace_key="flow-plan")
@@ -405,8 +419,8 @@ class PlaybackFeature(QObject):
     
     
     def _next_queue_track(self) -> dict[str, Any]:
-        queue=list(getattr(self.player,"queue",[]) or [])
-        index=int(getattr(self.player,"index",-1))
+        queue=[dict(track) for track in self._queue]
+        index=int(self._queue_index)
         next_index=index+1
         if next_index < 0 or next_index >= len(queue):
             return {}
@@ -515,9 +529,6 @@ class PlaybackFeature(QObject):
             else:
                 self.living_canvas.set_track(self._current_track, None)
                 self._request_cached_visual_analysis(self._current_track)
-        self.journey_workspace.on_track_changed(dict(t))
-        if hasattr(self,"album_wall"):
-            self.album_wall.highlight_track(t)
         self.now_title.setText(str(t.get("title") or "Unknown track"))
         artist=str(t.get("artist") or "Unknown artist")
         album=str(t.get("album") or "")
@@ -555,8 +566,7 @@ class PlaybackFeature(QObject):
             self.rich_now.set_track(dict(t))
         if hasattr(self, "living_canvas"):
             self.living_canvas.refresh_context()
-        if self.current_page=="home":
-            self._refresh_home_continue()
+        self.currentTrackChanged.emit(dict(t))
         self._schedule_next_track_prefetch()
     
     
@@ -623,8 +633,8 @@ class PlaybackFeature(QObject):
         sequence = self._visual_context_sequence
         queue_candidates: list[dict[str, Any]] = []
         if mode == "constellation":
-            queue = list(getattr(self.player, "queue", []) or [])
-            current_index = int(getattr(self.player, "index", -1))
+            queue = [dict(track) for track in self._queue]
+            current_index = int(self._queue_index)
             start = max(0, current_index - 5)
             end = min(len(queue), current_index + 21)
             for index in range(start, end):
@@ -710,7 +720,7 @@ class PlaybackFeature(QObject):
         track = self._visual_neighbour_tracks.get(int(token))
         if not track:
             return
-        self.player.append_queue([dict(track)], autoplay=False)
+        self.appendQueueRequested.emit([dict(track)], False)
         self._status(
             f"Queued {track.get('artist') or 'Unknown artist'} — {track.get('title') or 'Unknown track'}",
             4000,
@@ -724,10 +734,7 @@ class PlaybackFeature(QObject):
         self._visual_duration_ms = int(dur)
         if hasattr(self,"living_canvas"):
             self.living_canvas.set_position(pos, dur)
-            active_player = self.player.players[self.player.active]
-            self.living_canvas.set_playing(
-                active_player.playbackState() == QMediaPlayer.PlayingState
-            )
+            self.living_canvas.set_playing(self._playing)
         if hasattr(self,"rich_now"):self.rich_now.set_position(pos)
         if dur>0:self.seek.setValue(int(1000*pos/dur))
         if dur>0 and pos>=dur-1500 and self._current_history_id:
@@ -735,8 +742,8 @@ class PlaybackFeature(QObject):
     
     
     def _seek_released(self):
-        p=self.player.players[self.player.active]; dur=p.duration()
-        if dur>0:self.player.seek(int(dur*self.seek.value()/1000))
+        dur=int(self._visual_duration_ms)
+        if dur>0:self.seekRequested.emit(int(dur*self.seek.value()/1000))
     
     
     def _set_taste_action_state(
@@ -851,7 +858,7 @@ class PlaybackFeature(QObject):
         if not self._current_track:return
         label,ok=QInputDialog.getText(self._dialog_parent(),"Save a moment","Moment note (leave blank if you like):")
         if ok:
-            pos=self.player.players[self.player.active].position(); self.state.save_moment(self._current_track,pos,label); self._status("Moment saved",3000)
+            self.state.save_moment(self._current_track,self._visual_position_ms,label); self._status("Moment saved",3000)
     
     
     @staticmethod
@@ -932,11 +939,11 @@ class PlaybackFeature(QObject):
     
     def _apply_resolver_match(self,resolved):
         if not isinstance(resolved,dict):return
-        idx=self.player.index
+        idx=int(self._queue_index)
         if idx<0:
-            self.player.set_queue([resolved],0,True)
+            self.setQueueRequested.emit([dict(resolved)],0,True)
             return
-        self.player.replace_queue_item(idx,resolved,autoplay=True)
+        self.replaceQueueItemRequested.emit(idx,dict(resolved),True)
         mode=str((resolved.get("_resolution") or {}).get("mode") or "match") if isinstance(resolved.get("_resolution"),dict) else "match"
         self._status(f"Resolver match applied · {mode}",4000)
     
@@ -964,7 +971,7 @@ class PlaybackFeature(QObject):
         settings=self._llm_settings_getter()
         if not str(settings.model or "").strip():
             answer=QMessageBox.question(
-                self,
+                self._dialog_parent(),
                 "Connect an LLM",
                 "Lyrics translation uses your optional configured LLM. "
                 "No model is configured yet. Open LLM settings now?",
@@ -974,12 +981,12 @@ class PlaybackFeature(QObject):
             if answer != QMessageBox.Yes:
                 return
             self._open_llm_settings()
-            settings=self._llm_settings()
+            settings=self._llm_settings_getter()
             if not str(settings.model or "").strip():
                 return
     
         target,ok=QInputDialog.getText(
-            self,
+            self._dialog_parent(),
             "Translate lyrics",
             "Translate into:",
             text=self.state.get_text("lyrics_translation_language","English"),
@@ -1064,6 +1071,5 @@ class PlaybackFeature(QObject):
             ]
         if kwargs:
             self.knowledge.remember(dict(track),**kwargs)
-            if self.current_page == "music_map":
-                self.journey_workspace.refresh_knowledge_graph()
+            self.knowledgeChanged.emit()
     
