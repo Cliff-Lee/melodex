@@ -304,10 +304,10 @@ def test_redesigned_main_window_builds_with_goal_navigation(monkeypatch, tmp_pat
         is window.journey_workspace.archive.journey_recipes_empty
     )
 
-    window._update_play_button(True)
-    assert window.play_button.text() == "❚❚"
-    window._update_play_button(False)
-    assert window.play_button.text() == "▶"
+    window.playback_feature.on_playing_changed(True)
+    assert window.playback_feature.play_button.text() == "❚❚"
+    window.playback_feature.on_playing_changed(False)
+    assert window.playback_feature.play_button.text() == "▶"
 
     window.open_page("sources")
     app.processEvents()
@@ -2263,6 +2263,7 @@ def test_next_track_prefetch_is_local_only_and_consumed_on_advance(monkeypatch, 
     )
     window.player.queue = [dict(current), dict(upcoming)]
     window.player.index = 0
+    window.playback_feature.on_queue_changed(window.player.queue, window.player.index)
 
     artwork_calls = []
     cached_analysis = object()
@@ -2346,6 +2347,7 @@ def test_next_track_prefetch_yields_to_large_library_scan(monkeypatch, tmp_path)
         _track(str(tmp_path / "b.mp3"), "B", "B", "B", 1),
     ]
     window.player.index = 0
+    window.playback_feature.on_queue_changed(window.player.queue, window.player.index)
     window.local_scan._runner = object()
     calls = []
     monkeypatch.setattr(
