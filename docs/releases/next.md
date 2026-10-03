@@ -1,9 +1,12 @@
 # Next release — draft notes
 
-**Melodex v0.7.11 release candidate.**
+**Melodex v0.7.12 release candidate.**
 
-Current target version: **0.7.11**.
+Current target version: **0.7.12**.
 
-This release contains the Humanize Melodex H1–H6 campaign: simpler product voice, clearer visual hierarchy, progressive disclosure, calmer first-run states, and screenshot-driven UI cleanup.
+This release consolidates the completed Campaign 12 architecture refactor and
+Campaign 13 visual experience work: clearer feature ownership, a smaller
+MainWindow surface, one canonical lyrics system, redesigned visual experiences,
+bounded rendering costs, and deterministic visual QA.
 
-After v0.7.11 is published, this file can return to the next development target.
+See `docs/releases/v0.7.12.md` for the release notes.
