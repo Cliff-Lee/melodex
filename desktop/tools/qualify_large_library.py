@@ -44,6 +44,38 @@ DEFAULT_PROFILES = (12_700, 100_000)
 RELEASE_PROFILES = (250_000, 500_000, 1_000_000)
 
 
+class VirtualDirEntry:
+    def __init__(
+        self,
+        library: "VirtualLibrary",
+        path: Path,
+        *,
+        is_directory: bool,
+    ) -> None:
+        self._library = library
+        self._path = Path(path)
+        self.name = self._path.name
+        self.path = str(self._path)
+        self._is_directory = bool(is_directory)
+
+    def is_dir(self, *, follow_symlinks: bool = True) -> bool:
+        return self._is_directory
+
+    def stat(self, *, follow_symlinks: bool = True):
+        return self._library.fake_stat(self._path)
+
+
+class VirtualScandir:
+    def __init__(self, entries: list[VirtualDirEntry]) -> None:
+        self._entries = entries
+
+    def __enter__(self):
+        return iter(self._entries)
+
+    def __exit__(self, exc_type, exc, tb) -> bool:
+        return False
+
+
 class VirtualLibrary:
     def __init__(
         self,
@@ -78,6 +110,49 @@ class VirtualLibrary:
         for index in range(self.track_count + self.added):
             if index not in self.deleted:
                 yield index
+
+    def scandir(self, path: Path):
+        path = Path(path)
+        if path == self.root:
+            directories = sorted(
+                {
+                    index // self.tracks_per_directory
+                    for index in self.iter_indices()
+                }
+            )
+            return VirtualScandir(
+                [
+                    VirtualDirEntry(
+                        self,
+                        self.root / f"album-{directory:07d}",
+                        is_directory=True,
+                    )
+                    for directory in directories
+                ]
+            )
+
+        try:
+            directory = int(path.name.removeprefix("album-"))
+        except ValueError:
+            raise FileNotFoundError(str(path))
+
+        start = directory * self.tracks_per_directory
+        stop = min(
+            start + self.tracks_per_directory,
+            self.track_count + self.added,
+        )
+        entries = []
+        for index in range(start, stop):
+            if index in self.deleted:
+                continue
+            entries.append(
+                VirtualDirEntry(
+                    self,
+                    self.path_for(index),
+                    is_directory=False,
+                )
+            )
+        return VirtualScandir(entries)
 
     def walk(self, _root: Path, onerror=None):
         current_dir = None
@@ -114,6 +189,13 @@ class VirtualLibrary:
                 st_mode=0o40755,
             )
         name = path.name
+        if value.startswith(root_value) and name.startswith("album-"):
+            return SimpleNamespace(
+                st_size=0,
+                st_mtime=1.0,
+                st_mtime_ns=1_000_000_000,
+                st_mode=0o40755,
+            )
         if not (value.startswith(root_value) and name.endswith(".flac")):
             raise FileNotFoundError(value)
         try:
@@ -169,7 +251,7 @@ def virtual_filesystem(library: VirtualLibrary):
         except FileNotFoundError:
             return original_stat(path, *args, **kwargs)
 
-    with patch.object(local_files.os, "walk", library.walk), patch.object(
+    with patch.object(local_files.os, "scandir", library.scandir), patch.object(
         local_files.Path,
         "stat",
         patched_stat,
