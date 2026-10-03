@@ -126,3 +126,26 @@ Rules introduced:
 H2 should continue by removing remaining one-off styling only where doing so
 makes adjacent surfaces visibly more coherent. It is not a mandate to flatten
 distinctive tools such as Album Wall or Music Map into generic cards.
+
+
+## H3 progressive disclosure
+
+H3 treats complexity as something the user earns by asking for it.
+
+Rules:
+
+- optional/plugin catalogues should not occupy permanent screen space when one
+  clear "Add features…" action can reveal them;
+- maintenance controls such as map/wall options should look quieter than
+  playback actions;
+- route planning should present one obvious next step at a time: choose
+  endpoints, find a route, then play or queue it;
+- clear/hide/configuration actions should not compete visually with the task
+  itself;
+- technical and rarely used source controls remain behind global Power tools;
+- deeper journey shaping remains behind Journey options rather than expanding
+  whenever Music Map opens;
+- Now Playing should describe the music, not explain the existence of every tab.
+
+Progressive disclosure is not feature removal. Every existing H3 action remains
+reachable.
