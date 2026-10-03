@@ -197,3 +197,42 @@ H5 therefore changes the first-run contract:
 
 The deeper-feature discovery task is already supported by the Home/Explore
 cards: Album Wall and Music Map can be discovered after ordinary playback works.
+
+
+## H6 packaged screenshot audit
+
+H6 is based on screenshots captured from the packaged Linux H5 build with a
+clean temporary home directory. This exposed first-run density that was not as
+obvious from code review.
+
+### Findings
+
+The empty Home screen still showed listening modes, an empty Continue card and
+three local-library exploration cards before any music existed.
+
+The empty My Music screen showed search, view tabs, rescan, Album Wall, Moments,
+artwork recovery and an artwork-plugin presence bar around an empty-state card.
+
+Explore advertised Album Wall, Music Map and local-intelligence actions even
+when there was no local library.
+
+Sources & plugins used three dashboard-style summary cards on top of a textual
+summary that already contained the same information.
+
+### H6 corrections
+
+- empty Home now foregrounds only the add-music action;
+- listening modes and local exploration appear once a library exists;
+- Continue listening appears only when there is something to continue;
+- empty My Music hides search/view/maintenance controls and artwork-plugin
+  chrome until tracks exist;
+- Explore hides Album Wall, Music Map and local-intelligence actions until a
+  local library exists;
+- Ask Melodex is available only with Power tools rather than occupying the
+  normal Explore path;
+- Sources removes the redundant three-card metrics dashboard;
+- source-wide connection testing stays behind Power tools;
+- source contextual actions appear only after a source is selected.
+
+The lesson from H6 is that "humanized" UI is not only about better wording or
+consistent styling. A mature product also knows when **not** to show controls.
