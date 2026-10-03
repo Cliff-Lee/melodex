@@ -86,6 +86,10 @@ class ScanProbe:
         finally:
             self.metrics.metadata_seconds += max(0.0, time.perf_counter() - started)
 
+    def record_metadata_result(self, elapsed_seconds: float) -> None:
+        self.metrics.metadata_attempts += 1
+        self.metrics.metadata_seconds += max(0.0, float(elapsed_seconds))
+
     def finish(self, *, tracks_indexed: int) -> dict[str, object]:
         if not self._finished:
             self.metrics.total_seconds = max(0.0, time.perf_counter() - self._started)
