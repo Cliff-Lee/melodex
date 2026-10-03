@@ -423,6 +423,9 @@ class LocalFilesProvider(MusicProvider):
                         probe.directory_seen()
                         manifest = hashlib.sha256()
                         audio_count = 0
+                        directory_key = self._override_key(base)
+                        previous_dir = cached_dirs.get(directory_key)
+                        reuse_candidate = previous_dir is not None
                         file_work: list[dict[str, Any]] = []
                         for name, direntry_stat, direntry_stat_elapsed in files:
                             control.checkpoint()
@@ -478,27 +481,32 @@ class LocalFilesProvider(MusicProvider):
                                     + "\n"
                                 ).encode("utf-8", errors="surrogatepass")
                             )
-                            file_work.append(
-                                {
-                                    "type": "file",
-                                    "path": p,
-                                    "key": key,
-                                    "size": size,
-                                    "mtime_ns": mtime_ns,
-                                    "root_key": root_key,
-                                }
-                            )
+                            work_item = {
+                                "type": "file",
+                                "path": p,
+                                "key": key,
+                                "size": size,
+                                "mtime_ns": mtime_ns,
+                                "root_key": root_key,
+                            }
+                            if reuse_candidate:
+                                file_work.append(work_item)
+                                if len(file_work) > 5000:
+                                    for buffered_item in file_work:
+                                        put_work(buffered_item)
+                                    file_work.clear()
+                                    reuse_candidate = False
+                            else:
+                                put_work(work_item)
 
                         manifest_value = manifest.hexdigest()
-                        directory_key = self._override_key(base)
-                        previous_dir = cached_dirs.get(directory_key)
                         reusable_directory = bool(
-                            previous_dir
+                            reuse_candidate
+                            and previous_dir
                             and str(previous_dir.get("manifest") or "")
                             == manifest_value
                             and int(previous_dir.get("file_count") or 0)
                             == audio_count
-                            and audio_count <= 5000
                         )
 
                         if reusable_directory:
@@ -514,8 +522,9 @@ class LocalFilesProvider(MusicProvider):
                                 }
                             )
                         else:
-                            for work_item in file_work:
-                                put_work(work_item)
+                            if reuse_candidate:
+                                for work_item in file_work:
+                                    put_work(work_item)
                             put_work(
                                 {
                                     "type": "directory_manifest",
