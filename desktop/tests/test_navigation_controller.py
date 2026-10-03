@@ -99,18 +99,14 @@ def test_navigation_parent_groups_secondary_pages():
     assert navigation_parent("unknown") == ""
 
 
-def test_lazy_page_build_and_population_are_owned_by_controller(monkeypatch):
-    import melodex.navigation_controller as navigation_controller
-
+def test_lazy_page_build_and_population_are_owned_by_controller():
     callbacks = []
-    monkeypatch.setattr(
-        navigation_controller.QTimer,
-        "singleShot",
-        lambda _delay, callback: callbacks.append(callback),
-    )
-
     host = FakeHost()
-    controller = NavigationController(host, refresh_delay_ms=16)
+    controller = NavigationController(
+        host,
+        refresh_delay_ms=16,
+        schedule=lambda _delay, callback: callbacks.append(callback),
+    )
     built = []
     controller.set_lazy_builders({"library": lambda: built.append("library")})
 
@@ -132,19 +128,14 @@ def test_lazy_page_build_and_population_are_owned_by_controller(monkeypatch):
     assert host.plugin_refreshes == 1
 
 
-def test_stale_navigation_callback_is_dropped(monkeypatch):
-    import melodex.navigation_controller as navigation_controller
-
+def test_stale_navigation_callback_is_dropped():
     callbacks = []
-    monkeypatch.setattr(
-        navigation_controller.QTimer,
-        "singleShot",
-        lambda _delay, callback: callbacks.append(callback),
-    )
-
     host = FakeHost()
     host.current_page = "album_wall"
-    controller = NavigationController(host)
+    controller = NavigationController(
+        host,
+        schedule=lambda _delay, callback: callbacks.append(callback),
+    )
     controller.set_lazy_builders({"library": lambda: None})
 
     controller.open_page("library")
