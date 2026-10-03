@@ -9,7 +9,7 @@ from typing import Any
 
 from PySide6.QtCore import Qt, QTimer, Signal, QRectF, QPointF
 from PySide6.QtGui import (
-    QColor, QFont, QLinearGradient, QPainter, QPainterPath, QPen, QMouseEvent,
+    QColor, QFont, QImage, QLinearGradient, QPainter, QPainterPath, QPen, QMouseEvent,
     QPolygonF, QRadialGradient,
 )
 from PySide6.QtWidgets import QSizePolicy, QWidget
@@ -54,6 +54,11 @@ class LivingScene(QWidget):
         self._memory: tuple[MemoryMark, ...] = ()
         self._memory_scale = "sessions"
         self._lyrics = LyricFrame("", "", "", False, "")
+        self._previous_lyrics = self._lyrics
+        self._lyric_transition = 1.0
+        self._artwork_source = QImage()
+        self._artwork_cache = QImage()
+        self._immersive = False
         self._requested_quality = "auto"
         self._effective_quality = "normal"
         self._slow_frames = 0
@@ -66,7 +71,7 @@ class LivingScene(QWidget):
 
     @property
     def animated_mode(self) -> bool:
-        if self.mode in {"living", "album_world", "weather", "constellation"}:
+        if self.mode in {"living", "album_world", "weather", "constellation", "lyrics"}:
             return True
         if self.mode == "plugin" and self.plugin:
             return any(layer.get("speed", 0) > 0 for layer in self.plugin.layers)
@@ -93,6 +98,26 @@ class LivingScene(QWidget):
         self._hit_points = ()
         self.update()
         self._sync_timer()
+
+    def set_immersive(self, immersive: bool) -> None:
+        self._immersive = bool(immersive)
+        self.update()
+
+    def set_artwork(self, path: str) -> None:
+        image = QImage(str(path or ""))
+        if image.isNull():
+            self._artwork_source = QImage()
+        else:
+            # Deliberately downsample once.  Scaling this soft source back to the
+            # scene gives the atmospheric artwork wash without a live blur pass.
+            self._artwork_source = image.scaled(
+                72,
+                72,
+                Qt.KeepAspectRatioByExpanding,
+                Qt.SmoothTransformation,
+            )
+        self._artwork_cache = QImage()
+        self.update()
 
     def set_accent_color(self, color: QColor) -> None:
         self._accent = QColor(color)
@@ -131,8 +156,12 @@ class LivingScene(QWidget):
     def set_lyrics(self, frame: LyricFrame) -> None:
         value = frame if isinstance(frame, LyricFrame) else LyricFrame("", "", "", False, "")
         if value != self._lyrics:
+            if value.index != self._lyrics.index or value.current != self._lyrics.current:
+                self._previous_lyrics = self._lyrics
+                self._lyric_transition = 0.0
             self._lyrics = value
             self.update()
+            self._sync_timer()
 
     def set_quality(self, quality: str) -> None:
         value = quality if quality in {"auto", "eco", "high", "battery"} else "auto"
@@ -188,6 +217,8 @@ class LivingScene(QWidget):
         self._last_tick = now
         bpm = self.profile.bpm if self.profile else 96.0
         self._phase = (self._phase + elapsed * math.tau * bpm / 60.0) % math.tau
+        if self._lyric_transition < 1.0:
+            self._lyric_transition = min(1.0, self._lyric_transition + elapsed / 0.38)
         self._refresh_visual_state()
         self.update()
 
@@ -282,6 +313,22 @@ class LivingScene(QWidget):
         base.setColorAt(1.0, QColor("#111925"))
         painter.fillRect(bounds, base)
 
+        if self.mode == "lyrics" and not self._artwork_source.isNull():
+            size = self.size()
+            if self._artwork_cache.isNull() or self._artwork_cache.size() != size:
+                self._artwork_cache = self._artwork_source.scaled(
+                    max(1, size.width()),
+                    max(1, size.height()),
+                    Qt.IgnoreAspectRatio,
+                    Qt.SmoothTransformation,
+                )
+            painter.save()
+            painter.setOpacity(0.20 + 0.06 * self._visual_state.glow)
+            painter.drawImage(bounds, self._artwork_cache)
+            painter.setOpacity(1.0)
+            painter.fillRect(bounds, QColor(4, 9, 17, 178))
+            painter.restore()
+
         if profile is not None:
             color = self._color(0)
             color.setAlpha(27)
@@ -307,14 +354,17 @@ class LivingScene(QWidget):
                 py = bounds.top() + y * bounds.height()
                 painter.drawEllipse(QPointF(px, py), min(1.3, size * 0.62), min(1.3, size * 0.62))
 
-        edge = QColor("#334052")
-        edge.setAlpha(130)
-        painter.setBrush(Qt.NoBrush)
-        painter.setPen(QPen(edge, 1.0))
-        painter.drawRoundedRect(bounds.adjusted(0.5, 0.5, -0.5, -0.5), 16, 16)
+        if not self._immersive:
+            edge = QColor("#334052")
+            edge.setAlpha(130)
+            painter.setBrush(Qt.NoBrush)
+            painter.setPen(QPen(edge, 1.0))
+            painter.drawRoundedRect(bounds.adjusted(0.5, 0.5, -0.5, -0.5), 16, 16)
 
     def _area(self) -> QRectF:
-        return QRectF(self.rect()).adjusted(30, 24, -30, -24)
+        margin_x = 64 if self._immersive else 30
+        margin_y = 46 if self._immersive else 24
+        return QRectF(self.rect()).adjusted(margin_x, margin_y, -margin_x, -margin_y)
 
     @staticmethod
     def _draw_caption(
@@ -617,33 +667,174 @@ class LivingScene(QWidget):
             return self._color(4)
         return self._color(5)
 
+    @staticmethod
+    def _ease_out_cubic(value: float) -> float:
+        value = max(0.0, min(1.0, float(value)))
+        return 1.0 - (1.0 - value) ** 3
+
+    def _draw_glowing_text(
+        self,
+        painter: QPainter,
+        box: QRectF,
+        text: str,
+        font: QFont,
+        core: QColor,
+        glow: QColor,
+        strength: float,
+    ) -> None:
+        if not text:
+            return
+        painter.save()
+        painter.setFont(font)
+        offsets = ((-2, 0), (2, 0), (0, -2), (0, 2))
+        if self._requested_quality == "high":
+            offsets += ((-2, -2), (2, -2), (-2, 2), (2, 2))
+        halo = QColor(glow)
+        halo.setAlpha(max(8, min(92, int(42 * strength))))
+        for dx, dy in offsets:
+            painter.setPen(halo)
+            painter.drawText(
+                box.translated(dx, dy),
+                Qt.AlignCenter | Qt.TextWordWrap,
+                text,
+            )
+        painter.setPen(core)
+        painter.drawText(box, Qt.AlignCenter | Qt.TextWordWrap, text)
+        painter.restore()
+
+    def _paint_lyric_energy_line(self, painter: QPainter, rect: QRectF) -> None:
+        profile = self.profile
+        y_mid = rect.bottom() - (34 if self._immersive else 28)
+        left = rect.left() + rect.width() * 0.15
+        width = rect.width() * 0.70
+        color = QColor(self._color(0))
+        muted = QColor(color)
+        muted.setAlpha(38)
+        painter.setBrush(Qt.NoBrush)
+
+        path = QPainterPath()
+        if profile is not None and len(profile.energy_curve) >= 2:
+            for index, value in enumerate(profile.energy_curve):
+                x = left + width * index / max(1, len(profile.energy_curve) - 1)
+                amplitude = (11 if self._immersive else 7) * (0.25 + 0.75 * value)
+                phase = index * 0.72
+                y = y_mid + math.sin(phase) * amplitude
+                if index == 0:
+                    path.moveTo(x, y)
+                else:
+                    path.lineTo(x, y)
+        else:
+            path.moveTo(left, y_mid)
+            path.lineTo(left + width, y_mid)
+
+        painter.setPen(QPen(muted, 1.1, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+        painter.drawPath(path)
+        progress = max(0.0, min(1.0, self._position_fraction))
+        cursor_x = left + width * progress
+        active = QColor(color)
+        active.setAlpha(150 + int(70 * self._visual_state.glow))
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(active)
+        painter.drawEllipse(QPointF(cursor_x, y_mid), 2.4, 2.4)
+
     def _paint_lyrics(self, painter: QPainter) -> None:
         rect = self._area()
         if not self._lyrics.current and not self._lyrics.following:
-            painter.setPen(QColor("#aab0ba"))
-            painter.drawText(rect, Qt.AlignCenter, "No local lyrics are available.\nAdd embedded lyrics or a .lrc / .txt sidecar to the track.")
+            painter.setPen(QColor("#b8c4d2"))
+            painter.setFont(QFont("sans-serif", 17 if self._immersive else 14, QFont.Normal))
+            painter.drawText(
+                rect,
+                Qt.AlignCenter,
+                "No lyrics are available for this track yet.",
+            )
             return
-        edge = QColor(self._color(0))
-        edge.setAlpha(48)
-        painter.setPen(QPen(edge, 1.0))
-        painter.drawLine(QPointF(rect.left() + rect.width() * 0.31, rect.top() + rect.height() * 0.27), QPointF(rect.right() - rect.width() * 0.31, rect.top() + rect.height() * 0.27))
-        painter.drawLine(QPointF(rect.left() + rect.width() * 0.31, rect.bottom() - rect.height() * 0.25), QPointF(rect.right() - rect.width() * 0.31, rect.bottom() - rect.height() * 0.25))
-        painter.save()
-        painter.setFont(QFont("sans-serif", 13, QFont.Normal))
-        painter.setPen(QColor(190, 199, 212, 120))
-        painter.drawText(QRectF(rect.left() + 20, rect.top() + rect.height() * 0.12, rect.width() - 40, 56), Qt.AlignCenter | Qt.TextWordWrap, self._lyrics.previous)
+
+        state = self._visual_state
+        transition = self._ease_out_cubic(self._lyric_transition)
+        slide = (1.0 - transition) * (34.0 if self._immersive else 22.0)
+        current_y = rect.center().y() + slide
+        spacing = rect.height() * (0.23 if self._immersive else 0.22)
+
+        # One restrained ambient halo makes the current lyric feel luminous
+        # without paying for a blur effect every frame.
+        glow_color = QColor(self._color(0))
+        halo_radius = min(rect.width(), rect.height()) * (0.42 if self._immersive else 0.36)
+        self._draw_glow(
+            painter,
+            QPointF(rect.center().x(), current_y),
+            halo_radius,
+            glow_color,
+            22 + int(34 * state.glow),
+        )
+
+        active_size = min(
+            72 if self._immersive else 48,
+            max(34 if self._immersive else 28, int(rect.height() * (0.085 if self._immersive else 0.075))),
+        )
+        if self._playing:
+            active_size = int(round(active_size * (1.0 + 0.012 * state.glow + 0.006 * state.pulse)))
+        adjacent_size = max(18 if self._immersive else 15, int(active_size * 0.52))
+
+        previous = self._lyrics.previous
+        following = self._lyrics.following
         current = self._lyrics.current or "…"
-        painter.setFont(QFont("sans-serif", 22, QFont.DemiBold))
-        active = QColor(self._color(0))
-        active.setAlpha(244)
-        painter.setPen(active)
-        painter.drawText(QRectF(rect.left() + 32, rect.center().y() - 66, rect.width() - 64, 132), Qt.AlignCenter | Qt.TextWordWrap, current)
-        painter.setFont(QFont("sans-serif", 13, QFont.Normal))
-        painter.setPen(QColor(190, 199, 212, 120))
-        painter.drawText(QRectF(rect.left() + 20, rect.bottom() - rect.height() * 0.25, rect.width() - 40, 56), Qt.AlignCenter | Qt.TextWordWrap, self._lyrics.following)
+
+        adjacent_font = QFont("sans-serif", adjacent_size, QFont.Medium)
+        adjacent = QColor("#c2cddd")
+        adjacent.setAlpha(112)
+        painter.save()
+        painter.setFont(adjacent_font)
+        painter.setPen(adjacent)
+        if previous:
+            painter.drawText(
+                QRectF(rect.left() + 30, current_y - spacing - 55, rect.width() - 60, 110),
+                Qt.AlignCenter | Qt.TextWordWrap,
+                previous,
+            )
+        if following:
+            next_color = QColor("#b4c0d0")
+            next_color.setAlpha(96)
+            painter.setPen(next_color)
+            painter.drawText(
+                QRectF(rect.left() + 30, current_y + spacing - 55, rect.width() - 60, 110),
+                Qt.AlignCenter | Qt.TextWordWrap,
+                following,
+            )
         painter.restore()
-        label = "SYNCED LOCAL LYRICS" if self._lyrics.synced else "UNTIMED LYRICS · PACED ACROSS THE TRACK"
-        self._draw_caption(painter, QRectF(rect.left(), rect.bottom() - 20, rect.width(), 16), label)
+
+        core = QColor("#f7fbff")
+        accent = QColor(self._color(0))
+        active_font = QFont("sans-serif", active_size, QFont.DemiBold)
+        active_font.setLetterSpacing(QFont.PercentageSpacing, 101.0)
+        active_box = QRectF(
+            rect.left() + rect.width() * 0.08,
+            current_y - rect.height() * 0.13,
+            rect.width() * 0.84,
+            rect.height() * 0.26,
+        )
+        self._draw_glowing_text(
+            painter,
+            active_box,
+            current,
+            active_font,
+            core,
+            accent,
+            0.72 + 0.55 * state.glow,
+        )
+
+        self._paint_lyric_energy_line(painter, rect)
+        if self._lyrics.synced:
+            label = "LYRIC FLOW   ·   SYNCED"
+        else:
+            label = "LYRIC FLOW   ·   UNTIMED · PACED ACROSS TRACK"
+        if self._lyrics.source:
+            label += f"   ·   {self._lyrics.source}"
+        self._draw_caption(
+            painter,
+            QRectF(rect.left(), rect.bottom() - 12, rect.width(), 16),
+            label,
+            QColor(178, 193, 210, 150),
+        )
 
     def _paint_album_world(self, painter: QPainter, profile: VisualProfile) -> None:
         rect = self._area()
