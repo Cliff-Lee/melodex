@@ -1885,7 +1885,7 @@ class JourneyWorkspace(QObject):
     
     def _play_music_map_track(self,track):
         if isinstance(track,dict) and track:
-            self.player.set_queue([dict(track)],0,True)
+            self.playTracksRequested.emit([dict(track)])
     
     
     def _play_music_map_selected(self):
@@ -1903,19 +1903,7 @@ class JourneyWorkspace(QObject):
     def _journey_from_music_map(self):
         track=self._music_map_selected()
         if not track:
-            self._status("Select a Music Map track first",3000); return
-        catalog=self.providers.local_catalog()
-        self._status("Building a journey from this part of your map…")
-        self._run_async(
-            lambda:self.mind.build_session(
-                catalog,
-                self._path_for,
-                minutes=int(self.minutes.currentText()),
-                adventure=self.adventure.value()/100,
-                mode=str(self.mode.currentData() or "balanced"),
-                start_track=track,
-            ),
-            lambda plan:self._apply_mind(plan),
-        priority="foreground", task_name="journey-build", replace_key="journey-build")
-    
-    # ------------------------------- Flow / Mind
+            self._status("Select a Music Map track first",3000)
+            return
+        self.sessionFromTrackRequested.emit(dict(track))
+
