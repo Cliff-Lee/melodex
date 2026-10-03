@@ -1181,12 +1181,12 @@ class MainWindow(QMainWindow):
         prompt=QLabel("Start listening")
         prompt.setObjectName("heroTitle")
         hero_l.addWidget(prompt)
-        explanation=QLabel(
+        self.home_explanation=QLabel(
             "A session from your library, shaped as you listen."
         )
-        explanation.setWordWrap(True)
-        explanation.setObjectName("mutedText")
-        hero_l.addWidget(explanation)
+        self.home_explanation.setWordWrap(True)
+        self.home_explanation.setObjectName("mutedText")
+        hero_l.addWidget(self.home_explanation)
 
         self.home_primary_button=QPushButton("▶  Play something")
         self.home_primary_button.setObjectName("primaryButton")
@@ -1199,7 +1199,9 @@ class MainWindow(QMainWindow):
         )
         hero_l.addWidget(self.home_primary_button)
 
-        moods=QHBoxLayout()
+        self.home_moods_widget=QWidget()
+        moods=QHBoxLayout(self.home_moods_widget)
+        moods.setContentsMargins(0,0,0,0)
         comfort=QPushButton("Comfort")
         explore=QPushButton("Explore")
         rediscover=QPushButton("Rediscover")
@@ -1217,12 +1219,12 @@ class MainWindow(QMainWindow):
         moods.addWidget(rediscover)
         moods.addStretch(1)
         moods.addWidget(tune)
-        hero_l.addLayout(moods)
+        hero_l.addWidget(self.home_moods_widget)
         l.addWidget(hero)
 
-        continue_title=QLabel("Continue listening")
-        continue_title.setStyleSheet("font-size:18px;font-weight:700;margin-top:10px")
-        l.addWidget(continue_title)
+        self.home_continue_heading=QLabel("Continue listening")
+        self.home_continue_heading.setStyleSheet("font-size:18px;font-weight:700;margin-top:10px")
+        l.addWidget(self.home_continue_heading)
 
         self.home_continue=QFrame()
         self.home_continue.setObjectName("continueCard")
@@ -1254,10 +1256,12 @@ class MainWindow(QMainWindow):
         continue_l.addWidget(self.home_continue_button)
         l.addWidget(self.home_continue)
 
-        explore_title=QLabel("Explore your music")
-        explore_title.setStyleSheet("font-size:18px;font-weight:700;margin-top:10px")
-        l.addWidget(explore_title)
-        cards=QHBoxLayout()
+        self.home_explore_heading=QLabel("Explore your music")
+        self.home_explore_heading.setStyleSheet("font-size:18px;font-weight:700;margin-top:10px")
+        l.addWidget(self.home_explore_heading)
+        self.home_explore_widget=QWidget()
+        cards=QHBoxLayout(self.home_explore_widget)
+        cards.setContentsMargins(0,0,0,0)
         library_card=ActionCard(
             "Browse your collection",
             "Albums, artists and tracks.",
@@ -1282,7 +1286,7 @@ class MainWindow(QMainWindow):
         cards.addWidget(library_card,1)
         cards.addWidget(wall_card,1)
         cards.addWidget(map_card,1)
-        l.addLayout(cards)
+        l.addWidget(self.home_explore_widget)
 
         self.home_status=QLabel()
         self.home_status.setWordWrap(True)
@@ -2570,14 +2574,25 @@ class MainWindow(QMainWindow):
     def _show_home(self):
         self._refresh_taste()
         count=self.providers.local_catalog_count()
-        if count:
-            self.home_status.setText(
-                f"{count:,} track{'s' if count != 1 else ''} in your library"
+        has_library=bool(count)
+        if hasattr(self,"home_explanation"):
+            self.home_explanation.setText(
+                "A session from your library, shaped as you listen."
+                if has_library
+                else "Add a folder of music. Your files stay where they are."
             )
-        else:
-            self.home_status.setText(
-                "Add a music folder to start listening."
-            )
+        if hasattr(self,"home_moods_widget"):
+            self.home_moods_widget.setVisible(has_library)
+        if hasattr(self,"home_explore_heading"):
+            self.home_explore_heading.setVisible(has_library)
+        if hasattr(self,"home_explore_widget"):
+            self.home_explore_widget.setVisible(has_library)
+        if hasattr(self,"home_status"):
+            self.home_status.setVisible(has_library)
+            if has_library:
+                self.home_status.setText(
+                    f"{count:,} track{'s' if count != 1 else ''} in your library"
+                )
         if hasattr(self,"home_primary_button"):
             if count:
                 self.home_primary_button.setText("▶  Play something")
@@ -2608,6 +2623,9 @@ class MainWindow(QMainWindow):
         track = dict(self.current_track or (recent[0] if recent else {}))
         self.home_recent_track = track
         if not track:
+            if hasattr(self,"home_continue_heading"):
+                self.home_continue_heading.hide()
+            self.home_continue.hide()
             self.home_continue_cover.set_cover("",title="Your music",key="empty-home")
             self.home_continue_title.setText("Nothing played yet")
             self.home_continue_meta.setText(
@@ -2615,6 +2633,9 @@ class MainWindow(QMainWindow):
             )
             self.home_continue_button.setEnabled(False)
             return
+        if hasattr(self,"home_continue_heading"):
+            self.home_continue_heading.show()
+        self.home_continue.show()
         title=str(track.get("title") or "Unknown track")
         artist=str(track.get("artist") or "Unknown artist")
         album=str(track.get("album") or "")
