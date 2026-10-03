@@ -113,7 +113,27 @@ def run_library_scan_child() -> int:
             scan_on_init=False,
         )
         cached = index.load_scan_cache(roots)
+        resume_cache = index.load_resume_cache(roots)
+        if resume_cache:
+            cached.update(resume_cache)
         cached_directories = index.load_directory_manifests(roots)
+        generation_id = index.begin_scan_generation(roots)
+        checkpoint_batch: list[dict[str, Any]] = []
+
+        def flush_checkpoints() -> None:
+            if not checkpoint_batch:
+                return
+            index.stage_scan_records(
+                generation_id,
+                roots,
+                list(checkpoint_batch),
+            )
+            checkpoint_batch.clear()
+
+        def checkpoint(record: dict[str, Any]) -> None:
+            checkpoint_batch.append(dict(record or {}))
+            if len(checkpoint_batch) >= 64:
+                flush_checkpoints()
 
         def progress(payload: dict[str, Any]) -> None:
             _write_message(
@@ -128,14 +148,23 @@ def run_library_scan_child() -> int:
             cached_entries=cached,
             cached_directories=cached_directories,
             collect_tracks=False,
+            checkpoint=checkpoint,
         )
         metrics = dict(snapshot.get("metrics") or {})
         metrics["process_isolated"] = True
         snapshot["metrics"] = metrics
         if bool(snapshot.get("cancelled")) or control.cancelled:
+            flush_checkpoints()
+            index.finish_scan_generation(
+                generation_id,
+                status="cancelled",
+            )
             snapshot["cancelled"] = True
             snapshot.pop("index_records", None)
             snapshot.pop("directory_manifests", None)
+            snapshot.setdefault("metrics", {})["resume_staged"] = len(
+                resume_cache
+            )
             _write_message(
                 sys.stdout,
                 {"type": "result", "payload": snapshot},
@@ -150,12 +179,17 @@ def run_library_scan_child() -> int:
                 ),
             }
         )
+        flush_checkpoints()
         persistence = index.replace_scan(
             roots,
             snapshot,
             cancelled=lambda: control.cancelled,
         )
         if bool(persistence.get("cancelled")):
+            index.finish_scan_generation(
+                generation_id,
+                status="cancelled",
+            )
             result = {
                 "tracks": [],
                 "metrics": dict(snapshot.get("metrics") or {}),
@@ -169,8 +203,13 @@ def run_library_scan_child() -> int:
             )
             return 0
 
+        index.finish_scan_generation(
+            generation_id,
+            status="completed",
+        )
         result = dict(snapshot)
         result["persistence"] = dict(persistence or {})
+        result.setdefault("metrics", {})["resume_staged"] = len(resume_cache)
         # Persistence-only scan mode keeps just one collection-sized record
         # set. Release it before hydrating the completed UI catalog from SQLite
         # so the child does not retain raw persistence rows and final tracks at
@@ -186,6 +225,16 @@ def run_library_scan_child() -> int:
         )
         return 0
     except BaseException as exc:
+        try:
+            if "generation_id" in locals():
+                if "checkpoint_batch" in locals():
+                    flush_checkpoints()
+                index.finish_scan_generation(
+                    generation_id,
+                    status="error",
+                )
+        except Exception:
+            pass
         _write_message(
             sys.stdout,
             {"type": "error", "error": f"{type(exc).__name__}: {exc}"},
