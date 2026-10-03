@@ -29,6 +29,7 @@ from .responsiveness import UiResponsivenessMonitor
 from .background_scheduler import BackgroundScheduler
 from .motion import MotionController, FAST_MOTION_MS, STANDARD_MOTION_MS
 from .library_scan_controller import LibraryScanController
+from .navigation_controller import NavigationController
 from .library_scan_status import (
     idle_scan_session,
     scan_activity_state,
@@ -223,8 +224,12 @@ class MainWindow(QMainWindow):
         self._prefetch_sequence = 0
         self._prefetch_delay_ms = 350
         self._source_config_refresh_in_progress = False
-        self._navigation_generation = 0
-        self._page_refresh_delay_ms = 16
+        self.navigation = NavigationController(self, refresh_delay_ms=16)
+        # Compatibility aliases for focused GUI probes. The controller owns
+        # these mutable collections and timing values.
+        self._page_refresh_delay_ms = self.navigation.refresh_delay_ms
+        self._built_lazy_pages = self.navigation.built_lazy_pages
+        self.lazy_page_build_metrics = self.navigation.lazy_page_build_metrics
         self._search_sequence = 0
         self._search_pending_sequence = 0
         self._search_loading_delay_ms = 220
@@ -390,14 +395,14 @@ class MainWindow(QMainWindow):
 
         # Heavy surfaces get only a tiny first-paint shell at startup. Their
         # modules and widgets are constructed on the first navigation to them.
-        self._lazy_page_builders = {
-            "library": self._build_library,
-            "now_playing": self._build_now_playing,
-            "album_wall": self._build_album_wall,
-            "music_map": self._build_music_map,
-        }
-        self._built_lazy_pages: set[str] = set()
-        self.lazy_page_build_metrics: dict[str, float] = {}
+        self.navigation.set_lazy_builders(
+            {
+                "library": self._build_library,
+                "now_playing": self._build_now_playing,
+                "album_wall": self._build_album_wall,
+                "music_map": self._build_music_map,
+            }
+        )
         for page, title, subtitle in (
             ("library", "My Music", "Preparing your collection…"),
             ("now_playing", "Now playing", "Preparing lyrics, artwork and visuals…"),
@@ -1091,7 +1096,7 @@ class MainWindow(QMainWindow):
                 padding:7px;
             }
         """)
-        self._update_nav_state("home")
+        self.navigation.update_nav_state("home")
         self._refresh_plugin_presence()
 
     def _update_play_button(self, playing: bool) -> None:
@@ -1139,35 +1144,6 @@ class MainWindow(QMainWindow):
         hint.setObjectName("pageHint")
         lay.addWidget(hint)
         lay.addStretch(1)
-
-    def _ensure_lazy_page_built(self, name: str) -> bool:
-        builder=self._lazy_page_builders.get(name)
-        if builder is None or name in self._built_lazy_pages:
-            return False
-        started=time.perf_counter()
-        builder()
-        elapsed_ms=(time.perf_counter()-started)*1000.0
-        self._built_lazy_pages.add(name)
-        self.lazy_page_build_metrics[name]=round(elapsed_ms,3)
-        self._startup_mark(f"lazy_page_ready:{name}")
-        return True
-
-    def _build_lazy_page_if_current(self, name: str, generation: int) -> None:
-        if (
-            self._closing
-            or generation != self._navigation_generation
-            or name != self.current_page
-        ):
-            return
-        self._ensure_lazy_page_built(name)
-        self.pages[name].update()
-        QTimer.singleShot(
-            0,
-            lambda page=name, token=generation: self._populate_page_if_current(
-                page,
-                token,
-            ),
-        )
 
     def _build_home(self):
         l=self._page_layout(
@@ -2459,124 +2435,7 @@ class MainWindow(QMainWindow):
             self.living_canvas.set_window_minimized(self.isMinimized())
 
     def open_page(self, name: str):
-        if name not in self.pages:
-            return
-        previous_page = self.current_page
-        if previous_page != name:
-            stale_page_scopes = {
-                "album_wall": ("page:album-wall-model",),
-                "music_map": ("page:music-map-model",),
-                "now_playing": (
-                    "now-playing-visual-analysis",
-                    "now-playing-visual-context",
-                ),
-            }
-            for scope in stale_page_scopes.get(previous_page, ()):
-                self._invalidate_async(scope)
-        interaction = (
-            self.responsiveness.begin_interaction(f"navigate:{name}")
-            if hasattr(self, "responsiveness")
-            else None
-        )
-        self._navigation_generation += 1
-        generation = self._navigation_generation
-        self.current_page=name
-        self.stack.setCurrentWidget(self.pages[name])
-        self._update_nav_state(name)
-        self.pages[name].update()
-        self.motion.settle(
-            self.page_titles.get(name),
-            duration_ms=FAST_MOTION_MS,
-            start_opacity=0.88,
-        )
-        if interaction is not None:
-            self.responsiveness.end_interaction(interaction)
-
-        if (
-            name in self._lazy_page_builders
-            and name not in self._built_lazy_pages
-        ):
-            QTimer.singleShot(
-                self._page_refresh_delay_ms,
-                lambda page=name, token=generation: self._build_lazy_page_if_current(
-                    page,
-                    token,
-                ),
-            )
-            return
-
-        # Navigation acknowledgement and page population are separate phases.
-        # Give Qt one short frame to paint the destination shell before any
-        # refresh work starts. Rapid navigation invalidates stale callbacks.
-        QTimer.singleShot(
-            self._page_refresh_delay_ms,
-            lambda page=name, token=generation: self._populate_page_if_current(
-                page,
-                token,
-            ),
-        )
-
-    def _populate_page_if_current(self, name: str, generation: int) -> None:
-        if (
-            self._closing
-            or generation != self._navigation_generation
-            or name != self.current_page
-        ):
-            return
-
-        if name=="home":
-            self._show_home()
-        elif name=="library":
-            self._refresh_library()
-            self._refresh_plugin_presence()
-        elif name=="explore":
-            self._refresh_explore_visibility()
-        elif name=="album_wall":
-            self._refresh_album_wall()
-        elif name=="music_map":
-            self._refresh_music_map()
-        elif name=="sources":
-            self._refresh_sources()
-            QTimer.singleShot(0, self._refresh_source_config_statuses_async)
-        elif name=="moments":
-            self._refresh_moments()
-        elif name=="journeys":
-            self._refresh_journeys()
-        elif name=="playlists":
-            self._refresh_playlists()
-        elif name=="for_you":
-            self._refresh_taste()
-            self._refresh_plugin_presence()
-        elif name=="discover":
-            self._refresh_source_combo()
-            self._refresh_plugin_presence()
-        elif name=="now_playing":
-            self._refresh_plugin_presence()
-
-    def _update_nav_state(self, page: str) -> None:
-        parent = {
-            "home":"home",
-            "for_you":"home",
-            "now_playing":"home",
-            "library":"library",
-            "moments":"library",
-            "explore":"explore",
-            "discover":"explore",
-            "album_wall":"explore",
-            "music_map":"explore",
-            "ask":"explore",
-            "journeys":"journeys",
-            "playlists":"playlists",
-            "sources":"sources",
-        }.get(str(page or ""), "")
-        for key,button in getattr(self,"nav_buttons",{}).items():
-            active = key == parent
-            if bool(button.property("active")) == active:
-                continue
-            button.setProperty("active",active)
-            button.style().unpolish(button)
-            button.style().polish(button)
-            button.update()
+        self.navigation.open_page(name)
 
     def _refresh_explore_visibility(self) -> None:
         has_library=bool(self.providers.local_catalog_count())
