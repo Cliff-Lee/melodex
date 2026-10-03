@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from PySide6.QtCore import QObject, Qt, QUrl, Signal
-from PySide6.QtGui import QColor, QImage, QPixmap
+from PySide6.QtGui import QColor, QImage, QPixmap, QTextCursor
 from PySide6.QtWidgets import (
     QFileDialog,
     QFrame,
@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QInputDialog,
     QLabel,
+    QLineEdit,
     QMenu,
     QMessageBox,
     QPushButton,
@@ -148,6 +149,14 @@ class RichNowPlayingWidget(QWidget):
         self.lyrics_state_badge.setObjectName("lyricsStateBadge")
         self.lyrics_state_badge.hide()
         toolbar.addWidget(self.lyrics_state_badge)
+
+        self.lyrics_search=QLineEdit()
+        self.lyrics_search.setPlaceholderText("Search lyrics")
+        self.lyrics_search.setClearButtonEnabled(True)
+        self.lyrics_search.setMaximumWidth(180)
+        self.lyrics_search.setToolTip("Type text and press Enter to find the next matching lyric.")
+        self.lyrics_search.returnPressed.connect(self._find_lyrics_text)
+        toolbar.addWidget(self.lyrics_search)
         toolbar.addStretch(1)
 
         self.online_lyrics_button=QPushButton("Refresh lyrics")
@@ -246,8 +255,9 @@ class RichNowPlayingWidget(QWidget):
         self.lyrics.setOpenLinks(False)
         self.lyrics.anchorClicked.connect(self._lyrics_anchor_clicked)
         self.lyrics.setStyleSheet(
-            "QTextBrowser#nativeLyricsView{background:#111a24;color:#dfe8f3;"
-            "border:1px solid #293c51;border-radius:11px;padding:18px;}"
+            "QTextBrowser#nativeLyricsView{background:#101923;color:#edf3fa;"
+            "border:1px solid #30465e;border-radius:11px;padding:20px;"
+            "selection-background-color:#315f8f;selection-color:#ffffff;}"
         )
         lyrics_layout.addWidget(self.lyrics,1)
 
@@ -743,14 +753,14 @@ class RichNowPlayingWidget(QWidget):
 
     @staticmethod
     def _plain_lyrics_html(text: str, *, full_screen: bool = False) -> str:
-        size=30 if full_screen else 21
-        line_height=1.82 if full_screen else 1.68
+        size=34 if full_screen else 24
+        line_height=1.78 if full_screen else 1.62
         margin="26px auto" if full_screen else "8px 12px"
         width="900px" if full_screen else "760px"
         lines="<br>".join(_escape(text).splitlines())
         return (
             f"<div style='font-size:{size}px;line-height:{line_height};"
-            f"max-width:{width};margin:{margin};color:#e5edf6;font-weight:450'>"
+            f"max-width:{width};margin:{margin};color:#edf3fa;font-weight:500'>"
             f"{lines}</div>"
         )
 
@@ -869,6 +879,17 @@ class RichNowPlayingWidget(QWidget):
             self._active_lyrics_source="online"
             self.bundle["lyrics"]=dict(self._online_lyrics)
             self._apply_lyrics(self._online_lyrics)
+
+    def _find_lyrics_text(self) -> None:
+        term=str(self.lyrics_search.text() or "").strip()
+        if not term:
+            return
+        if self.lyrics.find(term):
+            return
+        cursor=self.lyrics.textCursor()
+        cursor.movePosition(QTextCursor.Start)
+        self.lyrics.setTextCursor(cursor)
+        self.lyrics.find(term)
 
     def _lyrics_anchor_clicked(self, url: QUrl) -> None:
         if str(url.scheme()).casefold()!="seek":
@@ -1349,9 +1370,9 @@ class RichNowPlayingWidget(QWidget):
         *,
         full_screen: bool = False,
     ) -> str:
-        base=27 if full_screen else 21
-        active=38 if full_screen else 28
-        line_height=1.82 if full_screen else 1.72
+        base=34 if full_screen else 24
+        active=48 if full_screen else 32
+        line_height=1.76 if full_screen else 1.62
         margin=15 if full_screen else 8
         parts=[
             f"<div style='font-size:{base}px;line-height:{line_height};"
@@ -1366,9 +1387,9 @@ class RichNowPlayingWidget(QWidget):
                     f"margin:{margin}px 0"
                 )
             elif current>=0 and abs(i-current)<=2:
-                style="color:#c8d3df;margin:7px 0"
+                style="color:#d9e3ee;margin:8px 0"
             else:
-                style="color:#8290a1;margin:6px 0"
+                style="color:#aab8c8;margin:7px 0"
             parts.append(
                 f"<a name='line-{i}'></a>"
                 f"<div style='{style}'>"
