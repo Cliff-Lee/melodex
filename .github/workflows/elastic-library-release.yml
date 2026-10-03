@@ -3,10 +3,6 @@ name: Elastic Library Release Qualification
 on:
   workflow_dispatch:
     inputs:
-      profiles:
-        description: "Comma-separated track counts"
-        required: false
-        default: "100000,250000,500000,1000000"
       stat_delay_ms:
         description: "Artificial stat latency in milliseconds"
         required: false
@@ -18,8 +14,13 @@ on:
 
 jobs:
   qualify:
+    name: Qualify ${{ matrix.tracks }} tracks
     runs-on: ubuntu-22.04
     timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        tracks: [100000, 250000, 500000, 1000000]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -27,17 +28,26 @@ jobs:
           python-version: '3.12'
       - name: Install scanner qualification dependencies
         run: python -m pip install mutagen
-      - name: Run P10i release-scale qualification
+      - name: Run scale qualification
         env:
           PYTHONPATH: desktop
         run: |
           python desktop/tools/qualify_large_library.py \
-            --profiles "${{ inputs.profiles }}" \
+            --profiles "${{ matrix.tracks }}" \
             --stat-delay-ms "${{ inputs.stat_delay_ms }}" \
             --directory-delay-ms "${{ inputs.directory_delay_ms }}" \
-            --json > p10i-release-qualification.json
+            --json > "p10j-qualification-${{ matrix.tracks }}.json"
+      - name: Measure cold RSS without tracemalloc
+        env:
+          PYTHONPATH: desktop
+        run: |
+          python desktop/tools/profile_scan_rss.py \
+            --tracks "${{ matrix.tracks }}" \
+            --json > "p10j-rss-${{ matrix.tracks }}.json"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: p10i-release-qualification
-          path: p10i-release-qualification.json
+          name: p10j-scale-${{ matrix.tracks }}
+          path: |
+            p10j-qualification-${{ matrix.tracks }}.json
+            p10j-rss-${{ matrix.tracks }}.json
