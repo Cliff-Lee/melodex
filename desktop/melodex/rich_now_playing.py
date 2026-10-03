@@ -45,8 +45,10 @@ class RichNowPlayingWidget(QWidget):
     knowledgeChanged = Signal(object, object)
     accentChanged = Signal(object)
     paletteChanged = Signal(object)
+    artworkChanged = Signal(str)
     lyricsChanged = Signal(object)
     lyricsStateChanged = Signal(object)
+    lyricsFullscreenRequested = Signal()
     lyricsSeekRequested = Signal(int)
     lyricsTranslationRequested = Signal(object)
     lyricsPluginRequested = Signal()
@@ -78,9 +80,6 @@ class RichNowPlayingWidget(QWidget):
         self._local_lyrics: dict[str, Any] = {}
         self._online_lyrics: dict[str, Any] = {}
         self._active_lyrics_source = ""
-        self._lyrics_fullscreen_dialog: QDialog | None = None
-        self._lyrics_fullscreen_browser: QTextBrowser | None = None
-        self._lyrics_fullscreen_source: QLabel | None = None
         self._identity: dict[str, Any] = {}
         self._pending: set[str] = set()
         self._context_started = False
@@ -231,8 +230,8 @@ class RichNowPlayingWidget(QWidget):
         )
 
         self.fullscreen_lyrics_button.setToolTip(
-            "<b>Full-screen lyrics</b><br>Open a distraction-free lyrics view. "
-            "Synchronized lines stay highlighted while the track plays."
+            "<b>Lyric Flow</b><br>Open the immersive music-reactive lyric presentation. "
+            "It uses the same lyrics and timing as this reader."
         )
         self.translate_lyrics_button.setToolTip(
             "<b>Translate lyrics</b><br>Explicitly send the currently displayed lyric text "
@@ -671,7 +670,6 @@ class RichNowPlayingWidget(QWidget):
             states=["Instrumental"]
         self.lyrics_state_badge.setText(" · ".join(states))
         self.lyrics_state_badge.setVisible(bool(states))
-        self._sync_fullscreen_lyrics()
         self.lyricsStateChanged.emit(document)
         self.lyricsChanged.emit({
             "text": lyric_text,
@@ -907,89 +905,11 @@ class RichNowPlayingWidget(QWidget):
         if not self._lyrics_document.has_content:
             QMessageBox.information(
                 self,
-                "Full-screen lyrics",
+                "Lyric Flow",
                 "Lyrics are not available for this track yet.",
             )
             return
-        if self._lyrics_fullscreen_dialog is not None:
-            try:
-                self._lyrics_fullscreen_dialog.raise_()
-                self._lyrics_fullscreen_dialog.activateWindow()
-                return
-            except Exception:
-                self._lyrics_fullscreen_dialog=None
-
-        dialog=QDialog(self)
-        dialog.setWindowTitle("Lyrics · Melodex")
-        dialog.setModal(False)
-        layout=QVBoxLayout(dialog)
-        layout.setContentsMargins(28,24,28,24)
-        layout.setSpacing(12)
-
-        heading=QLabel(
-            f"<div style='font-size:24px;font-weight:750'>{_escape(self.title.text())}</div>"
-            f"<div style='font-size:15px;color:#9aa6b5'>{_escape(self.artist.text())}</div>"
-        )
-        heading.setWordWrap(True)
-        layout.addWidget(heading)
-
-        source=QLabel(self.lyrics_source.text())
-        source.setOpenExternalLinks(True)
-        source.setWordWrap(True)
-        source.setStyleSheet("color:#8290a2;font-size:11px")
-        layout.addWidget(source)
-
-        browser=QTextBrowser()
-        browser.setObjectName("fullscreenLyrics")
-        browser.setOpenExternalLinks(False)
-        browser.setOpenLinks(False)
-        browser.anchorClicked.connect(self._lyrics_anchor_clicked)
-        browser.setStyleSheet(
-            "QTextBrowser{background:#0d1118;color:#e5edf6;border:0;padding:28px;}"
-        )
-        layout.addWidget(browser,1)
-
-        buttons=QDialogButtonBox(QDialogButtonBox.Close)
-        buttons.rejected.connect(dialog.close)
-        layout.addWidget(buttons)
-
-        dialog.finished.connect(self._fullscreen_lyrics_closed)
-        self._lyrics_fullscreen_dialog=dialog
-        self._lyrics_fullscreen_browser=browser
-        self._lyrics_fullscreen_source=source
-        self._sync_fullscreen_lyrics()
-        dialog.showFullScreen()
-
-    def _fullscreen_lyrics_closed(self, _result: int) -> None:
-        self._lyrics_fullscreen_dialog=None
-        self._lyrics_fullscreen_browser=None
-        self._lyrics_fullscreen_source=None
-
-    def _sync_fullscreen_lyrics(self) -> None:
-        browser=self._lyrics_fullscreen_browser
-        if browser is None:
-            return
-        if self.synced:
-            html_text=self._synced_lyrics_html(
-                self._lyric_index,
-                full_screen=True,
-            )
-            browser.setHtml(html_text)
-            if self._lyric_index >= 0:
-                browser.scrollToAnchor(f"line-{self._lyric_index}")
-        else:
-            text=self._lyrics_document.text
-            if text:
-                browser.setHtml(self._plain_lyrics_html(text,full_screen=True))
-            elif self._lyrics_document.instrumental:
-                browser.setHtml(
-                    "<div style='font-size:28px;max-width:900px;margin:80px auto;"
-                    "color:#dce5ef;text-align:center'>Instrumental track</div>"
-                )
-            else:
-                browser.setHtml(self.lyrics.toHtml())
-        if self._lyrics_fullscreen_source is not None:
-            self._lyrics_fullscreen_source.setText(self.lyrics_source.text())
+        self.lyricsFullscreenRequested.emit()
 
     def _import_lyrics_file(self) -> None:
         if not self.track or not track_key(self.track):
@@ -1136,8 +1056,10 @@ class RichNowPlayingWidget(QWidget):
                 self.art.setText("")
                 self.art.setPixmap(pix.scaled(self.art.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
                 self._apply_accent(QImage(path))
+                self.artworkChanged.emit(str(path))
                 return
         self.art.setPixmap(QPixmap()); self.art.setText("♫")
+        self.artworkChanged.emit("")
         self._accent_color = QColor("#7eb4ff")
         self._palette_colors = self._fallback_palette(self._accent_color)
         self.accentChanged.emit(QColor(self._accent_color))
