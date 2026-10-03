@@ -1258,7 +1258,9 @@ class LivingScene(QWidget):
         # Overlapping translucent mist cells read as atmosphere rather than
         # stacked stripes. They are deterministic, bounded and cheap.
         budget = self._quality_budget()
-        mist_count = max(4, min(budget.max_glows, 7 if budget.name == "high" else 6))
+        # Six mist cells are enough for depth even in High. Keeping this
+        # bounded leaves comfortable headroom inside the 30 fps High budget.
+        mist_count = max(4, min(budget.max_glows, 6))
         for index in range(mist_count):
             sx, sy, size, phase = self._stars[index % len(self._stars)]
             drift_x = math.sin(self._phase * (0.018 + index * 0.002) + phase) * rect.width() * 0.045
