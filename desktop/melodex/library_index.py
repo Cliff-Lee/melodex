@@ -774,20 +774,23 @@ class LocalLibraryIndex:
                 db.rollback()
                 raise
 
-        return {
-            "cancelled": False,
-            "roots_persisted": len(available_ids),
-            "tracks_written": int(rows_written),
-            "tracks_deleted": int(rows_deleted),
-            "tracks_persisted": sum(
+        with self._connect() as db:
+            tracks_persisted = sum(
                 int(
-                    self._connect().execute(
+                    db.execute(
                         "SELECT COUNT(*) FROM tracks WHERE root_id = ?",
                         (root_id,),
                     ).fetchone()[0]
                 )
                 for root_id in available_ids
-            ),
+            )
+
+        return {
+            "cancelled": False,
+            "roots_persisted": len(available_ids),
+            "tracks_written": int(rows_written),
+            "tracks_deleted": int(rows_deleted),
+            "tracks_persisted": int(tracks_persisted),
             "staged_generation": True,
         }
 
