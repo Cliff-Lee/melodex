@@ -599,6 +599,46 @@ class MainWindow(QMainWindow):
                 font-size:13px;
             }
             QLabel{background:transparent}
+            QLabel#pageTitle{
+                font-size:27px;
+                font-weight:720;
+            }
+            QLabel#pageSubtitle{
+                color:#99a4b3;
+                font-size:13px;
+                margin-bottom:6px;
+            }
+            QLabel#pageHint{
+                color:#758297;
+                margin-top:8px;
+            }
+            QLabel#heroTitle{
+                font-size:20px;
+                font-weight:720;
+            }
+            QLabel#sectionTitle{
+                font-size:17px;
+                font-weight:700;
+                margin-top:12px;
+            }
+            QLabel#sectionTitleCompact{
+                font-size:17px;
+                font-weight:700;
+            }
+            QLabel#panelHeading{
+                font-size:15px;
+                font-weight:700;
+            }
+            QLabel#mutedText{color:#98a3b3}
+            QLabel#subtleText{
+                color:#7f8b9b;
+                margin-top:6px;
+            }
+            QLabel#searchStatus{
+                color:#98a4b4;
+                padding:6px 2px 4px 2px;
+                font-size:12px;
+            }
             QWidget#sidebar{
                 background:#0a0d12;
                 border-right:1px solid #202733;
@@ -648,7 +688,12 @@ class MainWindow(QMainWindow):
                 font-weight:700;
                 padding:11px 17px;
             }
-            QPushButton#secondaryButton{font-weight:650}
+            QPushButton#secondaryButton{
+                background:#151b24;
+                border-color:#283443;
+                color:#d7dde7;
+                font-weight:600;
+            }
             QPushButton#quietButton{
                 background:transparent;
                 border-color:#28313e;
@@ -737,7 +782,7 @@ class MainWindow(QMainWindow):
             QFrame#actionCard{
                 background:#141b25;
                 border:1px solid #293544;
-                border-radius:14px;
+                border-radius:12px;
             }
             QFrame#actionCard:hover{
                 background:#182231;
@@ -749,7 +794,10 @@ class MainWindow(QMainWindow):
                 font-weight:700;
             }
             QLabel#cardTitle{font-size:18px;font-weight:720}
-            QLabel#cardBody{color:#9fa9b8}
+            QLabel#cardBody{
+                color:#929dac;
+                font-size:12px;
+            }
             QLabel#cardAction{color:#72aefb;font-weight:650}
             QFrame#albumCard{
                 background:transparent;
@@ -802,19 +850,19 @@ class MainWindow(QMainWindow):
             QFrame#emptyState{
                 background:#121821;
                 border:1px dashed #313d4e;
-                border-radius:15px;
+                border-radius:12px;
             }
             QLabel#emptyTitle{font-size:20px;font-weight:720}
             QLabel#emptyBody{color:#97a2b2;font-size:13px}
             QFrame#homeHero{
                 background:#131c29;
                 border:1px solid #2a3d56;
-                border-radius:16px;
+                border-radius:12px;
             }
             QFrame#continueCard{
                 background:#121923;
                 border:1px solid #273343;
-                border-radius:13px;
+                border-radius:12px;
             }
             QFrame#powerPanel{
                 background:#111821;
@@ -824,7 +872,7 @@ class MainWindow(QMainWindow):
             QFrame#sourceOverview{
                 background:#121b26;
                 border:1px solid #2a3a4d;
-                border-radius:14px;
+                border-radius:12px;
             }
             QFrame#sourceFirstRun{
                 background:#102033;
@@ -1074,12 +1122,12 @@ class MainWindow(QMainWindow):
             self._clear_layout_items(lay)
         lay.setContentsMargins(28,24,28,24)
         lay.setSpacing(6)
-        t=QLabel(title); t.setStyleSheet("font-size:28px;font-weight:700"); lay.addWidget(t)
+        t=QLabel(title); t.setObjectName("pageTitle"); lay.addWidget(t)
         self.page_titles[page]=t
         if subtitle:
             subtitle_label=QLabel(subtitle)
             subtitle_label.setWordWrap(True)
-            subtitle_label.setStyleSheet("color:#aab0ba")
+            subtitle_label.setObjectName("pageSubtitle")
             lay.addWidget(subtitle_label)
         return lay
 
@@ -1091,7 +1139,7 @@ class MainWindow(QMainWindow):
     ) -> None:
         lay=self._page_layout(page,title,subtitle)
         hint=QLabel("Opening…")
-        hint.setStyleSheet("color:#758297;margin-top:8px")
+        hint.setObjectName("pageHint")
         lay.addWidget(hint)
         lay.addStretch(1)
 
