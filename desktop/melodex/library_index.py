@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 def _canonical_path(path: str | Path) -> str:
@@ -87,6 +87,24 @@ class LocalLibraryIndex:
             )
             db.execute(
                 "CREATE INDEX IF NOT EXISTS tracks_root_idx ON tracks(root_id)"
+            )
+            db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS directories (
+                    root_id TEXT NOT NULL,
+                    relative_dir TEXT NOT NULL,
+                    manifest TEXT NOT NULL,
+                    file_count INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY (root_id, relative_dir),
+                    FOREIGN KEY (root_id)
+                        REFERENCES roots(root_id)
+                        ON DELETE CASCADE
+                )
+                """
+            )
+            db.execute(
+                "CREATE INDEX IF NOT EXISTS directories_root_idx "
+                "ON directories(root_id)"
             )
             db.execute(
                 """
@@ -260,6 +278,49 @@ class LocalLibraryIndex:
             }
         return cache
 
+    def load_directory_manifests(
+        self,
+        roots: list[Path],
+    ) -> dict[str, dict[str, Any]]:
+        """Load persisted direct-directory manifests for safe bulk reuse."""
+        if not roots:
+            return {}
+        ids = [_root_id(root) for root in roots]
+        placeholders = ",".join("?" for _ in ids)
+        with self._connect() as db:
+            rows = db.execute(
+                f"""
+                SELECT
+                    d.root_id,
+                    d.relative_dir,
+                    d.manifest,
+                    d.file_count,
+                    r.path AS root_path
+                FROM directories AS d
+                JOIN roots AS r ON r.root_id = d.root_id
+                WHERE d.root_id IN ({placeholders})
+                """,
+                tuple(ids),
+            ).fetchall()
+
+        out: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            root_path = str(row["root_path"] or "")
+            relative_dir = str(row["relative_dir"] or ".")
+            directory = (
+                Path(root_path)
+                if relative_dir in {"", "."}
+                else Path(root_path) / relative_dir
+            )
+            out[_canonical_path(directory)] = {
+                "manifest": str(row["manifest"] or ""),
+                "file_count": int(row["file_count"] or 0),
+                "root_id": str(row["root_id"]),
+                "root_path": root_path,
+                "relative_dir": relative_dir,
+            }
+        return out
+
     @staticmethod
     def _matching_root(
         local_path: str | Path,
@@ -337,6 +398,36 @@ class LocalLibraryIndex:
         ] = {
             root_id: [] for root_id in available_ids if root_id in root_by_id
         }
+
+        directory_rows: dict[str, list[tuple[str, str, int]]] = {
+            root_id: [] for root_id in available_ids if root_id in root_by_id
+        }
+        for row in list((snapshot or {}).get("directory_manifests") or []):
+            if not isinstance(row, dict):
+                continue
+            root_path = str(row.get("root_path") or "")
+            directory_path = str(row.get("path") or "")
+            manifest = str(row.get("manifest") or "")
+            if not root_path or not directory_path or not manifest:
+                continue
+            root_id = _root_id(root_path)
+            root = root_by_id.get(root_id)
+            if root is None or root_id not in available_ids:
+                continue
+            try:
+                relative_dir = os.path.relpath(
+                    _canonical_path(directory_path),
+                    _canonical_path(root),
+                )
+            except ValueError:
+                continue
+            directory_rows.setdefault(root_id, []).append(
+                (
+                    relative_dir,
+                    manifest,
+                    max(0, int(row.get("file_count") or 0)),
+                )
+            )
 
         index_records = [
             dict(row)
@@ -595,6 +686,28 @@ class LocalLibraryIndex:
                         )
 
                     db.execute(
+                        "DELETE FROM directories WHERE root_id = ?",
+                        (root_id,),
+                    )
+                    manifests = directory_rows.get(root_id, [])
+                    if manifests:
+                        db.executemany(
+                            """
+                            INSERT INTO directories(
+                                root_id,
+                                relative_dir,
+                                manifest,
+                                file_count
+                            )
+                            VALUES(?, ?, ?, ?)
+                            """,
+                            [
+                                (root_id, relative_dir, manifest, file_count)
+                                for relative_dir, manifest, file_count in manifests
+                            ],
+                        )
+
+                    db.execute(
                         """
                         UPDATE roots
                         SET last_scan_at = ?, last_track_count = ?
@@ -632,6 +745,9 @@ class LocalLibraryIndex:
             "write_batches": write_batches,
             "delete_batches": delete_batches,
             "max_batch_rows": max_batch_rows,
+            "directory_manifests_persisted": sum(
+                len(rows) for rows in directory_rows.values()
+            ),
             "roots_unavailable": sum(
                 1 for row in state_rows
                 if not bool(row.get("available"))
