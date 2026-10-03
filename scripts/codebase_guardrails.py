@@ -11,6 +11,15 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 FORBIDDEN_MAIN_WINDOW_SNIPPETS = {
+    "def _build_music_map": "Music Map construction belongs to JourneyWorkspace",
+    "self.music_path_start_ref": "Journey route state belongs to JourneyWorkspace",
+    "self.music_journey_stages_data": "Journey stage state belongs to JourneyWorkspace",
+    "self.music_live_active": "Journey Live state belongs to JourneyWorkspace",
+    "self.pending_journey_recipe": "Journey recipe state belongs to JourneyWorkspace",
+    "from .music_pathfinder import": "Journey path planning belongs to JourneyWorkspace/domain modules",
+    "from .music_journey_live import": "Journey Live replanning belongs to JourneyWorkspace/domain modules",
+    "from .journey_recipe import": "Journey recipe workflow belongs to JourneyWorkspace",
+    "from .journey_replay import": "Journey replay workflow belongs to JourneyWorkspace",
     "from .plugin_configuration_dialog import": "plugin configuration belongs to SourcesFeature",
     "from .plugin_directory import": "plugin directory belongs to SourcesFeature",
     "from .plugin_onboarding import": "plugin onboarding belongs to SourcesFeature",
@@ -24,7 +33,7 @@ FORBIDDEN_MAIN_WINDOW_SNIPPETS = {
 # Baseline is the v0.7.11 main_window.py snapshot from P12a. Lower this number
 # as P12c extracts responsibilities; never raise it to accommodate new work.
 MAX_LINES = {
-    "desktop/melodex/main_window.py": 6115,
+    "desktop/melodex/main_window.py": 4488,
 }
 
 
