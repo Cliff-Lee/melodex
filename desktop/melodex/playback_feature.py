@@ -363,6 +363,26 @@ class PlaybackFeature(QObject):
             key=token,
         )
 
+    def set_window_minimized(self, minimized: bool) -> None:
+        if self.now_playing_built and hasattr(self, "living_canvas"):
+            self.living_canvas.set_window_minimized(bool(minimized))
+
+    def set_plugin_presence(self, *, lyrics: bool, context: bool) -> None:
+        if self.now_playing_built and hasattr(self, "rich_now"):
+            self.rich_now.set_plugin_presence(
+                lyrics=bool(lyrics),
+                context=bool(context),
+            )
+
+    def record_feedback(self, positive: bool) -> None:
+        self._feedback(bool(positive))
+
+    def keep_current(self) -> None:
+        self._keep()
+
+    def refine_queue(self) -> None:
+        self._flow_queue()
+
     def _build_now_playing(self):
         from .living_canvas import LivingCanvasView
         from .rich_now_playing import RichNowPlayingWidget
