@@ -23,6 +23,7 @@ def test_campaign_11c_small_nas_qualification_passes():
     assert result["passed"] is True
     assert result["cases"]["initial_scan"]["tracks"] == 6
     assert result["cases"]["offline_cache_preservation"]["tracks"] == 6
-    assert result["cases"]["offline_cache_preservation"]["incomplete_roots"] >= 1
+    assert result["cases"]["offline_cache_preservation"]["unavailable_roots"] >= 1
+    assert result["cases"]["offline_cache_preservation"]["persistence_roots_unavailable"] >= 1
     assert result["cases"]["reconnect_rescan"]["tracks"] == 6
     assert result["cases"]["hung_worker_cancel"]["hard_cancelled"] is True
