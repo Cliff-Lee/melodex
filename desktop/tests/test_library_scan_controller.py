@@ -52,6 +52,7 @@ def test_start_and_finish_own_runner_lifecycle(tmp_path):
     assert controller.active is True
     assert controller.runner.started is True
     assert controller.runner.roots == [tmp_path / "music"]
+    assert controller.roots_key == (str(tmp_path / "music"),)
 
     assert controller.finish(sequence + 1) is False
     assert controller.active is True
