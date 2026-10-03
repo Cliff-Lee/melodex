@@ -639,11 +639,11 @@ class RichNowPlayingWidget(QWidget):
             self.lyrics_source.setText("Online lookup needs artist + title metadata")
         elif status=="error":
             self.lyrics_source.setText(
-                "Online lyrics unavailable right now"
+                "Lyrics are unavailable right now"
                 + (f" · {error[:120]}" if error else "")
             )
         else:
-            self.lyrics_source.setText("No lyric source matched yet")
+            self.lyrics_source.setText("No lyrics found yet")
 
         self._refresh_lyrics_source_picker()
         editable=self._current_lyrics_editable()
@@ -1197,7 +1197,7 @@ class RichNowPlayingWidget(QWidget):
 
     def _artist_html(self, artist: dict[str, Any], photo: dict[str, Any] | None = None) -> str:
         if not artist:
-            return "<p style='color:#9097a2'>No MusicBrainz artist information found.</p>"
+            return "<p style='color:#9097a2'>No artist information found.</p>"
         parts = [f"<h2>{_escape(artist.get('name'))}</h2>"]
         dis = str(artist.get("disambiguation") or "")
         if dis:
@@ -1343,7 +1343,7 @@ class RichNowPlayingWidget(QWidget):
             rows.append(f'<tr><td><b>Commons source</b></td><td><a href="{_escape(artist_photo.get("description_url"))}">file page</a></td></tr>')
         if artist_photo.get("wikidata_qid"):
             rows.append(f"<tr><td><b>Wikidata</b></td><td>{_escape(artist_photo.get('wikidata_qid'))}</td></tr>")
-        body = "<h2>Track identity</h2><table cellspacing='7'>" + "".join(rows) + "</table>" if rows else "<p>No external identity data yet.</p>"
+        body = "<h2>Track identity</h2><table cellspacing='7'>" + "".join(rows) + "</table>" if rows else "<p>No additional track information yet.</p>"
         if errors:
             body += "<h3>Enrichment notes</h3><ul>" + "".join(f"<li>{_escape(x)}</li>" for x in errors) + "</ul>"
         body += "<p style='color:#777'>Online metadata: MusicBrainz. Artist photos: Wikimedia Commons via Wikidata when linked. Cover images: Cover Art Archive or the playback provider. Lyrics: local files/tags and installed plugins first; LRCLIB only when requested or explicitly enabled.</p>"
