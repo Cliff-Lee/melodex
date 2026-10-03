@@ -1,0 +1,111 @@
+name: Published package smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Published release tag to smoke-test
+        required: false
+        default: v0.7.12
+        type: string
+  pull_request:
+    paths:
+      - '.github/workflows/postrelease-package-smoke.yml'
+      - 'scripts/postrelease_package_smoke.py'
+      - 'scripts/packaged_startup_probe.py'
+      - 'desktop/linux/smoke_launch.py'
+      - 'docs/releases/v0.7.12-sha256.txt'
+
+permissions:
+  contents: read
+
+jobs:
+  macos:
+    name: Published macOS (${{ matrix.variant }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            variant: arm64
+          - os: macos-15-intel
+            variant: intel
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Smoke published DMG
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ inputs.release_tag }}"
+          if [[ -z "$TAG" ]]; then TAG="v$(tr -d '\r\n' < VERSION)"; fi
+          python3 scripts/postrelease_package_smoke.py             --tag "$TAG"             --mode macos             --variant "${{ matrix.variant }}"             --output "published-smoke-macos-${{ matrix.variant }}.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Published-smoke-macOS-${{ matrix.variant }}
+          path: published-smoke-macos-${{ matrix.variant }}.json
+          if-no-files-found: warn
+
+  windows:
+    name: Published Windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Smoke published portable ZIP and installer
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ inputs.release_tag }}"
+          if ([string]::IsNullOrWhiteSpace($tag)) {
+            $tag = "v$((Get-Content VERSION -Raw).Trim())"
+          }
+          python scripts/postrelease_package_smoke.py --tag $tag --mode windows --output published-smoke-windows.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Published-smoke-Windows
+          path: published-smoke-windows.json
+          if-no-files-found: warn
+
+  linux:
+    name: Published Linux
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Smoke published deb and AppImage
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ inputs.release_tag }}"
+          if [[ -z "$TAG" ]]; then TAG="v$(tr -d '\r\n' < VERSION)"; fi
+          python3 scripts/postrelease_package_smoke.py             --tag "$TAG"             --mode linux             --output published-smoke-linux.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Published-smoke-Linux
+          path: published-smoke-linux.json
+          if-no-files-found: warn
+
+  android-package:
+    name: Published Android package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify published APK and AAB
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ inputs.release_tag }}"
+          if [[ -z "$TAG" ]]; then TAG="v$(tr -d '\r\n' < VERSION)"; fi
+          python3 scripts/postrelease_package_smoke.py             --tag "$TAG"             --mode android             --output published-smoke-android.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Published-smoke-Android
+          path: published-smoke-android.json
+          if-no-files-found: warn
