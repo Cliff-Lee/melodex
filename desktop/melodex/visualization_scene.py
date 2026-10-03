@@ -1368,6 +1368,20 @@ class LivingScene(QWidget):
                 QColor(132, 145, 161, 135),
             )
 
+    def _memory_color(self, mark: MemoryMark) -> QColor:
+        """Use one restrained palette with colour reinforcing time of day."""
+
+        daypart = str(mark.daypart or "").casefold()
+        if "morning" in daypart:
+            return QColor(self._color(0))
+        if "afternoon" in daypart:
+            return QColor(self._color(1))
+        if "evening" in daypart:
+            return QColor(self._color(3))
+        if "late" in daypart or "night" in daypart:
+            return QColor(self._color(2))
+        return QColor(self._color(0))
+
     def _active_memory_index(self) -> int | None:
         return (
             self._hovered_memory_index
@@ -1396,7 +1410,7 @@ class LivingScene(QWidget):
             if card.center().x() > point.x()
             else QPointF(card.right(), card.center().y())
         )
-        color = QColor.fromHsv(mark.hue, 145, 242)
+        color = self._memory_color(mark)
         leader = QColor(color)
         leader.setAlpha(115)
         painter.setPen(QPen(leader, 1.0, Qt.SolidLine, Qt.RoundCap))
@@ -1477,7 +1491,7 @@ class LivingScene(QWidget):
                 radius_y * 1.20,
                 min(rect.width() * 0.13, span_width * 0.5 + radius_y * 0.80),
             )
-            color = QColor.fromHsv(mark.hue, 145, 242)
+            color = self._memory_color(mark)
             geometry[index] = (point, radius_x, radius_y, count_scale, color)
             hit.append((point, index, max(18.0, radius_x)))
         return ordered_indices, positions, geometry, tuple(hit)
@@ -1512,12 +1526,12 @@ class LivingScene(QWidget):
             line.setAlpha(20)
             cache.setPen(QPen(line, 1.0, Qt.DotLine))
             cache.drawLine(
-                QPointF(rect.left() + 72, y),
+                QPointF(rect.left() + 104, y),
                 QPointF(rect.right(), y),
             )
             self._draw_caption(
                 cache,
-                QRectF(rect.left(), y - 8, 66, 16),
+                QRectF(rect.left(), y - 8, 96, 16),
                 label,
                 QColor(143, 159, 178, 105),
                 Qt.AlignLeft | Qt.AlignVCenter,
@@ -1607,7 +1621,7 @@ class LivingScene(QWidget):
         self._draw_caption(
             cache,
             QRectF(rect.left(), rect.top() + 2, rect.width(), 16),
-            "MEMORY ATLAS   ·   LEFT → RIGHT IS TIME   ·   HEIGHT IS TIME OF DAY   ·   SIZE IS PLAYS",
+            "MEMORY ATLAS   ·   LEFT → RIGHT IS TIME   ·   HEIGHT / COLOUR IS TIME OF DAY   ·   SIZE IS PLAYS",
             QColor(165, 182, 202, 145),
         )
         self._draw_caption(
