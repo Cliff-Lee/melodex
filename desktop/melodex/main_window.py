@@ -184,17 +184,6 @@ class MainWindow(QMainWindow):
         self._startup_mark("core_services_ready")
         self.bridge: ProviderBridge | None = None
         self._bridge_start_pending = False
-        self.current_history_id = 0
-        self.current_track_started = 0.0
-        self.current_track: dict[str, Any] | None = None
-        self._visual_position_ms = 0
-        self._visual_duration_ms = 0
-        self._visual_analysis_signals = _VisualAnalysisSignals(self)
-        self._visual_analysis_signals.ready.connect(self._visual_analysis_loaded)
-        self._visual_context_signals = _VisualContextSignals(self)
-        self._visual_context_signals.ready.connect(self._visual_context_loaded)
-        self._visual_context_sequence = 0
-        self._visual_neighbour_tracks: dict[int, dict[str, Any]] = {}
         self.current_page = "home"
         self._closing = False
         self._local_scan_started_at = 0.0
@@ -204,9 +193,6 @@ class MainWindow(QMainWindow):
         self.local_scan.progress.connect(self._local_scan_progress)
         self.local_scan.done.connect(self._local_scan_done)
         self.local_scan.failed.connect(self._local_scan_failed)
-        self._prefetched_track_assets: dict[str, dict[str, Any]] = {}
-        self._prefetch_sequence = 0
-        self._prefetch_delay_ms = 350
         self.navigation = NavigationController(
             self,
             refresh_delay_ms=16,
@@ -242,12 +228,69 @@ class MainWindow(QMainWindow):
             self.providers.resolve, self._transition_for, self,
             playback_refresher=self.providers.refresh_playback,
         )
-        self.player.trackChanged.connect(self._on_track_changed)
-        self.player.positionChanged.connect(self._on_position)
-        self.player.error.connect(lambda s: self.statusBar().showMessage(s, 7000))
-        self.player.queueChanged.connect(self._refresh_queue)
+
+        from .playback_feature import PlaybackFeature
+
+        self.playback_feature = PlaybackFeature(
+            self.providers,
+            self.state,
+            self.flow,
+            self.data_dir,
+            metadata=lambda: self.metadata,
+            knowledge=lambda: self.knowledge,
+            llm_settings=self._llm_settings,
+            open_llm_settings=self._llm_settings_dialog,
+            llm_complete=lambda settings, prompt, context, tools:
+                self.llm.complete(settings, prompt, context, tools),
+            run_async=self._run_async,
+            invalidate_async=self._invalidate_async,
+            is_closing=lambda: self._closing,
+            scan_active=lambda: self.local_scan.active,
+            power_tools_enabled=lambda: self.state.get_bool("power_tools", False),
+            motion=self.motion,
+            page_titles=self.page_titles,
+        )
+        self.player.trackChanged.connect(self.playback_feature.on_track_changed)
+        self.player.positionChanged.connect(self.playback_feature.on_position)
+        self.player.playingChanged.connect(self.playback_feature.on_playing_changed)
         self.player.queueChanged.connect(
-            lambda _queue: self._schedule_next_track_prefetch()
+            lambda queue: self.playback_feature.on_queue_changed(
+                queue, self.player.index
+            )
+        )
+        self.player.error.connect(
+            lambda message: self.statusBar().showMessage(message, 7000)
+        )
+        self.playback_feature.previousRequested.connect(self.player.previous)
+        self.playback_feature.playPauseRequested.connect(self.player.play_pause)
+        self.playback_feature.nextRequested.connect(self.player.next)
+        self.playback_feature.seekRequested.connect(self.player.seek)
+        self.playback_feature.setQueueRequested.connect(
+            lambda tracks, start, autoplay: self.player.set_queue(
+                list(tracks or []), int(start), bool(autoplay)
+            )
+        )
+        self.playback_feature.appendQueueRequested.connect(
+            lambda tracks, autoplay: self.player.append_queue(
+                list(tracks or []), bool(autoplay)
+            )
+        )
+        self.playback_feature.jumpQueueRequested.connect(
+            lambda index: self.player.jump_to(int(index), autoplay=True)
+        )
+        self.playback_feature.replaceQueueItemRequested.connect(
+            lambda index, track, autoplay: self.player.replace_queue_item(
+                int(index), dict(track or {}), autoplay=bool(autoplay)
+            )
+        )
+        self.playback_feature.currentTrackChanged.connect(
+            self._playback_current_track_changed
+        )
+        self.playback_feature.knowledgeChanged.connect(
+            self._playback_knowledge_changed
+        )
+        self.playback_feature.statusMessageRequested.connect(
+            lambda message, timeout: self.statusBar().showMessage(message, timeout)
         )
         self._startup_mark("player_ready")
 
