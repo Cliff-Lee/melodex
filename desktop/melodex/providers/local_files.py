@@ -16,6 +16,54 @@ from ..scan_metrics import ScanProbe
 from ..storage_concurrency import StorageConcurrencyController
 
 AUDIO_EXTS = {".mp3", ".flac", ".m4a", ".aac", ".ogg", ".opus", ".wav", ".aiff", ".wma"}
+_ORIGINAL_OS_WALK = os.walk
+
+
+def _scandir_walk(
+    root: Path,
+    *,
+    onerror: Callable[[OSError], None] | None = None,
+):
+    """Yield directory batches using DirEntry stat data when available.
+
+    Production uses scandir to avoid constructing a Path and issuing a separate
+    Path.stat call for every discovered file. If os.walk has been monkeypatched
+    (tests/custom probes), callers deliberately fall back to that walker.
+    """
+    stack = [Path(root)]
+    while stack:
+        base = stack.pop()
+        try:
+            with os.scandir(base) as iterator:
+                entries = sorted(iterator, key=lambda entry: entry.name)
+        except OSError as exc:
+            if onerror is not None:
+                onerror(exc)
+            continue
+
+        directories: list[Path] = []
+        files: list[tuple[str, os.stat_result | None]] = []
+        for entry in entries:
+            try:
+                if entry.is_dir(follow_symlinks=False):
+                    directories.append(Path(entry.path))
+                    continue
+            except OSError as exc:
+                if onerror is not None:
+                    onerror(exc)
+                continue
+
+            stat_result = None
+            try:
+                stat_result = entry.stat()
+            except OSError:
+                pass
+            files.append((entry.name, stat_result))
+
+        # os.walk is depth-first in practice. Reverse the sorted children so
+        # popping the stack visits them in ascending lexical order.
+        stack.extend(reversed(directories))
+        yield str(base), files
 
 
 class LocalFilesProvider(MusicProvider):
@@ -252,6 +300,7 @@ class LocalFilesProvider(MusicProvider):
         queue_backpressure_events = 0
         directory_manifest_hits = 0
         directory_manifest_misses = 0
+        scandir_directories = 0
         concurrency = StorageConcurrencyController(scan_roots)
         metadata_executor = ThreadPoolExecutor(
             max_workers=4,
@@ -347,17 +396,26 @@ class LocalFilesProvider(MusicProvider):
                         nonlocal root_walk_errors
                         root_walk_errors += 1
 
-                    try:
-                        walker = os.walk(root, onerror=on_walk_error)
-                    except TypeError:
-                        walker = os.walk(root)
+                    if os.walk is _ORIGINAL_OS_WALK:
+                        walker = _scandir_walk(root, onerror=on_walk_error)
+                        fast_scandir = True
+                    else:
+                        try:
+                            legacy = os.walk(root, onerror=on_walk_error)
+                        except TypeError:
+                            legacy = os.walk(root)
+                        walker = (
+                            (base, [(name, None) for name in files])
+                            for base, _, files in legacy
+                        )
+                        fast_scandir = False
 
-                    for base, _, files in walker:
+                    for base, files in walker:
                         control.checkpoint()
                         probe.directory_seen()
                         manifest = hashlib.sha256()
                         audio_count = 0
-                        for name in sorted(files):
+                        for name, direntry_stat in files:
                             control.checkpoint()
                             p = Path(base) / name
                             is_audio = p.suffix.lower() in AUDIO_EXTS
@@ -370,7 +428,11 @@ class LocalFilesProvider(MusicProvider):
                             mtime_ns: int | None = None
                             stat_started = time.perf_counter()
                             try:
-                                file_stat = p.stat()
+                                file_stat = (
+                                    direntry_stat
+                                    if direntry_stat is not None
+                                    else p.stat()
+                                )
                                 size = int(file_stat.st_size)
                                 mtime_ns = int(
                                     getattr(
@@ -424,6 +486,7 @@ class LocalFilesProvider(MusicProvider):
                                 "root_key": root_key,
                                 "manifest": manifest.hexdigest(),
                                 "file_count": audio_count,
+                                "fast_scandir": fast_scandir,
                             }
                         )
 
@@ -627,6 +690,8 @@ class LocalFilesProvider(MusicProvider):
                     continue
 
                 if item_type == "directory_manifest":
+                    if bool(item.get("fast_scandir")):
+                        scandir_directories += 1
                     directory_path = str(item.get("path") or "")
                     manifest_value = str(item.get("manifest") or "")
                     file_count = max(0, int(item.get("file_count") or 0))
@@ -730,6 +795,8 @@ class LocalFilesProvider(MusicProvider):
                     "directory_manifest_hits": int(directory_manifest_hits),
                     "directory_manifest_misses": int(directory_manifest_misses),
                     "directory_manifests": len(directory_manifests),
+                    "scandir_directories": int(scandir_directories),
+                    "scandir_enabled": bool(scandir_directories),
                     "storage_profile": final_concurrency.profile,
                     "storage_average_stat_ms": final_concurrency.average_stat_ms,
                     "storage_network_hint": final_concurrency.network_hint,
