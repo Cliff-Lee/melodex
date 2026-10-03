@@ -49,13 +49,8 @@ jobs:
           python-version: '3.12'
       - name: Install code-health tooling
         run: python -m pip install "ruff>=0.9,<1"
-      - name: Run correctness-oriented Ruff checks
-        run: >-
-          ruff check
-          --config desktop/pyproject.toml
-          desktop/melodex
-          scripts/codebase_health.py
-          scripts/codebase_guardrails.py
+      - name: Run Ruff correctness-debt ratchet
+        run: python scripts/ruff_guardrail.py
       - name: Run structural ratchets
         run: python scripts/codebase_guardrails.py
 
