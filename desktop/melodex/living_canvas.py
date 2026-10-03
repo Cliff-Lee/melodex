@@ -199,7 +199,6 @@ class LivingCanvasView(QWidget):
                 ("Profile Pulse", "living"),
                 ("Lyric Flow", "lyrics"),
                 ("Sonic Weather", "weather"),
-                ("Album World", "album_world"),
                 ("Minimal", "minimal"),
             ),
         ),
@@ -216,7 +215,6 @@ class LivingCanvasView(QWidget):
         ("Profile Pulse", "living"),
         ("Lyric Flow", "lyrics"),
         ("Sonic Weather", "weather"),
-        ("Album World", "album_world"),
         ("Minimal", "minimal"),
         ("Constellation", "constellation"),
         ("Memory Atlas", "memory"),
@@ -225,6 +223,50 @@ class LivingCanvasView(QWidget):
 
     def __init__(self, parent=None, visualizer_dir: Path | None = None):
         super().__init__(parent)
+        self.setObjectName("visualsView")
+        self.setStyleSheet(
+            """
+            QWidget#visualsView{
+                background:#0f1116;
+                color:#f4f6fa;
+                font-family:"SF Pro Text","Segoe UI",Arial;
+                font-size:13px;
+            }
+            QWidget#visualsView QLabel{background:transparent}
+            QWidget#visualsView QComboBox{
+                background:#131923;
+                color:#e9eef6;
+                border:1px solid #293443;
+                border-radius:9px;
+                padding:7px 10px;
+                selection-background-color:#274f7a;
+            }
+            QWidget#visualsView QComboBox:hover{border-color:#3a4a60}
+            QWidget#visualsView QComboBox:focus{border-color:#3c78b8}
+            QWidget#visualsView QComboBox QAbstractItemView{
+                background:#111823;
+                color:#e8eef7;
+                border:1px solid #293443;
+                selection-background-color:#1d3553;
+                outline:0;
+            }
+            QWidget#visualsView QPushButton{
+                background:#181e28;
+                color:#e4eaf3;
+                border:1px solid #2a3443;
+                border-radius:9px;
+                padding:8px 12px;
+            }
+            QWidget#visualsView QPushButton:hover{
+                background:#222b38;
+                border-color:#3a4a60;
+            }
+            QWidget#visualsView QPushButton:disabled{
+                color:#697689;
+                background:#121720;
+            }
+            """
+        )
         self._track: dict[str, Any] = {}
         self._profile: VisualProfile | None = None
         self._duration_ms = 0
