@@ -33,6 +33,7 @@ class LibraryScanController(QObject):
         self._runner: Any | None = None
         self._sequence = 0
         self._pending = False
+        self._roots_key: tuple[str, ...] = ()
 
     @property
     def active(self) -> bool:
@@ -49,6 +50,10 @@ class LibraryScanController(QObject):
     @property
     def runner(self) -> Any | None:
         return self._runner
+
+    @property
+    def roots_key(self) -> tuple[str, ...]:
+        return self._roots_key
 
     @property
     def paused(self) -> bool:
@@ -95,6 +100,7 @@ class LibraryScanController(QObject):
             raise RuntimeError("Library scan is already running")
         roots_snapshot = [Path(root) for root in roots]
         self._pending = False
+        self._roots_key = scan_roots_key(roots_snapshot)
         self._sequence += 1
         sequence = self._sequence
         runner = self._new_runner(roots_snapshot, sequence)
