@@ -9,6 +9,7 @@ import math
 import re
 from typing import Any, Iterable, Mapping
 
+from .lyrics_state import LyricFrame, lyric_frame
 from .visualization_profile import VisualProfile
 
 
@@ -45,6 +46,7 @@ class VisualNeighbour:
     relation: str
     x: float
     y: float
+    strength: float = 0.5
 
 
 def build_constellation(
@@ -53,18 +55,30 @@ def build_constellation(
     *,
     limit: int = 24,
 ) -> tuple[VisualNeighbour, ...]:
-    """Lay out queue/history neighbours deterministically around the current track.
+    """Lay out queue/history neighbours as an organic musical neighbourhood.
 
-    Candidates may carry an integer ``_visual_token`` that the UI can map back
-    to its private playback record. The renderer receives only display fields.
+    The renderer receives only display fields and a normalized relationship
+    strength. Stronger relationships sit nearer the current track while a
+    deterministic golden-angle layout avoids the old equal-radius spoke wheel.
+    Candidates may carry an integer visual token that the UI privately maps
+    back to its playback record.
     """
 
     current = current if isinstance(current, Mapping) else {}
     current_artist = _key(current.get("artist"))
     current_album = _key(current.get("album"))
     current_key = _identity(current)
-    clean: list[tuple[int, dict[str, str], str]] = []
+    clean: list[tuple[int, dict[str, str], str, float]] = []
     seen = {current_key} if current_key else set()
+
+    relation_strength = {
+        "Same album": 0.96,
+        "Same artist": 0.88,
+        "Up next": 0.76,
+        "Played earlier": 0.66,
+        "Recently heard": 0.54,
+    }
+
     for ordinal, raw in enumerate(candidates):
         if not isinstance(raw, Mapping):
             continue
@@ -77,32 +91,51 @@ def build_constellation(
             token = int(raw.get("_visual_token", ordinal))
         except (TypeError, ValueError, OverflowError):
             token = ordinal
+
         artist = _text(track.get("artist"))
         title = _text(track.get("title"))
         album = _text(track.get("album"))
+        same_album = bool(current_album and _key(album) == current_album)
+        same_artist = bool(current_artist and _key(artist) == current_artist)
         explicit = _text(raw.get("_visual_relation"))
+
         if explicit in {"Up next", "Played earlier"}:
             relation = explicit
-        elif current_album and _key(album) == current_album:
+        elif same_album:
             relation = "Same album"
-        elif current_artist and _key(artist) == current_artist:
+        elif same_artist:
             relation = "Same artist"
         else:
             relation = "Recently heard"
+
+        strength = relation_strength[relation]
+        if same_album:
+            strength = max(strength, relation_strength["Same album"])
+        elif same_artist:
+            strength = max(strength, relation_strength["Same artist"])
+
+        seed = int.from_bytes(_digest(key)[:4], "big")
+        variation = ((seed % 1001) / 1000.0 - 0.5) * 0.06
+        strength = max(0.40, min(0.99, strength + variation))
         item = {"artist": artist, "title": title, "album": album}
-        clean.append((token, item, relation))
+        clean.append((token, item, relation, strength))
 
     clean = clean[: max(0, min(24, int(limit)))]
     if not clean:
         return ()
+
     phase = int.from_bytes(_digest(current_key or "melodex")[:4], "big") / 2**32 * math.tau
-    count = len(clean)
+    golden_angle = math.pi * (3.0 - math.sqrt(5.0))
     result: list[VisualNeighbour] = []
-    for index, (token, track, relation) in enumerate(clean):
+    for index, (token, track, relation, strength) in enumerate(clean):
         seed = int.from_bytes(_digest("\x1f".join((track["artist"], track["title"])))[:4], "big")
-        angle = phase + math.tau * index / count
-        wobble = (seed % 1000) / 1000.0
-        radius = 0.28 + 0.13 * wobble
+        jitter = (seed % 1000) / 1000.0
+        angle = phase + index * golden_angle + (jitter - 0.5) * 0.68
+
+        radius = 0.15 + (1.0 - strength) * 0.48 + 0.035 * jitter
+        x = 0.5 + math.cos(angle) * radius
+        y = 0.5 + math.sin(angle) * radius * 0.72
+
         result.append(
             VisualNeighbour(
                 token=token,
@@ -110,8 +143,9 @@ def build_constellation(
                 title=track["title"],
                 album=track["album"],
                 relation=relation,
-                x=max(0.08, min(0.92, 0.5 + radius * math.cos(angle))),
-                y=max(0.10, min(0.90, 0.5 + radius * 0.70 * math.sin(angle))),
+                x=max(0.07, min(0.93, x)),
+                y=max(0.09, min(0.91, y)),
+                strength=strength,
             )
         )
     return tuple(result)
@@ -163,59 +197,6 @@ def describe_weather(profile: VisualProfile) -> SonicWeather:
 
 
 @dataclass(frozen=True, slots=True)
-class LyricFrame:
-    previous: str
-    current: str
-    following: str
-    synced: bool
-    source: str
-
-
-def lyric_frame(lyrics: Mapping[str, Any] | None, position_ms: int, duration_ms: int) -> LyricFrame:
-    """Select the current lyric from local synced lines or gently paced plain text."""
-
-    lyrics = lyrics if isinstance(lyrics, Mapping) else {}
-    synced = [row for row in lyrics.get("synced", ()) if isinstance(row, Mapping)]
-    if synced:
-        idx = -1
-        for i, row in enumerate(synced):
-            try:
-                stamp = int(row.get("time_ms") or 0)
-            except (TypeError, ValueError, OverflowError):
-                continue
-            if stamp <= max(0, int(position_ms)):
-                idx = i
-            else:
-                break
-        if idx < 0:
-            next_line = _text(synced[0].get("text")) if synced else ""
-            return LyricFrame("", "", next_line, True, _text(lyrics.get("source")))
-        previous = _text(synced[idx - 1].get("text")) if idx > 0 else ""
-        current = _text(synced[idx].get("text"))
-        following = _text(synced[idx + 1].get("text")) if idx + 1 < len(synced) else ""
-        return LyricFrame(previous, current, following, True, _text(lyrics.get("source")))
-
-    raw = str(lyrics.get("text") or "")
-    lines = [_text(line) for line in re.split(r"[\r\n]+", raw) if _text(line)]
-    if not lines:
-        return LyricFrame("", "", "", False, _text(lyrics.get("source")))
-    try:
-        position = max(0, int(position_ms))
-        duration = max(0, int(duration_ms))
-    except (TypeError, ValueError, OverflowError):
-        position, duration = 0, 0
-    fraction = min(1.0, position / duration) if duration else 0.0
-    idx = min(len(lines) - 1, int(fraction * len(lines)))
-    return LyricFrame(
-        lines[idx - 1] if idx else "",
-        lines[idx],
-        lines[idx + 1] if idx + 1 < len(lines) else "",
-        False,
-        _text(lyrics.get("source")),
-    )
-
-
-@dataclass(frozen=True, slots=True)
 class MemoryMark:
     label: str
     detail: str
@@ -223,6 +204,42 @@ class MemoryMark:
     hue: int
     x: float
     y: float
+    span: float = 0.0
+    time_label: str = ""
+    representative: str = ""
+    daypart: str = ""
+
+
+def _average_clock_hour(group: list[tuple[float, Mapping[str, Any]]]) -> float:
+    """Circular mean of local listening time so 23:55 + 00:05 stays near midnight."""
+
+    if not group:
+        return 12.0
+    sin_total = 0.0
+    cos_total = 0.0
+    for stamp, _track in group:
+        moment = datetime.fromtimestamp(stamp)
+        hour = moment.hour + moment.minute / 60.0 + moment.second / 3600.0
+        angle = math.tau * hour / 24.0
+        sin_total += math.sin(angle)
+        cos_total += math.cos(angle)
+    if abs(sin_total) < 1e-9 and abs(cos_total) < 1e-9:
+        return 12.0
+    angle = math.atan2(sin_total, cos_total) % math.tau
+    return 24.0 * angle / math.tau
+
+
+def _daypart(hour: float) -> str:
+    hour = float(hour) % 24.0
+    if hour < 5:
+        return "Late night"
+    if hour < 12:
+        return "Morning"
+    if hour < 17:
+        return "Afternoon"
+    if hour < 22:
+        return "Evening"
+    return "Late night"
 
 
 def build_visual_memory(
@@ -231,7 +248,12 @@ def build_visual_memory(
     *,
     limit: int = 128,
 ) -> tuple[MemoryMark, ...]:
-    """Aggregate existing local play records into a bounded visual atlas."""
+    """Aggregate local play records into a readable listening map.
+
+    Horizontal position is chronological time. Vertical position is the
+    circular-average time of day for the group. Size remains play count.
+    Nothing is placed on an arbitrary random Y coordinate.
+    """
 
     mode = str(granularity or "sessions").casefold()
     if mode not in {"sessions", "albums", "weeks", "years"}:
@@ -278,31 +300,73 @@ def build_visual_memory(
 
     groups = groups[-max(1, min(128, int(limit))):]
     first_stamp, last_stamp = rows[0][0], rows[-1][0]
-    span = max(1.0, last_stamp - first_stamp)
+    span_seconds = max(1.0, last_stamp - first_stamp)
     result: list[MemoryMark] = []
-    for index, group in enumerate(groups):
+    for group in groups:
         start = group[0][0]
+        finish = group[-1][0]
+        midpoint = (start + finish) * 0.5
         first = group[0][1]
         album = _text(first.get("album"))
         artist = _text(first.get("artist"))
+        title = _text(first.get("title"))
+        average_hour = _average_clock_hour(group)
+        daypart = _daypart(average_hour)
+
         if mode == "albums":
-            label = album or _text(first.get("title")) or "Untitled album"
+            label = album or title or "Untitled album"
             detail = artist or "Unknown artist"
         elif mode == "years":
             label = datetime.fromtimestamp(start).strftime("%Y")
             detail = f"{len(group)} plays"
         elif mode == "weeks":
-            label = datetime.fromtimestamp(start).strftime("%b %d")
-            detail = f"{len(group)} plays · {datetime.fromtimestamp(start).strftime('%Y') }"
+            iso = datetime.fromtimestamp(start).isocalendar()
+            label = f"Week {iso.week}"
+            detail = f"{len(group)} plays · {iso.year}"
         else:
             label = datetime.fromtimestamp(start).strftime("%a %H:%M")
-            artists = list(dict.fromkeys(_text(row.get("artist")) for _, row in group if _text(row.get("artist"))))
+            artists = list(dict.fromkeys(
+                _text(row.get("artist"))
+                for _, row in group
+                if _text(row.get("artist"))
+            ))
             detail = ", ".join(artists[:2]) or f"{len(group)} tracks"
+
+        representative = title
+        if artist and title:
+            representative = f"{title} · {artist}"
+        elif artist and not representative:
+            representative = artist
+
+        start_dt = datetime.fromtimestamp(start)
+        finish_dt = datetime.fromtimestamp(finish)
+        if start_dt.date() == finish_dt.date():
+            if finish - start < 60:
+                time_label = start_dt.strftime("%a %b %d · %H:%M")
+            else:
+                time_label = f"{start_dt.strftime('%a %b %d · %H:%M')}–{finish_dt.strftime('%H:%M')}"
+        else:
+            time_label = f"{start_dt.strftime('%b %d')}–{finish_dt.strftime('%b %d')}"
+
         identity = "\x1f".join((_key(label), _key(detail), mode))
         seed = int.from_bytes(_digest(identity), "big")
-        x = (start - first_stamp) / span if len(groups) > 1 else 0.5
-        y = 0.22 + ((seed % 10000) / 10000.0) * 0.56
-        if len(groups) == 1:
-            x = 0.5 + (index - (len(groups) - 1) / 2) * 0.08
-        result.append(MemoryMark(label, detail, len(group), seed % 360, x, y))
+        x = (midpoint - first_stamp) / span_seconds if len(groups) > 1 else 0.5
+        horizontal_span = (finish - start) / span_seconds if len(groups) > 1 else 0.0
+        y = 0.14 + (average_hour / 24.0) * 0.68
+
+        result.append(
+            MemoryMark(
+                label=label,
+                detail=detail,
+                count=len(group),
+                hue=seed % 360,
+                x=max(0.0, min(1.0, x)),
+                y=max(0.14, min(0.82, y)),
+                span=max(0.0, min(1.0, horizontal_span)),
+                time_label=time_label,
+                representative=representative,
+                daypart=daypart,
+            )
+        )
     return tuple(result)
+

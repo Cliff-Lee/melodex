@@ -103,6 +103,8 @@ class PlaybackFeature(QObject):
         self._playback_state = PlaybackSessionState()
         self._visual_context_sequence = 0
         self._visual_neighbour_tracks: dict[int, dict[str, Any]] = {}
+        self._visual_neighbour_artwork: dict[int, str] = {}
+        self._visual_neighbour_preview_sequence = 0
         self._prefetched_track_assets: dict[str, dict[str, Any]] = {}
         self._prefetch_sequence = 0
         self._prefetch_delay_ms = 350
@@ -437,7 +439,11 @@ class PlaybackFeature(QObject):
         self.rich_now.knowledgeChanged.connect(self._remember_now_playing_knowledge)
         self.rich_now.accentChanged.connect(self.living_canvas.set_accent_color)
         self.rich_now.paletteChanged.connect(self.living_canvas.set_palette)
-        self.rich_now.lyricsChanged.connect(self.living_canvas.set_lyrics)
+        self.rich_now.artworkChanged.connect(self.living_canvas.set_artwork)
+        self.rich_now.lyricsStateChanged.connect(self.living_canvas.set_lyrics)
+        self.rich_now.lyricsFullscreenRequested.connect(
+            self.living_canvas.show_lyric_flow_fullscreen
+        )
         self.rich_now.lyricsSeekRequested.connect(self.seekRequested.emit)
         self.rich_now.lyricsTranslationRequested.connect(self._translate_lyrics)
         self.rich_now.lyricsPluginRequested.connect(
@@ -452,6 +458,9 @@ class PlaybackFeature(QObject):
         self.living_canvas.seekRequested.connect(self.seekRequested.emit)
         self.living_canvas.modeDataRequested.connect(self._request_visual_mode_data)
         self.living_canvas.neighbourActivated.connect(self._queue_visual_neighbour)
+        self.living_canvas.neighbourPreviewRequested.connect(
+            self._request_visual_neighbour_preview
+        )
         self.now_views.addTab(self.rich_now, "Now Playing")
         self.now_views.addTab(self.living_canvas, "Visuals")
         l.addWidget(self.now_views, 1)
@@ -779,7 +788,79 @@ class PlaybackFeature(QObject):
         self._visual_neighbour_tracks = {
             node.token: refs[node.token] for node in neighbours if node.token in refs
         }
+        self._visual_neighbour_artwork = {}
+        self._visual_neighbour_preview_sequence += 1
         self.living_canvas.set_neighbours(neighbours)
+
+        # The normal next-track prefetch may already have exactly the local cover
+        # we need. Reuse it rather than doing even a cheap second lookup.
+        for node in neighbours:
+            track = self._visual_neighbour_tracks.get(node.token) or {}
+            track_key = UserState.track_key(track)
+            prefetched = dict(self._prefetched_track_assets.get(track_key, {}) or {})
+            artwork = dict(prefetched.get("artwork") or {})
+            path = str(artwork.get("path") or "")
+            if path:
+                self._visual_neighbour_artwork[node.token] = path
+                self.living_canvas.set_neighbour_artwork(node.token, path)
+
+    def _request_visual_neighbour_preview(self, token: int) -> None:
+        token = int(token)
+        track = self._visual_neighbour_tracks.get(token)
+        if not track or self._is_closing():
+            return
+
+        if token in self._visual_neighbour_artwork:
+            if hasattr(self, "living_canvas"):
+                self.living_canvas.set_neighbour_artwork(
+                    token,
+                    self._visual_neighbour_artwork[token],
+                )
+            return
+
+        track_key = UserState.track_key(track)
+        prefetched = dict(self._prefetched_track_assets.get(track_key, {}) or {})
+        prefetched_art = dict(prefetched.get("artwork") or {})
+        prefetched_path = str(prefetched_art.get("path") or "")
+        if prefetched_path:
+            self._visual_neighbour_artwork[token] = prefetched_path
+            if hasattr(self, "living_canvas"):
+                self.living_canvas.set_neighbour_artwork(token, prefetched_path)
+            return
+
+        self._visual_neighbour_preview_sequence += 1
+        preview_sequence = self._visual_neighbour_preview_sequence
+        context_sequence = self._visual_context_sequence
+
+        def load() -> object:
+            try:
+                return dict(self.metadata.local_artwork(dict(track)) or {})
+            except Exception:
+                return {}
+
+        def apply(result: object) -> None:
+            if (
+                self._is_closing()
+                or preview_sequence != self._visual_neighbour_preview_sequence
+                or context_sequence != self._visual_context_sequence
+                or not isinstance(result, dict)
+            ):
+                return
+            current = self._visual_neighbour_tracks.get(token)
+            if not current or UserState.track_key(current) != track_key:
+                return
+            path = str(result.get("path") or "")
+            self._visual_neighbour_artwork[token] = path
+            if hasattr(self, "living_canvas") and self.living_canvas.active_mode == "constellation":
+                self.living_canvas.set_neighbour_artwork(token, path)
+
+        self._run_async(
+            load,
+            apply,
+            priority="visible",
+            task_name="constellation-hover-artwork",
+            replace_key="constellation-hover-artwork",
+        )
 
     def _queue_visual_neighbour(self, token: int) -> None:
         track = self._visual_neighbour_tracks.get(int(token))
