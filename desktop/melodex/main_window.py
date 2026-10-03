@@ -1680,8 +1680,8 @@ class MainWindow(QMainWindow):
             "Import playlist",
         )
         self.playlists_empty.actionRequested.connect(self._import_playlist_file)
-        self.playlists_stack.addWidget(self.playlists_list)
         self.playlists_stack.addWidget(self.playlists_empty)
+        self.playlists_stack.addWidget(self.playlists_list)
         l.addWidget(self.playlists_stack,1)
 
         row=QHBoxLayout()

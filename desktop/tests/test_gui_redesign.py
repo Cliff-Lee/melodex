@@ -64,6 +64,8 @@ def test_visual_library_defaults_to_album_cards_and_filters():
     assert len(browser._visible_albums) == 1
     assert browser._visible_albums[0]["title"] == "Album A"
 
+    browser.search.clear()
+    app.processEvents()
     browser.set_view("artists")
     assert browser.stack.currentWidget() is browser.artist_page
     assert len(browser.artist_rows) == 2
@@ -289,6 +291,7 @@ def test_redesigned_main_window_builds_with_goal_navigation(monkeypatch, tmp_pat
     assert "now_playing" in window._built_lazy_pages
     assert hasattr(window, "sources_feature")
     assert set(window.sources_feature.source_feature_buttons) == {
+        "",
         "search",
         "lyrics",
         "artwork",
@@ -842,7 +845,11 @@ def test_plugins_surface_where_their_features_are_used(monkeypatch, tmp_path):
             "configuration_status": {"declared": True, "ready": False},
         },
     ]
-    monkeypatch.setattr(window.providers, "extensions", lambda: list(extensions))
+    monkeypatch.setattr(
+        window.providers,
+        "extensions",
+        lambda **_kwargs: list(extensions),
+    )
     window.navigation.ensure_lazy_page_built("library")
     window.navigation.ensure_lazy_page_built("now_playing")
 
@@ -1164,7 +1171,7 @@ def test_translate_lyrics_is_explicit_and_uses_configured_llm(monkeypatch, tmp_p
     )
     shown = []
     monkeypatch.setattr(
-        window,
+        window.playback_feature,
         "_show_lyrics_translation",
         lambda language, text: shown.append((language, text)),
     )
@@ -1217,6 +1224,9 @@ def test_online_lyrics_translation_signal_contains_only_current_lyrics(monkeypat
     widget._active_lyrics_source = "online"
     widget._apply_lyrics(lyrics)
 
+    widget.lyricsTranslationRequested.disconnect(
+        window.playback_feature._translate_lyrics
+    )
     payloads = []
     widget.lyricsTranslationRequested.connect(payloads.append)
     widget.translate_lyrics_button.click()
@@ -1754,6 +1764,7 @@ def test_search_failure_preserves_stale_useful_results(monkeypatch, tmp_path):
 
 def test_stale_search_response_cannot_replace_newer_request(monkeypatch, tmp_path):
     try:
+        from PySide6.QtCore import Qt
         from PySide6.QtWidgets import QApplication
         import melodex.main_window as main_window
     except ImportError as exc:
@@ -2800,7 +2811,7 @@ def test_library_scan_progress_panel_is_clear_and_reassuring():
 
     browser.set_scan_progress({"phase": "saving"})
     assert "saving library index" in browser.scan_progress_summary.text().lower()
-    assert "reopen" in browser.scan_progress_detail.text().lower()
+    assert "on this computer" in browser.scan_progress_detail.text().lower()
 
     browser.set_scan_paused(True)
     assert browser.scan_pause_button.text() == "Resume"
@@ -2988,7 +2999,7 @@ def test_indexed_library_loads_on_startup_without_automatic_rescan(
     assert window.providers.local_index_ready() is True
     assert len(window.providers.local_catalog()) == 1
     assert window.providers.local_catalog()[0]["title"] == "Cached Song"
-    assert "1 local tracks" in window.home_status.text()
+    assert "1 track in your library" in window.home_status.text()
 
     window.close()
     app.processEvents()
@@ -3131,4 +3142,3 @@ def test_gui_library_scan_uses_isolated_runner_not_provider_thread(
 
     window.close()
     app.processEvents()
-

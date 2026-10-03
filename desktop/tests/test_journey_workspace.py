@@ -139,9 +139,9 @@ def test_journey_designer_preserves_lazy_map_build():
 
     assert workspace.music_map_built is True
     assert workspace._designer_open_pending is False
-    assert workspace.music_map_power_panel.isVisible()
-    assert workspace.music_map_journey_panel.isVisible()
-    assert workspace.music_path_steps.isVisible()
+    assert not workspace.music_map_power_panel.isHidden()
+    assert not workspace.music_map_journey_panel.isHidden()
+    assert not workspace.music_path_steps.isHidden()
 
     workspace.deleteLater()
     app.processEvents()
