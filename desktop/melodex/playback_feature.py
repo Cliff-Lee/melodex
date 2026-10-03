@@ -948,16 +948,22 @@ class PlaybackFeature(QObject):
         self._status(f"Resolver match applied · {mode}",4000)
     
     
-    def _refresh_queue(self,tracks):
+    def on_queue_changed(self,tracks,index=-1):
+        self._queue=[dict(track) for track in list(tracks or []) if isinstance(track,dict)]
+        self._queue_index=int(index)
         self.queue_list.clear()
-        for i,t in enumerate(tracks):
-            prefix="▶ " if i==self.player.index else ""; item=QListWidgetItem(prefix+_track_text(t)); item.setData(Qt.UserRole,i); self.queue_list.addItem(item)
+        for i,t in enumerate(self._queue):
+            prefix="▶ " if i==self._queue_index else ""
+            item=QListWidgetItem(prefix+_track_text(t))
+            item.setData(Qt.UserRole,i)
+            self.queue_list.addItem(item)
         if hasattr(self, "living_canvas") and self.living_canvas.active_mode == "constellation":
             self.living_canvas.refresh_context()
+        self._schedule_next_track_prefetch()
     
     
     def _queue_jump(self,item):
-        self.player.jump_to(int(item.data(Qt.UserRole)),autoplay=True)
+        self.jumpQueueRequested.emit(int(item.data(Qt.UserRole)))
     
     # ------------------------------- LLM
     
