@@ -153,7 +153,7 @@ The refactor should reduce change risk without sacrificing these behavioural con
 
 ## Repeatable scanner
 
-scripts/codebase_health.py is intentionally stdlib-only. It scans the desktop package, tests, provider SDK, official providers and scripts, then reports:
+scripts/codebase_health.py is intentionally stdlib-only. It scans the desktop package, tests, provider SDK, project-maintained reference providers and scripts, then reports:
 
 - Python file and line counts;
 - largest files;
