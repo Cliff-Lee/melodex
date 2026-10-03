@@ -1,6 +1,6 @@
 # Codebase health baseline — Campaign 12 / P12a
 
-Snapshot: main at commit 66657d257b4dbad1b5be87006ee8325cec18c8d3 on 2026-10-03.
+Snapshot: main at release commit 4e94e1ac8f12479260f901150e06632d31a9764f on 2026-10-03.
 
 ## Purpose
 
