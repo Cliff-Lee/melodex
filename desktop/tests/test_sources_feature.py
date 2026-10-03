@@ -261,11 +261,12 @@ def _feature():
 
 
 def _status_for(feature, source_id):
+    from PySide6.QtCore import Qt
     from PySide6.QtWidgets import QLabel
 
     for row in range(feature.sources_list.count()):
         item = feature.sources_list.item(row)
-        if str(item.data(0x0100) or "") != source_id:
+        if str(item.data(Qt.UserRole) or "") != source_id:
             continue
         card = feature.sources_list.itemWidget(item)
         label = card.findChild(QLabel, "statusPill")
@@ -371,6 +372,7 @@ def test_sources_feature_owns_install_remove_and_health_workflows(monkeypatch, t
     assert providers.health_calls[-1][0] == "searchable"
     assert any("Ready" in message for message, _timeout in statuses)
 
+    assert feature.select_source("searchable")
     feature.remove_provider()
     assert providers.removed_providers == ["searchable"]
 
