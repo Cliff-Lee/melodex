@@ -6,8 +6,13 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 
 def _player():
-    from PySide6.QtWidgets import QApplication
-    from melodex.player import FlowPlayer
+    import pytest
+
+    try:
+        from PySide6.QtWidgets import QApplication
+        from melodex.player import FlowPlayer
+    except ImportError as exc:
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
 
     QApplication.instance() or QApplication([])
     player = FlowPlayer(lambda track: dict(track))
