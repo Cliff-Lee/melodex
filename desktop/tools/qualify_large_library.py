@@ -16,7 +16,10 @@ import argparse
 import gc
 import json
 import os
-import resource
+try:
+    import resource
+except ImportError:  # Windows developer runs
+    resource = None
 import sys
 import tempfile
 import time
@@ -179,6 +182,8 @@ def virtual_filesystem(library: VirtualLibrary):
 
 
 def _peak_rss_mib() -> float:
+    if resource is None:
+        return 0.0
     value = float(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
     if sys.platform == "darwin":
         return value / (1024 * 1024)
