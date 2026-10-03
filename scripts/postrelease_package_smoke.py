@@ -42,7 +42,7 @@ def _sha256(path: Path) -> str:
 
 def _checksum_map(tag: str) -> dict[str, str]:
     version = tag.removeprefix("v")
-    path = ROOT / "docs" / "releases" / f"{version}-sha256.txt"
+    path = ROOT / "docs" / "releases" / f"v{version}-sha256.txt"
     if not path.is_file():
         raise FileNotFoundError(f"checksum manifest missing: {path}")
     result: dict[str, str] = {}
