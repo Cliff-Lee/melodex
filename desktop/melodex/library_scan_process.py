@@ -113,6 +113,7 @@ def run_library_scan_child() -> int:
             scan_on_init=False,
         )
         cached = index.load_scan_cache(roots)
+        cached_directories = index.load_directory_manifests(roots)
 
         def progress(payload: dict[str, Any]) -> None:
             _write_message(
@@ -125,6 +126,7 @@ def run_library_scan_child() -> int:
             progress=progress,
             control=control,
             cached_entries=cached,
+            cached_directories=cached_directories,
             collect_tracks=False,
         )
         metrics = dict(snapshot.get("metrics") or {})
@@ -133,6 +135,7 @@ def run_library_scan_child() -> int:
         if bool(snapshot.get("cancelled")) or control.cancelled:
             snapshot["cancelled"] = True
             snapshot.pop("index_records", None)
+            snapshot.pop("directory_manifests", None)
             _write_message(
                 sys.stdout,
                 {"type": "result", "payload": snapshot},
@@ -173,7 +176,9 @@ def run_library_scan_child() -> int:
         # so the child does not retain raw persistence rows and final tracks at
         # the same time.
         result.pop("index_records", None)
+        result.pop("directory_manifests", None)
         snapshot.pop("index_records", None)
+        snapshot.pop("directory_manifests", None)
         result["tracks"] = provider.prepare_cached_tracks(index.load_tracks(roots))
         _write_message(
             sys.stdout,
