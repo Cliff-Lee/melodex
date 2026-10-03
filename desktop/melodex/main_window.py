@@ -4734,6 +4734,16 @@ class MainWindow(QMainWindow):
         self._refresh_sources()
         self._refresh_plugin_presence()
 
+    def _toggle_source_feature_picker(self) -> None:
+        if not hasattr(self, "source_feature_picker"):
+            return
+        visible = not self.source_feature_picker.isVisible()
+        self.source_feature_picker.setVisible(visible)
+        self.statusBar().showMessage(
+            "Choose what you want to add" if visible else "Feature picker hidden",
+            1800,
+        )
+
     def _plugin_directory(self, capability: str = ""):
         from .plugin_directory import PluginDirectoryDialog
 
