@@ -9,6 +9,7 @@ sys.path.insert(0, str(ROOT))
 
 from melodex.visualization_profile import build_visual_profile
 from melodex.visualization_runtime import (
+    VisualPerformanceGovernor,
     VisualState,
     resolve_visual_quality,
     sample_visual_state,
@@ -62,13 +63,42 @@ def test_quality_policy_preserves_existing_fps_and_bounds_detail():
     battery = resolve_visual_quality("battery")
 
     assert (auto.fps, auto.timer_interval_ms, auto.detail_scale) == (15, 67, 1.0)
-    assert (auto_eco.fps, auto_eco.timer_interval_ms, auto_eco.detail_scale) == (15, 67, 0.5)
+    assert (auto_eco.fps, auto_eco.timer_interval_ms, auto_eco.detail_scale) == (12, 84, 0.55)
     assert (eco.fps, eco.timer_interval_ms, eco.detail_scale) == (10, 100, 0.5)
-    assert (high.fps, high.timer_interval_ms, high.detail_scale) == (30, 34, 2.0)
+    assert (high.fps, high.timer_interval_ms, high.detail_scale) == (30, 34, 1.5)
     assert not battery.animation_enabled
     assert battery.fps == 0
     assert high.max_detail <= 48
+    assert auto.max_particles <= 24
+    assert eco.max_glows <= auto.max_glows
+    assert auto.artwork_cache_px <= 960
+    assert auto.paint_budget_ms <= 12.0
 
 
 def test_unknown_quality_falls_back_to_auto():
     assert resolve_visual_quality("something-new") == resolve_visual_quality("auto")
+
+
+def test_performance_governor_reduces_only_after_repeated_expensive_frames():
+    governor = VisualPerformanceGovernor()
+    assert governor.observe(13.0) is None
+    assert governor.observe(13.5) is None
+    assert governor.observe(14.0) == "eco"
+    assert governor.effective == "eco"
+    assert governor.reductions == 1
+
+
+def test_performance_governor_recovers_with_hysteresis():
+    governor = VisualPerformanceGovernor(effective="eco")
+    for _ in range(71):
+        assert governor.observe(2.0) is None
+    assert governor.observe(2.0) == "normal"
+    assert governor.effective == "normal"
+
+
+def test_explicit_quality_does_not_auto_switch():
+    governor = VisualPerformanceGovernor()
+    for _ in range(10):
+        assert governor.observe(40.0, requested="high") is None
+    assert governor.effective == "normal"
+    assert governor.frames == 10
