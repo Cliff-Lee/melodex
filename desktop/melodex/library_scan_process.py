@@ -162,6 +162,7 @@ def run_library_scan_child() -> int:
             snapshot["cancelled"] = True
             snapshot.pop("index_records", None)
             snapshot.pop("directory_manifests", None)
+            snapshot.pop("preserve_directories", None)
             snapshot.setdefault("metrics", {})["resume_staged"] = len(
                 resume_cache
             )
@@ -216,8 +217,10 @@ def run_library_scan_child() -> int:
         # the same time.
         result.pop("index_records", None)
         result.pop("directory_manifests", None)
+        result.pop("preserve_directories", None)
         snapshot.pop("index_records", None)
         snapshot.pop("directory_manifests", None)
+        snapshot.pop("preserve_directories", None)
         result["tracks"] = provider.prepare_cached_tracks(index.load_tracks(roots))
         _write_message(
             sys.stdout,
