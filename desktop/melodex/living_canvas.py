@@ -192,7 +192,7 @@ class LivingCanvasView(QWidget):
     neighbourPreviewRequested = Signal(int)
 
     _BUILTIN_MODES = (
-        ("Living Canvas", "living"),
+        ("Profile Pulse", "living"),
         ("Song Fingerprint", "fingerprint"),
         ("Musical Journey", "journey"),
         ("Constellation", "constellation"),
@@ -550,7 +550,10 @@ class LivingCanvasView(QWidget):
         if profile is None:
             self.status.setText("Play a track to start its visual journey.")
         elif mode == "living":
-            self.status.setText("Cached Flow shapes the scene when available. The same track keeps the same visual identity.")
+            self.status.setText(
+                "Profile Pulse turns cached musical features into a breathing radial portrait; "
+                "the geometry remains deterministic for this recording."
+            )
         elif mode == "fingerprint":
             self.status.setText(f"Stable track fingerprint · {profile.fingerprint[:12].upper()} · repeatable for this recording.")
         elif mode == "journey":
@@ -570,7 +573,10 @@ class LivingCanvasView(QWidget):
         elif mode == "album_world":
             self.status.setText("A deterministic world shaped by cached Flow and the cover-art palette.")
         elif mode == "weather":
-            self.status.setText(describe_weather(profile).summary)
+            weather = describe_weather(profile)
+            self.status.setText(
+                f"{weather.summary} · atmosphere, density and motion are mapped into a procedural field."
+            )
         elif mode == "memory":
             self.status.setText("A local atlas built from the listening history already stored on this device.")
         elif mode == "minimal":
