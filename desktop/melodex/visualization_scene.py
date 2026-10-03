@@ -65,6 +65,8 @@ class LivingScene(QWidget):
         self._fast_frames = 0
         self._hit_points: tuple[tuple[QPointF, int, str], ...] = ()
         self._hovered_token: int | None = None
+        self._selected_token: int | None = None
+        self._neighbour_artwork: dict[int, QImage] = {}
         self._timer = QTimer(self)
         self._timer.setInterval(67)
         self._timer.timeout.connect(self._advance)
@@ -95,6 +97,7 @@ class LivingScene(QWidget):
         self.mode = mode
         self.plugin = plugin
         self._hovered_token = None
+        self._selected_token = None
         self._hit_points = ()
         self.update()
         self._sync_timer()
@@ -146,6 +149,32 @@ class LivingScene(QWidget):
 
     def set_neighbours(self, neighbours: tuple[VisualNeighbour, ...] | list[VisualNeighbour]) -> None:
         self._neighbours = tuple(neighbours[:24])
+        valid = {node.token for node in self._neighbours}
+        if self._hovered_token not in valid:
+            self._hovered_token = None
+        if self._selected_token not in valid:
+            self._selected_token = None
+        self._neighbour_artwork = {
+            token: image
+            for token, image in self._neighbour_artwork.items()
+            if token in valid
+        }
+        self.update()
+
+    def set_neighbour_artwork(self, token: int, path: str) -> None:
+        token = int(token)
+        if token not in {node.token for node in self._neighbours}:
+            return
+        image = QImage(str(path or ""))
+        if image.isNull():
+            self._neighbour_artwork.pop(token, None)
+        else:
+            self._neighbour_artwork[token] = image.scaled(
+                112,
+                112,
+                Qt.KeepAspectRatioByExpanding,
+                Qt.SmoothTransformation,
+            )
         self.update()
 
     def set_memory(self, marks: tuple[MemoryMark, ...] | list[MemoryMark], scale: str = "sessions") -> None:
@@ -580,81 +609,231 @@ class LivingScene(QWidget):
             "PAST     ·     NOW     ·     WHAT'S AHEAD",
         )
 
+    def _active_constellation_token(self) -> int | None:
+        return self._hovered_token if self._hovered_token is not None else self._selected_token
+
+    def _paint_constellation_card(
+        self,
+        painter: QPainter,
+        rect: QRectF,
+        point: QPointF,
+        node: VisualNeighbour,
+    ) -> None:
+        width = min(360.0, max(286.0, rect.width() * 0.38))
+        height = 116.0
+        x = point.x() + 28.0
+        if x + width > rect.right() - 8:
+            x = point.x() - width - 28.0
+        x = max(rect.left() + 8.0, min(x, rect.right() - width - 8.0))
+        y = max(rect.top() + 8.0, min(point.y() - height * 0.52, rect.bottom() - height - 8.0))
+        card = QRectF(x, y, width, height)
+
+        leader_end = QPointF(card.left(), card.center().y()) if card.center().x() > point.x() else QPointF(card.right(), card.center().y())
+        leader = QColor(self._relation_color(node.relation))
+        leader.setAlpha(118)
+        painter.setPen(QPen(leader, 1.1, Qt.SolidLine, Qt.RoundCap))
+        painter.drawLine(point, leader_end)
+
+        painter.setPen(QPen(QColor(114, 144, 178, 105), 1.0))
+        painter.setBrush(QColor(7, 12, 20, 232))
+        painter.drawRoundedRect(card, 15, 15)
+
+        art_rect = QRectF(card.left() + 12, card.top() + 12, 92, 92)
+        artwork = self._neighbour_artwork.get(node.token)
+        if artwork is not None and not artwork.isNull():
+            painter.save()
+            clip = QPainterPath()
+            clip.addRoundedRect(art_rect, 10, 10)
+            painter.setClipPath(clip)
+            painter.drawImage(art_rect, artwork)
+            painter.restore()
+        else:
+            placeholder = QLinearGradient(art_rect.topLeft(), art_rect.bottomRight())
+            color = QColor(self._relation_color(node.relation))
+            muted = QColor(color)
+            muted.setAlpha(72)
+            deep = QColor(10, 18, 29, 255)
+            placeholder.setColorAt(0.0, muted)
+            placeholder.setColorAt(1.0, deep)
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(placeholder)
+            painter.drawRoundedRect(art_rect, 10, 10)
+            painter.setFont(QFont("sans-serif", 26, QFont.Normal))
+            painter.setPen(QColor(231, 240, 250, 185))
+            painter.drawText(art_rect, Qt.AlignCenter, "♪")
+
+        text_left = art_rect.right() + 14
+        text_width = card.right() - text_left - 12
+
+        painter.setFont(QFont("sans-serif", 13, QFont.DemiBold))
+        painter.setPen(QColor("#f2f7fd"))
+        painter.drawText(
+            QRectF(text_left, card.top() + 13, text_width, 38),
+            Qt.AlignLeft | Qt.AlignTop | Qt.TextWordWrap,
+            node.title or "Unknown track",
+        )
+
+        painter.setFont(QFont("sans-serif", 10, QFont.Medium))
+        painter.setPen(QColor("#c2cfdd"))
+        artist_album = node.artist or "Unknown artist"
+        if node.album:
+            artist_album += f"  ·  {node.album}"
+        painter.drawText(
+            QRectF(text_left, card.top() + 52, text_width, 26),
+            Qt.AlignLeft | Qt.AlignTop | Qt.TextWordWrap,
+            artist_album,
+        )
+
+        relation = QColor(self._relation_color(node.relation))
+        relation.setAlpha(235)
+        painter.setFont(QFont("sans-serif", 9, QFont.DemiBold))
+        painter.setPen(relation)
+        painter.drawText(
+            QRectF(text_left, card.bottom() - 29, text_width, 17),
+            Qt.AlignLeft | Qt.AlignVCenter,
+            node.relation.upper(),
+        )
+        painter.setFont(QFont("sans-serif", 8, QFont.Normal))
+        painter.setPen(QColor(156, 171, 188, 165))
+        painter.drawText(
+            QRectF(text_left, card.bottom() - 16, text_width, 13),
+            Qt.AlignLeft | Qt.AlignVCenter,
+            "DOUBLE-CLICK TO QUEUE",
+        )
+
     def _paint_constellation(self, painter: QPainter, profile: VisualProfile) -> None:
         rect = self._area()
         center = rect.center()
         self._hit_points = ()
-        for scale in (0.34, 0.62):
-            guide = QColor(self._color(0))
-            guide.setAlpha(18)
-            painter.setPen(QPen(guide, 1.0, Qt.DashLine))
-            painter.setBrush(Qt.NoBrush)
-            painter.drawEllipse(
-                QRectF(
-                    center.x() - rect.width() * scale * 0.5,
-                    center.y() - rect.height() * scale * 0.5,
-                    rect.width() * scale,
-                    rect.height() * scale,
-                )
-            )
         if not self._neighbours:
-            painter.setPen(QColor("#aab0ba"))
-            painter.drawText(rect, Qt.AlignCenter, "This track is the centre.\nQueue or hear more music to grow its constellation.")
+            self._draw_glow(painter, center, min(rect.width(), rect.height()) * 0.18, self._color(0), 32)
+            painter.setPen(QColor("#b7c4d3"))
+            painter.setFont(QFont("sans-serif", 14, QFont.Normal))
+            painter.drawText(
+                rect,
+                Qt.AlignCenter,
+                "This track is the centre.\nQueue or hear more music to grow its neighbourhood.",
+            )
             return
-        hit: list[tuple[QPointF, int, str]] = []
+
+        active_token = self._active_constellation_token()
         positions: dict[int, QPointF] = {}
-        for node in self._neighbours:
-            point = QPointF(rect.left() + rect.width() * node.x, rect.top() + rect.height() * node.y)
-            positions[node.token] = point
-            color = self._relation_color(node.relation)
-            pen = QColor(color)
-            pen.setAlpha(52)
-            painter.setPen(QPen(pen, 1.0))
-            painter.drawLine(center, point)
-        current = self._color(0)
-        current.setAlpha(220)
-        painter.setPen(Qt.NoPen)
-        halo = QColor(current)
-        halo.setAlpha(35)
-        painter.setBrush(halo)
-        painter.drawEllipse(center, 19, 19)
-        rim = QColor(current)
-        rim.setAlpha(115)
-        painter.setPen(QPen(rim, 1.0))
-        painter.setBrush(Qt.NoBrush)
-        painter.drawEllipse(center, 13, 13)
-        painter.setPen(Qt.NoPen)
-        painter.setBrush(current)
-        painter.drawEllipse(center, 9, 9)
+        hit: list[tuple[QPointF, int, str]] = []
+        for index, node in enumerate(self._neighbours):
+            drift = 0.0 if self._requested_quality == "battery" else 1.7
+            dx = math.sin(self._phase * 0.045 + index * 1.31) * drift
+            dy = math.cos(self._phase * 0.038 + index * 1.79) * drift * 0.72
+            positions[node.token] = QPointF(
+                rect.left() + rect.width() * node.x + dx,
+                rect.top() + rect.height() * node.y + dy,
+            )
+
+        # Recent listening becomes a faint journey trail instead of another
+        # legend or axis. It is intentionally subordinate to relationship paths.
+        past = [node for node in self._neighbours if node.relation == "Played earlier"]
+        if len(past) >= 2:
+            trail = QPainterPath(positions[past[0].token])
+            for node in past[1:]:
+                trail.lineTo(positions[node.token])
+            trail_color = QColor(self._color(2))
+            trail_color.setAlpha(26 if active_token is None else 14)
+            painter.setBrush(Qt.NoBrush)
+            painter.setPen(QPen(trail_color, 1.0, Qt.DotLine, Qt.RoundCap, Qt.RoundJoin))
+            painter.drawPath(trail)
+
+        # Curved paths communicate relationship strength. Hovering one star
+        # illuminates its route and quiets unrelated routes.
         for index, node in enumerate(self._neighbours):
             point = positions[node.token]
-            color = self._relation_color(node.relation)
-            pulse = 0.5 + 0.5 * math.sin(self._phase + index * 1.7)
-            size = (6.0 + 2.0 * pulse) if node.token != self._hovered_token else 10.0
-            halo = QColor(color)
-            halo.setAlpha(28)
-            painter.setPen(Qt.NoPen)
-            painter.setBrush(halo)
-            painter.drawEllipse(point, size * 2.2, size * 2.2)
-            color.setAlpha(200)
-            outline = QColor("#eaf3ff")
-            outline.setAlpha(185 if node.token == self._hovered_token else 68)
-            painter.setPen(QPen(outline, 1.2 if node.token == self._hovered_token else 0.7))
-            painter.setBrush(color)
-            painter.drawEllipse(point, size, size)
-            hit.append((point, node.token, f"{node.artist} — {node.title} · {node.relation}"))
-            if node.token == self._hovered_token:
-                chip = QRectF(rect.center().x() - 190, rect.bottom() - 41, 380, 30)
-                painter.setPen(Qt.NoPen)
-                painter.setBrush(QColor(8, 12, 18, 205))
-                painter.drawRoundedRect(chip, 12, 12)
-                self._draw_caption(
-                    painter,
-                    chip.adjusted(10, 0, -10, 0),
-                    f"{node.artist}  ·  {node.title}  ·  {node.relation}  ·  DOUBLE-CLICK TO QUEUE",
-                    "#edf4ff",
+            color = QColor(self._relation_color(node.relation))
+            selected = node.token == active_token
+            alpha = (170 + int(55 * node.strength)) if selected else int(24 + 54 * node.strength)
+            if active_token is not None and not selected:
+                alpha = max(12, alpha // 3)
+            color.setAlpha(min(235, alpha))
+
+            dx = point.x() - center.x()
+            dy = point.y() - center.y()
+            curve_sign = -1.0 if (node.token + index) % 2 else 1.0
+            bend = (18.0 + 30.0 * (1.0 - node.strength)) * curve_sign
+            length = max(1.0, math.hypot(dx, dy))
+            nx, ny = -dy / length, dx / length
+            c1 = QPointF(center.x() + dx * 0.36 + nx * bend, center.y() + dy * 0.36 + ny * bend)
+            c2 = QPointF(center.x() + dx * 0.72 + nx * bend * 0.52, center.y() + dy * 0.72 + ny * bend * 0.52)
+            path = QPainterPath(center)
+            path.cubicTo(c1, c2, point)
+            painter.setBrush(Qt.NoBrush)
+            painter.setPen(
+                QPen(
+                    color,
+                    2.0 + node.strength * 0.9 if selected else 0.65 + node.strength * 0.75,
+                    Qt.SolidLine,
+                    Qt.RoundCap,
+                    Qt.RoundJoin,
                 )
+            )
+            painter.drawPath(path)
+
+        state = self._visual_state
+        current = QColor(self._color(0))
+        self._draw_glow(
+            painter,
+            center,
+            54 + 18 * state.glow,
+            current,
+            40 + int(28 * state.glow),
+        )
+        painter.setPen(Qt.NoPen)
+        core_halo = QColor(current)
+        core_halo.setAlpha(72 + int(45 * state.glow))
+        painter.setBrush(core_halo)
+        painter.drawEllipse(center, 18 + state.pulse * 2.2, 18 + state.pulse * 2.2)
+        rim = QColor("#eaf5ff")
+        rim.setAlpha(158)
+        painter.setPen(QPen(rim, 1.2))
+        painter.setBrush(QColor(current.red(), current.green(), current.blue(), 232))
+        painter.drawEllipse(center, 8.5, 8.5)
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor("#f7fbff"))
+        painter.drawEllipse(center, 2.5, 2.5)
+
+        for index, node in enumerate(self._neighbours):
+            point = positions[node.token]
+            selected = node.token == active_token
+            color = QColor(self._relation_color(node.relation))
+            pulse = 0.5 + 0.5 * math.sin(self._phase * 0.62 + index * 1.47)
+            size = 3.8 + node.strength * 4.3 + pulse * 0.65
+            if selected:
+                size += 2.4
+
+            if selected:
+                self._draw_glow(painter, point, size * 4.0, color, 42 + int(34 * state.glow))
+            else:
+                halo = QColor(color)
+                halo.setAlpha(20 + int(20 * node.strength))
+                painter.setPen(Qt.NoPen)
+                painter.setBrush(halo)
+                painter.drawEllipse(point, size * 2.0, size * 2.0)
+
+            fill = QColor(color)
+            fill.setAlpha(235 if selected else 176 + int(55 * node.strength))
+            outline = QColor("#f0f6ff")
+            outline.setAlpha(210 if selected else 88)
+            painter.setPen(QPen(outline, 1.25 if selected else 0.7))
+            painter.setBrush(fill)
+            painter.drawEllipse(point, size, size)
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(QColor(247, 251, 255, 215 if selected else 105))
+            painter.drawEllipse(point, max(1.1, size * 0.22), max(1.1, size * 0.22))
+
+            hit.append((point, node.token, f"{node.artist} — {node.title} · {node.relation}"))
+
         self._hit_points = tuple(hit)
+
+        if active_token is not None:
+            node = next((item for item in self._neighbours if item.token == active_token), None)
+            if node is not None:
+                self._paint_constellation_card(painter, rect, positions[node.token], node)
 
     def _relation_color(self, relation: str) -> QColor:
         if relation == "Up next":
@@ -1163,17 +1342,44 @@ class LivingScene(QWidget):
                 return token, label
         return None
 
+    def mouseMoveEvent(self, event: QMouseEvent) -> None:
+        if self.mode == "constellation":
+            found = self._hit_test(event.position())
+            token = found[0] if found else None
+            if token != self._hovered_token:
+                self._hovered_token = token
+                if found:
+                    self.setToolTip(found[1] + " — double-click to queue")
+                    self.neighbourSelected.emit(token)
+                else:
+                    self.setToolTip("")
+                self.update()
+            event.accept()
+            return
+        super().mouseMoveEvent(event)
+
+    def leaveEvent(self, event) -> None:
+        if self.mode == "constellation" and self._hovered_token is not None:
+            self._hovered_token = None
+            self.setToolTip("")
+            self.update()
+        super().leaveEvent(event)
+
     def mousePressEvent(self, event: QMouseEvent) -> None:
         if event.button() == Qt.LeftButton and self.mode == "constellation":
             found = self._hit_test(event.position())
             if found:
                 token, label = found
+                self._selected_token = token
                 self._hovered_token = token
                 self.setToolTip(label + " — double-click to queue")
                 self.neighbourSelected.emit(token)
                 self.update()
                 event.accept()
                 return
+            self._selected_token = None
+            self._hovered_token = None
+            self.update()
         super().mousePressEvent(event)
 
     def mouseDoubleClickEvent(self, event: QMouseEvent) -> None:
@@ -1187,24 +1393,27 @@ class LivingScene(QWidget):
 
     def keyPressEvent(self, event) -> None:
         if self.mode == "constellation" and self._neighbours:
+            active = self._selected_token if self._selected_token is not None else self._hovered_token
             if event.key() in {Qt.Key_Right, Qt.Key_Down, Qt.Key_Tab}:
-                current = next((i for i, node in enumerate(self._neighbours) if node.token == self._hovered_token), -1)
+                current = next((i for i, node in enumerate(self._neighbours) if node.token == active), -1)
                 node = self._neighbours[(current + 1) % len(self._neighbours)]
-                self._hovered_token = node.token
+                self._hovered_token = None
+                self._selected_token = node.token
                 self.neighbourSelected.emit(node.token)
                 self.update()
                 event.accept()
                 return
             if event.key() in {Qt.Key_Left, Qt.Key_Up, Qt.Key_Backtab}:
-                current = next((i for i, node in enumerate(self._neighbours) if node.token == self._hovered_token), 0)
+                current = next((i for i, node in enumerate(self._neighbours) if node.token == active), 0)
                 node = self._neighbours[(current - 1) % len(self._neighbours)]
-                self._hovered_token = node.token
+                self._hovered_token = None
+                self._selected_token = node.token
                 self.neighbourSelected.emit(node.token)
                 self.update()
                 event.accept()
                 return
-            if event.key() in {Qt.Key_Return, Qt.Key_Enter} and self._hovered_token is not None:
-                self.neighbourActivated.emit(self._hovered_token)
+            if event.key() in {Qt.Key_Return, Qt.Key_Enter} and active is not None:
+                self.neighbourActivated.emit(active)
                 event.accept()
                 return
         super().keyPressEvent(event)
