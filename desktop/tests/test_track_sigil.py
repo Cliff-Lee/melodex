@@ -9,7 +9,7 @@ sys.path.insert(0, str(ROOT))
 
 
 def test_track_sigil_geometry_is_deterministic_and_identity_specific():
-    from melodex.track_sigil import sigil_radii
+    from melodex.track_sigil_model import sigil_radii
 
     first = sigil_radii(123456789)
     again = sigil_radii(123456789)
