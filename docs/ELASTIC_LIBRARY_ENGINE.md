@@ -321,3 +321,58 @@ Those two phases are sequential rather than intentionally retained together.
 Future stages can focus on folder/subtree fingerprints, adaptive storage
 concurrency and release-scale qualification instead of carrying multiple
 full-library Python snapshots.
+
+
+## P10f — safe direct-directory manifests
+
+P10f adds persisted folder fingerprints without relying on unsafe directory
+timestamp shortcuts.
+
+A direct directory manifest is a SHA-256 digest of the supported audio files in
+that directory, using sorted:
+
+- filename
+- file size
+- nanosecond modification time
+
+The manifest is persisted in a new `directories` table alongside the library
+index. The schema upgrades from v1 to v2 in place; existing track rows are
+preserved.
+
+On a later scan Melodex compares the newly computed direct-directory manifest
+with the cached one and records a hit or miss. This gives Melodex a safe
+folder-level identity for album-style layouts and provides a foundation for
+bulk reuse and future traversal accelerators.
+
+Telemetry now includes:
+
+- `directory_manifest_hits`
+- `directory_manifest_misses`
+- `directory_manifests`
+- `directory_manifests_persisted`
+
+The incremental-rescan benchmark reports the hit/miss counts directly.
+
+### Why this does not blindly skip whole subtrees
+
+A parent directory's modification time is not a portable proof that every file
+below it is unchanged. Editing the contents of a file in a nested directory can
+leave ancestor directory mtimes untouched on common filesystems.
+
+Therefore P10f deliberately does **not** implement:
+
+```text
+directory mtime unchanged
+→ skip every descendant
+```
+
+That would be fast but could silently miss real music edits.
+
+P10f still traverses the tree and computes manifests from the same size/mtime
+fingerprints already used for file-level correctness. A matching folder can be
+recognized as unchanged as a unit without weakening the existing per-file
+safety contract.
+
+A later filesystem-specific accelerator may use stronger evidence such as a
+journal/change token or another trusted subtree signal, but the portable default
+must remain correctness-first.
