@@ -156,14 +156,14 @@ class NavigationController:
         elif name == "album_wall":
             host._refresh_album_wall()
         elif name == "music_map":
-            host._refresh_music_map()
+            host.journey_workspace.refresh_music_map()
         elif name == "sources":
             host.sources_feature.refresh()
             self._schedule(0, host.sources_feature.refresh_config_statuses_async)
         elif name == "moments":
             host._refresh_moments()
         elif name == "journeys":
-            host._refresh_journeys()
+            host.journey_workspace.refresh_journeys()
         elif name == "playlists":
             host._refresh_playlists()
         elif name == "for_you":
