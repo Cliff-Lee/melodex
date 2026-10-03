@@ -174,3 +174,25 @@ jobs:
           name: startup-baseline
           path: startup-baseline.json
 
+
+
+  elastic-library-qualification:
+    name: Elastic library qualification (12.7k)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install scanner qualification dependencies
+        run: python -m pip install mutagen
+      - name: Run P10i 12.7k qualification
+        env:
+          PYTHONPATH: desktop
+        run: |
+          python desktop/tools/qualify_large_library.py             --profiles 12700             --json > p10i-qualification-12700.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: p10i-qualification-12700
+          path: p10i-qualification-12700.json
