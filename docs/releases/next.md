@@ -1,9 +1,9 @@
 # Next release — draft notes
 
-**Melodex v0.7.9 release candidate.**
+**Melodex v0.7.10 release candidate.**
 
-Current target version: **0.7.9**.
+Current target version: **0.7.10**.
 
-This release contains Campaign 10, the Elastic Library Engine: large-library scanning, bounded background work, incremental persistence, resumable scans, traversal acceleration, and permanent 100k–1M qualification gates.
+This release contains Campaign 11: NAS/network-storage hardening, deterministic fault qualification, persistent cached-library fallback UX, and privacy-safe beta diagnostics on top of the v0.7.9 Elastic Library Engine.
 
-After v0.7.9 is published, this file can return to the next development target.
+After v0.7.10 is published, this file can return to the next development target.
