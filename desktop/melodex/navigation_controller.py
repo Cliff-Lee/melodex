@@ -158,8 +158,8 @@ class NavigationController:
         elif name == "music_map":
             host._refresh_music_map()
         elif name == "sources":
-            host._refresh_sources()
-            self._schedule(0, host._refresh_source_config_statuses_async)
+            host.sources_feature.refresh()
+            self._schedule(0, host.sources_feature.refresh_config_statuses_async)
         elif name == "moments":
             host._refresh_moments()
         elif name == "journeys":
