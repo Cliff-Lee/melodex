@@ -30,7 +30,7 @@ The capture set includes:
 - Sonic Weather
 - Memory Atlas with a pinned session card
 - Musical Journey
-- Album World
+- legacy/internal Album World compatibility renderer
 - Minimal
 - reduced-Auto Sonic Weather
 - Lyric Flow empty state
