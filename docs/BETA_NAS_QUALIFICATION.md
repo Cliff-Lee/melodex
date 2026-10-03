@@ -59,9 +59,10 @@ The permanent cases are:
    workers and no more than four metadata reads in flight.
 2. **Transient fault recovery** — occasional directory and stat failures must
    recover inside the bounded P11d retry budget and complete the root normally.
-3. **Mid-scan disconnect** — a persistently failing album directory must mark
-   the root incomplete, publish no partial view, delete no cached tracks and
-   return the last committed catalog.
+3. **Mid-scan disconnect** — after the root and first album enumerate
+   successfully, all later directory reads fail through the bounded retry
+   budget. The root must become incomplete, publish no partial view, delete no
+   cached tracks and return the last committed catalog.
 4. **Cached browsing during a slow rescan** — while changed tracks are being
    reread with deliberately slow metadata I/O, the previously committed SQLite
    library must remain readable and complete.
