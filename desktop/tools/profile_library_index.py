@@ -20,6 +20,7 @@ from melodex.library_index import LocalLibraryIndex
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--tracks", type=int, default=12_700)
+    parser.add_argument("--batch-size", type=int, default=250)
     parser.add_argument("--json", action="store_true")
     return parser.parse_args()
 
@@ -60,7 +61,11 @@ def main() -> int:
         }
 
         started = time.perf_counter()
-        index.replace_scan([root], snapshot)
+        write_result = index.replace_scan(
+            [root],
+            snapshot,
+            batch_size=max(1, int(args.batch_size)),
+        )
         write_seconds = time.perf_counter() - started
 
         started = time.perf_counter()
@@ -74,6 +79,9 @@ def main() -> int:
             "read_seconds": round(read_seconds, 6),
             "database_bytes": (data / "library-index.sqlite3").stat().st_size,
             "ready": index.roots_ready([root]),
+            "batch_size": int(write_result.get("batch_size") or 0),
+            "write_batches": int(write_result.get("write_batches") or 0),
+            "max_batch_rows": int(write_result.get("max_batch_rows") or 0),
         }
 
         if args.json:
@@ -85,6 +93,9 @@ def main() -> int:
             print(f"Write:           {payload['write_seconds']:.3f} s")
             print(f"Startup read:    {payload['read_seconds']:.3f} s")
             print(f"Database size:   {payload['database_bytes'] / 1024 / 1024:.2f} MiB")
+            print(f"Batch size:      {payload['batch_size']:,}")
+            print(f"Write batches:   {payload['write_batches']:,}")
+            print(f"Max batch rows:  {payload['max_batch_rows']:,}")
             print(f"Ready:           {payload['ready']}")
     return 0
 
