@@ -43,6 +43,18 @@ from melodex.providers.local_files import LocalFilesProvider
 DEFAULT_PROFILES = (12_700, 100_000)
 RELEASE_PROFILES = (250_000, 500_000, 1_000_000)
 
+P10J_SCALE_GATES = {
+    "max_queue_capacity": 256,
+    "max_metadata_in_flight": 8,
+    "max_unchanged_vs_cold_ratio": 1.10,
+    "max_delta_vs_cold_ratio": 1.20,
+    # Allows normal fixed overhead plus ~1.25 KiB of traced Python memory per
+    # track. This is a super-linear-regression guard, not a promise that 1M
+    # tracks should permanently consume this much memory.
+    "python_peak_base_mib": 32.0,
+    "python_peak_mib_per_track": 0.00125,
+}
+
 
 class VirtualDirEntry:
     def __init__(
@@ -485,10 +497,23 @@ def qualify_profile(
             ),
             "process_peak_rss_mib": round(_peak_rss_mib(), 3),
         }
+        cold_seconds = max(0.000001, float(summary["cold"]["seconds"]))
+        python_budget = (
+            float(P10J_SCALE_GATES["python_peak_base_mib"])
+            + int(track_count)
+            * float(P10J_SCALE_GATES["python_peak_mib_per_track"])
+        )
         summary["checks"] = {
             "bounded_discovery_queue": (
                 summary["cold"]["queue_peak"]
-                <= summary["cold"]["queue_capacity"]
+                <= min(
+                    summary["cold"]["queue_capacity"],
+                    int(P10J_SCALE_GATES["max_queue_capacity"]),
+                )
+            ),
+            "bounded_metadata_in_flight": (
+                summary["cold"]["metadata_max_in_flight"]
+                <= int(P10J_SCALE_GATES["max_metadata_in_flight"])
             ),
             "unchanged_zero_metadata_reads": (
                 summary["unchanged"]["metadata_reads"] == 0
@@ -500,6 +525,19 @@ def qualify_profile(
                 summary["delta"]["metadata_reads"]
                 <= max(1, delta_changed + delta_added)
             ),
+            "unchanged_not_slower_than_cold": (
+                float(summary["unchanged"]["seconds"])
+                <= cold_seconds
+                * float(P10J_SCALE_GATES["max_unchanged_vs_cold_ratio"])
+            ),
+            "delta_not_slower_than_cold": (
+                float(summary["delta"]["seconds"])
+                <= cold_seconds
+                * float(P10J_SCALE_GATES["max_delta_vs_cold_ratio"])
+            ),
+            "python_peak_within_linear_budget": (
+                float(summary["cold"]["peak_python_mib"]) <= python_budget
+            ),
             "cancel_publishes_no_partial_tracks": (
                 bool(summary["cancel_restart"]["cancelled"])
             ),
@@ -507,6 +545,10 @@ def qualify_profile(
                 summary["cancel_restart"]["staged_rows"] == 0
                 or summary["cancel_restart"]["resumed_rows"] > 0
             ),
+        }
+        summary["scale_gates"] = {
+            **P10J_SCALE_GATES,
+            "python_peak_budget_mib": round(python_budget, 3),
         }
         return summary
 
