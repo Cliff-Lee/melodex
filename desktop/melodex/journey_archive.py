@@ -379,9 +379,7 @@ class JourneyArchive(QObject):
             return
         recipe_id=str(record.get("id") or "")
         self.state.delete_journey_recipe(recipe_id)
-        if self.music_active_recipe_id==recipe_id:
-            self.music_active_recipe_id=""
-            self.music_active_recipe={}
+        self.recipeDeleted.emit(recipe_id)
         self.refresh()
         self._status("Journey recipe deleted",3000)
     
