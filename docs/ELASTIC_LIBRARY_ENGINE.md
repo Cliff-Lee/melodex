@@ -261,3 +261,63 @@ scan snapshot itself is still collection-sized. The next persistence stage can
 use this bounded writer as the foundation for progressively feeding SQLite
 instead of retaining `tracks`, `index_tracks`, and `index_records`
 simultaneously for very large libraries.
+
+
+## P10e — single-snapshot isolated scanning
+
+P10e removes the largest remaining duplicate structures from the real GUI scan
+path without weakening the existing atomic persistence contract.
+
+Previously the isolated scan child built three collection-sized representations:
+
+- `tracks`
+- `index_tracks`
+- `index_records`
+
+The child only needed one of those sets to persist the scan. After persistence it
+loaded the completed catalog from SQLite anyway.
+
+The isolated production path now calls the scanner in persistence-only mode:
+
+```text
+bounded discovery queue
+  ↓
+index_records only
+  ↓
+batched atomic SQLite transaction
+  ↓
+release index_records
+  ↓
+load completed catalog from SQLite
+  ↓
+send final tracks to GUI
+```
+
+This means the scan child no longer simultaneously retains raw persistence rows,
+a second raw metadata list, and an override-applied UI list for the full library.
+
+Compatibility callers can still request the in-memory `tracks` result by using
+the scanner's default mode. The GUI/disposable-process path explicitly disables
+that duplicate copy.
+
+New scan telemetry records:
+
+- `collect_tracks`
+- `snapshot_track_copies`
+
+For the production isolated scan path, `snapshot_track_copies` is 1 during the
+scan phase.
+
+P10e deliberately does **not** commit partial batches while traversal is still in
+progress. The successful scan remains one atomic transaction, so cancellation,
+an incomplete NAS root, or a worker crash cannot publish a partial library.
+
+The remaining collection-scale memory is now primarily:
+
+- the persistence record set needed for the atomic commit; and
+- the final catalog loaded after that commit.
+
+Those two phases are sequential rather than intentionally retained together.
+Future stages can focus on folder/subtree fingerprints, adaptive storage
+concurrency and release-scale qualification instead of carrying multiple
+full-library Python snapshots.
