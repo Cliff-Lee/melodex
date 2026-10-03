@@ -1,65 +1,51 @@
 # Help test Melodex
 
-Melodex is in active development and we are looking for real listeners to try it on real music libraries.
+Melodex is in public beta. The most useful testing comes from using it normally and telling us where the experience gets in your way.
 
-You do not need to be a developer. The most useful feedback is often simple:
+You do not need to be technical.
 
-- What was confusing on first launch?
-- What did you expect to happen?
-- What felt slow, awkward or unreliable?
-- What worked surprisingly well?
-- Would you keep using Melodex? If not, what would need to change?
-
-## Who we especially want to hear from
-
-The macOS build has had the most hands-on testing so far. We especially welcome:
-
-- Apple Silicon Mac users with small, large or messy local libraries
-- Intel Mac users
-- Windows users
-- Linux users
-- people with large FLAC/MP3 collections
-- people with incomplete tags or missing artwork
-- people who normally use Spotify, Apple Music, YouTube Music, foobar2000, MusicBee or similar players
-- accessibility and keyboard-navigation users
-
-You do not need a huge collection. A fresh-user experience with only a few albums is useful too.
-
-## 10-minute test
+## A useful 10-minute test
 
 1. [Download the latest release](https://github.com/Cliff-Lee/melodex/releases/latest).
-2. Launch Melodex.
-3. Add a music folder from **My Music → + Add music**.
-4. Play an album or track.
-5. Try **Home**, **Explore**, **Flow**, **Playlists**, and one visual feature such as Album Wall or Music Map.
-6. Notice anything that makes you stop and think: “What am I supposed to do here?”
-7. Tell us about it.
+2. Add a music folder.
+3. Play an album or track.
+4. Leave it playing for a few minutes.
+5. Find something else you want to hear.
+6. Try one feature that interests you, such as Album Wall, Music Map, Journeys, lyrics, or a connected source.
 
-## Where to leave feedback
+Then tell us:
 
-- [Something broke → Bug report](https://github.com/Cliff-Lee/melodex/issues/new?template=bug_report.yml)
-- [Something should work differently → Feature request](https://github.com/Cliff-Lee/melodex/issues/new?template=feature_request.yml)
-- [General beta experience → Tester feedback](https://github.com/Cliff-Lee/melodex/issues/new?template=tester_feedback.yml)
-- Discussions are the best place for open-ended questions and ideas.
+- where you hesitated;
+- anything that did not behave as expected;
+- anything that felt slow;
+- anything you liked enough to use again.
 
-Screenshots are welcome when they help explain a UI problem. Please do not post copyrighted music files, passwords, API keys, tokens, private URLs, or other secrets.
+You do not need to test every feature.
 
-## Useful details
+## Testers we especially need
 
-If something goes wrong, include:
+- Windows users
+- Linux users
+- Intel Mac users
+- Apple Silicon Mac users with large or messy collections
+- people with NAS or network libraries
+- people with incomplete tags or missing artwork
+- keyboard and accessibility users
+- people coming from Spotify, Apple Music, YouTube Music, MusicBee, foobar2000, Plexamp, Roon, Kodi, or similar players
 
-- Melodex version
-- operating system and version
-- Apple Silicon / Intel where relevant
-- approximate library size
-- file types involved, such as MP3, FLAC, M4A or WAV
-- exact steps that caused the problem
-- what you expected instead
+Small libraries are useful too. First-run confusion matters just as much as extreme-scale performance.
+
+## Send feedback
+
+- [Bug report](https://github.com/Cliff-Lee/melodex/issues/new?template=bug_report.yml)
+- [Beta tester feedback](https://github.com/Cliff-Lee/melodex/issues/new?template=tester_feedback.yml)
+- [Feature request](https://github.com/Cliff-Lee/melodex/issues/new?template=feature_request.yml)
+- [Discussions](https://github.com/Cliff-Lee/melodex/discussions)
+
+If something breaks, include the Melodex version, operating system, approximate library size, and the steps that led to the problem.
 
 For beta reports, NAS/library issues and source/plugin issues, Melodex can export redacted diagnostics directly from **Sources & plugins → Export redacted diagnostics…**. Power tools are not required. The JSON includes Melodex/platform details, aggregate library/index counts, latest scan state, NAS/storage health counters, timings and responsiveness metrics. It intentionally excludes library paths, share names, filenames, credentials, stream/playback URLs and raw scan error messages. Review the file before posting it.
 
-## What happens to feedback?
+Please do not upload copyrighted music files, passwords, API keys, private URLs, or other secrets.
 
-Reports are public on GitHub so other testers can confirm the same problem, add details and follow progress. Small observations are useful; you do not need to write a formal bug report.
-
-Thanks for helping make Melodex better for people who were not involved in building it.
+Thanks for helping make Melodex better.
