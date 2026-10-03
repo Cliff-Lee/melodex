@@ -1518,62 +1518,72 @@ class MainWindow(QMainWindow):
         l=self._page_layout(
             "explore",
             "Explore",
-            "Choose the kind of exploration you want. Search is direct; Album Wall is visual; Music Map goes deeper into relationships and routes.",
+            "Search, browse visually, or follow connections through your music.",
         )
 
         cards=QHBoxLayout()
         search_card=ActionCard(
             "Search everything",
-            "Find artists, albums or tracks across all the music sources you have connected.",
+            "Find artists, albums and tracks.",
             eyebrow="Search",
             action_text="Search",
         )
         search_card.clicked.connect(lambda:self.open_page("discover"))
-        wall_card=ActionCard(
+        self.explore_wall_card=ActionCard(
             "Album Wall",
-            "Browse your own collection as a stable visual place built from album covers.",
+            "Browse your collection by cover.",
             eyebrow="Browse",
             action_text="Open wall",
         )
-        wall_card.clicked.connect(lambda:self.open_page("album_wall"))
-        map_card=ActionCard(
+        self.explore_wall_card.clicked.connect(lambda:self.open_page("album_wall"))
+        self.explore_map_card=ActionCard(
             "Music Map",
-            "Explore sonic relationships between tracks. Advanced route-planning appears when you need it.",
+            "Follow relationships between tracks.",
             eyebrow="Relationships",
             action_text="Open map",
         )
-        map_card.clicked.connect(lambda:self.open_page("music_map"))
+        self.explore_map_card.clicked.connect(lambda:self.open_page("music_map"))
         cards.addWidget(search_card,1)
-        cards.addWidget(wall_card,1)
-        cards.addWidget(map_card,1)
+        cards.addWidget(self.explore_wall_card,1)
+        cards.addWidget(self.explore_map_card,1)
         l.addLayout(cards)
 
-        help_title=QLabel("Not sure where to start?")
-        help_title.setStyleSheet("font-size:18px;font-weight:700;margin-top:18px")
-        l.addWidget(help_title)
+        self.explore_try_section=QWidget()
+        try_l=QVBoxLayout(self.explore_try_section)
+        try_l.setContentsMargins(0,0,0,0)
+        try_l.setSpacing(8)
+        help_title=QLabel("Try something")
+        help_title.setObjectName("sectionTitle")
+        try_l.addWidget(help_title)
         help_row=QHBoxLayout()
-        similar=QPushButton("More like what is playing")
-        similar.clicked.connect(lambda:self._run_local_intelligence("similar"))
+        self.explore_similar_button=QPushButton("More like what is playing")
+        self.explore_similar_button.clicked.connect(
+            lambda:self._run_local_intelligence("similar")
+        )
         rediscover=QPushButton("Find a forgotten favourite")
         rediscover.clicked.connect(lambda:self._run_local_intelligence("rediscover"))
-        ask=QPushButton("Ask Melodex…")
-        ask.clicked.connect(lambda:self.open_page("ask"))
-        set_help(similar,"More like this","Uses local intelligence to look for nearby music in your own library.")
+        self.explore_ask_button=QPushButton("Ask Melodex…")
+        self.explore_ask_button.setObjectName("quietButton")
+        self.explore_ask_button.clicked.connect(lambda:self.open_page("ask"))
+        set_help(self.explore_similar_button,"More like this","Uses local intelligence to look for nearby music in your own library.")
         set_help(rediscover,"Forgotten favourite","Looks for music you used to play but have not heard for a while.")
-        set_help(ask,"Ask Melodex","Use an optional connected LLM for natural-language listening requests. Melodex still works without one.")
-        help_row.addWidget(similar)
+        set_help(self.explore_ask_button,"Ask Melodex","Use an optional connected LLM for natural-language listening requests. Melodex still works without one.")
+        help_row.addWidget(self.explore_similar_button)
         help_row.addWidget(rediscover)
-        help_row.addWidget(ask)
+        help_row.addWidget(self.explore_ask_button)
         help_row.addStretch(1)
-        l.addLayout(help_row)
+        try_l.addLayout(help_row)
 
         note=QLabel(
-            "Tip: Album Wall is designed for visual browsing. Music Map is the power tool for understanding and shaping routes between tracks."
+            "Album Wall is for browsing. Music Map is for connections and routes."
         )
         note.setWordWrap(True)
-        note.setStyleSheet("color:#8793a4;margin-top:12px")
-        l.addWidget(note)
+        note.setObjectName("subtleText")
+        try_l.addWidget(note)
+        l.addWidget(self.explore_try_section)
         l.addStretch(1)
+
+        self._refresh_explore_visibility()
 
     def _build_album_wall(self):
         from .album_wall import AlbumWallWidget
@@ -2489,6 +2499,8 @@ class MainWindow(QMainWindow):
         elif name=="library":
             self._refresh_library()
             self._refresh_plugin_presence()
+        elif name=="explore":
+            self._refresh_explore_visibility()
         elif name=="album_wall":
             self._refresh_album_wall()
         elif name=="music_map":
@@ -2535,6 +2547,21 @@ class MainWindow(QMainWindow):
             button.style().unpolish(button)
             button.style().polish(button)
             button.update()
+
+    def _refresh_explore_visibility(self) -> None:
+        has_library=bool(self.providers.local_catalog_count())
+        if hasattr(self,"explore_wall_card"):
+            self.explore_wall_card.setVisible(has_library)
+        if hasattr(self,"explore_map_card"):
+            self.explore_map_card.setVisible(has_library)
+        if hasattr(self,"explore_try_section"):
+            self.explore_try_section.setVisible(has_library)
+        if hasattr(self,"explore_similar_button"):
+            self.explore_similar_button.setEnabled(bool(self.current_track))
+        if hasattr(self,"explore_ask_button"):
+            self.explore_ask_button.setVisible(
+                has_library and self.power_toggle.isChecked()
+            )
 
     def _show_home(self):
         self._refresh_taste()
@@ -2642,6 +2669,10 @@ class MainWindow(QMainWindow):
         self.state.set_bool("power_tools",enabled)
         if hasattr(self, "source_power_panel"):
             self.source_power_panel.setVisible(enabled)
+        if hasattr(self, "explore_ask_button"):
+            self.explore_ask_button.setVisible(
+                enabled and bool(self.providers.local_catalog_count())
+            )
         if hasattr(self, "player_power_actions"):
             self.player_power_actions.setVisible(enabled)
         # Spatial browsing uses its own progressive disclosures. Global Power
