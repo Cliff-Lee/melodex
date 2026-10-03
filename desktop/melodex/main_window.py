@@ -2570,17 +2570,14 @@ class MainWindow(QMainWindow):
     def _show_home(self):
         self._refresh_taste()
         count=self.providers.local_catalog_count()
-        src=len(self.providers.providers)
-        ext=len(self.providers.extensions(cached_config=True))
-        flow_text = (
-            "Flow analysis ready"
-            if self.flow.analysis_available
-            else "metadata mode; install ffmpeg for deeper sonic analysis"
-        )
-        self.home_status.setText(
-            f"{count:,} local tracks · {src} music sources · {ext} plugin"
-            f"{'s' if ext != 1 else ''} · {flow_text}"
-        )
+        if count:
+            self.home_status.setText(
+                f"{count:,} track{'s' if count != 1 else ''} in your library"
+            )
+        else:
+            self.home_status.setText(
+                "Add a music folder to start listening."
+            )
         if hasattr(self,"home_primary_button"):
             if count:
                 self.home_primary_button.setText("▶  Play something")
@@ -4175,7 +4172,10 @@ class MainWindow(QMainWindow):
         if p not in roots:
             roots.append(p)
         self.providers.configure_local_roots(roots)
+        came_from_home = self.current_page == "home"
         self._start_local_scan("folder added")
+        if came_from_home:
+            self.open_page("library")
 
     def _rescan(self):
         self._start_local_scan("rescan")
