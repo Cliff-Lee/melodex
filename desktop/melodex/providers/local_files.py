@@ -276,11 +276,17 @@ class LocalFilesProvider(MusicProvider):
             while True:
                 control.checkpoint()
                 try:
-                    work_queue.put(item, timeout=0.05)
+                    work_queue.put_nowait(item)
                     max_queue_depth = max(max_queue_depth, work_queue.qsize())
                     return
                 except queue.Full:
                     queue_backpressure_events += 1
+                    try:
+                        work_queue.put(item, timeout=0.05)
+                        max_queue_depth = max(max_queue_depth, work_queue.qsize())
+                        return
+                    except queue.Full:
+                        continue
 
         def discover() -> None:
             nonlocal stat_failures
