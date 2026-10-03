@@ -621,6 +621,14 @@ class LocalLibraryIndex:
                         """,
                         tuple(ids),
                     )
+                    db.execute(
+                        f"""
+                        UPDATE scan_generations
+                        SET staged_count = 0
+                        WHERE generation_id IN ({placeholders})
+                        """,
+                        tuple(ids),
+                    )
 
     def scan_generation_summary(
         self,
