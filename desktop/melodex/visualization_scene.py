@@ -430,76 +430,150 @@ class LivingScene(QWidget):
         painter.drawEllipse(QRectF(center.x() - radius, center.y() - radius, radius * 2, radius * 2))
 
     def _paint_living(self, painter: QPainter, profile: VisualProfile) -> None:
+        """Profile Pulse: a low-cost radial portrait that breathes with the track."""
+
         rect = self._area()
         center = rect.center()
-        base = min(rect.width(), rect.height()) * 0.35
-        energy = energy_at(profile, self._position_fraction)
-        seed_phase = profile.hue / 360.0 * math.tau
-        glow = self._color(0)
-        self._draw_glow(painter, center, base * (1.6 + energy * 0.12), glow, 32 + int(22 * energy))
-        orbit = self._color(0)
-        orbit.setAlpha(24)
-        painter.setBrush(Qt.NoBrush)
-        painter.setPen(QPen(orbit, 1.0, Qt.DashLine))
-        painter.drawEllipse(center, base * 1.16, base * 0.93)
-        painter.setPen(QPen(QColor(orbit.red(), orbit.green(), orbit.blue(), 82), 1.0))
-        for index in range(48):
-            angle = math.tau * index / 48
-            inner = base * 1.105
-            outer = base * (1.15 if index % 6 == 0 else 1.125)
-            painter.drawLine(
-                QPointF(center.x() + math.cos(angle) * inner, center.y() + math.sin(angle) * inner * 0.80),
-                QPointF(center.x() + math.cos(angle) * outer, center.y() + math.sin(angle) * outer * 0.80),
-            )
-        points = self._detail_count(48)
-        layers = 2 if self._requested_quality == "eco" or self._effective_quality == "eco" else 3
-        for layer in range(layers):
+        state = self._visual_state
+        base = min(rect.width(), rect.height()) * 0.34
+        points = self._detail_count(56)
+        seed_phase = (profile.seed % 10007) / 10007.0 * math.tau
+
+        # A broad luminous field replaces the old radar/tick-ring appearance.
+        field = QColor(self._color(0))
+        self._draw_glow(
+            painter,
+            center,
+            base * (1.35 + 0.12 * state.energy),
+            field,
+            24 + int(34 * state.glow),
+        )
+        secondary = QColor(self._color(1))
+        secondary_center = QPointF(
+            center.x() + math.cos(seed_phase) * base * 0.18,
+            center.y() + math.sin(seed_phase) * base * 0.12,
+        )
+        self._draw_glow(
+            painter,
+            secondary_center,
+            base * 0.92,
+            secondary,
+            9 + int(16 * state.brightness),
+        )
+
+        layer_count = 2 if self._requested_quality == "eco" or self._effective_quality == "eco" else 4
+        for layer in range(layer_count):
             path = QPainterPath()
-            scale = 0.66 + layer * 0.17
+            layer_fraction = layer / max(1, layer_count - 1)
+            layer_radius = base * (0.48 + 0.13 * layer)
+            phase_offset = seed_phase * (0.55 + 0.22 * layer) + self._phase * (0.025 + 0.012 * layer)
             for index in range(points + 1):
                 angle = math.tau * index / points
                 contour = energy_at(profile, index / points) - 0.5
-                lobe = (
-                    0.12 * profile.rhythm * math.sin(angle * (5 + layer) + seed_phase)
-                    + 0.09 * profile.brightness * math.sin(angle * 3.0 - seed_phase * 0.7)
-                    + 0.10 * contour
-                    + 0.035 * math.sin(self._phase + angle * 2.0 + layer)
+                harmonic = math.sin(
+                    angle * (3 + layer * 2)
+                    + phase_offset
                 )
-                radius = base * scale * (0.91 + lobe)
-                point = QPointF(center.x() + math.cos(angle) * radius, center.y() + math.sin(angle) * radius * 0.78)
+                fine = math.cos(
+                    angle * (7 + int(profile.rhythm * 5))
+                    - seed_phase * 0.7
+                )
+                movement = math.sin(
+                    angle * 2.0
+                    - self._phase * (0.18 + 0.14 * state.rhythm)
+                    + layer
+                )
+                lobe = (
+                    0.105 * profile.rhythm * harmonic
+                    + 0.070 * profile.brightness * fine
+                    + 0.085 * contour
+                    + 0.025 * state.drift * movement
+                )
+                breathing = 1.0 + 0.010 * state.glow + 0.006 * state.pulse
+                radius = layer_radius * breathing * (1.0 + lobe)
+                y_scale = 0.91 + 0.035 * math.sin(seed_phase + layer)
+                point = QPointF(
+                    center.x() + math.cos(angle) * radius,
+                    center.y() + math.sin(angle) * radius * y_scale,
+                )
                 if index == 0:
                     path.moveTo(point)
                 else:
                     path.lineTo(point)
             path.closeSubpath()
-            color = self._color(0 if layer != 1 else 1)
-            color.setAlpha(90 + layer * 26)
+
+            color = QColor(self._color(layer))
+            halo = QColor(color)
+            halo.setAlpha(17 + int(16 * state.glow) + int(8 * layer_fraction))
+            core = QColor(color)
+            core.setAlpha(105 + int(60 * layer_fraction) + int(35 * state.energy))
+
             painter.setBrush(Qt.NoBrush)
-            painter.setPen(QPen(color, 1.0 + layer * 0.55, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+            painter.setPen(
+                QPen(
+                    halo,
+                    5.0 + 1.2 * layer_fraction,
+                    Qt.SolidLine,
+                    Qt.RoundCap,
+                    Qt.RoundJoin,
+                )
+            )
             painter.drawPath(path)
-        painter.setPen(Qt.NoPen)
-        halo = QColor(self._color(0))
-        halo.setAlpha(34 + int(28 * energy))
-        painter.setBrush(halo)
-        painter.drawEllipse(center, base * (0.16 + energy * 0.04), base * (0.16 + energy * 0.04))
-        for index, (sx, sy, size, phase) in enumerate(self._stars[: self._detail_count(14)]):
-            angle = sx * math.tau + self._phase * 0.018
-            orbit = base * (0.88 + 0.36 * sy)
+            painter.setPen(
+                QPen(
+                    core,
+                    1.15 + 0.55 * layer_fraction,
+                    Qt.SolidLine,
+                    Qt.RoundCap,
+                    Qt.RoundJoin,
+                )
+            )
+            painter.drawPath(path)
+
+        # Sparse luminous motes orbit slowly around the profile rather than
+        # looking like a fixed instrument scale.
+        mote_count = self._detail_count(12)
+        for index, (sx, sy, size, phase) in enumerate(self._stars[:mote_count]):
+            angle = sx * math.tau + self._phase * (0.010 + profile.rhythm * 0.018)
+            orbit = base * (0.78 + 0.44 * sy)
             x = center.x() + math.cos(angle) * orbit
-            y = center.y() + math.sin(angle) * orbit * 0.72
-            twinkle = 0.5 + 0.5 * math.sin(self._phase * (0.5 + profile.rhythm) + phase)
-            dot = self._color(index % 3)
-            dot.setAlpha(80 + int(145 * twinkle))
-            painter.setBrush(dot)
-            painter.drawEllipse(QPointF(x, y), size + twinkle * 0.7, size + twinkle * 0.7)
-        core = self._color(0)
-        core.setAlpha(70 + int(100 * energy))
-        painter.setBrush(core)
-        painter.drawEllipse(center, base * (0.09 + energy * 0.045), base * (0.09 + energy * 0.045))
-        center_dot = QColor("#eaf4ff")
-        center_dot.setAlpha(145)
-        painter.setBrush(center_dot)
-        painter.drawEllipse(center, 2.1, 2.1)
+            y = center.y() + math.sin(angle) * orbit * 0.88
+            twinkle = 0.5 + 0.5 * math.sin(self._phase * 0.55 + phase + index)
+            mote = QColor(self._color(index + 1))
+            mote.setAlpha(34 + int(72 * twinkle))
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(mote)
+            painter.drawEllipse(QPointF(x, y), 0.9 + size * 0.45, 0.9 + size * 0.45)
+
+        # The centre is the playback pulse: bright, small and deliberately calm.
+        core_color = QColor(self._color(0))
+        self._draw_glow(
+            painter,
+            center,
+            base * (0.24 + 0.04 * state.energy),
+            core_color,
+            34 + int(40 * state.glow),
+        )
+        painter.setPen(Qt.NoPen)
+        center_fill = QColor(core_color)
+        center_fill.setAlpha(135 + int(85 * state.energy))
+        painter.setBrush(center_fill)
+        core_radius = base * (0.055 + 0.010 * state.pulse)
+        painter.drawEllipse(center, core_radius, core_radius)
+        painter.setBrush(QColor(248, 252, 255, 225))
+        painter.drawEllipse(center, 2.2 + state.pulse * 0.8, 2.2 + state.pulse * 0.8)
+
+        label = "PROFILE PULSE"
+        if profile.flow_available:
+            label += "   ·   FLOW-DRIVEN"
+        else:
+            label += "   ·   IDENTITY-DRIVEN"
+        self._draw_caption(
+            painter,
+            QRectF(rect.left(), rect.bottom() - 18, rect.width(), 16),
+            label,
+            QColor(172, 190, 211, 150),
+        )
 
     def _paint_fingerprint(self, painter: QPainter, profile: VisualProfile) -> None:
         rect = self._area()
@@ -1062,84 +1136,152 @@ class LivingScene(QWidget):
         )
 
     def _paint_weather(self, painter: QPainter, profile: VisualProfile) -> None:
+        """Sonic Weather: an abstract atmospheric field, never a literal icon."""
+
         weather = describe_weather(profile)
         rect = self._area()
-        center = QPointF(rect.center().x(), rect.center().y() - rect.height() * 0.16)
-        radius = min(rect.width(), rect.height()) * 0.23
-        self._draw_glow(painter, QPointF(center.x(), center.y() + radius * 0.42), radius * 2.15, self._color(0), 25)
-        shadow = QColor("#070b11")
-        shadow.setAlpha(74)
-        painter.setPen(Qt.NoPen)
-        painter.setBrush(shadow)
-        painter.drawEllipse(QPointF(center.x(), center.y() + radius * 0.44), radius * 1.22, radius * 0.23)
+        state = self._visual_state
+        center = QPointF(
+            rect.center().x() + math.sin(self._phase * 0.018) * rect.width() * 0.035,
+            rect.center().y() - rect.height() * 0.05,
+        )
 
-        cloud_path = QPainterPath()
-        cloud_path.moveTo(center.x() - radius * 1.34, center.y() + radius * 0.27)
-        cloud_path.cubicTo(
-            center.x() - radius * 1.52, center.y() - radius * 0.10,
-            center.x() - radius * 1.17, center.y() - radius * 0.48,
-            center.x() - radius * 0.72, center.y() - radius * 0.39,
+        # Internal illumination: brightness chooses how open the field feels,
+        # warmth shifts the secondary glow within the cover-derived palette.
+        primary = QColor(self._color(0))
+        secondary = QColor(self._color(3 if state.warmth > 0.55 else 1))
+        self._draw_glow(
+            painter,
+            center,
+            min(rect.width(), rect.height()) * (0.52 + 0.08 * state.density),
+            primary,
+            18 + int(26 * state.glow),
         )
-        cloud_path.cubicTo(
-            center.x() - radius * 0.50, center.y() - radius * 0.96,
-            center.x() + radius * 0.34, center.y() - radius * 1.00,
-            center.x() + radius * 0.57, center.y() - radius * 0.32,
+        warm_center = QPointF(
+            center.x() - rect.width() * 0.14,
+            center.y() + rect.height() * 0.08,
         )
-        cloud_path.cubicTo(
-            center.x() + radius * 1.06, center.y() - radius * 0.58,
-            center.x() + radius * 1.55, center.y() - radius * 0.22,
-            center.x() + radius * 1.37, center.y() + radius * 0.28,
+        self._draw_glow(
+            painter,
+            warm_center,
+            min(rect.width(), rect.height()) * 0.36,
+            secondary,
+            7 + int(18 * state.warmth),
         )
-        cloud_path.cubicTo(
-            center.x() + radius * 1.23, center.y() + radius * 0.50,
-            center.x() - radius * 1.14, center.y() + radius * 0.50,
-            center.x() - radius * 1.34, center.y() + radius * 0.27,
-        )
-        cloud = self._color(0)
-        cloud.setAlpha(173)
-        cloud_highlight = QColor(cloud)
-        cloud_highlight.setAlpha(210)
-        cloud_shade = QColor(cloud)
-        cloud_shade.setAlpha(116)
-        cloud_gradient = QLinearGradient(center.x(), center.y() - radius, center.x(), center.y() + radius * 0.55)
-        cloud_gradient.setColorAt(0.0, cloud_highlight)
-        cloud_gradient.setColorAt(1.0, cloud_shade)
-        outline = QColor("#e5f1ff")
-        outline.setAlpha(58)
-        painter.setPen(QPen(outline, 1.0))
-        painter.setBrush(cloud_gradient)
-        painter.drawPath(cloud_path)
-        energy = profile.energy
-        marks = self._detail_count(10)
-        color = self._color(1 if profile.brightness > 0.58 else 3)
-        color.setAlpha(155)
-        painter.setPen(QPen(color, 1.8, Qt.SolidLine, Qt.RoundCap))
-        if profile.rhythm > 0.56:
-            for i in range(marks):
-                x = center.x() - radius + (i + 0.5) * radius * 2 / marks
-                drift = math.sin(self._phase * 0.7 + i * 1.9) * 5
-                y = center.y() + radius * 0.76 + (i % 3) * 12 + drift
-                painter.drawLine(QPointF(x, y), QPointF(x - 5, y + 10 + energy * 7))
-        else:
-            for i in range(marks):
-                angle = math.tau * i / marks + self._phase * 0.018
-                x = center.x() + math.cos(angle) * radius * 1.28
-                y = center.y() + math.sin(angle) * radius * 0.82
+
+        # Layered vapor bands create depth cheaply: broad translucent Bezier
+        # ribbons with slow phase drift, no blur shader or texture asset.
+        band_count = 3 if self._requested_quality == "eco" or self._effective_quality == "eco" else 5
+        for band in range(band_count):
+            fraction = band / max(1, band_count - 1)
+            y_mid = rect.top() + rect.height() * (0.22 + 0.13 * band)
+            thickness = rect.height() * (0.11 + 0.055 * state.density + 0.015 * band)
+            drift = math.sin(self._phase * (0.022 + band * 0.006) + band * 1.4)
+            offset = drift * rect.width() * (0.025 + 0.008 * band)
+            amplitude = rect.height() * (0.025 + 0.020 * state.rhythm + 0.008 * band)
+
+            top = QPainterPath()
+            top.moveTo(rect.left() - 40, y_mid - thickness * 0.5)
+            top.cubicTo(
+                rect.left() + rect.width() * 0.25 + offset,
+                y_mid - thickness * 0.5 - amplitude,
+                rect.left() + rect.width() * 0.62 - offset,
+                y_mid - thickness * 0.5 + amplitude,
+                rect.right() + 40,
+                y_mid - thickness * 0.5,
+            )
+            top.lineTo(rect.right() + 40, y_mid + thickness * 0.5)
+            top.cubicTo(
+                rect.left() + rect.width() * 0.72 - offset,
+                y_mid + thickness * 0.5 + amplitude * 0.72,
+                rect.left() + rect.width() * 0.30 + offset,
+                y_mid + thickness * 0.5 - amplitude * 0.65,
+                rect.left() - 40,
+                y_mid + thickness * 0.5,
+            )
+            top.closeSubpath()
+
+            vapor = QColor(self._color(band))
+            alpha = 16 + int(22 * state.density) + int(9 * (1.0 - fraction))
+            vapor.setAlpha(alpha)
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(vapor)
+            painter.drawPath(top)
+
+            rim = QColor(self._color(band))
+            rim.setAlpha(12 + int(18 * state.glow))
+            painter.setBrush(Qt.NoBrush)
+            painter.setPen(QPen(rim, 0.7 + 0.25 * fraction, Qt.SolidLine, Qt.RoundCap))
+            painter.drawPath(top)
+
+        # Particles change character with musical activity. Dense/rhythmic
+        # tracks become rain-like light threads; calmer tracks become suspended
+        # dust. Positions remain deterministic for the recording.
+        particle_count = self._detail_count(24 if state.density > 0.56 else 16)
+        active_threads = state.rhythm > 0.48 or state.density > 0.64
+        for index, (sx, sy, size, phase) in enumerate(self._stars[:particle_count]):
+            travel = (self._phase * (0.010 + 0.025 * state.drift) + phase) % math.tau
+            x = rect.left() + ((sx + math.sin(travel + index) * 0.035) % 1.0) * rect.width()
+            y = rect.top() + ((sy + self._phase * (0.0018 + 0.0028 * state.drift)) % 1.0) * rect.height()
+            particle = QColor(self._color(index + 1))
+            particle.setAlpha(28 + int(74 * state.density))
+            if active_threads:
+                length = 8 + 20 * state.energy + (index % 4) * 3
+                painter.setPen(QPen(particle, 0.8 + size * 0.18, Qt.SolidLine, Qt.RoundCap))
+                painter.drawLine(
+                    QPointF(x, y),
+                    QPointF(x - 3.0 - 4.0 * state.drift, y + length),
+                )
+            else:
                 painter.setPen(Qt.NoPen)
-                painter.setBrush(color)
-                painter.drawEllipse(QPointF(x, y), 2.0 + energy, 2.0 + energy)
+                painter.setBrush(particle)
+                painter.drawEllipse(QPointF(x, y), 0.8 + size * 0.35, 0.8 + size * 0.35)
+
+        # A few pressure-front lines give lateral motion without becoming a
+        # waveform visualizer.
+        front_count = 2 if self._requested_quality == "eco" or self._effective_quality == "eco" else 3
+        for front in range(front_count):
+            y = rect.top() + rect.height() * (0.20 + front * 0.23)
+            path = QPainterPath(QPointF(rect.left() - 20, y))
+            control = math.sin(self._phase * 0.028 + front * 1.8) * rect.height() * 0.07
+            path.cubicTo(
+                QPointF(rect.left() + rect.width() * 0.32, y + control),
+                QPointF(rect.left() + rect.width() * 0.68, y - control * 0.7),
+                QPointF(rect.right() + 20, y + control * 0.25),
+            )
+            front_color = QColor(self._color(front))
+            front_color.setAlpha(15 + int(24 * state.glow))
+            painter.setBrush(Qt.NoBrush)
+            painter.setPen(QPen(front_color, 1.0, Qt.SolidLine, Qt.RoundCap))
+            painter.drawPath(path)
+
         painter.save()
-        painter.setFont(QFont("sans-serif", 17, QFont.DemiBold))
-        painter.setPen(QColor("#edf3fb"))
-        painter.drawText(QRectF(rect.left(), center.y() + radius * 1.47, rect.width(), 32), Qt.AlignCenter, f"{weather.tone}  ·  {weather.density}")
+        painter.setFont(QFont("sans-serif", 15, QFont.DemiBold))
+        painter.setPen(QColor(239, 245, 252, 225))
+        painter.drawText(
+            QRectF(rect.left(), rect.bottom() - 66, rect.width(), 26),
+            Qt.AlignCenter,
+            f"{weather.tone}  ·  {weather.density}",
+        )
         painter.restore()
-        self._draw_caption(painter, QRectF(rect.left(), center.y() + radius * 1.47 + 30, rect.width(), 24), weather.motion.upper())
+        self._draw_caption(
+            painter,
+            QRectF(rect.left(), rect.bottom() - 40, rect.width(), 18),
+            weather.motion.upper(),
+            QColor(166, 182, 201, 145),
+        )
+        self._draw_caption(
+            painter,
+            QRectF(rect.left(), rect.top() + 2, rect.width(), 18),
+            "SONIC WEATHER",
+            QColor(166, 182, 201, 125),
+        )
         if not weather.based_on_flow:
             self._draw_caption(
                 painter,
-                QRectF(rect.left(), rect.bottom() - 20, rect.width(), 16),
-                "IDENTITY-BASED ESTIMATE    ·    NO CACHED FLOW ANALYSIS",
-                "#8491a1",
+                QRectF(rect.left(), rect.bottom() - 18, rect.width(), 16),
+                "IDENTITY-BASED ESTIMATE   ·   NO CACHED FLOW ANALYSIS",
+                QColor(132, 145, 161, 135),
             )
 
     def _paint_memory(self, painter: QPainter) -> None:
