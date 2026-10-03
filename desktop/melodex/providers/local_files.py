@@ -281,10 +281,12 @@ class LocalFilesProvider(MusicProvider):
         tracks: list[dict[str, Any]] = []
         index_records: list[dict[str, Any]] = []
         directory_manifests: list[dict[str, Any]] = []
+        preserve_directories: list[dict[str, Any]] = []
         tracks_indexed = 0
         root_states: list[dict[str, Any]] = []
         probe = ScanProbe(len(scan_roots))
         seen_keys: set[str] = set()
+        preserved_directory_keys: set[str] = set()
         available_root_keys: set[str] = set()
 
         unchanged = 0
@@ -304,6 +306,8 @@ class LocalFilesProvider(MusicProvider):
         queue_backpressure_events = 0
         directory_manifest_hits = 0
         directory_manifest_misses = 0
+        directory_reuse_hits = 0
+        directory_reuse_tracks = 0
         scandir_directories = 0
         concurrency = StorageConcurrencyController(scan_roots)
         metadata_executor = ThreadPoolExecutor(
@@ -419,6 +423,7 @@ class LocalFilesProvider(MusicProvider):
                         probe.directory_seen()
                         manifest = hashlib.sha256()
                         audio_count = 0
+                        file_work: list[dict[str, Any]] = []
                         for name, direntry_stat, direntry_stat_elapsed in files:
                             control.checkpoint()
                             p = Path(base) / name
@@ -473,8 +478,7 @@ class LocalFilesProvider(MusicProvider):
                                     + "\n"
                                 ).encode("utf-8", errors="surrogatepass")
                             )
-
-                            put_work(
+                            file_work.append(
                                 {
                                     "type": "file",
                                     "path": p,
@@ -485,17 +489,44 @@ class LocalFilesProvider(MusicProvider):
                                 }
                             )
 
-                        put_work(
-                            {
-                                "type": "directory_manifest",
-                                "path": str(base),
-                                "root_path": str(root),
-                                "root_key": root_key,
-                                "manifest": manifest.hexdigest(),
-                                "file_count": audio_count,
-                                "fast_scandir": fast_scandir,
-                            }
+                        manifest_value = manifest.hexdigest()
+                        directory_key = self._override_key(base)
+                        previous_dir = cached_dirs.get(directory_key)
+                        reusable_directory = bool(
+                            previous_dir
+                            and str(previous_dir.get("manifest") or "")
+                            == manifest_value
+                            and int(previous_dir.get("file_count") or 0)
+                            == audio_count
+                            and audio_count <= 5000
                         )
+
+                        if reusable_directory:
+                            put_work(
+                                {
+                                    "type": "directory_reuse",
+                                    "path": str(base),
+                                    "root_path": str(root),
+                                    "root_key": root_key,
+                                    "manifest": manifest_value,
+                                    "file_count": audio_count,
+                                    "fast_scandir": fast_scandir,
+                                }
+                            )
+                        else:
+                            for work_item in file_work:
+                                put_work(work_item)
+                            put_work(
+                                {
+                                    "type": "directory_manifest",
+                                    "path": str(base),
+                                    "root_path": str(root),
+                                    "root_key": root_key,
+                                    "manifest": manifest_value,
+                                    "file_count": audio_count,
+                                    "fast_scandir": fast_scandir,
+                                }
+                            )
 
                     put_work(
                         {
@@ -525,8 +556,10 @@ class LocalFilesProvider(MusicProvider):
         current_tracks_start = 0
         current_index_records_start = 0
         current_directory_manifests_start = 0
+        current_preserve_directories_start = 0
         current_tracks_indexed_start = 0
         current_root_seen: set[str] = set()
+        current_root_preserved_dirs: set[str] = set()
         root_unchanged = 0
         root_resumed = 0
         root_added = 0
@@ -601,8 +634,10 @@ class LocalFilesProvider(MusicProvider):
                     current_tracks_start = len(tracks)
                     current_index_records_start = len(index_records)
                     current_directory_manifests_start = len(directory_manifests)
+                    current_preserve_directories_start = len(preserve_directories)
                     current_tracks_indexed_start = tracks_indexed
                     current_root_seen = set()
+                    current_root_preserved_dirs = set()
                     root_unchanged = 0
                     root_resumed = 0
                     root_added = 0
@@ -696,6 +731,36 @@ class LocalFilesProvider(MusicProvider):
                     )
                     continue
 
+                if item_type == "directory_reuse":
+                    directory_path = str(item.get("path") or "")
+                    manifest_value = str(item.get("manifest") or "")
+                    file_count = max(0, int(item.get("file_count") or 0))
+                    if bool(item.get("fast_scandir")):
+                        scandir_directories += 1
+                    directory_manifest_hits += 1
+                    directory_reuse_hits += 1
+                    directory_reuse_tracks += file_count
+                    root_unchanged += file_count
+                    tracks_indexed += file_count
+                    canonical_dir = self._override_key(directory_path)
+                    current_root_preserved_dirs.add(canonical_dir)
+                    preserve_directories.append(
+                        {
+                            "path": directory_path,
+                            "root_path": str(item.get("root_path") or ""),
+                            "file_count": file_count,
+                        }
+                    )
+                    directory_manifests.append(
+                        {
+                            "path": directory_path,
+                            "root_path": str(item.get("root_path") or ""),
+                            "manifest": manifest_value,
+                            "file_count": file_count,
+                        }
+                    )
+                    continue
+
                 if item_type == "directory_manifest":
                     if bool(item.get("fast_scandir")):
                         scandir_directories += 1
@@ -740,16 +805,23 @@ class LocalFilesProvider(MusicProvider):
                         changed += root_changed
                         available_root_keys.add(current_root_key)
                         seen_keys.update(current_root_seen)
+                        preserved_directory_keys.update(
+                            current_root_preserved_dirs
+                        )
                     else:
                         del tracks[current_tracks_start:]
                         del index_records[current_index_records_start:]
                         del directory_manifests[
                             current_directory_manifests_start:
                         ]
+                        del preserve_directories[
+                            current_preserve_directories_start:
+                        ]
                         tracks_indexed = current_tracks_indexed_start
                     current_root_state = None
                     current_root_key = ""
                     current_root_seen = set()
+                    current_root_preserved_dirs = set()
                     root_unchanged = root_resumed = root_added = root_changed = 0
 
             if producer_error:
@@ -757,6 +829,8 @@ class LocalFilesProvider(MusicProvider):
 
             for key, previous in cached.items():
                 if key in seen_keys:
+                    continue
+                if self._override_key(os.path.dirname(key)) in preserved_directory_keys:
                     continue
                 root_path = str(previous.get("root_path") or "")
                 if (
@@ -801,6 +875,8 @@ class LocalFilesProvider(MusicProvider):
                     "snapshot_track_copies": 2 if collect_tracks else 1,
                     "directory_manifest_hits": int(directory_manifest_hits),
                     "directory_manifest_misses": int(directory_manifest_misses),
+                    "directory_reuse_hits": int(directory_reuse_hits),
+                    "directory_reuse_tracks": int(directory_reuse_tracks),
                     "directory_manifests": len(directory_manifests),
                     "scandir_directories": int(scandir_directories),
                     "scandir_enabled": bool(scandir_directories),
@@ -835,6 +911,7 @@ class LocalFilesProvider(MusicProvider):
                 "tracks": [],
                 "index_records": [],
                 "directory_manifests": [],
+                "preserve_directories": [],
                 "metrics": metrics,
                 "root_states": root_states,
                 "cancelled": True,
@@ -850,6 +927,7 @@ class LocalFilesProvider(MusicProvider):
             "tracks": tracks,
             "index_records": index_records,
             "directory_manifests": directory_manifests,
+            "preserve_directories": preserve_directories,
             "metrics": metrics,
             "root_states": root_states,
             "changes": {
