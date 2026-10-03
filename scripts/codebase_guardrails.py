@@ -10,6 +10,17 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
+FORBIDDEN_MAIN_WINDOW_SNIPPETS = {
+    "from .plugin_configuration_dialog import": "plugin configuration belongs to SourcesFeature",
+    "from .plugin_directory import": "plugin directory belongs to SourcesFeature",
+    "from .plugin_onboarding import": "plugin onboarding belongs to SourcesFeature",
+    "def _build_sources": "Sources page construction belongs to SourcesFeature",
+    "def _refresh_sources": "Sources rendering belongs to SourcesFeature",
+    "self.sources_list": "Sources widgets belong to SourcesFeature",
+    "self.source_primary_button": "Sources widgets belong to SourcesFeature",
+    "self.source_power_panel": "Sources widgets belong to SourcesFeature",
+}
+
 # Baseline is the v0.7.11 main_window.py snapshot from P12a. Lower this number
 # as P12c extracts responsibilities; never raise it to accommodate new work.
 MAX_LINES = {
@@ -36,6 +47,15 @@ def main() -> int:
             failures.append(
                 f"{relative} grew to {current} lines; Campaign 12 baseline is {maximum}. "
                 "Extract responsibility or reduce the file instead of raising the limit."
+            )
+
+    main_window = (ROOT / "desktop/melodex/main_window.py").read_text(
+        encoding="utf-8"
+    )
+    for snippet, reason in FORBIDDEN_MAIN_WINDOW_SNIPPETS.items():
+        if snippet in main_window:
+            failures.append(
+                f"desktop/melodex/main_window.py contains {snippet!r}; {reason}."
             )
 
     if failures:
