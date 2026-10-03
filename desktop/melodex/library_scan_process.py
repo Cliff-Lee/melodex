@@ -125,13 +125,13 @@ def run_library_scan_child() -> int:
             progress=progress,
             control=control,
             cached_entries=cached,
+            collect_tracks=False,
         )
         metrics = dict(snapshot.get("metrics") or {})
         metrics["process_isolated"] = True
         snapshot["metrics"] = metrics
         if bool(snapshot.get("cancelled")) or control.cancelled:
             snapshot["cancelled"] = True
-            snapshot.pop("index_tracks", None)
             snapshot.pop("index_records", None)
             _write_message(
                 sys.stdout,
@@ -168,11 +168,13 @@ def run_library_scan_child() -> int:
 
         result = dict(snapshot)
         result["persistence"] = dict(persistence or {})
-        result["tracks"] = provider.prepare_cached_tracks(index.load_tracks(roots))
-        # These can be many megabytes and are no longer needed after the
-        # transactional SQLite commit.
-        result.pop("index_tracks", None)
+        # Persistence-only scan mode keeps just one collection-sized record
+        # set. Release it before hydrating the completed UI catalog from SQLite
+        # so the child does not retain raw persistence rows and final tracks at
+        # the same time.
         result.pop("index_records", None)
+        snapshot.pop("index_records", None)
+        result["tracks"] = provider.prepare_cached_tracks(index.load_tracks(roots))
         _write_message(
             sys.stdout,
             {"type": "result", "payload": result},
