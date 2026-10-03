@@ -214,6 +214,12 @@ class MainWindow(QMainWindow):
         self._local_scan_sequence = 0
         self._local_scan_started_at = 0.0
         self._local_scan_last_progress: dict[str, Any] = {}
+        self._local_scan_session: dict[str, Any] = {
+            "status": "idle",
+            "running": False,
+            "pending_rescan": False,
+            "storage_state": "unknown",
+        }
         self._prefetched_track_assets: dict[str, dict[str, Any]] = {}
         self._prefetch_sequence = 0
         self._prefetch_delay_ms = 350
@@ -2313,6 +2319,23 @@ class MainWindow(QMainWindow):
         self.source_hint.setStyleSheet("color:#8793a4")
         l.addWidget(self.source_hint)
 
+        support_row=QHBoxLayout()
+        diagnostics=QPushButton("Export redacted diagnostics…")
+        diagnostics.setObjectName("quietButton")
+        diagnostics.clicked.connect(self._export_diagnostics)
+        set_help(
+            diagnostics,
+            "Export redacted diagnostics",
+            "Save a support snapshot with version, indexing, NAS/storage and responsiveness metrics. "
+            "Melodex omits library paths, filenames, credentials, stream URLs and raw scan errors.",
+        )
+        support_row.addWidget(diagnostics)
+        support_note=QLabel("Useful for beta reports · review the JSON before sharing")
+        support_note.setStyleSheet("color:#8793a4")
+        support_row.addWidget(support_note)
+        support_row.addStretch(1)
+        l.addLayout(support_row)
+
         self.legacy_source_notice=QLabel()
         self.legacy_source_notice.setWordWrap(True)
         self.legacy_source_notice.setStyleSheet(
@@ -2341,13 +2364,10 @@ class MainWindow(QMainWindow):
         ext.clicked.connect(self._install_extension)
         bridge=QPushButton("Provider Bridge…")
         bridge.clicked.connect(self._bridge_dialog)
-        diagnostics=QPushButton("Export diagnostics…")
-        diagnostics.clicked.connect(self._export_diagnostics)
         provider_row.addWidget(jam)
         provider_row.addWidget(inst)
         provider_row.addWidget(ext)
         provider_row.addWidget(bridge)
-        provider_row.addWidget(diagnostics)
         provider_row.addStretch(1)
         power.addLayout(provider_row)
 
