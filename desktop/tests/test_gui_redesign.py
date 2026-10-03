@@ -2341,7 +2341,7 @@ def test_next_track_prefetch_yields_to_large_library_scan(monkeypatch, tmp_path)
         _track(str(tmp_path / "b.mp3"), "B", "B", "B", 1),
     ]
     window.player.index = 0
-    window._local_scan_in_progress = True
+    window.local_scan._runner = object()
     calls = []
     monkeypatch.setattr(
         window,
@@ -2355,7 +2355,7 @@ def test_next_track_prefetch_yields_to_large_library_scan(monkeypatch, tmp_path)
     assert calls == []
     assert window._prefetched_track_assets == {}
 
-    window._local_scan_in_progress = False
+    window.local_scan._runner = None
     window.close()
     app.processEvents()
 
@@ -2439,6 +2439,7 @@ def test_global_scan_activity_persists_across_navigation(monkeypatch, tmp_path):
     assert "You can keep using Melodex" in window.background_activity_label.text()
 
     window._local_scan_progress(
+        window.local_scan.sequence,
         {
             "phase": "metadata",
             "audio_files_seen": 120,
@@ -2466,7 +2467,7 @@ def test_global_scan_activity_persists_across_navigation(monkeypatch, tmp_path):
     window._cancel_local_scan()
     app.processEvents()
     assert release.is_set()
-    assert window._local_scan_in_progress is False
+    assert window.local_scan.active is False
     assert window.background_activity.isHidden()
 
     window.close()
@@ -2577,16 +2578,16 @@ def test_slow_library_scan_keeps_qt_event_loop_responsive(monkeypatch, tmp_path)
 
     assert started.is_set()
     assert timer_fired == [True]
-    assert window._local_scan_in_progress is True
+    assert window.local_scan.active is True
     assert worker_thread["main"] is False
 
     release.set()
     deadline = time.monotonic() + 2.0
-    while time.monotonic() < deadline and window._local_scan_in_progress:
+    while time.monotonic() < deadline and window.local_scan.active:
         app.processEvents()
         time.sleep(0.005)
 
-    assert window._local_scan_in_progress is False
+    assert window.local_scan.active is False
     assert apply_threads == [True]
     window.close()
     app.processEvents()
@@ -2694,11 +2695,11 @@ def test_root_change_during_scan_discards_stale_snapshot(monkeypatch, tmp_path):
 
     window.providers.configure_local_roots([root_a, root_b])
     window._start_local_scan("roots changed")
-    assert window._local_scan_pending is True
+    assert window.local_scan.pending is True
 
     deadline = time.monotonic() + 2.0
     while time.monotonic() < deadline and (
-        window._local_scan_in_progress or len(calls) < 2
+        window.local_scan.active or len(calls) < 2
     ):
         app.processEvents()
         time.sleep(0.005)
@@ -2902,11 +2903,11 @@ def test_cancelled_main_window_scan_keeps_existing_catalog(monkeypatch, tmp_path
     window._cancel_local_scan()
 
     deadline = time.monotonic() + 2.0
-    while time.monotonic() < deadline and window._local_scan_in_progress:
+    while time.monotonic() < deadline and window.local_scan.active:
         app.processEvents()
         time.sleep(0.005)
 
-    assert window._local_scan_in_progress is False
+    assert window.local_scan.active is False
     catalog = window.providers.local_catalog()
     assert len(catalog) == 1
     assert catalog[0]["title"] == "Existing"
@@ -3107,11 +3108,11 @@ def test_gui_library_scan_uses_isolated_runner_not_provider_thread(
 
     window._start_local_scan("isolated process test")
     deadline = time.monotonic() + 2.0
-    while time.monotonic() < deadline and window._local_scan_in_progress:
+    while time.monotonic() < deadline and window.local_scan.active:
         app.processEvents()
         time.sleep(0.005)
 
-    assert window._local_scan_in_progress is False
+    assert window.local_scan.active is False
     assert len(created) == 1
     assert created[0]["data_dir"] == tmp_path
     assert created[0]["roots"] == [root]
