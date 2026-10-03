@@ -20,7 +20,7 @@ Melodex indexes files where they are. It does not move, copy, or upload them.
 
 ## Play something
 
-Go to **Home** and choose **▶ Play something**.
+Go to **Home** and choose **▶  Play something**.
 
 Or browse an album in **My Music** and play it directly.
 
