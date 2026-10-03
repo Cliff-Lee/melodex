@@ -287,17 +287,15 @@ def test_redesigned_main_window_builds_with_goal_navigation(monkeypatch, tmp_pat
     assert hasattr(window.rich_now, "auto_online_lyrics")
     assert window.rich_now.auto_online_lyrics.isChecked() is False
     assert "now_playing" in window._built_lazy_pages
-    assert hasattr(window, "source_summary_library")
-    assert hasattr(window, "source_summary_included")
-    assert hasattr(window, "source_summary_enhancements")
-    assert set(window.source_feature_buttons) == {
+    assert hasattr(window, "sources_feature")
+    assert set(window.sources_feature.source_feature_buttons) == {
         "search",
         "lyrics",
         "artwork",
         "recommendations",
         "context",
     }
-    assert window.source_feature_buttons["lyrics"].text() == "Lyrics"
+    assert window.sources_feature.source_feature_buttons["lyrics"].text() == "Lyrics"
     assert window.now_views.tabText(0) == "Now Playing"
     assert window.now_views.tabText(1) == "Visuals"
     assert window.playlists_stack.currentWidget() is window.playlists_empty
@@ -310,7 +308,7 @@ def test_redesigned_main_window_builds_with_goal_navigation(monkeypatch, tmp_pat
 
     window.open_page("sources")
     app.processEvents()
-    assert window.source_primary_button.text() == "Use selected"
+    assert window.sources_feature.source_primary_button.text() == "Use selected"
     window.open_page("explore")
     app.processEvents()
     assert window.stack.currentWidget() is window.pages["explore"]
@@ -318,7 +316,7 @@ def test_redesigned_main_window_builds_with_goal_navigation(monkeypatch, tmp_pat
 
     window.power_toggle.setChecked(False)
     app.processEvents()
-    assert not window.source_power_panel.isVisible()
+    assert not window.sources_feature.source_power_panel.isVisible()
     assert not window.player_power_actions.isVisible()
 
     window.close()
@@ -858,7 +856,11 @@ def test_plugins_surface_where_their_features_are_used(monkeypatch, tmp_path):
     assert "Needs Setup" not in window.rich_now.context_plugin_presence.label.text()
 
     opened = []
-    monkeypatch.setattr(window, "_plugin_directory", lambda capability="": opened.append(capability))
+    monkeypatch.setattr(
+        window.sources_feature,
+        "open_plugin_directory",
+        lambda capability="": opened.append(capability),
+    )
 
     window.search_plugin_presence.action.click()
     window.artwork_plugin_presence.action.click()
@@ -1423,14 +1425,14 @@ def test_sources_first_run_orientation_is_dismissible_and_persistent(monkeypatch
     first.open_page("sources")
     app.processEvents()
 
-    assert first.source_welcome.isVisible()
-    title = first.source_welcome.findChild(QLabel, "sourceFirstRunTitle")
+    assert first.sources_feature.source_welcome.isVisible()
+    title = first.sources_feature.source_welcome.findChild(QLabel, "sourceFirstRunTitle")
     assert title is not None
-    assert "already ready to listen" in title.text().casefold()
+    assert "nothing else is required" in title.text().casefold()
 
-    first._dismiss_sources_intro()
+    first.sources_feature.dismiss_intro()
     app.processEvents()
-    assert first.source_welcome.isHidden()
+    assert first.sources_feature.source_welcome.isHidden()
     assert first.state.get_bool("sources_intro_seen", False) is True
     first.close()
     app.processEvents()
@@ -1439,7 +1441,7 @@ def test_sources_first_run_orientation_is_dismissible_and_persistent(monkeypatch
     second.show()
     second.open_page("sources")
     app.processEvents()
-    assert second.source_welcome.isHidden()
+    assert second.sources_feature.source_welcome.isHidden()
     second.close()
     app.processEvents()
 
@@ -2113,18 +2115,18 @@ def test_slow_source_config_check_keeps_qt_event_loop_responsive(monkeypatch, tm
     assert started.is_set()
     assert timer_fired == [True]
     assert worker_threads == [False]
-    assert window._source_config_refresh_in_progress is True
+    assert window.sources_feature.config_refresh_in_progress is True
 
     release.set()
     deadline = time.monotonic() + 2.0
     while (
         time.monotonic() < deadline
-        and window._source_config_refresh_in_progress
+        and window.sources_feature.config_refresh_in_progress
     ):
         app.processEvents()
         time.sleep(0.005)
 
-    assert window._source_config_refresh_in_progress is False
+    assert window.sources_feature.config_refresh_in_progress is False
     window.close()
     app.processEvents()
 
