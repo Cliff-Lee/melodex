@@ -24,6 +24,10 @@ The desktop project now declares Ruff as a development dependency and configures
 
 This is a correctness gate, not a style gate. Import sorting, formatting, naming and broad cleanup rules are intentionally deferred until the affected debt can be handled in focused PRs.
 
+The first CI run found three pre-existing F821 findings. P12b records those exact path/code/message/source-line fingerprints in `scripts/ruff_baseline.json` rather than ignoring F821 for entire files. `scripts/ruff_guardrail.py` fails if Ruff reports anything outside that known set. If an existing issue is fixed, the gate reports the stale baseline entry so it can be removed.
+
+This gives P12b the intended ratchet: historical debt may remain temporarily, but new correctness debt is rejected.
+
 The provider SDK already has its broader Ruff configuration; P12b does not weaken it.
 
 ## MainWindow ratchet
@@ -43,7 +47,7 @@ If a future change trips the ratchet, the expected response is to move responsib
 The Tests workflow gains a separate **Code health guardrails** job which:
 
 1. installs Ruff only as CI/development tooling;
-2. runs the desktop correctness-oriented Ruff rules;
+2. runs the desktop correctness-oriented Ruff rules against the exact-debt baseline;
 3. checks the structural ratchet.
 
 Keeping this as a separate job makes failures easy to interpret and avoids coupling lint tooling to runtime dependencies.
