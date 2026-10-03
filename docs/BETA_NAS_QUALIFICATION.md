@@ -9,6 +9,7 @@ failure modes and defines the user-facing acceptance contract.
 | --- | --- |
 | 11c | repeatable offline/reconnect/cancellation qualification |
 | 11d | bounded transient-I/O retry and fail-safe NAS traversal |
+| 11e | deterministic NAS latency/fault injection and resilience gates |
 
 The qualification harness is intentionally small and deterministic. Real SMB/NFS
 latency, server firmware and mount behavior still require external beta testing.
@@ -32,6 +33,47 @@ unavailable/incomplete roots. P11d adds a conservative network-I/O layer:
 
 The retry budget is intentionally small. Melodex should absorb momentary SMB/NFS
 hiccups, not hide a genuinely disconnected or unhealthy share for minutes.
+
+## Campaign 11e fault injection
+
+P11e adds deterministic latency and failure injection around the real isolated
+scan process. The injector lives under `desktop/tools/` and is qualification
+only; packaged Melodex never reads fault-injection flags.
+
+Run it from `desktop/`:
+
+```bash
+python tools/qualify_nas_faults.py
+```
+
+Machine-readable output:
+
+```bash
+python tools/qualify_nas_faults.py --json
+```
+
+The permanent cases are:
+
+1. **High-latency adaptation** — injected ~12 ms audio-file stat latency must
+   move the storage controller into the high-latency profile with two metadata
+   workers and no more than four metadata reads in flight.
+2. **Transient fault recovery** — occasional directory and stat failures must
+   recover inside the bounded P11d retry budget and complete the root normally.
+3. **Mid-scan disconnect** — a persistently failing album directory must mark
+   the root incomplete, publish no partial view, delete no cached tracks and
+   return the last committed catalog.
+4. **Cached browsing during a slow rescan** — while changed tracks are being
+   reread with deliberately slow metadata I/O, the previously committed SQLite
+   library must remain readable and complete.
+5. **Blocked metadata cancellation** — if a real scan worker is stuck inside a
+   very slow metadata read, the supervisor's bounded hard-cancel escape hatch
+   must still terminate it.
+6. **Baseline integrity** — the same temporary library must first index
+   normally so every fault scenario starts from a known-good committed catalog.
+
+This does not claim to emulate every SMB/NFS implementation. It qualifies the
+Melodex behavior that should remain invariant when real storage becomes slow or
+unreliable.
 
 ## Automated NAS qualification harness
 
