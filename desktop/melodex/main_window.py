@@ -4280,12 +4280,14 @@ class MainWindow(QMainWindow):
             return
         if runner.paused:
             runner.resume()
+            self._local_scan_session["paused"]=False
             if hasattr(self,"library_browser"):
                 self.library_browser.set_scan_paused(False)
             self._refresh_background_scan_activity()
             self.statusBar().showMessage("Music indexing resumed",3000)
         else:
             runner.pause()
+            self._local_scan_session["paused"]=True
             if hasattr(self,"library_browser"):
                 self.library_browser.set_scan_paused(True)
             self._refresh_background_scan_activity()
@@ -4325,6 +4327,7 @@ class MainWindow(QMainWindow):
 
         if self._local_scan_in_progress:
             self._local_scan_pending=True
+            self._local_scan_session["pending_rescan"]=True
             runner=self._local_scan_runner
             current_key=self._local_roots_key(roots)
             running_key=(
@@ -4459,7 +4462,6 @@ class MainWindow(QMainWindow):
             changes=dict(result.get("changes") or {})
             outcome=scan_storage_outcome(result)
             elapsed=max(0.0,time.monotonic()-self._local_scan_started_at)
-            metrics=dict(result.get("metrics") or {})
             self._local_scan_session.update(
                 {
                     "status": "degraded" if outcome["degraded"] else "complete",
