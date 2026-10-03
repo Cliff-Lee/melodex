@@ -430,3 +430,103 @@ measurements rather than copying another application's worker count.
 
 Future benchmarks can tune the thresholds without changing the pipeline
 architecture.
+
+
+## P10h — durable scan generations and resumable checkpoints
+
+P10h adds a durable scan-generation layer so interrupted work can be reused
+without ever exposing a partial library.
+
+The SQLite schema advances from v2 to v3 with two new tables:
+
+- `scan_generations` — one durable record per scan attempt;
+- `scan_stage_tracks` — changed-file metadata read successfully during that
+  generation but not yet published to the live library.
+
+### Generation states
+
+A generation can be:
+
+- `running`
+- `interrupted`
+- `cancelled`
+- `error`
+- `completed`
+
+Starting a new scan for the same configured roots automatically marks any stale
+`running` generation as `interrupted`. This is how a hard-killed child process
+is recognized on the next launch.
+
+### Checkpointing
+
+Successfully completed changed-file metadata reads are staged in bounded batches
+of 64 records. The live `tracks` table is not modified.
+
+```text
+changed file
+  ↓
+metadata read succeeds
+  ↓
+checkpoint staging table
+  ↓
+scan continues
+```
+
+If the scan is cancelled or the worker crashes, the next scan loads the newest
+compatible staged metadata and overlays it on the ordinary persistent cache.
+
+A staged row is reusable only when the current file still has exactly the same
+size and nanosecond modification time. If the fingerprint changed again, the
+staged metadata is rejected and the file is reread normally.
+
+This means interruption can waste at most the small unflushed checkpoint batch,
+not every changed metadata read completed since the previous successful scan.
+
+### Publication safety
+
+Staging is never the live library.
+
+The existing publication contract remains:
+
+```text
+scan completes
+  ↓
+atomic SQLite replace_scan transaction
+  ↓
+generation marked completed
+  ↓
+staging cleared
+  ↓
+GUI receives completed catalog
+```
+
+Cancellation, worker failure, or an incomplete root therefore cannot publish a
+partial catalog.
+
+### Deletion safety
+
+Deletion remains generation-safe because only roots positively observed as
+available and completely enumerated are eligible for removal during
+`replace_scan`.
+
+An unavailable or partially traversed NAS root cannot cause absent files to be
+interpreted as deletions. The previous live snapshot is preserved.
+
+### New diagnostics
+
+Scan generations expose path-free state for support/testing:
+
+- generation status;
+- staged record count;
+- start/completion timestamps;
+- number of resumed staged rows reused by the isolated scan.
+
+P10h tests cover:
+
+- abandoned running generation → interrupted;
+- cancelled staging → resumable cache;
+- exact fingerprint required for resume;
+- changed fingerprint forces a fresh metadata read;
+- successful publication clears staging;
+- incomplete roots cannot delete live tracks;
+- schema v2 → v3 migration.
