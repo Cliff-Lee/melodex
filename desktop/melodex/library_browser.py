@@ -729,8 +729,8 @@ class LibraryBrowser(QWidget):
         self.stack.addWidget(self.track_list)
 
         self.empty = EmptyState(
-            "Your library is waiting",
-            "Add a folder of music and Melodex will organise it into albums while keeping everything on this computer.",
+            "No music added yet",
+            "Choose a folder that already contains your music. Melodex will index it where it is.",
             "Add my music",
         )
         self.empty.actionRequested.connect(self.addFolderRequested)
@@ -1010,16 +1010,16 @@ class LibraryBrowser(QWidget):
                 self.scan_progress.setRange(0,1)
                 self.scan_progress.setValue(0)
                 self.scan_progress.setFormat("No audio files found")
-                self.scan_progress_summary.setText("No supported audio files found")
+                self.scan_progress_summary.setText("No playable audio found")
                 self.scan_progress_detail.setText(
-                    "No supported audio files were discovered."
+                    "This folder does not contain audio Melodex can play."
                 )
         elif phase=="saving":
             self.scan_progress.setRange(0,0)
             self.scan_progress.setFormat("")
             self.scan_progress_summary.setText("Saving library index…")
             self.scan_progress_detail.setText(
-                "Saving metadata locally so Melodex can reopen this library without rescanning your music."
+                "Saving the library index on this computer."
             )
         elif phase=="cancelled":
             self.scan_progress_summary.setText("Cancelled")
