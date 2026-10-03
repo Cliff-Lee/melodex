@@ -16,6 +16,7 @@ from PySide6.QtWidgets import QSizePolicy, QWidget
 
 from .visualization_models import LyricFrame, MemoryMark, VisualNeighbour, describe_weather
 from .visualization_profile import VisualProfile, energy_at
+from .visualization_runtime import VisualState, resolve_visual_quality, sample_visual_state
 from .visualizer_plugins import VisualizerRecipe
 
 
@@ -46,6 +47,7 @@ class LivingScene(QWidget):
         self._window_minimized = False
         self._position_fraction = 0.0
         self._phase = 0.0
+        self._visual_state = VisualState.idle()
         self._last_tick: float | None = None
         self._stars: tuple[tuple[float, float, float, float], ...] = ()
         self._neighbours: tuple[VisualNeighbour, ...] = ()
@@ -73,6 +75,7 @@ class LivingScene(QWidget):
     def set_profile(self, profile: VisualProfile) -> None:
         self.profile = profile
         self._phase = 0.0
+        self._refresh_visual_state()
         rng = random.Random(profile.seed)
         self._stars = tuple(
             (rng.random(), rng.random(), rng.uniform(0.6, 1.8), rng.uniform(0.0, math.tau))
@@ -107,6 +110,7 @@ class LivingScene(QWidget):
 
     def set_position_fraction(self, fraction: float) -> None:
         self._position_fraction = max(0.0, min(1.0, float(fraction)))
+        self._refresh_visual_state()
         position_sensitive = self.mode in {"journey", "minimal"} or (
             self.mode == "plugin" and self.plugin and any(
                 layer.get("feature") == "progress" for layer in self.plugin.layers
@@ -135,8 +139,8 @@ class LivingScene(QWidget):
         self._requested_quality = value
         self._effective_quality = "eco" if value == "eco" else "normal"
         self._slow_frames = self._fast_frames = 0
-        interval = {"auto": 67, "eco": 100, "high": 34, "battery": 1000}[value]
-        self._timer.setInterval(interval)
+        budget = resolve_visual_quality(value, self._effective_quality)
+        self._timer.setInterval(budget.timer_interval_ms)
         self.update()
         self._sync_timer()
 
@@ -184,6 +188,7 @@ class LivingScene(QWidget):
         self._last_tick = now
         bpm = self.profile.bpm if self.profile else 96.0
         self._phase = (self._phase + elapsed * math.tau * bpm / 60.0) % math.tau
+        self._refresh_visual_state()
         self.update()
 
     def showEvent(self, event) -> None:
@@ -195,12 +200,22 @@ class LivingScene(QWidget):
         self._last_tick = None
         super().hideEvent(event)
 
+    @property
+    def visual_state(self) -> VisualState:
+        """Current renderer-facing musical state; safe for all built-in scenes."""
+        return self._visual_state
+
+    def _refresh_visual_state(self) -> None:
+        self._visual_state = sample_visual_state(
+            self.profile,
+            self._position_fraction,
+            self._phase,
+        )
+
     def _detail_count(self, default: int) -> int:
-        if self._requested_quality == "eco" or self._effective_quality == "eco":
-            return max(3, default // 2)
-        if self._requested_quality == "high":
-            return min(48, default * 2)
-        return default
+        budget = resolve_visual_quality(self._requested_quality, self._effective_quality)
+        scaled = int(round(default * budget.detail_scale))
+        return max(3, min(budget.max_detail, scaled))
 
     def paintEvent(self, event) -> None:
         started = time.perf_counter()
