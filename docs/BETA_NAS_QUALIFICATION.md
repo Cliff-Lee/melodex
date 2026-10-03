@@ -1,4 +1,4 @@
-# Campaign 11c–11d — NAS resilience and beta qualification
+# Campaign 11c–11e — NAS resilience and beta qualification
 
 Campaign 11 prepares Melodex for external testers with NAS, SMB, NFS and other
 network-mounted music libraries. Campaign 10 established the scalable library
