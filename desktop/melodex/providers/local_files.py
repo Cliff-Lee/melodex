@@ -99,12 +99,13 @@ def _scandir_walk(
                     onerror(exc, entry_retries)
                 continue
 
+            if entry_retries and onerror is not None:
+                onerror(None, entry_retries)
+
             # Avoid an unnecessary network round trip for every non-audio file.
             # Album folders often contain artwork, cue sheets and text files;
             # only audio fingerprints participate in the scan/index contract.
             if Path(entry.name).suffix.lower() not in AUDIO_EXTS:
-                if entry_retries and onerror is not None:
-                    onerror(None, entry_retries)
                 files.append((entry.name, None, None))
                 continue
 
@@ -511,11 +512,26 @@ class LocalFilesProvider(MusicProvider):
                             mtime_ns: int | None = None
                             stat_started = time.perf_counter()
                             try:
-                                file_stat = (
-                                    direntry_stat
-                                    if direntry_stat is not None
-                                    else p.stat()
-                                )
+                                if fast_scandir and direntry_stat is None:
+                                    # scandir already exhausted the bounded retry
+                                    # budget and marked this root incomplete.
+                                    stat_failures += 1
+                                    continue
+                                if direntry_stat is not None:
+                                    file_stat = direntry_stat
+                                else:
+                                    legacy_retries = 0
+
+                                    def legacy_stat_retried(_error: OSError) -> None:
+                                        nonlocal legacy_retries
+                                        legacy_retries += 1
+
+                                    file_stat = _retry_oserror(
+                                        p.stat,
+                                        on_retry=legacy_stat_retried,
+                                    )
+                                    if legacy_retries:
+                                        on_walk_error(None, legacy_retries)
                                 size = int(file_stat.st_size)
                                 mtime_ns = int(
                                     getattr(
@@ -527,8 +543,9 @@ class LocalFilesProvider(MusicProvider):
                                         ),
                                     )
                                 )
-                            except OSError:
+                            except OSError as exc:
                                 stat_failures += 1
+                                on_walk_error(exc)
                             finally:
                                 measured_stat = (
                                     direntry_stat_elapsed
