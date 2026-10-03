@@ -30,6 +30,14 @@ FORBIDDEN_MAIN_WINDOW_SNIPPETS = {
     "self.source_power_panel": "Sources widgets belong to SourcesFeature",
 }
 
+# Journey must coordinate playback and application navigation semantically.
+FORBIDDEN_JOURNEY_WORKSPACE_SNIPPETS = {
+    "self.player": "JourneyWorkspace must request playback through semantic signals",
+    "self.main_window": "JourneyWorkspace must not retain MainWindow",
+    "from .main_window import": "JourneyWorkspace must not import MainWindow",
+}
+
+
 # Baseline is the v0.7.11 main_window.py snapshot from P12a. Lower this number
 # as P12c extracts responsibilities; never raise it to accommodate new work.
 MAX_LINES = {
@@ -65,6 +73,15 @@ def main() -> int:
         if snippet in main_window:
             failures.append(
                 f"desktop/melodex/main_window.py contains {snippet!r}; {reason}."
+            )
+
+    journey_workspace = (ROOT / "desktop/melodex/journey_workspace.py").read_text(
+        encoding="utf-8"
+    )
+    for snippet, reason in FORBIDDEN_JOURNEY_WORKSPACE_SNIPPETS.items():
+        if snippet in journey_workspace:
+            failures.append(
+                f"desktop/melodex/journey_workspace.py contains {snippet!r}; {reason}."
             )
 
     if failures:
