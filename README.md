@@ -11,6 +11,7 @@
   <a href="docs/START_HERE.md">Get started</a> ·
   <a href="docs/WHY_MELODEX.md">Why Melodex?</a> ·
   <a href="docs/FAQ.md">FAQ</a> ·
+  <a href="docs/README.md">Docs</a> ·
   <a href="docs/TESTING.md">Help test the beta</a>
 </p>
 
@@ -71,6 +72,9 @@ Melodex is still in public beta, and we're looking for everyday listeners. You d
 You can use Melodex without building it or knowing how it works internally. If you want to contribute, create an integration, or inspect the technical design, these are the right starting points:
 
 - [Developer Gateway](docs/DEVELOPERS.md) — choose an app, provider, plugin, or API path.
+- [5-minute developer quickstart](docs/DEVELOPER_QUICKSTART.md) — fastest route to a working extension/integration setup.
+- [Status, stability and trust](docs/developers/00_STATUS_AND_STABILITY.md) — current maturity and compatibility expectations.
+- [Ecosystem architecture](docs/developers/01_ECOSYSTEM_ARCHITECTURE.md) — how providers, plugins and external control fit together.
 - [Build from source](docs/BUILD_FROM_SOURCE.md) — development environment and build instructions.
 - [First contribution](docs/FIRST_CONTRIBUTION.md) — make a change to the project.
 - [Provider SDK](provider-sdk/README.md) — create a music-source provider.
