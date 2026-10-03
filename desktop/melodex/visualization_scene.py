@@ -17,7 +17,12 @@ from PySide6.QtWidgets import QSizePolicy, QWidget
 from .track_sigil import paint_track_sigil
 from .visualization_models import LyricFrame, MemoryMark, VisualNeighbour, describe_weather
 from .visualization_profile import VisualProfile, energy_at
-from .visualization_runtime import VisualState, resolve_visual_quality, sample_visual_state
+from .visualization_runtime import (
+    VisualPerformanceGovernor,
+    VisualState,
+    resolve_visual_quality,
+    sample_visual_state,
+)
 from .visualizer_plugins import VisualizerRecipe
 
 
@@ -65,8 +70,8 @@ class LivingScene(QWidget):
         self._immersive = False
         self._requested_quality = "auto"
         self._effective_quality = "normal"
-        self._slow_frames = 0
-        self._fast_frames = 0
+        self._performance = VisualPerformanceGovernor()
+        self._frame_glows = 0
         self._hit_points: tuple[tuple[QPointF, int, str], ...] = ()
         self._hovered_token: int | None = None
         self._selected_token: int | None = None
@@ -206,8 +211,9 @@ class LivingScene(QWidget):
         value = quality if quality in {"auto", "eco", "high", "battery"} else "auto"
         self._requested_quality = value
         self._effective_quality = "eco" if value == "eco" else "normal"
-        self._slow_frames = self._fast_frames = 0
-        budget = resolve_visual_quality(value, self._effective_quality)
+        self._performance.reset(self._effective_quality)
+        self._artwork_cache = QImage()
+        budget = self._quality_budget()
         self._timer.setInterval(budget.timer_interval_ms)
         self.update()
         self._sync_timer()
@@ -282,13 +288,26 @@ class LivingScene(QWidget):
             self._phase,
         )
 
+    def _quality_budget(self):
+        return resolve_visual_quality(self._requested_quality, self._effective_quality)
+
+    @property
+    def performance_stats(self) -> dict[str, float | int | str]:
+        return self._performance.snapshot()
+
     def _detail_count(self, default: int) -> int:
-        budget = resolve_visual_quality(self._requested_quality, self._effective_quality)
+        budget = self._quality_budget()
         scaled = int(round(default * budget.detail_scale))
         return max(3, min(budget.max_detail, scaled))
 
+    def _particle_count(self, default: int) -> int:
+        budget = self._quality_budget()
+        scaled = int(round(default * budget.detail_scale))
+        return max(1, min(budget.max_particles, scaled))
+
     def paintEvent(self, event) -> None:
         started = time.perf_counter()
+        self._frame_glows = 0
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing, True)
         profile = self.profile
@@ -323,26 +342,14 @@ class LivingScene(QWidget):
         self._adjust_auto_quality((time.perf_counter() - started) * 1000.0)
 
     def _adjust_auto_quality(self, paint_ms: float) -> None:
-        if self._requested_quality != "auto":
+        transition = self._performance.observe(paint_ms, self._requested_quality)
+        if transition is None:
             return
-        if paint_ms > 18.0:
-            self._slow_frames += 1
-            self._fast_frames = 0
-        elif paint_ms < 8.0:
-            self._fast_frames += 1
-            self._slow_frames = 0
-        else:
-            self._slow_frames = self._fast_frames = 0
-        if self._slow_frames >= 3 and self._effective_quality != "eco":
-            self._effective_quality = "eco"
-            self._slow_frames = 0
-            self.qualityAdjusted.emit("eco")
-            self.update()
-        elif self._fast_frames >= 90 and self._effective_quality != "normal":
-            self._effective_quality = "normal"
-            self._fast_frames = 0
-            self.qualityAdjusted.emit("normal")
-            self.update()
+        self._effective_quality = transition
+        self._artwork_cache = QImage()
+        self._timer.setInterval(self._quality_budget().timer_interval_ms)
+        self.qualityAdjusted.emit(transition)
+        self.update()
 
     def _paint_backdrop(self, painter: QPainter, profile: VisualProfile | None) -> None:
         bounds = QRectF(self.rect())
@@ -354,10 +361,21 @@ class LivingScene(QWidget):
 
         if self.mode == "lyrics" and not self._artwork_source.isNull():
             size = self.size()
-            if self._artwork_cache.isNull() or self._artwork_cache.size() != size:
+            budget = self._quality_budget()
+            width = max(1, size.width())
+            height = max(1, size.height())
+            largest = max(width, height)
+            scale = min(1.0, budget.artwork_cache_px / max(1, largest))
+            cache_width = max(1, int(round(width * scale)))
+            cache_height = max(1, int(round(height * scale)))
+            if (
+                self._artwork_cache.isNull()
+                or self._artwork_cache.width() != cache_width
+                or self._artwork_cache.height() != cache_height
+            ):
                 self._artwork_cache = self._artwork_source.scaled(
-                    max(1, size.width()),
-                    max(1, size.height()),
+                    cache_width,
+                    cache_height,
                     Qt.IgnoreAspectRatio,
                     Qt.SmoothTransformation,
                 )
@@ -385,7 +403,9 @@ class LivingScene(QWidget):
             # A few quiet, deterministic dust points give the canvas depth without
             # adding any moving particles or per-frame scene state.
             painter.setPen(Qt.NoPen)
-            for index, (x, y, size, _phase) in enumerate(self._stars[:18]):
+            for index, (x, y, size, _phase) in enumerate(
+                self._stars[: self._particle_count(18)]
+            ):
                 mote = self._color(index + 1)
                 mote.setAlpha(18 + (index % 3) * 3)
                 painter.setBrush(mote)
@@ -423,8 +443,19 @@ class LivingScene(QWidget):
         painter.drawText(rect, alignment, text)
         painter.restore()
 
-    @staticmethod
-    def _draw_glow(painter: QPainter, center: QPointF, radius: float, color: QColor, strength: int = 34) -> None:
+    def _draw_glow(
+        self,
+        painter: QPainter,
+        center: QPointF,
+        radius: float,
+        color: QColor,
+        strength: int = 34,
+    ) -> None:
+        budget = self._quality_budget()
+        if self._frame_glows >= budget.max_glows:
+            return
+        self._frame_glows += 1
+
         glow_color = QColor(color)
         glow_color.setAlpha(strength)
         transparent = QColor(color)
@@ -437,7 +468,14 @@ class LivingScene(QWidget):
         brush.setColorAt(1.0, transparent)
         painter.setPen(Qt.NoPen)
         painter.setBrush(brush)
-        painter.drawEllipse(QRectF(center.x() - radius, center.y() - radius, radius * 2, radius * 2))
+        painter.drawEllipse(
+            QRectF(
+                center.x() - radius,
+                center.y() - radius,
+                radius * 2,
+                radius * 2,
+            )
+        )
 
     def _paint_living(self, painter: QPainter, profile: VisualProfile) -> None:
         """Profile Pulse: a low-cost radial portrait that breathes with the track."""
@@ -542,7 +580,7 @@ class LivingScene(QWidget):
 
         # Sparse luminous motes orbit slowly around the profile rather than
         # looking like a fixed instrument scale.
-        mote_count = self._detail_count(12)
+        mote_count = self._particle_count(12)
         for index, (sx, sy, size, phase) in enumerate(self._stars[:mote_count]):
             angle = sx * math.tau + self._phase * (0.010 + profile.rhythm * 0.018)
             orbit = base * (0.78 + 0.44 * sy)
@@ -953,9 +991,13 @@ class LivingScene(QWidget):
             return
         painter.save()
         painter.setFont(font)
-        offsets = ((-2, 0), (2, 0), (0, -2), (0, 2))
-        if self._requested_quality == "high":
-            offsets += ((-2, -2), (2, -2), (-2, 2), (2, 2))
+        all_offsets = (
+            (-2, 0), (2, 0), (0, -2), (0, 2),
+            (-2, -2), (2, -2), (-2, 2), (2, 2),
+        )
+        layer_count = self._quality_budget().glow_layers
+        offset_count = min(len(all_offsets), max(2, layer_count * 2))
+        offsets = all_offsets[:offset_count]
         halo = QColor(glow)
         halo.setAlpha(max(8, min(92, int(42 * strength))))
         for dx, dy in offsets:
@@ -1231,7 +1273,7 @@ class LivingScene(QWidget):
         # Particles change character with musical activity. Dense/rhythmic
         # tracks become rain-like light threads; calmer tracks become suspended
         # dust. Positions remain deterministic for the recording.
-        particle_count = self._detail_count(24 if state.density > 0.56 else 16)
+        particle_count = self._particle_count(24 if state.density > 0.56 else 16)
         active_threads = state.rhythm > 0.48 or state.density > 0.64
         for index, (sx, sy, size, phase) in enumerate(self._stars[:particle_count]):
             travel = (self._phase * (0.010 + 0.025 * state.drift) + phase) % math.tau
