@@ -118,22 +118,22 @@ def run_library_scan_child() -> int:
             cached.update(resume_cache)
         cached_directories = index.load_directory_manifests(roots)
         generation_id = index.begin_scan_generation(roots)
-        checkpoint_batch: list[dict[str, Any]] = []
+        stage_batch: list[dict[str, Any]] = []
 
-        def flush_checkpoints() -> None:
-            if not checkpoint_batch:
+        def flush_stage() -> None:
+            if not stage_batch:
                 return
             index.stage_scan_records(
                 generation_id,
                 roots,
-                list(checkpoint_batch),
+                list(stage_batch),
             )
-            checkpoint_batch.clear()
+            stage_batch.clear()
 
-        def checkpoint(record: dict[str, Any]) -> None:
-            checkpoint_batch.append(dict(record or {}))
-            if len(checkpoint_batch) >= 64:
-                flush_checkpoints()
+        def record_sink(record: dict[str, Any]) -> None:
+            stage_batch.append(dict(record or {}))
+            if len(stage_batch) >= 64:
+                flush_stage()
 
         def progress(payload: dict[str, Any]) -> None:
             _write_message(
@@ -148,13 +148,15 @@ def run_library_scan_child() -> int:
             cached_entries=cached,
             cached_directories=cached_directories,
             collect_tracks=False,
-            checkpoint=checkpoint,
+            collect_index_records=False,
+            checkpoint=None,
+            record_sink=record_sink,
         )
         metrics = dict(snapshot.get("metrics") or {})
         metrics["process_isolated"] = True
         snapshot["metrics"] = metrics
         if bool(snapshot.get("cancelled")) or control.cancelled:
-            flush_checkpoints()
+            flush_stage()
             index.finish_scan_generation(
                 generation_id,
                 status="cancelled",
@@ -180,8 +182,9 @@ def run_library_scan_child() -> int:
                 ),
             }
         )
-        flush_checkpoints()
-        persistence = index.replace_scan(
+        flush_stage()
+        persistence = index.publish_scan_generation(
+            generation_id,
             roots,
             snapshot,
             cancelled=lambda: control.cancelled,
@@ -230,8 +233,8 @@ def run_library_scan_child() -> int:
     except BaseException as exc:
         try:
             if "generation_id" in locals():
-                if "checkpoint_batch" in locals():
-                    flush_checkpoints()
+                if "stage_batch" in locals():
+                    flush_stage()
                 index.finish_scan_generation(
                     generation_id,
                     status="error",
