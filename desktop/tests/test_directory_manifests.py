@@ -196,7 +196,7 @@ def test_p10f_schema_v1_upgrades_to_v2_without_losing_tracks(tmp_path: Path):
             "WHERE type='table' AND name='directories'"
         ).fetchone()
 
-    assert SCHEMA_VERSION == 2
-    assert version == 2
+    assert SCHEMA_VERSION >= 2
+    assert version == SCHEMA_VERSION
     assert directory_table is not None
     assert [row["title"] for row in index.load_tracks([root])] == ["One"]
