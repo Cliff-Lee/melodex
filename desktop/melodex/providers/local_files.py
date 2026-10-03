@@ -253,7 +253,9 @@ class LocalFilesProvider(MusicProvider):
         cached_entries: dict[str, dict[str, Any]] | None = None,
         cached_directories: dict[str, dict[str, Any]] | None = None,
         collect_tracks: bool = True,
+        collect_index_records: bool = True,
         checkpoint: Callable[[dict[str, Any]], None] | None = None,
+        record_sink: Callable[[dict[str, Any]], None] | None = None,
     ) -> dict[str, Any]:
         """Scan roots through a bounded discovery/metadata pipeline.
 
@@ -607,7 +609,10 @@ class LocalFilesProvider(MusicProvider):
                 }
                 if bool(row.get("checkpoint")) and checkpoint is not None:
                     checkpoint(dict(record))
-                index_records.append(record)
+                if record_sink is not None:
+                    record_sink(dict(record))
+                if collect_index_records:
+                    index_records.append(record)
                 tracks_indexed += 1
                 if collect_tracks:
                     tracks.append(self._apply_override(raw_metadata))
@@ -881,7 +886,11 @@ class LocalFilesProvider(MusicProvider):
                     "discovery_buffer_rows": 0,
                     "bounded_pipeline": True,
                     "collect_tracks": bool(collect_tracks),
-                    "snapshot_track_copies": 2 if collect_tracks else 1,
+                    "collect_index_records": bool(collect_index_records),
+                    "snapshot_track_copies": (
+                        int(bool(collect_tracks))
+                        + int(bool(collect_index_records))
+                    ),
                     "directory_manifest_hits": int(directory_manifest_hits),
                     "directory_manifest_misses": int(directory_manifest_misses),
                     "directory_reuse_hits": int(directory_reuse_hits),
