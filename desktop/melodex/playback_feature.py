@@ -367,11 +367,11 @@ class PlaybackFeature(QObject):
         if self.now_playing_built and hasattr(self, "living_canvas"):
             self.living_canvas.set_window_minimized(bool(minimized))
 
-    def set_plugin_presence(self, *, lyrics: bool, context: bool) -> None:
+    def set_plugin_presence(self, *, lyrics: object = (), context: object = ()) -> None:
         if self.now_playing_built and hasattr(self, "rich_now"):
             self.rich_now.set_plugin_presence(
-                lyrics=bool(lyrics),
-                context=bool(context),
+                lyrics=list(lyrics or ()),
+                context=list(context or ()),
             )
 
     def record_feedback(self, positive: bool) -> None:
