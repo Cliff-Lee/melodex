@@ -1121,8 +1121,8 @@ class MainWindow(QMainWindow):
     def _build_home(self):
         l=self._page_layout(
             "home",
-            "What do you feel like hearing?",
-            "Start with an intention. Melodex can stay familiar, help you rediscover something, or take you somewhere less expected.",
+            "Home",
+            "Pick something to play, or carry on where you left off.",
         )
 
         hero=QFrame()
@@ -1134,8 +1134,7 @@ class MainWindow(QMainWindow):
         prompt.setStyleSheet("font-size:20px;font-weight:720")
         hero_l.addWidget(prompt)
         explanation=QLabel(
-            "One click builds a listening session from your own library. "
-            "You can fine-tune it later if you want."
+            "A session from your library, shaped as you listen."
         )
         explanation.setWordWrap(True)
         explanation.setStyleSheet("color:#9fa9b8")
@@ -1148,7 +1147,7 @@ class MainWindow(QMainWindow):
         set_help(
             self.home_primary_button,
             "Play something",
-            "Builds a balanced one-hour session from your local library using your listening history and Flow when available.",
+            "Starts a balanced session from your library. You can steer it later.",
         )
         hero_l.addWidget(self.home_primary_button)
 
@@ -1213,21 +1212,21 @@ class MainWindow(QMainWindow):
         cards=QHBoxLayout()
         library_card=ActionCard(
             "Browse your collection",
-            "Albums, artists and tracks with artwork instead of file-system detail.",
+            "Albums, artists and tracks.",
             eyebrow="My Music",
             action_text="Browse",
         )
         library_card.clicked.connect(lambda:self.open_page("library"))
         wall_card=ActionCard(
             "Album Wall",
-            "Explore your records spatially and move between sonic, time and familiarity views.",
+            "Browse your collection as a wall of covers.",
             eyebrow="Visual",
             action_text="Explore",
         )
         wall_card.clicked.connect(lambda:self.open_page("album_wall"))
         map_card=ActionCard(
             "Music Map",
-            "See relationships between tracks and plan a route when you want deeper exploration.",
+            "See how tracks in your library connect.",
             eyebrow="Deep explore",
             action_text="Open map",
         )
@@ -1288,7 +1287,7 @@ class MainWindow(QMainWindow):
         l=self._page_layout(
             "for_you",
             "Tune your listening",
-            "These controls are optional. Start simple, then adjust how long the session lasts and how far Melodex should move from familiar music.",
+            "Choose how long to listen and how adventurous the session should be.",
         )
 
         row=QHBoxLayout()
@@ -1349,12 +1348,12 @@ class MainWindow(QMainWindow):
         self.taste_label.setStyleSheet("color:#8490a1")
         l.addWidget(self.taste_label)
 
-        intel_title=QLabel("More ways to explore")
+        intel_title=QLabel("From your library")
         intel_title.setStyleSheet("font-size:18px;font-weight:650;margin-top:10px")
         l.addWidget(intel_title)
 
         intel_help=QLabel(
-            "These suggestions use your own library and listening history. Audio analysis stays on this computer."
+            "Local suggestions based on what you have and what you play."
         )
         intel_help.setWordWrap(True)
         intel_help.setStyleSheet("color:#aab0ba")
@@ -1418,7 +1417,7 @@ class MainWindow(QMainWindow):
         l=self._page_layout(
             "discover",
             "Discover",
-            "Search all connected music sources. One slow or unavailable source will no longer stop the rest of your search.",
+            "Search your library and connected sources.",
         )
         row=QHBoxLayout()
         self.search_box=QLineEdit()
@@ -1506,27 +1505,27 @@ class MainWindow(QMainWindow):
         l=self._page_layout(
             "explore",
             "Explore",
-            "Choose the kind of exploration you want. Search is direct; Album Wall is visual; Music Map goes deeper into relationships and routes.",
+            "Search, browse visually, or follow connections through your music.",
         )
 
         cards=QHBoxLayout()
         search_card=ActionCard(
             "Search everything",
-            "Find artists, albums or tracks across all the music sources you have connected.",
+            "Find artists, albums and tracks.",
             eyebrow="Search",
             action_text="Search",
         )
         search_card.clicked.connect(lambda:self.open_page("discover"))
         wall_card=ActionCard(
             "Album Wall",
-            "Browse your own collection as a stable visual place built from album covers.",
+            "Browse your collection by cover.",
             eyebrow="Browse",
             action_text="Open wall",
         )
         wall_card.clicked.connect(lambda:self.open_page("album_wall"))
         map_card=ActionCard(
             "Music Map",
-            "Explore sonic relationships between tracks. Advanced route-planning appears when you need it.",
+            "Follow relationships between tracks.",
             eyebrow="Relationships",
             action_text="Open map",
         )
@@ -1536,7 +1535,7 @@ class MainWindow(QMainWindow):
         cards.addWidget(map_card,1)
         l.addLayout(cards)
 
-        help_title=QLabel("Not sure where to start?")
+        help_title=QLabel("Try something")
         help_title.setStyleSheet("font-size:18px;font-weight:700;margin-top:18px")
         l.addWidget(help_title)
         help_row=QHBoxLayout()
@@ -1556,7 +1555,7 @@ class MainWindow(QMainWindow):
         l.addLayout(help_row)
 
         note=QLabel(
-            "Tip: Album Wall is designed for visual browsing. Music Map is the power tool for understanding and shaping routes between tracks."
+            "Album Wall is for browsing. Music Map is for connections and routes."
         )
         note.setWordWrap(True)
         note.setStyleSheet("color:#8793a4;margin-top:12px")
@@ -1914,7 +1913,7 @@ class MainWindow(QMainWindow):
         l=self._page_layout(
             "journeys",
             "Journeys",
-            "A journey is a listening route that develops gradually instead of shuffling randomly. Save designs you want to reuse; run history stays private on this computer.",
+            "Build a listening route that changes gradually as it plays.",
         )
 
         top=QHBoxLayout()
@@ -1945,7 +1944,7 @@ class MainWindow(QMainWindow):
         saved_l=QVBoxLayout(saved)
         saved_l.setContentsMargins(0,10,0,0)
         saved_help=QLabel(
-            "Saved journeys remember the route idea. When you reuse one, Melodex can resolve it against the music available now."
+            "Routes you want to use again."
         )
         saved_help.setWordWrap(True)
         saved_help.setStyleSheet("color:#8f9bad")
@@ -1988,7 +1987,7 @@ class MainWindow(QMainWindow):
         runs_l=QVBoxLayout(runs)
         runs_l.setContentsMargins(0,10,0,0)
         runs_help=QLabel(
-            "Recent runs show what actually happened after skips, steering and live replanning. This history is local to Melodex."
+            "What actually played, including any changes you made on the way."
         )
         runs_help.setWordWrap(True)
         runs_help.setStyleSheet("color:#8f9bad")
@@ -2034,14 +2033,15 @@ class MainWindow(QMainWindow):
         l=self._page_layout(
             "playlists",
             "Playlists",
-            "Keep ordinary playlists alongside AI-generated or imported ones. Melodex stores them locally and resolves tracks through the sources you have connected.",
+            "Keep playlists here, whether you made them elsewhere or built them in Melodex.",
         )
 
         top=QHBoxLayout()
         imp=QPushButton("Import playlist…")
+        imp.setObjectName("primaryButton")
         imp.clicked.connect(self._import_playlist_file)
         ai=QPushButton("Paste from AI…")
-        ai.setObjectName("primaryButton")
+        ai.setObjectName("secondaryButton")
         ai.clicked.connect(self._open_ai_playlist_import)
         set_help(
             imp,
@@ -2053,8 +2053,8 @@ class MainWindow(QMainWindow):
             "Paste from AI",
             "Paste a playlist generated in ChatGPT, Claude, Gemini or another AI. No AI account is connected and the pasted text is not sent back to an AI service.",
         )
-        top.addWidget(ai)
         top.addWidget(imp)
+        top.addWidget(ai)
         top.addStretch(1)
         l.addLayout(top)
 
@@ -2064,10 +2064,10 @@ class MainWindow(QMainWindow):
         self.playlists_list.itemSelectionChanged.connect(self._playlist_selection_changed)
         self.playlists_empty=EmptyState(
             "No playlists yet",
-            "Paste one from an AI chat, import an existing playlist, or export the music already in your queue.",
-            "Paste from AI",
+            "Import a playlist, or save music from your current queue.",
+            "Import playlist",
         )
-        self.playlists_empty.actionRequested.connect(self._open_ai_playlist_import)
+        self.playlists_empty.actionRequested.connect(self._import_playlist_file)
         self.playlists_stack.addWidget(self.playlists_list)
         self.playlists_stack.addWidget(self.playlists_empty)
         l.addWidget(self.playlists_stack,1)
@@ -2130,7 +2130,7 @@ class MainWindow(QMainWindow):
         l=self._page_layout(
             "sources",
             "Sources & plugins",
-            "See what Melodex includes, what you have connected, and which optional enhancements are installed. Technical details stay under Power tools.",
+            "Choose where your music and extra features come from.",
         )
 
         self.source_welcome=QFrame()
@@ -2141,12 +2141,10 @@ class MainWindow(QMainWindow):
 
         welcome_text=QVBoxLayout()
         welcome_text.setSpacing(3)
-        welcome_title=QLabel("You are already ready to listen")
+        welcome_title=QLabel("Nothing else is required")
         welcome_title.setObjectName("sourceFirstRunTitle")
         welcome_body=QLabel(
-            "Your own library and the sources included with Melodex work without extra setup. "
-            "Plugins are optional: add them only when you want more music, artwork, lyrics, "
-            "recommendations or context."
+            "Your library works on its own. Add sources or plugins only when you want them."
         )
         welcome_body.setObjectName("sourceFirstRunBody")
         welcome_body.setWordWrap(True)
@@ -2175,7 +2173,7 @@ class MainWindow(QMainWindow):
         overview_l.setSpacing(12)
 
         overview_head=QHBoxLayout()
-        overview_title=QLabel("Your Melodex ecosystem")
+        overview_title=QLabel("Your sources")
         overview_title.setStyleSheet("font-size:18px;font-weight:720")
         overview_head.addWidget(overview_title)
         overview_head.addStretch(1)
@@ -2190,7 +2188,7 @@ class MainWindow(QMainWindow):
         overview_l.addLayout(overview_head)
 
         self.sources_overview=QLabel(
-            "Your own music works without plugins. Included sources and optional enhancements can add more places to listen, artwork, lyrics and discovery."
+            "Local music first. Add other sources and features when they are useful."
         )
         self.sources_overview.setWordWrap(True)
         self.sources_overview.setStyleSheet("color:#93a0b2")
@@ -2276,7 +2274,7 @@ class MainWindow(QMainWindow):
         feature_title=QLabel("What would you like to add?")
         feature_title.setObjectName("pluginFeatureTitle")
         feature_subtitle=QLabel(
-            "Jump straight to plugins for a particular job."
+            "Browse plugins by what they add."
         )
         feature_subtitle.setObjectName("pluginFeatureSubtitle")
         feature_text.addWidget(feature_title)
@@ -2307,7 +2305,7 @@ class MainWindow(QMainWindow):
         l.addWidget(self.sources_list,1)
 
         self.source_hint=QLabel(
-            "Select a source to see what you can do with it. Technical controls are hidden unless Power tools is enabled."
+            "Select a source for its available actions."
         )
         self.source_hint.setWordWrap(True)
         self.source_hint.setStyleSheet("color:#8793a4")
