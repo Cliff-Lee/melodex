@@ -420,7 +420,9 @@ def test_unchanged_rescan_reuses_cached_metadata_without_tag_reads(
         assert second["changes"]["removed"] == 0
         assert second["changes"]["metadata_reads"] == 0
         assert second["metrics"]["metadata_attempts"] == 0
-        assert len(second["index_records"]) == 3
+        assert second["index_records"] == []
+        assert second["metrics"]["directory_reuse_tracks"] == 3
+        assert len(second["preserve_directories"]) >= 1
     finally:
         manager.close()
 
