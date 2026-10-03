@@ -42,9 +42,16 @@ def navigation_parent(page: str) -> str:
 class NavigationController:
     """Own page transitions, lazy-page lifecycle and stale navigation work."""
 
-    def __init__(self, host: Any, *, refresh_delay_ms: int = 16) -> None:
+    def __init__(
+        self,
+        host: Any,
+        *,
+        refresh_delay_ms: int = 16,
+        schedule: Callable[[int, Callable[[], None]], None] | None = None,
+    ) -> None:
         self.host = host
         self.refresh_delay_ms = max(0, int(refresh_delay_ms))
+        self._schedule = schedule or QTimer.singleShot
         self.generation = 0
         self.lazy_builders: dict[str, Callable[[], None]] = {}
         self.built_lazy_pages: set[str] = set()
@@ -80,7 +87,7 @@ class NavigationController:
             return
         self.ensure_lazy_page_built(name)
         self.host.pages[name].update()
-        QTimer.singleShot(
+        self._schedule(
             0,
             lambda page=name, token=generation: self.populate_if_current(
                 page,
@@ -119,7 +126,7 @@ class NavigationController:
             self.host.responsiveness.end_interaction(interaction)
 
         if name in self.lazy_builders and name not in self.built_lazy_pages:
-            QTimer.singleShot(
+            self._schedule(
                 self.refresh_delay_ms,
                 lambda page=name, token=generation: self.build_lazy_page_if_current(
                     page,
@@ -128,7 +135,7 @@ class NavigationController:
             )
             return True
 
-        QTimer.singleShot(
+        self._schedule(
             self.refresh_delay_ms,
             lambda page=name, token=generation: self.populate_if_current(
                 page,
@@ -155,7 +162,7 @@ class NavigationController:
             host._refresh_music_map()
         elif name == "sources":
             host._refresh_sources()
-            QTimer.singleShot(0, host._refresh_source_config_statuses_async)
+            self._schedule(0, host._refresh_source_config_statuses_async)
         elif name == "moments":
             host._refresh_moments()
         elif name == "journeys":
