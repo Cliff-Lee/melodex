@@ -505,6 +505,9 @@ class LocalFilesProvider(MusicProvider):
                 try:
                     item = work_queue.get(timeout=0.05)
                 except queue.Empty:
+                    if pending_metadata:
+                        flush_one_metadata()
+                        continue
                     if producer_error:
                         raise producer_error[0]
                     continue
