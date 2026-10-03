@@ -11,6 +11,7 @@
   <a href="docs/START_HERE.md">Get started</a> ·
   <a href="docs/WHY_MELODEX.md">Why Melodex?</a> ·
   <a href="docs/FAQ.md">FAQ</a> ·
+  <a href="docs/README.md">Docs</a> ·
   <a href="docs/TESTING.md">Help test the beta</a>
 </p>
 
