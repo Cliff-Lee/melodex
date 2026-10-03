@@ -56,7 +56,7 @@ If something goes wrong, include:
 - exact steps that caused the problem
 - what you expected instead
 
-For source/plugin issues, Melodex can export redacted diagnostics from **Sources → Show power tools → Export diagnostics…**. Review the file before posting it.
+For beta reports and source/plugin issues, Melodex can export redacted diagnostics directly from **Sources & plugins → Export redacted diagnostics…**. Power tools are not required. The JSON includes Melodex/platform details, library/index counts, the latest scan state and timings, and responsiveness metrics. It intentionally excludes library paths, filenames, credentials, stream/playback URLs and raw scan error messages. Review the file before posting it.
 
 ## What happens to feedback?
 
