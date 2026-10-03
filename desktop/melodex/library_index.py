@@ -4,12 +4,13 @@ import hashlib
 import json
 import os
 import sqlite3
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 def _canonical_path(path: str | Path) -> str:
@@ -105,6 +106,42 @@ class LocalLibraryIndex:
             db.execute(
                 "CREATE INDEX IF NOT EXISTS directories_root_idx "
                 "ON directories(root_id)"
+            )
+            db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS scan_generations (
+                    generation_id TEXT PRIMARY KEY,
+                    root_signature TEXT NOT NULL,
+                    started_at TEXT NOT NULL,
+                    completed_at TEXT,
+                    status TEXT NOT NULL,
+                    staged_count INTEGER NOT NULL DEFAULT 0
+                )
+                """
+            )
+            db.execute(
+                "CREATE INDEX IF NOT EXISTS scan_generations_signature_idx "
+                "ON scan_generations(root_signature, started_at)"
+            )
+            db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS scan_stage_tracks (
+                    generation_id TEXT NOT NULL,
+                    local_path TEXT NOT NULL,
+                    root_id TEXT NOT NULL,
+                    metadata_json TEXT NOT NULL,
+                    size INTEGER,
+                    mtime_ns INTEGER,
+                    PRIMARY KEY (generation_id, local_path),
+                    FOREIGN KEY (generation_id)
+                        REFERENCES scan_generations(generation_id)
+                        ON DELETE CASCADE
+                )
+                """
+            )
+            db.execute(
+                "CREATE INDEX IF NOT EXISTS scan_stage_generation_idx "
+                "ON scan_stage_tracks(generation_id)"
             )
             db.execute(
                 """
@@ -320,6 +357,301 @@ class LocalLibraryIndex:
                 "relative_dir": relative_dir,
             }
         return out
+
+    @staticmethod
+    def _roots_signature(roots: list[Path]) -> str:
+        canonical = sorted(_canonical_path(root) for root in roots)
+        payload = "\n".join(canonical).encode(
+            "utf-8",
+            errors="surrogatepass",
+        )
+        return hashlib.sha256(payload).hexdigest()
+
+    def begin_scan_generation(self, roots: list[Path]) -> str:
+        """Start a durable scan generation and retire abandoned workers."""
+        clean = [Path(root) for root in roots]
+        signature = self._roots_signature(clean)
+        generation_id = uuid.uuid4().hex
+        now = datetime.now(timezone.utc).isoformat()
+        with self._connect() as db:
+            db.execute(
+                """
+                UPDATE scan_generations
+                SET status = 'interrupted', completed_at = ?
+                WHERE root_signature = ? AND status = 'running'
+                """,
+                (now, signature),
+            )
+            db.execute(
+                """
+                INSERT INTO scan_generations(
+                    generation_id,
+                    root_signature,
+                    started_at,
+                    status,
+                    staged_count
+                )
+                VALUES(?, ?, ?, 'running', 0)
+                """,
+                (generation_id, signature, now),
+            )
+        return generation_id
+
+    def stage_scan_records(
+        self,
+        generation_id: str,
+        roots: list[Path],
+        records: list[dict[str, Any]],
+    ) -> int:
+        """Checkpoint successfully read changed metadata outside the live index."""
+        clean = [Path(root) for root in roots]
+        rows: list[tuple[str, str, str, str, int | None, int | None]] = []
+        for record in records:
+            if not isinstance(record, dict):
+                continue
+            track = dict(record.get("track") or {})
+            local_path = str(
+                track.get("local_path")
+                or track.get("track_id")
+                or record.get("local_path")
+                or ""
+            )
+            if not local_path:
+                continue
+            root = self._matching_root(local_path, clean)
+            if root is None:
+                continue
+            rows.append(
+                (
+                    str(generation_id),
+                    _canonical_path(local_path),
+                    _root_id(root),
+                    json.dumps(
+                        track,
+                        ensure_ascii=False,
+                        separators=(",", ":"),
+                        default=str,
+                    ),
+                    int(record["size"])
+                    if record.get("size") is not None
+                    else None,
+                    int(record["mtime_ns"])
+                    if record.get("mtime_ns") is not None
+                    else None,
+                )
+            )
+        if not rows:
+            return 0
+
+        with self._connect() as db:
+            state = db.execute(
+                """
+                SELECT status
+                FROM scan_generations
+                WHERE generation_id = ?
+                """,
+                (str(generation_id),),
+            ).fetchone()
+            if state is None or str(state["status"]) != "running":
+                return 0
+            db.executemany(
+                """
+                INSERT INTO scan_stage_tracks(
+                    generation_id,
+                    local_path,
+                    root_id,
+                    metadata_json,
+                    size,
+                    mtime_ns
+                )
+                VALUES(?, ?, ?, ?, ?, ?)
+                ON CONFLICT(generation_id, local_path) DO UPDATE SET
+                    root_id=excluded.root_id,
+                    metadata_json=excluded.metadata_json,
+                    size=excluded.size,
+                    mtime_ns=excluded.mtime_ns
+                """,
+                rows,
+            )
+            staged_count = int(
+                db.execute(
+                    """
+                    SELECT COUNT(*)
+                    FROM scan_stage_tracks
+                    WHERE generation_id = ?
+                    """,
+                    (str(generation_id),),
+                ).fetchone()[0]
+            )
+            db.execute(
+                """
+                UPDATE scan_generations
+                SET staged_count = ?
+                WHERE generation_id = ?
+                """,
+                (staged_count, str(generation_id)),
+            )
+        return len(rows)
+
+    def load_resume_cache(
+        self,
+        roots: list[Path],
+    ) -> dict[str, dict[str, Any]]:
+        """Load staged metadata from the newest interrupted compatible scan."""
+        clean = [Path(root) for root in roots]
+        if not clean:
+            return {}
+        signature = self._roots_signature(clean)
+        with self._connect() as db:
+            generation = db.execute(
+                """
+                SELECT generation_id
+                FROM scan_generations
+                WHERE root_signature = ?
+                  AND status IN ('running', 'interrupted', 'cancelled', 'error')
+                ORDER BY started_at DESC
+                LIMIT 1
+                """,
+                (signature,),
+            ).fetchone()
+            if generation is None:
+                return {}
+            generation_id = str(generation["generation_id"])
+            rows = db.execute(
+                """
+                SELECT
+                    local_path,
+                    root_id,
+                    metadata_json,
+                    size,
+                    mtime_ns
+                FROM scan_stage_tracks
+                WHERE generation_id = ?
+                """,
+                (generation_id,),
+            ).fetchall()
+
+        root_by_id = {_root_id(root): root for root in clean}
+        cache: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            try:
+                metadata = json.loads(str(row["metadata_json"]))
+            except Exception:
+                continue
+            if not isinstance(metadata, dict):
+                continue
+            root = root_by_id.get(str(row["root_id"]))
+            if root is None:
+                continue
+            local_path = str(row["local_path"] or "")
+            if not local_path:
+                continue
+            cache[_canonical_path(local_path)] = {
+                "track": metadata,
+                "size": (
+                    int(row["size"])
+                    if row["size"] is not None
+                    else None
+                ),
+                "mtime_ns": (
+                    int(row["mtime_ns"])
+                    if row["mtime_ns"] is not None
+                    else None
+                ),
+                "root_id": str(row["root_id"]),
+                "root_path": str(root),
+                "resume_staged": True,
+            }
+        return cache
+
+    def finish_scan_generation(
+        self,
+        generation_id: str,
+        *,
+        status: str,
+    ) -> None:
+        """Finish a generation; successful publication discards staging."""
+        value = str(status or "error").strip().lower()
+        if value not in {
+            "completed",
+            "cancelled",
+            "error",
+            "interrupted",
+        }:
+            value = "error"
+        now = datetime.now(timezone.utc).isoformat()
+        with self._connect() as db:
+            row = db.execute(
+                """
+                SELECT root_signature
+                FROM scan_generations
+                WHERE generation_id = ?
+                """,
+                (str(generation_id),),
+            ).fetchone()
+            if row is None:
+                return
+            signature = str(row["root_signature"])
+            db.execute(
+                """
+                UPDATE scan_generations
+                SET status = ?, completed_at = ?
+                WHERE generation_id = ?
+                """,
+                (value, now, str(generation_id)),
+            )
+            if value == "completed":
+                # Once the new live index is committed, staged metadata is no
+                # longer needed. Remove all compatible historical staging.
+                old_rows = db.execute(
+                    """
+                    SELECT generation_id
+                    FROM scan_generations
+                    WHERE root_signature = ?
+                    """,
+                    (signature,),
+                ).fetchall()
+                ids = [str(item["generation_id"]) for item in old_rows]
+                if ids:
+                    placeholders = ",".join("?" for _ in ids)
+                    db.execute(
+                        f"""
+                        DELETE FROM scan_stage_tracks
+                        WHERE generation_id IN ({placeholders})
+                        """,
+                        tuple(ids),
+                    )
+
+    def scan_generation_summary(
+        self,
+        roots: list[Path],
+    ) -> dict[str, Any]:
+        """Return path-free generation diagnostics for support/testing."""
+        clean = [Path(root) for root in roots]
+        signature = self._roots_signature(clean)
+        with self._connect() as db:
+            row = db.execute(
+                """
+                SELECT generation_id, status, staged_count, started_at, completed_at
+                FROM scan_generations
+                WHERE root_signature = ?
+                ORDER BY started_at DESC
+                LIMIT 1
+                """,
+                (signature,),
+            ).fetchone()
+        if row is None:
+            return {
+                "status": "none",
+                "staged_count": 0,
+            }
+        return {
+            "generation_id": str(row["generation_id"]),
+            "status": str(row["status"]),
+            "staged_count": int(row["staged_count"] or 0),
+            "started_at": str(row["started_at"] or ""),
+            "completed_at": str(row["completed_at"] or ""),
+        }
 
     @staticmethod
     def _matching_root(
