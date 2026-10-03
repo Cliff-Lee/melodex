@@ -129,7 +129,8 @@ class FakeProviders:
         ]
 
     def provider_order(self):
-        return ["local", "streams", "jamendo", "bundled", "searchable", "needs-setup"]
+        order = ["local", "streams", "jamendo", "bundled", "searchable", "needs-setup"]
+        return [provider_id for provider_id in order if provider_id in self.providers]
 
     def local_catalog(self):
         return [{"track_id": "a"}, {"track_id": "b"}]
