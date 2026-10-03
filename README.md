@@ -23,18 +23,24 @@
 
 Melodex is a local-first music player for your own collection and connected music sources. Use Home to start a listening session, My Music to browse your albums, and Flow to shape the queue. AI tools are optional.
 
-> ### 🧪 Public beta — testers wanted
->
-> Melodex is being actively developed and we want feedback from people who were **not involved in building it**.
->
-> The **macOS build has had the most hands-on testing so far**. Feedback from Apple Silicon and Intel Mac users is welcome, and Windows/Linux testing is especially valuable as those builds need more real-world use.
->
-> You do not need to be technical or have a huge music collection. Tell us where you got confused, what broke, what felt good, and what would make you use Melodex again.
->
-> **[Take the 10-minute tester path →](docs/TESTING.md)**  
-> [Give beta feedback](https://github.com/Cliff-Lee/melodex/issues/new?template=tester_feedback.yml) ·
-> [Report a bug](https://github.com/Cliff-Lee/melodex/issues/new?template=bug_report.yml) ·
-> [Request a feature](https://github.com/Cliff-Lee/melodex/issues/new?template=feature_request.yml)
+## 🧪 Help test Melodex
+
+Melodex is in public beta, and real-world libraries are much more useful than tidy test data. You do **not** need to be technical. First impressions, awkward workflows and strange collections are all valuable.
+
+We are especially looking for:
+
+- 🐘 **Huge libraries** — 50,000+ tracks, especially 100k–1M+
+- 🌐 **NAS / network collections** — SMB, NFS, mounted shares and slow/unreliable storage
+- 🪟 **Windows testers** — installation, scanning, playback and everyday use
+- 🐧 **Linux testers** — AppImage / package behaviour across different setups
+- 🧪 **Messy metadata** — missing tags, odd encodings, duplicates, unusual artwork and mixed formats
+
+Smaller and ordinary libraries matter too: fresh-user feedback tells us whether Melodex feels obvious rather than merely whether it survives a stress test.
+
+**[Take the 10-minute tester path →](docs/TESTING.md)**  
+[Submit a Beta Test Report](https://github.com/Cliff-Lee/melodex/issues/new?template=tester_feedback.yml) ·
+[Report a specific bug](https://github.com/Cliff-Lee/melodex/issues/new?template=bug_report.yml) ·
+[Request a feature](https://github.com/Cliff-Lee/melodex/issues/new?template=feature_request.yml)
 
 ## Why try Melodex?
 

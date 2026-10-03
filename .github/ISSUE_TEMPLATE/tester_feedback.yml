@@ -1,13 +1,29 @@
-name: Beta tester feedback
-description: Tell us what felt good, confusing or missing while trying Melodex
-title: "[Tester feedback]: "
+name: Beta Test Report
+description: Tell us how Melodex behaved with your real library, machine and listening workflow
+title: "[Beta test]: "
 body:
   - type: markdown
     attributes:
       value: |
-        Thanks for trying Melodex. You do not need to be technical. First impressions, confusion and rough edges are extremely useful.
+        Thanks for stress-testing Melodex. You do not need to be technical, and small observations are useful.
+
+        We are especially interested in huge libraries, NAS/network collections, Windows/Linux setups, and messy metadata.
 
         Please do not post passwords, API keys, tokens, private URLs or copyrighted music files.
+
+  - type: checkboxes
+    id: tester_profile
+    attributes:
+      label: What kind of test is this?
+      description: Check any that apply.
+      options:
+        - label: "🐘 Huge library (50,000+ tracks)"
+        - label: "🌐 NAS / network-mounted collection"
+        - label: "🪟 Windows"
+        - label: "🐧 Linux"
+        - label: "🧪 Messy / incomplete / unusual metadata"
+        - label: "🍎 macOS"
+        - label: "🎧 Normal/smaller everyday library"
 
   - type: dropdown
     id: platform
@@ -24,10 +40,16 @@ body:
       required: true
 
   - type: input
+    id: os_version
+    attributes:
+      label: OS version
+      placeholder: "e.g. macOS 26.0, Windows 11 24H2, Ubuntu 26.04"
+
+  - type: input
     id: version
     attributes:
       label: Melodex version
-      placeholder: "e.g. v0.7.2"
+      placeholder: "e.g. v0.7.8"
     validations:
       required: true
 
@@ -40,40 +62,71 @@ body:
         - Under 500 tracks
         - 500–5,000 tracks
         - 5,000–25,000 tracks
-        - 25,000–100,000 tracks
-        - More than 100,000 tracks
+        - 25,000–50,000 tracks
+        - 50,000–100,000 tracks
+        - 100,000–500,000 tracks
+        - 500,000–1,000,000 tracks
+        - More than 1,000,000 tracks
         - Not sure
     validations:
       required: true
+
+  - type: dropdown
+    id: storage
+    attributes:
+      label: Where is the music stored?
+      options:
+        - Internal/local drive
+        - External USB / Thunderbolt drive
+        - NAS / SMB share
+        - NFS / other network mount
+        - Mixed local and network storage
+        - No local library
+        - Other / not sure
+    validations:
+      required: true
+
+  - type: input
+    id: formats
+    attributes:
+      label: Main audio formats
+      placeholder: "e.g. FLAC, MP3, M4A, WAV, mixed"
 
   - type: textarea
     id: tried
     attributes:
       label: What did you try?
       description: A short list is enough.
-      placeholder: "Added a folder, played an album, tried Flow, opened Album Wall…"
+      placeholder: "Imported 73k FLACs from a NAS, searched while scanning, played an album, switched to Artists…"
     validations:
       required: true
+
+  - type: textarea
+    id: performance
+    attributes:
+      label: How did it behave?
+      description: Mention freezes, beach balls, long pauses, unexpectedly high memory/CPU use, slow screens, or anything that felt impressively fast.
+      placeholder: "The UI stayed responsive during discovery; Artists opened immediately; memory reached about …"
 
   - type: textarea
     id: good
     attributes:
       label: What worked well?
-      description: What felt clear, useful or enjoyable?
+      description: What felt clear, useful, reliable or fast?
 
   - type: textarea
     id: confusing
     attributes:
-      label: What was confusing or awkward?
-      description: Tell us where you hesitated, got lost, or expected something different.
+      label: What was confusing, awkward or broken?
+      description: Tell us where you hesitated, got lost, saw bad metadata, or expected something different.
     validations:
       required: true
 
   - type: textarea
-    id: missing
+    id: reproduce
     attributes:
-      label: What would make you more likely to keep using Melodex?
-      description: One missing feature or improvement is enough.
+      label: If something failed, how can we reproduce it?
+      description: Exact steps are ideal, but approximate steps are still useful.
 
   - type: dropdown
     id: return
@@ -92,7 +145,7 @@ body:
     id: anything_else
     attributes:
       label: Anything else?
-      description: Screenshots are welcome if they help explain the experience.
+      description: Screenshots and redacted diagnostics are welcome when they help explain the result.
 
   - type: checkboxes
     id: privacy
