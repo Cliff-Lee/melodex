@@ -593,6 +593,46 @@ class MainWindow(QMainWindow):
                 font-size:13px;
             }
             QLabel{background:transparent}
+            QLabel#pageTitle{
+                font-size:27px;
+                font-weight:720;
+            }
+            QLabel#pageSubtitle{
+                color:#99a4b3;
+                font-size:13px;
+                margin-bottom:6px;
+            }
+            QLabel#pageHint{
+                color:#758297;
+                margin-top:8px;
+            }
+            QLabel#heroTitle{
+                font-size:20px;
+                font-weight:720;
+            }
+            QLabel#sectionTitle{
+                font-size:17px;
+                font-weight:700;
+                margin-top:12px;
+            }
+            QLabel#sectionTitleCompact{
+                font-size:17px;
+                font-weight:700;
+            }
+            QLabel#panelHeading{
+                font-size:15px;
+                font-weight:700;
+            }
+            QLabel#mutedText{color:#98a3b3}
+            QLabel#subtleText{
+                color:#7f8b9b;
+                margin-top:6px;
+            }
+            QLabel#searchStatus{
+                color:#98a4b4;
+                padding:6px 2px 4px 2px;
+                font-size:12px;
+            }
             QWidget#sidebar{
                 background:#0a0d12;
                 border-right:1px solid #202733;
@@ -642,7 +682,12 @@ class MainWindow(QMainWindow):
                 font-weight:700;
                 padding:11px 17px;
             }
-            QPushButton#secondaryButton{font-weight:650}
+            QPushButton#secondaryButton{
+                background:#151b24;
+                border-color:#283443;
+                color:#d7dde7;
+                font-weight:600;
+            }
             QPushButton#quietButton{
                 background:transparent;
                 border-color:#28313e;
@@ -731,7 +776,7 @@ class MainWindow(QMainWindow):
             QFrame#actionCard{
                 background:#141b25;
                 border:1px solid #293544;
-                border-radius:14px;
+                border-radius:12px;
             }
             QFrame#actionCard:hover{
                 background:#182231;
@@ -743,7 +788,10 @@ class MainWindow(QMainWindow):
                 font-weight:700;
             }
             QLabel#cardTitle{font-size:18px;font-weight:720}
-            QLabel#cardBody{color:#9fa9b8}
+            QLabel#cardBody{
+                color:#929dac;
+                font-size:12px;
+            }
             QLabel#cardAction{color:#72aefb;font-weight:650}
             QFrame#albumCard{
                 background:transparent;
@@ -796,19 +844,19 @@ class MainWindow(QMainWindow):
             QFrame#emptyState{
                 background:#121821;
                 border:1px dashed #313d4e;
-                border-radius:15px;
+                border-radius:12px;
             }
             QLabel#emptyTitle{font-size:20px;font-weight:720}
             QLabel#emptyBody{color:#97a2b2;font-size:13px}
             QFrame#homeHero{
                 background:#131c29;
                 border:1px solid #2a3d56;
-                border-radius:16px;
+                border-radius:12px;
             }
             QFrame#continueCard{
                 background:#121923;
                 border:1px solid #273343;
-                border-radius:13px;
+                border-radius:12px;
             }
             QFrame#powerPanel{
                 background:#111821;
@@ -818,7 +866,7 @@ class MainWindow(QMainWindow):
             QFrame#sourceOverview{
                 background:#121b26;
                 border:1px solid #2a3a4d;
-                border-radius:14px;
+                border-radius:12px;
             }
             QFrame#sourceFirstRun{
                 background:#102033;
@@ -1068,12 +1116,12 @@ class MainWindow(QMainWindow):
             self._clear_layout_items(lay)
         lay.setContentsMargins(28,24,28,24)
         lay.setSpacing(6)
-        t=QLabel(title); t.setStyleSheet("font-size:28px;font-weight:700"); lay.addWidget(t)
+        t=QLabel(title); t.setObjectName("pageTitle"); lay.addWidget(t)
         self.page_titles[page]=t
         if subtitle:
             subtitle_label=QLabel(subtitle)
             subtitle_label.setWordWrap(True)
-            subtitle_label.setStyleSheet("color:#aab0ba")
+            subtitle_label.setObjectName("pageSubtitle")
             lay.addWidget(subtitle_label)
         return lay
 
@@ -1085,7 +1133,7 @@ class MainWindow(QMainWindow):
     ) -> None:
         lay=self._page_layout(page,title,subtitle)
         hint=QLabel("Opening…")
-        hint.setStyleSheet("color:#758297;margin-top:8px")
+        hint.setObjectName("pageHint")
         lay.addWidget(hint)
         lay.addStretch(1)
 
@@ -1131,13 +1179,13 @@ class MainWindow(QMainWindow):
         hero_l.setContentsMargins(22,20,22,20)
         hero_l.setSpacing(10)
         prompt=QLabel("Start listening")
-        prompt.setStyleSheet("font-size:20px;font-weight:720")
+        prompt.setObjectName("heroTitle")
         hero_l.addWidget(prompt)
         explanation=QLabel(
             "A session from your library, shaped as you listen."
         )
         explanation.setWordWrap(True)
-        explanation.setStyleSheet("color:#9fa9b8")
+        explanation.setObjectName("mutedText")
         hero_l.addWidget(explanation)
 
         self.home_primary_button=QPushButton("▶  Play something")
@@ -1188,7 +1236,7 @@ class MainWindow(QMainWindow):
         self.home_continue_title.setStyleSheet("font-size:17px;font-weight:700")
         self.home_continue_meta=QLabel("Play something and it will be easy to return here.")
         self.home_continue_meta.setWordWrap(True)
-        self.home_continue_meta.setStyleSheet("color:#98a3b3")
+        self.home_continue_meta.setObjectName("mutedText")
         continue_text.addStretch(1)
         continue_text.addWidget(self.home_continue_title)
         continue_text.addWidget(self.home_continue_meta)
@@ -1238,7 +1286,7 @@ class MainWindow(QMainWindow):
 
         self.home_status=QLabel()
         self.home_status.setWordWrap(True)
-        self.home_status.setStyleSheet("color:#7f8b9b;margin-top:8px")
+        self.home_status.setObjectName("subtleText")
         l.addWidget(self.home_status)
         l.addStretch(1)
 
@@ -1345,7 +1393,7 @@ class MainWindow(QMainWindow):
 
         self.taste_label=QLabel()
         self.taste_label.setWordWrap(True)
-        self.taste_label.setStyleSheet("color:#8490a1")
+        self.taste_label.setObjectName("subtleText")
         l.addWidget(self.taste_label)
 
         intel_title=QLabel("From your library")
@@ -1356,7 +1404,7 @@ class MainWindow(QMainWindow):
             "Local suggestions based on what you have and what you play."
         )
         intel_help.setWordWrap(True)
-        intel_help.setStyleSheet("color:#aab0ba")
+        intel_help.setObjectName("mutedText")
         l.addWidget(intel_help)
 
         self.recommendation_plugin_presence=FeaturePresenceBar(
@@ -1558,7 +1606,7 @@ class MainWindow(QMainWindow):
             "Album Wall is for browsing. Music Map is for connections and routes."
         )
         note.setWordWrap(True)
-        note.setStyleSheet("color:#8793a4;margin-top:12px")
+        note.setObjectName("subtleText")
         l.addWidget(note)
         l.addStretch(1)
 
@@ -1947,7 +1995,7 @@ class MainWindow(QMainWindow):
             "Routes you want to use again."
         )
         saved_help.setWordWrap(True)
-        saved_help.setStyleSheet("color:#8f9bad")
+        saved_help.setObjectName("mutedText")
         saved_l.addWidget(saved_help)
         self.journey_recipes_stack=QStackedWidget()
         self.journey_recipes_list=QListWidget()
@@ -1990,7 +2038,7 @@ class MainWindow(QMainWindow):
             "What actually played, including any changes you made on the way."
         )
         runs_help.setWordWrap(True)
-        runs_help.setStyleSheet("color:#8f9bad")
+        runs_help.setObjectName("mutedText")
         runs_l.addWidget(runs_help)
         self.journey_runs_stack=QStackedWidget()
         self.journey_runs_list=QListWidget()
@@ -2191,7 +2239,7 @@ class MainWindow(QMainWindow):
             "Local music first. Add other sources and features when they are useful."
         )
         self.sources_overview.setWordWrap(True)
-        self.sources_overview.setStyleSheet("color:#93a0b2")
+        self.sources_overview.setObjectName("mutedText")
         overview_l.addWidget(self.sources_overview)
 
         summary=QHBoxLayout()
@@ -2308,7 +2356,7 @@ class MainWindow(QMainWindow):
             "Select a source for its available actions."
         )
         self.source_hint.setWordWrap(True)
-        self.source_hint.setStyleSheet("color:#8793a4")
+        self.source_hint.setObjectName("subtleText")
         l.addWidget(self.source_hint)
 
         self.legacy_source_notice=QLabel()
