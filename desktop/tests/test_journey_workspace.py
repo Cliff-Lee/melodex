@@ -121,6 +121,31 @@ def test_journey_workspace_owns_default_state_and_lazy_music_map():
     app.processEvents()
 
 
+
+def test_journey_designer_preserves_lazy_map_build():
+    app, workspace, _state, _statuses, _current = _workspace()
+
+    pages = []
+    workspace.navigationRequested.connect(pages.append)
+
+    workspace.open_designer()
+
+    assert pages == ["music_map"]
+    assert workspace.music_map_built is False
+    assert workspace._designer_open_pending is True
+
+    workspace.build_music_map()
+    app.processEvents()
+
+    assert workspace.music_map_built is True
+    assert workspace._designer_open_pending is False
+    assert workspace.music_map_power_panel.isVisible()
+    assert workspace.music_map_journey_panel.isVisible()
+    assert workspace.music_path_steps.isVisible()
+
+    workspace.deleteLater()
+    app.processEvents()
+
 def test_journey_workspace_requests_playback_semantically(monkeypatch):
     app, workspace, _state, _statuses, _current = _workspace()
     workspace.build_music_map()
