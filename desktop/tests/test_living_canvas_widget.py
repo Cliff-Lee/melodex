@@ -150,9 +150,10 @@ def test_canvas_modes_plugins_and_analysis_refresh_keep_lyrics(tmp_path):
         if isinstance(view.mode_combo.itemData(i), str)
     ]
     assert modes == [
-        "living", "lyrics", "weather", "album_world", "minimal",
+        "living", "lyrics", "weather", "minimal",
         "constellation", "memory", "journey",
     ]
+    assert "album_world" not in modes
     assert "fingerprint" not in modes
     sections = [
         view.mode_combo.itemText(i)
