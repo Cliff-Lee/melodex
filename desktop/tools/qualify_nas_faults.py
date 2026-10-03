@@ -293,7 +293,10 @@ def run_qualification(
         interrupted, _, interrupted_errors = run_scan(
             data_dir,
             [root],
-            persistent_fail_dir="album-00000",
+            # Root + first album enumerate successfully; every later scandir
+            # then fails through the bounded retry budget, simulating a share
+            # disappearing after traversal is already underway.
+            drop_after_scandirs=2,
         )
         interrupted_states = [
             dict(row)
