@@ -317,6 +317,9 @@ class LivingCanvasView(QWidget):
         self.scene.set_lyrics(self._lyrics.frame(0, 0))
         self._profile = build_visual_profile(self._track, analysis)
         self.scene.set_profile(self._profile)
+        if self._lyric_flow_scene is not None:
+            self._lyric_flow_scene.set_profile(self._profile)
+            self._lyric_flow_scene.set_lyrics(self._lyrics.frame(0, 0))
         self.journey.set_curve(self._profile.energy_curve)
         title = self._profile.title or "Unknown track"
         artist = self._profile.artist or "Unknown artist"
@@ -346,6 +349,8 @@ class LivingCanvasView(QWidget):
             return
         self._profile = build_visual_profile(self._track, analysis)
         self.scene.set_profile(self._profile)
+        if self._lyric_flow_scene is not None:
+            self._lyric_flow_scene.set_profile(self._profile)
         self.journey.set_curve(self._profile.energy_curve)
         self.set_position(self._position_ms, self._duration_ms)
         self._update_status()
