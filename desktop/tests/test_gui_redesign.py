@@ -2154,7 +2154,9 @@ def test_love_and_keep_acknowledge_before_persistence(monkeypatch, tmp_path):
         "Track",
         1,
     )
-    window.playback_feature._current_track = dict(track)
+    window.playback_feature._playback_state.start_track(
+        track, history_id=1, started_at=1.0
+    )
     pending = []
 
     def hold_async(fn, done, on_error=None, **_kwargs):
@@ -2203,12 +2205,16 @@ def test_optimistic_taste_action_rolls_back_if_persistence_fails(monkeypatch, tm
     monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
 
     window = main_window.MainWindow()
-    window.playback_feature._current_track = _track(
-        str(tmp_path / "track.mp3"),
-        "Artist",
-        "Album",
-        "Track",
-        1,
+    window.playback_feature._playback_state.start_track(
+        _track(
+            str(tmp_path / "track.mp3"),
+            "Artist",
+            "Album",
+            "Track",
+            1,
+        ),
+        history_id=1,
+        started_at=1.0,
     )
     pending = []
 
@@ -2316,8 +2322,7 @@ def test_next_track_prefetch_is_local_only_and_consumed_on_advance(monkeypatch, 
 
     # If prefetch worked, advancing must not call local_artwork a second time.
     window.player.index = 1
-    window.playback_feature._current_track = None
-    window.playback_feature._current_track_started = 0
+    window.playback_feature._playback_state.clear_current_track()
     window.playback_feature.on_track_changed(dict(upcoming))
 
     assert artwork_calls == ["Next"]
@@ -3126,5 +3131,4 @@ def test_gui_library_scan_uses_isolated_runner_not_provider_thread(
 
     window.close()
     app.processEvents()
-
 

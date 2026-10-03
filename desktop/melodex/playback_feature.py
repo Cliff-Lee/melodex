@@ -23,12 +23,14 @@ from PySide6.QtWidgets import (
 )
 
 from .motion import FAST_MOTION_MS, STANDARD_MOTION_MS
+from .playback_state import PlaybackSessionState
 from .user_state import UserState
 from .ux_components import CoverLabel, set_help
 
 
 def _escape_html(value: Any) -> str:
     import html
+
     return html.escape(str(value or ""))
 
 
@@ -98,20 +100,12 @@ class PlaybackFeature(QObject):
         self.motion = motion
         self.page_titles = page_titles
 
-        self._current_history_id = 0
-        self._current_track_started = 0.0
-        self._current_track: dict[str, Any] | None = None
-        self._visual_position_ms = 0
-        self._visual_duration_ms = 0
+        self._playback_state = PlaybackSessionState()
         self._visual_context_sequence = 0
         self._visual_neighbour_tracks: dict[int, dict[str, Any]] = {}
         self._prefetched_track_assets: dict[str, dict[str, Any]] = {}
         self._prefetch_sequence = 0
         self._prefetch_delay_ms = 350
-        self._queue: list[dict[str, Any]] = []
-        self._queue_index = -1
-        self._playing = False
-
         self.now_playing_page = QWidget()
         self.now_playing_built = False
         self.queue_panel = self._build_queue_panel()
@@ -126,13 +120,13 @@ class PlaybackFeature(QObject):
         return self._knowledge_getter()
 
     def current_track(self) -> dict[str, Any] | None:
-        return dict(self._current_track) if isinstance(self._current_track, dict) else None
+        return self._playback_state.snapshot().current_track
 
     def current_position_ms(self) -> int:
-        return int(self._visual_position_ms)
+        return self._playback_state.snapshot().position_ms
 
     def current_history_id(self) -> int:
-        return int(self._current_history_id)
+        return self._playback_state.snapshot().current_history_id
 
     def on_position(self, position_ms: int, duration_ms: int) -> None:
         self._on_position(position_ms, duration_ms)
@@ -143,10 +137,46 @@ class PlaybackFeature(QObject):
             self._on_track_changed(row)
 
     def queue_snapshot(self) -> list[dict[str, Any]]:
-        return [dict(track) for track in self._queue]
+        return list(self._playback_state.snapshot().queue)
 
     def queue_index(self) -> int:
-        return int(self._queue_index)
+        return self._playback_state.snapshot().queue_index
+
+    @property
+    def _current_track(self) -> dict[str, Any] | None:
+        return self._playback_state.snapshot().current_track
+
+    @property
+    def _current_track_started(self) -> float:
+        return self._playback_state.snapshot().current_track_started
+
+    @property
+    def _current_history_id(self) -> int:
+        return self._playback_state.snapshot().current_history_id
+
+    @property
+    def _visual_position_ms(self) -> int:
+        return self._playback_state.snapshot().position_ms
+
+    @property
+    def _visual_duration_ms(self) -> int:
+        return self._playback_state.snapshot().duration_ms
+
+    @property
+    def _queue(self) -> list[dict[str, Any]]:
+        return list(self._playback_state.snapshot().queue)
+
+    @property
+    def _queue_index(self) -> int:
+        return self._playback_state.snapshot().queue_index
+
+    @property
+    def _playing(self) -> bool:
+        return self._playback_state.snapshot().playing
+
+    @_playing.setter
+    def _playing(self, playing: bool) -> None:
+        self._playback_state.set_playing(playing)
 
     def _status(self, message: str, timeout_ms: int = 0) -> None:
         self.statusMessageRequested.emit(str(message), int(timeout_ms))
@@ -265,7 +295,11 @@ class PlaybackFeature(QObject):
         self.queue_button.clicked.connect(
             lambda: self.queue_panel.setVisible(not self.queue_panel.isVisible())
         )
-        set_help(self.keep_button, "Keep", "Teach Melodex that this track is worth keeping around in future listening.")
+        set_help(
+            self.keep_button,
+            "Keep",
+            "Teach Melodex that this track is worth keeping around in future listening.",
+        )
         set_help(self.love_button, "Love", "Mark this as a strong positive preference.")
         set_help(self.queue_button, "Queue", "Show or hide the music that is coming next.")
         layout.addWidget(self.keep_button)
@@ -282,8 +316,14 @@ class PlaybackFeature(QObject):
         more = QPushButton("•••")
         more.setObjectName("quietButton")
         more.clicked.connect(self._more_actions)
-        set_help(match, "Inspect match", "Show how Melodex resolved this track to its playable source.")
-        set_help(more, "More actions", "Open technical and less frequently used actions for the current track.")
+        set_help(
+            match, "Inspect match", "Show how Melodex resolved this track to its playable source."
+        )
+        set_help(
+            more,
+            "More actions",
+            "Open technical and less frequently used actions for the current track.",
+        )
         power_row.addWidget(match)
         power_row.addWidget(more)
         self.player_power_actions.setVisible(self._power_tools_enabled())
@@ -341,13 +381,13 @@ class PlaybackFeature(QObject):
         )
 
     def merge_current_track(self, changes: dict[str, Any]) -> None:
-        if not self._current_track:
+        track = self._playback_state.merge_current_track(changes)
+        if not track:
             return
-        self._current_track = {**self._current_track, **dict(changes or {})}
         self._render_current_track_summary()
         if self.now_playing_built and hasattr(self, "rich_now"):
-            self.rich_now.set_track(dict(self._current_track))
-        self.currentTrackChanged.emit(dict(self._current_track))
+            self.rich_now.set_track(dict(track))
+        self.currentTrackChanged.emit(dict(track))
 
     def apply_cached_artwork(self, token: str, path: str) -> None:
         current = dict(self._current_track or {})
@@ -382,8 +422,8 @@ class PlaybackFeature(QObject):
     def _build_now_playing(self):
         from .living_canvas import LivingCanvasView
         from .rich_now_playing import RichNowPlayingWidget
-    
-        l=self._page_layout(
+
+        l = self._page_layout(
             "Now playing",
             "Artwork, lyrics and context for what is playing now.",
         )
@@ -415,59 +455,60 @@ class PlaybackFeature(QObject):
         self.now_views.addTab(self.rich_now, "Now Playing")
         self.now_views.addTab(self.living_canvas, "Visuals")
         l.addWidget(self.now_views, 1)
-    
-    
-    
+
     @staticmethod
     def _path_for(track):
-        path=str(track.get("local_path") or "")
+        path = str(track.get("local_path") or "")
         return Path(path) if path else None
 
     def _flow_queue(self):
-        q=[dict(track) for track in self._queue]
-        if len(q)<2:return
+        q = [dict(track) for track in self._queue]
+        if len(q) < 2:
+            return
         self._status("Planning Flow…")
-        self._run_async(lambda:self.flow.plan_order(q,self._path_for,start_index=max(0,self._queue_index),adventurous=0.35),lambda plan:self._apply_flow(plan), priority="foreground", task_name="flow-plan", replace_key="flow-plan")
-    
-    
-    def _apply_flow(self,plan):
-        tracks=list(plan.get("tracks",[])); self.setQueueRequested.emit(tracks,0,True); self._status(f"Flow ready · {plan.get('analysed',0)} tracks audio-analysed",5000)
-    
-    
+        self._run_async(
+            lambda: self.flow.plan_order(
+                q, self._path_for, start_index=max(0, self._queue_index), adventurous=0.35
+            ),
+            lambda plan: self._apply_flow(plan),
+            priority="foreground",
+            task_name="flow-plan",
+            replace_key="flow-plan",
+        )
+
+    def _apply_flow(self, plan):
+        tracks = list(plan.get("tracks", []))
+        self.setQueueRequested.emit(tracks, 0, True)
+        self._status(f"Flow ready · {plan.get('analysed', 0)} tracks audio-analysed", 5000)
+
     def _next_queue_track(self) -> dict[str, Any]:
-        queue=[dict(track) for track in self._queue]
-        index=int(self._queue_index)
-        next_index=index+1
+        queue = [dict(track) for track in self._queue]
+        index = int(self._queue_index)
+        next_index = index + 1
         if next_index < 0 or next_index >= len(queue):
             return {}
-        row=queue[next_index]
-        return dict(row) if isinstance(row,dict) else {}
-    
-    
+        row = queue[next_index]
+        return dict(row) if isinstance(row, dict) else {}
+
     def _schedule_next_track_prefetch(self) -> None:
         if self._is_closing():
             return
         self._invalidate_async("next-track-prefetch")
         self._prefetch_sequence += 1
-        sequence=self._prefetch_sequence
+        sequence = self._prefetch_sequence
         QTimer.singleShot(
             self._prefetch_delay_ms,
-            lambda token=sequence:self._prefetch_next_track_assets(token),
+            lambda token=sequence: self._prefetch_next_track_assets(token),
         )
-    
-    
+
     def _prefetch_next_track_assets(self, sequence: int) -> None:
-        if (
-            self._is_closing()
-            or sequence != self._prefetch_sequence
-            or self._scan_active()
-        ):
+        if self._is_closing() or sequence != self._prefetch_sequence or self._scan_active():
             return
-        track=self._next_queue_track()
-        token=UserState.track_key(track) if track else ""
+        track = self._next_queue_track()
+        token = UserState.track_key(track) if track else ""
         if not token or token in self._prefetched_track_assets:
             return
-    
+
         def load() -> dict[str, Any]:
             payload: dict[str, Any] = {
                 "token": token,
@@ -478,43 +519,42 @@ class PlaybackFeature(QObject):
                 "local_path": str(track.get("local_path") or "").strip(),
             }
             try:
-                payload["artwork"]=dict(
-                    self.metadata.local_artwork(dict(track)) or {}
-                )
+                payload["artwork"] = dict(self.metadata.local_artwork(dict(track)) or {})
             except Exception:
-                payload["artwork"]={}
-            local_path=str(payload["local_path"] or "")
+                payload["artwork"] = {}
+            local_path = str(payload["local_path"] or "")
             if local_path:
-                payload["analysis_loaded"]=True
+                payload["analysis_loaded"] = True
                 try:
-                    payload["analysis"]=self.flow.cached_analysis_for(
-                        Path(local_path)
-                    )
+                    payload["analysis"] = self.flow.cached_analysis_for(Path(local_path))
                 except Exception:
-                    payload["analysis"]=None
+                    payload["analysis"] = None
             return payload
-    
+
         def apply(payload: object) -> None:
-            if (
-                sequence != self._prefetch_sequence
-                or not isinstance(payload,dict)
-            ):
+            if sequence != self._prefetch_sequence or not isinstance(payload, dict):
                 return
-            current_next=self._next_queue_track()
+            current_next = self._next_queue_track()
             if token != UserState.track_key(current_next):
                 return
-            self._prefetched_track_assets[token]=dict(payload)
+            self._prefetched_track_assets[token] = dict(payload)
             # Keep this deliberately tiny: prediction must never become a
             # competing cache of the whole queue.
             while len(self._prefetched_track_assets) > 3:
-                oldest=next(iter(self._prefetched_track_assets))
-                self._prefetched_track_assets.pop(oldest,None)
-    
-        self._run_async(load,apply, priority="prefetch", task_name="next-track-prefetch", replace_key="next-track-prefetch")
-    
+                oldest = next(iter(self._prefetched_track_assets))
+                self._prefetched_track_assets.pop(oldest, None)
+
+        self._run_async(
+            load,
+            apply,
+            priority="prefetch",
+            task_name="next-track-prefetch",
+            replace_key="next-track-prefetch",
+        )
+
     # ------------------------------- player/taste
-    
-    def _on_track_changed(self,t):
+
+    def _on_track_changed(self, t):
         if self._is_closing():
             return
         for scope in (
@@ -523,17 +563,23 @@ class PlaybackFeature(QObject):
             "now-playing-visual-analysis",
         ):
             self._invalidate_async(scope)
-        if self._current_track and self._current_track_started and time.time()-self._current_track_started<30:
+        if (
+            self._current_track
+            and self._current_track_started
+            and time.time() - self._current_track_started < 30
+        ):
             self.state.record_skip(self._current_track)
-        self._current_track=dict(t); self._current_track_started=time.time(); self._current_history_id=self.state.record_play(t)
-        token=UserState.track_key(self._current_track)
-        prefetched=dict(self._prefetched_track_assets.pop(token,{}) or {})
+        self._playback_state.start_track(
+            t,
+            history_id=self.state.record_play(t),
+            started_at=time.time(),
+        )
+        token = UserState.track_key(self._current_track)
+        prefetched = dict(self._prefetched_track_assets.pop(token, {}) or {})
         self._set_taste_action_state()
         self._load_taste_action_state(self._current_track)
-        self._visual_position_ms = 0
-        self._visual_duration_ms = 0
         if hasattr(self, "living_canvas"):
-            local_path=str(self._current_track.get("local_path") or "").strip()
+            local_path = str(self._current_track.get("local_path") or "").strip()
             if (
                 prefetched.get("analysis_loaded")
                 and str(prefetched.get("local_path") or "") == local_path
@@ -546,23 +592,23 @@ class PlaybackFeature(QObject):
                 self.living_canvas.set_track(self._current_track, None)
                 self._request_cached_visual_analysis(self._current_track)
         self.now_title.setText(str(t.get("title") or "Unknown track"))
-        artist=str(t.get("artist") or "Unknown artist")
-        album=str(t.get("album") or "")
-        provider=str(t.get("provider_id") or "")
-        pieces=[artist]
+        artist = str(t.get("artist") or "Unknown artist")
+        album = str(t.get("album") or "")
+        provider = str(t.get("provider_id") or "")
+        pieces = [artist]
         if album:
             pieces.append(album)
         if self._power_tools_enabled() and provider:
             pieces.append(provider)
-        src=str(t.get("source_page") or "")
-        attr=str(t.get("attribution") or "")
-        base="   ·   ".join(pieces)
+        src = str(t.get("source_page") or "")
+        attr = str(t.get("attribution") or "")
+        base = "   ·   ".join(pieces)
         self.now_meta.setText(
-            base + ((f"   ·   <a href=\"{src}\">{attr or 'Source'}</a>") if src else "")
+            base + ((f'   ·   <a href="{src}">{attr or "Source"}</a>') if src else "")
         )
-        if hasattr(self,"player_cover"):
-            artwork=dict(prefetched.get("artwork") or {})
-            artwork_path=str(artwork.get("path") or "")
+        if hasattr(self, "player_cover"):
+            artwork = dict(prefetched.get("artwork") or {})
+            artwork_path = str(artwork.get("path") or "")
             self.player_cover.set_cover(
                 artwork_path,
                 title=album or str(t.get("title") or ""),
@@ -575,22 +621,24 @@ class PlaybackFeature(QObject):
             )
             if not prefetched.get("artwork_loaded"):
                 self._run_async(
-                    lambda:self.metadata.local_artwork(dict(t)),
-                    lambda result:self._player_artwork_loaded(token,result),
-                priority="visible", task_name="now-playing-artwork", replace_key="now-playing-artwork")
-        if hasattr(self,"rich_now"):
+                    lambda: self.metadata.local_artwork(dict(t)),
+                    lambda result: self._player_artwork_loaded(token, result),
+                    priority="visible",
+                    task_name="now-playing-artwork",
+                    replace_key="now-playing-artwork",
+                )
+        if hasattr(self, "rich_now"):
             self.rich_now.set_track(dict(t))
         if hasattr(self, "living_canvas"):
             self.living_canvas.refresh_context()
         self.currentTrackChanged.emit(dict(t))
         self._schedule_next_track_prefetch()
-    
-    
+
     def _player_artwork_loaded(self, token: str, result: object) -> None:
-        if not isinstance(result,dict):
+        if not isinstance(result, dict):
             return
-        current=dict(self._current_track or {})
-        if token!=UserState.track_key(current):
+        current = dict(self._current_track or {})
+        if token != UserState.track_key(current):
             return
         self.player_cover.set_cover(
             str(result.get("path") or ""),
@@ -602,19 +650,18 @@ class PlaybackFeature(QObject):
             duration_ms=STANDARD_MOTION_MS,
             start_opacity=0.84,
         )
-    
-    
+
     def _request_cached_visual_analysis(self, track: dict[str, Any]) -> None:
         local_path = str(track.get("local_path") or "").strip()
         if not local_path:
             return
-    
+
         def lookup() -> object:
             try:
                 return self.flow.cached_analysis_for(Path(local_path))
             except Exception:
                 return None
-    
+
         self._run_async(
             lookup,
             lambda analysis, path=local_path: self._visual_analysis_loaded(
@@ -625,26 +672,24 @@ class PlaybackFeature(QObject):
             task_name="now-playing-visual-analysis",
             replace_key="now-playing-visual-analysis",
         )
-    
-    
+
     def _visual_analysis_loaded(self, local_path: str, analysis: object) -> None:
         current_path = str((self._current_track or {}).get("local_path") or "")
         if self._is_closing() or not local_path or local_path != current_path:
             return
         self.living_canvas.set_analysis(analysis)
         self.living_canvas.set_position(self._visual_position_ms, self._visual_duration_ms)
-    
-    
+
     def _request_visual_mode_data(self, request: str) -> None:
         from .visualization_models import build_visual_memory
-    
+
         if self._is_closing() or not hasattr(self, "living_canvas"):
             return
         mode, _, scale = str(request or "").partition(":")
         scale = scale or str(self.living_canvas.memory_scale.currentData() or "sessions")
         if mode not in {"constellation", "memory"}:
             return
-    
+
         self._visual_context_sequence += 1
         sequence = self._visual_context_sequence
         queue_candidates: list[dict[str, Any]] = []
@@ -656,13 +701,17 @@ class PlaybackFeature(QObject):
             for index in range(start, end):
                 if index == current_index or not isinstance(queue[index], dict):
                     continue
-                queue_candidates.append({
-                    "_visual_token": len(queue_candidates),
-                    "_visual_relation": "Up next" if index > current_index else "Played earlier",
-                    "track": dict(queue[index]),
-                })
+                queue_candidates.append(
+                    {
+                        "_visual_token": len(queue_candidates),
+                        "_visual_relation": "Up next"
+                        if index > current_index
+                        else "Played earlier",
+                        "track": dict(queue[index]),
+                    }
+                )
         limit = 2000 if mode == "memory" else 120
-    
+
         def load_context() -> object:
             try:
                 recent = self.state.recent_tracks(limit)
@@ -678,20 +727,20 @@ class PlaybackFeature(QObject):
                     if mode == "memory"
                     else {"queue": queue_candidates, "recent": []}
                 )
-    
+
         self._run_async(
             load_context,
-            lambda payload, token=sequence, mode_name=mode:
-                self._visual_context_loaded(token, mode_name, payload),
+            lambda payload, token=sequence, mode_name=mode: self._visual_context_loaded(
+                token, mode_name, payload
+            ),
             priority="visible",
             task_name="now-playing-visual-context",
             replace_key="now-playing-visual-context",
         )
-    
-    
+
     def _visual_context_loaded(self, sequence: int, mode: str, payload: object) -> None:
         from .visualization_models import build_constellation
-    
+
         if self._is_closing() or sequence != self._visual_context_sequence:
             return
         if not hasattr(self, "living_canvas") or self.living_canvas.active_mode != mode:
@@ -704,7 +753,7 @@ class PlaybackFeature(QObject):
                 return
             self.living_canvas.set_memory_marks(tuple(payload.get("marks") or ()), scale)
             return
-    
+
         current = dict(self._current_track or {})
         candidates = [row for row in payload.get("queue", ()) if isinstance(row, dict)]
         refs: dict[int, dict[str, Any]] = {}
@@ -717,21 +766,21 @@ class PlaybackFeature(QObject):
         for track in payload.get("recent", ()):
             if not isinstance(track, dict):
                 continue
-            candidates.append({
-                "_visual_token": token,
-                "_visual_relation": "Played earlier",
-                "track": dict(track),
-            })
+            candidates.append(
+                {
+                    "_visual_token": token,
+                    "_visual_relation": "Played earlier",
+                    "track": dict(track),
+                }
+            )
             refs[token] = dict(track)
             token += 1
         neighbours = build_constellation(current, candidates, limit=24)
         self._visual_neighbour_tracks = {
-            node.token: refs[node.token]
-            for node in neighbours if node.token in refs
+            node.token: refs[node.token] for node in neighbours if node.token in refs
         }
         self.living_canvas.set_neighbours(neighbours)
-    
-    
+
     def _queue_visual_neighbour(self, token: int) -> None:
         track = self._visual_neighbour_tracks.get(int(token))
         if not track:
@@ -741,27 +790,26 @@ class PlaybackFeature(QObject):
             f"Queued {track.get('artist') or 'Unknown artist'} — {track.get('title') or 'Unknown track'}",
             4000,
         )
-    
-    
-    def _on_position(self,pos,dur):
+
+    def _on_position(self, pos, dur):
         if self._is_closing():
             return
-        self._visual_position_ms = int(pos)
-        self._visual_duration_ms = int(dur)
-        if hasattr(self,"living_canvas"):
+        self._playback_state.update_position(pos, dur)
+        if hasattr(self, "living_canvas"):
             self.living_canvas.set_position(pos, dur)
             self.living_canvas.set_playing(self._playing)
-        if hasattr(self,"rich_now"):self.rich_now.set_position(pos)
-        if dur>0:self.seek.setValue(int(1000*pos/dur))
-        if dur>0 and pos>=dur-1500 and self._current_history_id:
-            self.state.mark_completed(self._current_history_id); self._current_history_id=0
-    
-    
+        if hasattr(self, "rich_now"):
+            self.rich_now.set_position(pos)
+        if dur > 0:
+            self.seek.setValue(int(1000 * pos / dur))
+        if dur > 0 and pos >= dur - 1500 and self._current_history_id:
+            self.state.mark_completed(self._playback_state.mark_current_track_completed())
+
     def _seek_released(self):
-        dur=int(self._visual_duration_ms)
-        if dur>0:self.seekRequested.emit(int(dur*self.seek.value()/1000))
-    
-    
+        dur = int(self._visual_duration_ms)
+        if dur > 0:
+            self.seekRequested.emit(int(dur * self.seek.value() / 1000))
+
     def _set_taste_action_state(
         self,
         *,
@@ -774,37 +822,38 @@ class PlaybackFeature(QObject):
         if hasattr(self, "keep_button"):
             self.keep_button.setText("✓ Kept" if kept else "Keep")
             self.keep_button.setEnabled(not kept)
-    
-    
+
     def _load_taste_action_state(self, track: dict[str, Any]) -> None:
-        token=UserState.track_key(track)
+        token = UserState.track_key(track)
         if not token:
             self._set_taste_action_state()
             return
-    
+
         def apply(signal: object) -> None:
             if token != UserState.track_key(dict(self._current_track or {})):
                 return
-            row=dict(signal or {}) if isinstance(signal,dict) else {}
+            row = dict(signal or {}) if isinstance(signal, dict) else {}
             self._set_taste_action_state(
                 loved=bool(int(row.get("loves") or 0)),
                 kept=bool(int(row.get("keeps") or 0)),
             )
-    
+
         self._run_async(
-            lambda:self.state.track_signal(dict(track)),
+            lambda: self.state.track_signal(dict(track)),
             apply,
-        priority="visible", task_name="taste-action-state", replace_key="taste-action-state")
-    
-    
-    def _feedback(self,positive):
+            priority="visible",
+            task_name="taste-action-state",
+            replace_key="taste-action-state",
+        )
+
+    def _feedback(self, positive):
         if not self._current_track:
             return
-        track=dict(self._current_track)
-        token=UserState.track_key(track)
-        if positive and hasattr(self,"love_button"):
-            previous_text=self.love_button.text()
-            previous_enabled=self.love_button.isEnabled()
+        track = dict(self._current_track)
+        token = UserState.track_key(track)
+        if positive and hasattr(self, "love_button"):
+            previous_text = self.love_button.text()
+            previous_enabled = self.love_button.isEnabled()
             self.love_button.setText("♥ Loved")
             self.love_button.setEnabled(False)
             self.motion.settle(
@@ -812,19 +861,19 @@ class PlaybackFeature(QObject):
                 duration_ms=FAST_MOTION_MS,
                 start_opacity=0.82,
             )
-            self._status("Loved",2500)
+            self._status("Loved", 2500)
         else:
-            previous_text=""
-            previous_enabled=True
+            previous_text = ""
+            previous_enabled = True
             self._status(
                 "Loved" if positive else "Not for me",
                 2500,
             )
-    
+
         def persist() -> bool:
-            self.state.record_feedback(track,positive)
+            self.state.record_feedback(track, positive)
             return True
-    
+
         def failed(error: str) -> None:
             if positive and token == UserState.track_key(dict(self._current_track or {})):
                 self.love_button.setText(previous_text)
@@ -833,18 +882,23 @@ class PlaybackFeature(QObject):
                 f"Could not save preference · {error}",
                 5000,
             )
-    
-        self._run_async(persist,lambda _result:None,failed, priority="foreground", task_name="taste-feedback-save")
-    
-    
+
+        self._run_async(
+            persist,
+            lambda _result: None,
+            failed,
+            priority="foreground",
+            task_name="taste-feedback-save",
+        )
+
     def _keep(self):
         if not self._current_track:
             return
-        track=dict(self._current_track)
-        token=UserState.track_key(track)
-        previous_text=self.keep_button.text() if hasattr(self,"keep_button") else "Keep"
-        previous_enabled=self.keep_button.isEnabled() if hasattr(self,"keep_button") else True
-        if hasattr(self,"keep_button"):
+        track = dict(self._current_track)
+        token = UserState.track_key(track)
+        previous_text = self.keep_button.text() if hasattr(self, "keep_button") else "Keep"
+        previous_enabled = self.keep_button.isEnabled() if hasattr(self, "keep_button") else True
+        if hasattr(self, "keep_button"):
             self.keep_button.setText("✓ Kept")
             self.keep_button.setEnabled(False)
             self.motion.settle(
@@ -852,147 +906,230 @@ class PlaybackFeature(QObject):
                 duration_ms=FAST_MOTION_MS,
                 start_opacity=0.82,
             )
-        self._status("Kept in taste memory",2500)
-    
+        self._status("Kept in taste memory", 2500)
+
         def persist() -> bool:
             self.state.record_keep(track)
             return True
-    
+
         def failed(error: str) -> None:
-            if token == UserState.track_key(dict(self._current_track or {})) and hasattr(self,"keep_button"):
+            if token == UserState.track_key(dict(self._current_track or {})) and hasattr(
+                self, "keep_button"
+            ):
                 self.keep_button.setText(previous_text)
                 self.keep_button.setEnabled(previous_enabled)
             self._status(
                 f"Could not save Keep · {error}",
                 5000,
             )
-    
-        self._run_async(persist,lambda _result:None,failed, priority="foreground", task_name="keep-save")
-    
-    
+
+        self._run_async(
+            persist, lambda _result: None, failed, priority="foreground", task_name="keep-save"
+        )
+
     def _more_actions(self):
-        if not self._current_track:return
-        label,ok=QInputDialog.getText(self._dialog_parent(),"Save a moment","Moment note (leave blank if you like):")
+        if not self._current_track:
+            return
+        label, ok = QInputDialog.getText(
+            self._dialog_parent(), "Save a moment", "Moment note (leave blank if you like):"
+        )
         if ok:
-            self.state.save_moment(self._current_track,self._visual_position_ms,label); self._status("Moment saved",3000)
-    
-    
+            self.state.save_moment(self._current_track, self._visual_position_ms, label)
+            self._status("Moment saved", 3000)
+
     @staticmethod
     def _resolver_target(track):
-        track=dict(track or {}); resolution=track.get("_resolution")
-        if isinstance(resolution,dict) and isinstance(resolution.get("requested"),dict):
-            requested=dict(resolution.get("requested") or {})
-            if str(requested.get("title") or "").strip():return requested
-        return {"artist":str(track.get("artist") or ""),"title":str(track.get("title") or ""),"album":str(track.get("album") or ""),"duration":track.get("duration") or 0}
-    
-    
+        track = dict(track or {})
+        resolution = track.get("_resolution")
+        if isinstance(resolution, dict) and isinstance(resolution.get("requested"), dict):
+            requested = dict(resolution.get("requested") or {})
+            if str(requested.get("title") or "").strip():
+                return requested
+        return {
+            "artist": str(track.get("artist") or ""),
+            "title": str(track.get("title") or ""),
+            "album": str(track.get("album") or ""),
+            "duration": track.get("duration") or 0,
+        }
+
     def _inspect_current_match(self):
         if not self._current_track:
-            self._status("Play a track first, then inspect its source match",3500); return
-        target=self._resolver_target(self._current_track)
+            self._status("Play a track first, then inspect its source match", 3500)
+            return
+        target = self._resolver_target(self._current_track)
         self._status("Checking resolver candidates…")
-        self._run_async(lambda:self.providers.inspect_resolution(target,24),lambda info:self._show_resolver_inspector(target,info), priority="foreground", task_name="resolver-inspect")
-    
-    
-    def _show_resolver_inspector(self,target,info):
-        d=QDialog(self._dialog_parent()); d.setWindowTitle("Resolver Inspector"); d.resize(760,560); lay=QVBoxLayout(d)
-        requested=f"{target.get('artist','')} — {target.get('title','')}".strip(" —")
-        album=str(target.get("album") or ""); head=QLabel(f"Requested: {requested}" + (f"  ·  {album}" if album else "")); head.setWordWrap(True); lay.addWidget(head)
-        blocked=int(info.get("blocked_count") or 0); threshold=float(info.get("minimum_score") or 0.62); preferred=info.get("preferred")
-        summary=QLabel(f"Automatic threshold: {threshold:.0%}  ·  Wrong matches remembered: {blocked}" + ("  ·  Preferred match remembered" if preferred else "")); summary.setWordWrap(True); summary.setStyleSheet("color:#aab0ba"); lay.addWidget(summary)
-        rows=QListWidget(); lay.addWidget(rows,1)
-        current_pid=str((self._current_track or {}).get("provider_id") or ""); current_tid=str((self._current_track or {}).get("track_id") or ""); current_row=-1
-        for i,row in enumerate(list(info.get("candidates") or [])):
-            if not isinstance(row,dict):continue
-            t=dict(row.get("track") or {}); score=float(row.get("score") or 0); provider=str(row.get("provider_id") or t.get("provider_id") or "")
-            flags=", ".join(list(row.get("flags") or [])); reasons=" · ".join(list(row.get("reasons") or []))
-            duration=row.get("duration_delta"); duration_text=(f" · Δ{float(duration):.0f}s" if duration is not None else "")
-            star="★ " if bool(row.get("preferred")) else ""
-            line1=f"{star}{score:.0%}  {provider}  ·  {t.get('artist','Unknown artist')} — {t.get('title','Unknown track')}"
-            line2=f"title {float(row.get('title_score') or 0):.0%} · artist {float(row.get('artist_score') or 0):.0%} · album {float(row.get('album_score') or 0):.0%}{duration_text}"
-            if flags:line2+=f" · [{flags}]"
-            if reasons:line2+=f"\n{reasons}"
-            item=QListWidgetItem(line1+"\n"+line2); item.setData(Qt.UserRole,row); rows.addItem(item)
-            if str(t.get("provider_id") or "")==current_pid and str(t.get("track_id") or "")==current_tid:current_row=rows.count()-1
-        if rows.count()==0:
+        self._run_async(
+            lambda: self.providers.inspect_resolution(target, 24),
+            lambda info: self._show_resolver_inspector(target, info),
+            priority="foreground",
+            task_name="resolver-inspect",
+        )
+
+    def _show_resolver_inspector(self, target, info):
+        d = QDialog(self._dialog_parent())
+        d.setWindowTitle("Resolver Inspector")
+        d.resize(760, 560)
+        lay = QVBoxLayout(d)
+        requested = f"{target.get('artist', '')} — {target.get('title', '')}".strip(" —")
+        album = str(target.get("album") or "")
+        head = QLabel(f"Requested: {requested}" + (f"  ·  {album}" if album else ""))
+        head.setWordWrap(True)
+        lay.addWidget(head)
+        blocked = int(info.get("blocked_count") or 0)
+        threshold = float(info.get("minimum_score") or 0.62)
+        preferred = info.get("preferred")
+        summary = QLabel(
+            f"Automatic threshold: {threshold:.0%}  ·  Wrong matches remembered: {blocked}"
+            + ("  ·  Preferred match remembered" if preferred else "")
+        )
+        summary.setWordWrap(True)
+        summary.setStyleSheet("color:#aab0ba")
+        lay.addWidget(summary)
+        rows = QListWidget()
+        lay.addWidget(rows, 1)
+        current_pid = str((self._current_track or {}).get("provider_id") or "")
+        current_tid = str((self._current_track or {}).get("track_id") or "")
+        current_row = -1
+        for i, row in enumerate(list(info.get("candidates") or [])):
+            if not isinstance(row, dict):
+                continue
+            t = dict(row.get("track") or {})
+            score = float(row.get("score") or 0)
+            provider = str(row.get("provider_id") or t.get("provider_id") or "")
+            flags = ", ".join(list(row.get("flags") or []))
+            reasons = " · ".join(list(row.get("reasons") or []))
+            duration = row.get("duration_delta")
+            duration_text = f" · Δ{float(duration):.0f}s" if duration is not None else ""
+            star = "★ " if bool(row.get("preferred")) else ""
+            line1 = f"{star}{score:.0%}  {provider}  ·  {t.get('artist', 'Unknown artist')} — {t.get('title', 'Unknown track')}"
+            line2 = f"title {float(row.get('title_score') or 0):.0%} · artist {float(row.get('artist_score') or 0):.0%} · album {float(row.get('album_score') or 0):.0%}{duration_text}"
+            if flags:
+                line2 += f" · [{flags}]"
+            if reasons:
+                line2 += f"\n{reasons}"
+            item = QListWidgetItem(line1 + "\n" + line2)
+            item.setData(Qt.UserRole, row)
+            rows.addItem(item)
+            if (
+                str(t.get("provider_id") or "") == current_pid
+                and str(t.get("track_id") or "") == current_tid
+            ):
+                current_row = rows.count() - 1
+        if rows.count() == 0:
             rows.addItem("No resolver candidates were returned by the connected sources.")
-        else:rows.setCurrentRow(current_row if current_row>=0 else 0)
-        buttons=QHBoxLayout(); play=QPushButton("Play this match"); prefer=QPushButton("Prefer"); wrong=QPushButton("Wrong match"); reset=QPushButton("Reset memory"); close=QPushButton("Close")
-        for b in (play,prefer,wrong,reset,close):buttons.addWidget(b)
+        else:
+            rows.setCurrentRow(current_row if current_row >= 0 else 0)
+        buttons = QHBoxLayout()
+        play = QPushButton("Play this match")
+        prefer = QPushButton("Prefer")
+        wrong = QPushButton("Wrong match")
+        reset = QPushButton("Reset memory")
+        close = QPushButton("Close")
+        for b in (play, prefer, wrong, reset, close):
+            buttons.addWidget(b)
         lay.addLayout(buttons)
+
         def selected():
-            item=rows.currentItem(); data=item.data(Qt.UserRole) if item else None
-            return dict(data or {}) if isinstance(data,dict) else {}
-        play.clicked.connect(lambda:self._resolver_use_candidate(target,selected(),d,False))
-        prefer.clicked.connect(lambda:self._resolver_use_candidate(target,selected(),d,True))
-        wrong.clicked.connect(lambda:self._resolver_wrong_candidate(target,selected(),d))
-        reset.clicked.connect(lambda:self._resolver_reset_memory(target,d))
+            item = rows.currentItem()
+            data = item.data(Qt.UserRole) if item else None
+            return dict(data or {}) if isinstance(data, dict) else {}
+
+        play.clicked.connect(lambda: self._resolver_use_candidate(target, selected(), d, False))
+        prefer.clicked.connect(lambda: self._resolver_use_candidate(target, selected(), d, True))
+        wrong.clicked.connect(lambda: self._resolver_wrong_candidate(target, selected(), d))
+        reset.clicked.connect(lambda: self._resolver_reset_memory(target, d))
         close.clicked.connect(d.reject)
         d.exec()
-    
-    
-    def _resolver_use_candidate(self,target,row,dialog,remember):
-        candidate=dict(row.get("track") or {}) if isinstance(row,dict) else {}
+
+    def _resolver_use_candidate(self, target, row, dialog, remember):
+        candidate = dict(row.get("track") or {}) if isinstance(row, dict) else {}
         if not candidate:
-            self._status("Select a resolver candidate first",3000); return
-        if remember:self.providers.prefer_resolution(target,candidate)
-        dialog.accept(); self._status("Using preferred match…" if remember else "Loading selected match…")
-        self._run_async(lambda:self.providers.resolve_exact(candidate,target),self._apply_resolver_match, priority="foreground", task_name="resolver-use")
-    
-    
-    def _resolver_wrong_candidate(self,target,row,dialog):
-        candidate=dict(row.get("track") or {}) if isinstance(row,dict) else {}
-        if not candidate:
-            self._status("Select a resolver candidate first",3000); return
-        self.providers.block_resolution(target,candidate); dialog.accept(); self._status("Wrong match remembered · trying the next candidate…")
-        self._run_async(lambda:self.providers.resolve(target),self._apply_resolver_match, priority="foreground", task_name="resolver-retry")
-    
-    
-    def _resolver_reset_memory(self,target,dialog):
-        self.providers.clear_resolution_preference(target); self.providers.clear_resolution_blocks(target); dialog.accept(); self._status("Match memory reset for this song",3500)
-        self._run_async(lambda:self.providers.inspect_resolution(target,24),lambda info:self._show_resolver_inspector(target,info), priority="foreground", task_name="resolver-reset")
-    
-    
-    def _apply_resolver_match(self,resolved):
-        if not isinstance(resolved,dict):return
-        idx=int(self._queue_index)
-        if idx<0:
-            self.setQueueRequested.emit([dict(resolved)],0,True)
+            self._status("Select a resolver candidate first", 3000)
             return
-        self.replaceQueueItemRequested.emit(idx,dict(resolved),True)
-        mode=str((resolved.get("_resolution") or {}).get("mode") or "match") if isinstance(resolved.get("_resolution"),dict) else "match"
-        self._status(f"Resolver match applied · {mode}",4000)
-    
-    
-    def on_queue_changed(self,tracks,index=-1):
-        self._queue=[dict(track) for track in list(tracks or []) if isinstance(track,dict)]
-        self._queue_index=int(index)
+        if remember:
+            self.providers.prefer_resolution(target, candidate)
+        dialog.accept()
+        self._status("Using preferred match…" if remember else "Loading selected match…")
+        self._run_async(
+            lambda: self.providers.resolve_exact(candidate, target),
+            self._apply_resolver_match,
+            priority="foreground",
+            task_name="resolver-use",
+        )
+
+    def _resolver_wrong_candidate(self, target, row, dialog):
+        candidate = dict(row.get("track") or {}) if isinstance(row, dict) else {}
+        if not candidate:
+            self._status("Select a resolver candidate first", 3000)
+            return
+        self.providers.block_resolution(target, candidate)
+        dialog.accept()
+        self._status("Wrong match remembered · trying the next candidate…")
+        self._run_async(
+            lambda: self.providers.resolve(target),
+            self._apply_resolver_match,
+            priority="foreground",
+            task_name="resolver-retry",
+        )
+
+    def _resolver_reset_memory(self, target, dialog):
+        self.providers.clear_resolution_preference(target)
+        self.providers.clear_resolution_blocks(target)
+        dialog.accept()
+        self._status("Match memory reset for this song", 3500)
+        self._run_async(
+            lambda: self.providers.inspect_resolution(target, 24),
+            lambda info: self._show_resolver_inspector(target, info),
+            priority="foreground",
+            task_name="resolver-reset",
+        )
+
+    def _apply_resolver_match(self, resolved):
+        if not isinstance(resolved, dict):
+            return
+        idx = int(self._queue_index)
+        if idx < 0:
+            self.setQueueRequested.emit([dict(resolved)], 0, True)
+            return
+        self.replaceQueueItemRequested.emit(idx, dict(resolved), True)
+        mode = (
+            str((resolved.get("_resolution") or {}).get("mode") or "match")
+            if isinstance(resolved.get("_resolution"), dict)
+            else "match"
+        )
+        self._status(f"Resolver match applied · {mode}", 4000)
+
+    def on_queue_changed(self, tracks, index=-1):
+        self._playback_state.update_queue(
+            [track for track in list(tracks or []) if isinstance(track, dict)],
+            index,
+        )
         self.queue_list.clear()
-        for i,t in enumerate(self._queue):
-            prefix="▶ " if i==self._queue_index else ""
-            item=QListWidgetItem(prefix+_track_text(t))
-            item.setData(Qt.UserRole,i)
+        for i, t in enumerate(self._queue):
+            prefix = "▶ " if i == self._queue_index else ""
+            item = QListWidgetItem(prefix + _track_text(t))
+            item.setData(Qt.UserRole, i)
             self.queue_list.addItem(item)
         if hasattr(self, "living_canvas") and self.living_canvas.active_mode == "constellation":
             self.living_canvas.refresh_context()
         self._schedule_next_track_prefetch()
-    
-    
-    def _queue_jump(self,item):
+
+    def _queue_jump(self, item):
         self.jumpQueueRequested.emit(int(item.data(Qt.UserRole)))
-    
+
     # ------------------------------- LLM
-    
-    def _translate_lyrics(self, payload: dict[str,Any]) -> None:
+
+    def _translate_lyrics(self, payload: dict[str, Any]) -> None:
         from .llm_bridge import LLMClient
-        payload=dict(payload or {})
-        text=str(payload.get("text") or "").strip()
+
+        payload = dict(payload or {})
+        text = str(payload.get("text") or "").strip()
         if not text:
             return
-    
-        settings=self._llm_settings_getter()
+
+        settings = self._llm_settings_getter()
         if not str(settings.model or "").strip():
-            answer=QMessageBox.question(
+            answer = QMessageBox.question(
                 self._dialog_parent(),
                 "Connect an LLM",
                 "Lyrics translation uses your optional configured LLM. "
@@ -1003,22 +1140,22 @@ class PlaybackFeature(QObject):
             if answer != QMessageBox.Yes:
                 return
             self._open_llm_settings()
-            settings=self._llm_settings_getter()
+            settings = self._llm_settings_getter()
             if not str(settings.model or "").strip():
                 return
-    
-        target,ok=QInputDialog.getText(
+
+        target, ok = QInputDialog.getText(
             self._dialog_parent(),
             "Translate lyrics",
             "Translate into:",
-            text=self.state.get_text("lyrics_translation_language","English"),
+            text=self.state.get_text("lyrics_translation_language", "English"),
         )
-        target=str(target or "").strip()
+        target = str(target or "").strip()
         if not ok or not target:
             return
-    
-        endpoint=str(settings.endpoint or LLMClient.default_endpoint(settings.provider))
-        answer=QMessageBox.question(
+
+        endpoint = str(settings.endpoint or LLMClient.default_endpoint(settings.provider))
+        answer = QMessageBox.question(
             self._dialog_parent(),
             "Send lyrics for translation?",
             "This sends the currently displayed lyric text to your configured LLM "
@@ -1029,11 +1166,11 @@ class PlaybackFeature(QObject):
         )
         if answer != QMessageBox.Yes:
             return
-    
-        self.state.set_text("lyrics_translation_language",target)
-        artist=str(payload.get("artist") or "")
-        title=str(payload.get("title") or "")
-        prompt=(
+
+        self.state.set_text("lyrics_translation_language", target)
+        artist = str(payload.get("artist") or "")
+        title = str(payload.get("title") or "")
+        prompt = (
             f"Translate the following song lyrics into {target}. "
             "Preserve the original line breaks and stanza structure. "
             "Return only the translation, with no commentary, analysis, title or quotation marks."
@@ -1041,57 +1178,57 @@ class PlaybackFeature(QObject):
         )
         self._status(f"Translating lyrics into {target}…")
         self._run_async(
-            lambda:self._llm_complete(settings,prompt,{},[]),
-            lambda result:self._show_lyrics_translation(target,str(result or "")),
-        priority="foreground", task_name="lyrics-translate")
-    
-    
+            lambda: self._llm_complete(settings, prompt, {}, []),
+            lambda result: self._show_lyrics_translation(target, str(result or "")),
+            priority="foreground",
+            task_name="lyrics-translate",
+        )
+
     def _show_lyrics_translation(self, language: str, text: str) -> None:
-        dialog=QDialog(self._dialog_parent())
+        dialog = QDialog(self._dialog_parent())
         dialog.setWindowTitle(f"Lyrics translation · {language}")
-        dialog.resize(760,720)
-        layout=QVBoxLayout(dialog)
-        layout.setContentsMargins(22,20,22,18)
+        dialog.resize(760, 720)
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(22, 20, 22, 18)
         layout.setSpacing(10)
-    
-        note=QLabel(
+
+        note = QLabel(
             f"<b>Temporary translation · {_escape_html(language)}</b><br>"
             "<span style='color:#8f9bad'>Generated by your configured LLM. "
             "This translation is not saved by Melodex.</span>"
         )
         note.setWordWrap(True)
         layout.addWidget(note)
-    
-        browser=QTextEdit()
+
+        browser = QTextEdit()
         browser.setReadOnly(True)
         browser.setPlainText(str(text or "").strip())
-        layout.addWidget(browser,1)
-    
-        buttons=QDialogButtonBox(QDialogButtonBox.Close)
+        layout.addWidget(browser, 1)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Close)
         buttons.rejected.connect(dialog.accept)
         layout.addWidget(buttons)
-        self._status(f"Lyrics translated into {language}",4000)
+        self._status(f"Lyrics translated into {language}", 4000)
         dialog.exec()
-    
-    
-    def _remember_now_playing_knowledge(self,track,bundle):
+
+    def _remember_now_playing_knowledge(self, track, bundle):
         from .music_knowledge import build_knowledge_graph
-        if not isinstance(track,dict) or not isinstance(bundle,dict):
+
+        if not isinstance(track, dict) or not isinstance(bundle, dict):
             return
-        kwargs={}
-        if isinstance(bundle.get("identity"),dict):
-            kwargs["identity"]=dict(bundle.get("identity") or {})
-        if isinstance(bundle.get("artist"),dict):
-            kwargs["artist"]=dict(bundle.get("artist") or {})
+        kwargs = {}
+        if isinstance(bundle.get("identity"), dict):
+            kwargs["identity"] = dict(bundle.get("identity") or {})
+        if isinstance(bundle.get("artist"), dict):
+            kwargs["artist"] = dict(bundle.get("artist") or {})
         if "credits" in bundle:
-            kwargs["credits"]=[
-                dict(x) for x in list(bundle.get("credits") or []) if isinstance(x,dict)
+            kwargs["credits"] = [
+                dict(x) for x in list(bundle.get("credits") or []) if isinstance(x, dict)
             ]
         if "context" in bundle:
-            kwargs["context"]=[
-                dict(x) for x in list(bundle.get("context") or []) if isinstance(x,dict)
+            kwargs["context"] = [
+                dict(x) for x in list(bundle.get("context") or []) if isinstance(x, dict)
             ]
         if kwargs:
-            self.knowledge.remember(dict(track),**kwargs)
+            self.knowledge.remember(dict(track), **kwargs)
             self.knowledgeChanged.emit()
-    

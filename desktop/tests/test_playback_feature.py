@@ -253,9 +253,7 @@ def test_flow_refinement_requests_new_queue_without_player_access(tmp_path):
     app, feature, _state, statuses = _feature(tmp_path)
     requested = []
     feature.setQueueRequested.connect(
-        lambda tracks, start, autoplay: requested.append(
-            (list(tracks), int(start), bool(autoplay))
-        )
+        lambda tracks, start, autoplay: requested.append((list(tracks), int(start), bool(autoplay)))
     )
 
     one = _track("One", 1)
@@ -303,7 +301,7 @@ def test_resolver_application_requests_semantic_queue_mutation(tmp_path):
 def test_taste_actions_are_owned_and_optimistic(tmp_path):
     app, feature, state, _statuses = _feature(tmp_path)
     track = _track("Loved", 1)
-    feature._current_track = dict(track)
+    feature._playback_state.start_track(track, history_id=1, started_at=1.0)
 
     feature.record_feedback(True)
     assert feature.love_button.text() == "♥ Loved"
@@ -322,7 +320,7 @@ def test_taste_actions_are_owned_and_optimistic(tmp_path):
 
 def test_position_completion_and_power_visibility_stay_inside_feature(tmp_path):
     app, feature, state, _statuses = _feature(tmp_path)
-    feature._current_history_id = 42
+    feature._playback_state.start_track(_track("Completing", 2), history_id=42, started_at=1.0)
 
     feature.on_position(99_000, 100_000)
     feature.on_playing_changed(True)

@@ -51,6 +51,9 @@ FORBIDDEN_PLAYBACK_FEATURE_SNIPPETS = {
     "self.main_window": "PlaybackFeature must not retain MainWindow",
     "from .main_window import": "PlaybackFeature must not import MainWindow",
     "from .player import FlowPlayer": "PlaybackFeature must not import FlowPlayer",
+    "self._current_track =": "canonical playback state belongs to PlaybackSessionState",
+    "self._queue =": "canonical queue state belongs to PlaybackSessionState",
+    "self._visual_position_ms =": "canonical playback progress belongs to PlaybackSessionState",
 }
 
 

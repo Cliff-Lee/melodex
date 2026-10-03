@@ -37,6 +37,7 @@ FLUID_GATE_TESTS = [
     "desktop/tests/test_playback_feature.py::test_transport_seek_and_queue_actions_are_semantic",
     "desktop/tests/test_playback_feature.py::test_track_change_updates_owned_state_and_emits_snapshot",
     "desktop/tests/test_playback_feature.py::test_flow_refinement_requests_new_queue_without_player_access",
+    "desktop/tests/test_playback_state.py",
     "desktop/tests/test_gui_redesign.py::test_navigation_shell_changes_before_slow_page_population",
     "desktop/tests/test_gui_redesign.py::test_heavy_pages_build_once_after_navigation_shell",
     "desktop/tests/test_gui_redesign.py::test_rapid_navigation_drops_stale_page_population",
