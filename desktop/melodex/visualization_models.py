@@ -9,6 +9,7 @@ import math
 import re
 from typing import Any, Iterable, Mapping
 
+from .lyrics_state import LyricFrame, lyric_frame
 from .visualization_profile import VisualProfile
 
 
@@ -160,59 +161,6 @@ def describe_weather(profile: VisualProfile) -> SonicWeather:
     else:
         summary = f"{tone} · {density} · {motion}"
     return SonicWeather(motion, tone, density, summary, available)
-
-
-@dataclass(frozen=True, slots=True)
-class LyricFrame:
-    previous: str
-    current: str
-    following: str
-    synced: bool
-    source: str
-
-
-def lyric_frame(lyrics: Mapping[str, Any] | None, position_ms: int, duration_ms: int) -> LyricFrame:
-    """Select the current lyric from local synced lines or gently paced plain text."""
-
-    lyrics = lyrics if isinstance(lyrics, Mapping) else {}
-    synced = [row for row in lyrics.get("synced", ()) if isinstance(row, Mapping)]
-    if synced:
-        idx = -1
-        for i, row in enumerate(synced):
-            try:
-                stamp = int(row.get("time_ms") or 0)
-            except (TypeError, ValueError, OverflowError):
-                continue
-            if stamp <= max(0, int(position_ms)):
-                idx = i
-            else:
-                break
-        if idx < 0:
-            next_line = _text(synced[0].get("text")) if synced else ""
-            return LyricFrame("", "", next_line, True, _text(lyrics.get("source")))
-        previous = _text(synced[idx - 1].get("text")) if idx > 0 else ""
-        current = _text(synced[idx].get("text"))
-        following = _text(synced[idx + 1].get("text")) if idx + 1 < len(synced) else ""
-        return LyricFrame(previous, current, following, True, _text(lyrics.get("source")))
-
-    raw = str(lyrics.get("text") or "")
-    lines = [_text(line) for line in re.split(r"[\r\n]+", raw) if _text(line)]
-    if not lines:
-        return LyricFrame("", "", "", False, _text(lyrics.get("source")))
-    try:
-        position = max(0, int(position_ms))
-        duration = max(0, int(duration_ms))
-    except (TypeError, ValueError, OverflowError):
-        position, duration = 0, 0
-    fraction = min(1.0, position / duration) if duration else 0.0
-    idx = min(len(lines) - 1, int(fraction * len(lines)))
-    return LyricFrame(
-        lines[idx - 1] if idx else "",
-        lines[idx],
-        lines[idx + 1] if idx + 1 < len(lines) else "",
-        False,
-        _text(lyrics.get("source")),
-    )
 
 
 @dataclass(frozen=True, slots=True)
