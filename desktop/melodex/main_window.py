@@ -10,7 +10,6 @@ from typing import Any
 
 from PySide6.QtCore import QEvent, Qt, QTimer, Signal, Slot, QObject
 from PySide6.QtGui import QAction, QColor, QDesktopServices, QKeySequence, QPixmap, QShortcut
-from PySide6.QtMultimedia import QMediaPlayer
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QListWidget,
     QListWidgetItem, QStackedWidget, QLineEdit, QComboBox, QFileDialog, QMessageBox,
@@ -67,14 +66,6 @@ class _UiCallbackDispatcher(QObject):
     @Slot(object)
     def _invoke(self, callback) -> None:
         callback()
-
-
-class _VisualAnalysisSignals(QObject):
-    ready = Signal(str, object)
-
-
-class _VisualContextSignals(QObject):
-    ready = Signal(int, str, object)
 
 
 def _escape_html(value: Any) -> str:
