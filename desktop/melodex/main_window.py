@@ -6,7 +6,7 @@ import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from PySide6.QtCore import QEvent, Qt, QTimer, Signal, Slot, QObject
 from PySide6.QtGui import QAction, QColor, QDesktopServices, QKeySequence, QPixmap, QShortcut
@@ -28,6 +28,15 @@ from .plugin_health import health_badge, health_summary
 from .responsiveness import UiResponsivenessMonitor
 from .background_scheduler import BackgroundScheduler
 from .motion import MotionController, FAST_MOTION_MS, STANDARD_MOTION_MS
+from .library_scan_status import (
+    idle_scan_session,
+    scan_activity_state,
+    scan_change_suffix,
+    scan_progress_message,
+    scan_progress_patch,
+    scan_roots_key,
+    start_scan_session,
+)
 from .ux_components import (
     ActionCard,
     CommandPaletteDialog,
@@ -37,6 +46,9 @@ from .ux_components import (
     SourceCard,
     set_help,
 )
+
+if TYPE_CHECKING:
+    from .library_scan_process import LibraryScanProcess
 
 
 class WorkerSignals(QObject):
@@ -214,12 +226,7 @@ class MainWindow(QMainWindow):
         self._local_scan_sequence = 0
         self._local_scan_started_at = 0.0
         self._local_scan_last_progress: dict[str, Any] = {}
-        self._local_scan_session: dict[str, Any] = {
-            "status": "idle",
-            "running": False,
-            "pending_rescan": False,
-            "storage_state": "unknown",
-        }
+        self._local_scan_session: dict[str, Any] = idle_scan_session()
         self._prefetched_track_assets: dict[str, dict[str, Any]] = {}
         self._prefetch_sequence = 0
         self._prefetch_delay_ms = 350
@@ -4240,70 +4247,27 @@ class MainWindow(QMainWindow):
     def _rescan(self):
         self._start_local_scan("rescan")
 
-    @staticmethod
-    def _local_roots_key(roots: list[Path]) -> tuple[str, ...]:
-        return tuple(str(Path(root)) for root in roots)
-
-    @staticmethod
-    def _format_elapsed(seconds: float) -> str:
-        total=max(0,int(seconds))
-        minutes,seconds=divmod(total,60)
-        hours,minutes=divmod(minutes,60)
-        if hours:
-            return f"{hours:d}:{minutes:02d}:{seconds:02d}"
-        return f"{minutes:d}:{seconds:02d}"
-
     def _refresh_background_scan_activity(self) -> None:
         if not self._local_scan_in_progress:
             self.background_activity.hide()
             self._background_activity_timer.stop()
             return
 
-        payload=dict(self._local_scan_last_progress or {})
-        phase=str(payload.get("phase") or "discovering")
-        found=max(0,int(payload.get("audio_files_seen") or 0))
-        completed=max(0,int(payload.get("completed") or 0))
-        total=max(0,int(payload.get("total") or 0))
-        elapsed=self._format_elapsed(
-            time.monotonic() - self._local_scan_started_at
-            if self._local_scan_started_at
-            else 0.0
-        )
-
-        if phase=="metadata" and total:
-            stage=f"Reading tags · {completed:,}/{total:,}"
-            self.background_activity_progress.setRange(0,total)
-            self.background_activity_progress.setValue(min(completed,total))
-            self.background_activity_progress.setFormat("%v / %m")
-        elif phase=="metadata" and completed:
-            stage=(
-                f"Reading tags while discovering · {completed:,} read"
-                + (f" · {found:,} found" if found else "")
-            )
-            self.background_activity_progress.setRange(0,0)
-            self.background_activity_progress.setFormat("")
-        elif phase=="saving":
-            stage="Saving library index"
-            self.background_activity_progress.setRange(0,0)
-            self.background_activity_progress.setFormat("")
-        else:
-            stage=(
-                f"Discovering files · {found:,} found"
-                if found
-                else "Discovering files"
-            )
-            self.background_activity_progress.setRange(0,0)
-            self.background_activity_progress.setFormat("")
-
         runner=self._local_scan_runner
-        paused=bool(runner is not None and runner.paused)
-        if paused:
-            stage="Paused · " + stage
-        self.background_activity_label.setText(
-            f"Indexing music · {stage} · {elapsed} elapsed · "
-            "You can keep using Melodex"
+        view=scan_activity_state(
+            self._local_scan_last_progress,
+            elapsed_seconds=(
+                time.monotonic() - self._local_scan_started_at
+                if self._local_scan_started_at
+                else 0.0
+            ),
+            paused=bool(runner is not None and runner.paused),
         )
-        self.background_activity_pause.setText("Resume" if paused else "Pause")
+        self.background_activity_progress.setRange(view.progress_min,view.progress_max)
+        self.background_activity_progress.setValue(view.progress_value)
+        self.background_activity_progress.setFormat(view.progress_format)
+        self.background_activity_label.setText(view.label)
+        self.background_activity_pause.setText(view.pause_text)
         self.background_activity_pause.setEnabled(runner is not None)
         self.background_activity_cancel.setEnabled(runner is not None)
         self.background_activity.show()
@@ -4312,61 +4276,18 @@ class MainWindow(QMainWindow):
         if not isinstance(payload,dict) or not self._local_scan_in_progress:
             return
         self._local_scan_last_progress=dict(payload)
-        elapsed=max(0.0,time.monotonic()-self._local_scan_started_at)
         self._local_scan_session.update(
-            {
-                "status": "running",
-                "running": True,
-                "paused": bool(payload.get("paused")),
-                "pending_rescan": bool(self._local_scan_pending),
-                "elapsed_seconds": round(elapsed, 3),
-                "phase": str(payload.get("phase") or ""),
-                "files_seen": int(payload.get("files_seen") or 0),
-                "audio_files_seen": int(payload.get("audio_files_seen") or 0),
-                "directories_seen": int(payload.get("directories_seen") or 0),
-                "completed": int(payload.get("completed") or 0),
-                "total": int(payload.get("total") or 0),
-                "unchanged": int(payload.get("unchanged") or 0),
-                "resumed": int(payload.get("resumed") or 0),
-                "added": int(payload.get("added") or 0),
-                "changed": int(payload.get("changed") or 0),
-                "removed": int(payload.get("removed") or 0),
-                "stat_failures": int(payload.get("stat_failures") or 0),
-            }
+            scan_progress_patch(
+                payload,
+                elapsed_seconds=time.monotonic()-self._local_scan_started_at,
+                pending_rescan=self._local_scan_pending,
+            )
         )
         self._refresh_background_scan_activity()
         if hasattr(self,"library_browser"):
             self.library_browser.set_scan_progress(payload)
-        phase=str(payload.get("phase") or "")
-        if phase=="discovering":
-            found=int(payload.get("audio_files_seen") or 0)
-            message=f"Indexing music · discovering files · {found:,} tracks found"
-            self.statusBar().showMessage(message)
-            if hasattr(self,"home_status"):
-                self.home_status.setText(message)
-        elif phase=="metadata":
-            completed=int(payload.get("completed") or 0)
-            total=int(payload.get("total") or 0)
-            found=int(payload.get("audio_files_seen") or 0)
-            unchanged=int(payload.get("unchanged") or 0)
-            if total==0 and completed:
-                message=(
-                    f"Indexing music · reading metadata as files are found · "
-                    f"{completed:,} read"
-                    + (f" · {found:,} found" if found else "")
-                )
-            elif total==0 and found:
-                message=(
-                    f"Indexing music · metadata already up to date · "
-                    f"{unchanged or found:,} reused"
-                )
-            else:
-                message=f"Indexing music · reading metadata · {completed:,}/{total:,}"
-            self.statusBar().showMessage(message)
-            if hasattr(self,"home_status"):
-                self.home_status.setText(message)
-        elif phase=="saving":
-            message="Indexing music · saving local library index…"
+        message=scan_progress_message(payload)
+        if message:
             self.statusBar().showMessage(message)
             if hasattr(self,"home_status"):
                 self.home_status.setText(message)
@@ -4426,9 +4347,9 @@ class MainWindow(QMainWindow):
             self._local_scan_pending=True
             self._local_scan_session["pending_rescan"]=True
             runner=self._local_scan_runner
-            current_key=self._local_roots_key(roots)
+            current_key=scan_roots_key(roots)
             running_key=(
-                self._local_roots_key(runner.roots)
+                scan_roots_key(runner.roots)
                 if runner is not None
                 else ()
             )
@@ -4450,34 +4371,10 @@ class MainWindow(QMainWindow):
         self._local_scan_sequence += 1
         self._local_scan_started_at=time.monotonic()
         self._local_scan_last_progress={"phase":"discovering","audio_files_seen":0}
-        self._local_scan_session={
-            "status": "running",
-            "reason": str(reason or "scan")[:80],
-            "phase": "discovering",
-            "running": True,
-            "paused": False,
-            "pending_rescan": False,
-            "elapsed_seconds": 0.0,
-            "files_seen": 0,
-            "audio_files_seen": 0,
-            "directories_seen": 0,
-            "completed": 0,
-            "total": 0,
-            "unchanged": 0,
-            "resumed": 0,
-            "added": 0,
-            "changed": 0,
-            "removed": 0,
-            "stat_failures": 0,
-            "storage_state": "checking",
-            "root_count": len(roots),
-            "roots_unavailable": 0,
-            "roots_incomplete": 0,
-            "io_retries": 0,
-        }
+        self._local_scan_session=start_scan_session(reason,len(roots))
         sequence=self._local_scan_sequence
         roots_snapshot=[Path(root) for root in roots]
-        roots_key=self._local_roots_key(roots_snapshot)
+        roots_key=scan_roots_key(roots_snapshot)
         if hasattr(self,"library_browser"):
             self.library_browser.begin_scan(reason)
         self._refresh_background_scan_activity()
@@ -4505,7 +4402,7 @@ class MainWindow(QMainWindow):
             self._local_scan_runner=None
             self._background_activity_timer.stop()
             self.background_activity.hide()
-            current_key=self._local_roots_key(self.providers.local_roots())
+            current_key=scan_roots_key(self.providers.local_roots())
             result=dict(snapshot or {})
 
             if bool(result.get("cancelled")):
@@ -4596,17 +4493,7 @@ class MainWindow(QMainWindow):
                 if hasattr(self,"home_status"):
                     self.home_status.setText(storage_message)
             else:
-                summary_parts=[]
-                for key,label in (
-                    ("unchanged","unchanged"),
-                    ("added","new"),
-                    ("changed","updated"),
-                    ("removed","removed"),
-                ):
-                    value=max(0,int(changes.get(key) or 0))
-                    if value:
-                        summary_parts.append(f"{value:,} {label}")
-                suffix=(" · " + " · ".join(summary_parts)) if summary_parts else ""
+                suffix=scan_change_suffix(changes)
                 self.statusBar().showMessage(
                     f"Music indexing complete · {count:,} tracks{suffix}",
                     6500,
