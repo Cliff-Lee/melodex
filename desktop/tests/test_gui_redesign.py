@@ -299,7 +299,10 @@ def test_redesigned_main_window_builds_with_goal_navigation(monkeypatch, tmp_pat
     assert window.now_views.tabText(0) == "Now Playing"
     assert window.now_views.tabText(1) == "Visuals"
     assert window.playlists_stack.currentWidget() is window.playlists_empty
-    assert window.journey_recipes_stack.currentWidget() is window.journey_recipes_empty
+    assert (
+        window.journey_workspace.archive.journey_recipes_stack.currentWidget()
+        is window.journey_workspace.archive.journey_recipes_empty
+    )
 
     window._update_play_button(True)
     assert window.play_button.text() == "❚❚"
