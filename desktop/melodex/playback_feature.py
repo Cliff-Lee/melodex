@@ -291,10 +291,6 @@ class PlaybackFeature(QObject):
         return bar
 
     def set_open_now_playing_handler(self, callback: Callable[[], None]) -> None:
-        try:
-            self.now_title.clicked.disconnect()
-        except (RuntimeError, TypeError):
-            pass
         self.now_title.clicked.connect(callback)
 
     def set_power_tools_visible(self, enabled: bool) -> None:
