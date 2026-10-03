@@ -25,6 +25,8 @@ def main() -> int:
         read("desktop/melodex/main_window.py")
         + "\n"
         + read("desktop/melodex/library_browser.py")
+        + "\n"
+        + read("desktop/melodex/sources_feature.py")
     )
 
     # One obvious docs front door from the project landing page.
@@ -83,7 +85,7 @@ def main() -> int:
             errors.append(f"docs/START_HERE.md is missing canonical UI label {label!r}")
         if label not in ui:
             errors.append(
-                f"docs/START_HERE.md references {label!r}, but it is absent from main_window.py"
+                f"docs/START_HERE.md references {label!r}, but it is absent from the desktop UI"
             )
 
     # Advanced source labels documented elsewhere should remain exact too.
