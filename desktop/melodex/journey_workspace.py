@@ -79,6 +79,7 @@ class JourneyWorkspace(QObject):
 
         self.music_map_page = QWidget()
         self.music_map_built = False
+        self._designer_open_pending = False
 
         self.music_path_start_ref = ""
         self.music_path_end_ref = ""
@@ -176,6 +177,9 @@ class JourneyWorkspace(QObject):
             return
         self._build_music_map()
         self.music_map_built = True
+        if self._designer_open_pending:
+            self._designer_open_pending = False
+            self._show_designer_tools()
 
     def refresh_music_map(self) -> None:
         if self.music_map_built:
@@ -185,7 +189,20 @@ class JourneyWorkspace(QObject):
         self.archive.refresh()
 
     def open_designer(self) -> None:
-        self._open_journey_designer()
+        self.navigationRequested.emit("music_map")
+        if self.music_map_built:
+            self._show_designer_tools()
+        else:
+            self._designer_open_pending = True
+        self._status(
+            "Journey design ready · select a track for the start, another for the destination, then shape the route",
+            6000,
+        )
+
+    def _show_designer_tools(self) -> None:
+        self.music_map_power_panel.show()
+        self.music_map_journey_panel.show()
+        self.music_path_steps.show()
 
     def on_track_changed(self, track: dict[str, Any]) -> None:
         if self.music_map_built:
@@ -545,18 +562,6 @@ class JourneyWorkspace(QObject):
     def _refresh_journeys(self) -> None:
         self.archive.refresh()
 
-    def _open_journey_designer(self) -> None:
-        self.navigationRequested.emit("music_map")
-        self.music_map_power_panel.show()
-        self.music_map_journey_panel.show()
-        self.music_path_steps.show()
-        self._status(
-            "Journey design ready · select a track for the start, another for the destination, then shape the route",
-            6000,
-        )
-    
-    
-    
     def _apply_pending_journey_recipe(self):
         from .journey_recipe import materialize_recipe_stages
         pending=self.pending_journey_recipe
