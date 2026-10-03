@@ -4,11 +4,6 @@ import time
 from collections.abc import Callable
 from typing import Any
 
-from PySide6.QtCore import QTimer
-
-from .motion import FAST_MOTION_MS
-
-
 _NAV_PARENT = {
     "home": "home",
     "for_you": "home",
@@ -47,11 +42,13 @@ class NavigationController:
         host: Any,
         *,
         refresh_delay_ms: int = 16,
-        schedule: Callable[[int, Callable[[], None]], None] | None = None,
+        settle_duration_ms: int = 120,
+        schedule: Callable[[int, Callable[[], None]], None],
     ) -> None:
         self.host = host
         self.refresh_delay_ms = max(0, int(refresh_delay_ms))
-        self._schedule = schedule or QTimer.singleShot
+        self.settle_duration_ms = max(0, int(settle_duration_ms))
+        self._schedule = schedule
         self.generation = 0
         self.lazy_builders: dict[str, Callable[[], None]] = {}
         self.built_lazy_pages: set[str] = set()
@@ -118,7 +115,7 @@ class NavigationController:
         self.host.pages[name].update()
         self.host.motion.settle(
             self.host.page_titles.get(name),
-            duration_ms=FAST_MOTION_MS,
+            duration_ms=self.settle_duration_ms,
             start_opacity=0.88,
         )
 
