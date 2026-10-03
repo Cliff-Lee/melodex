@@ -4,12 +4,16 @@ import hashlib
 import os
 import queue
 import threading
+import time
+from collections import deque
+from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Callable
 
 from ..provider import MusicProvider, ProviderInfo
 from ..library_scan import ProgressThrottle, ScanCancelled, ScanControl
 from ..scan_metrics import ScanProbe
+from ..storage_concurrency import StorageConcurrencyController
 
 AUDIO_EXTS = {".mp3", ".flac", ".m4a", ".aac", ".ogg", ".opus", ".wav", ".aiff", ".wma"}
 
@@ -246,6 +250,13 @@ class LocalFilesProvider(MusicProvider):
         queue_backpressure_events = 0
         directory_manifest_hits = 0
         directory_manifest_misses = 0
+        concurrency = StorageConcurrencyController(scan_roots)
+        metadata_executor = ThreadPoolExecutor(
+            max_workers=4,
+            thread_name_prefix="melodex-metadata",
+        )
+        pending_metadata: deque[dict[str, Any]] = deque()
+        max_metadata_in_flight = 0
 
         def emit(
             phase: str,
@@ -353,6 +364,7 @@ class LocalFilesProvider(MusicProvider):
                             key = self._override_key(p)
                             size: int | None = None
                             mtime_ns: int | None = None
+                            stat_started = time.perf_counter()
                             try:
                                 file_stat = p.stat()
                                 size = int(file_stat.st_size)
@@ -368,6 +380,10 @@ class LocalFilesProvider(MusicProvider):
                                 )
                             except OSError:
                                 stat_failures += 1
+                            finally:
+                                concurrency.observe_stat(
+                                    time.perf_counter() - stat_started
+                                )
 
                             audio_count += 1
                             manifest.update(
@@ -441,6 +457,48 @@ class LocalFilesProvider(MusicProvider):
         root_added = 0
         root_changed = 0
 
+        def read_metadata(path: Path) -> tuple[dict[str, Any], float]:
+            started = time.perf_counter()
+            value = self._metadata(path)
+            return value, max(0.0, time.perf_counter() - started)
+
+        def flush_one_metadata() -> None:
+            nonlocal tracks_indexed, max_metadata_in_flight
+            if not pending_metadata:
+                return
+            row = pending_metadata.popleft()
+            raw_metadata = dict(row.get("raw_metadata") or {})
+            future = row.get("future")
+            p = Path(row["path"])
+            if isinstance(future, Future):
+                raw_metadata, elapsed = future.result()
+                probe.record_metadata_result(elapsed)
+                emit(
+                    "metadata",
+                    current=p.name,
+                    completed=probe.metrics.metadata_attempts,
+                    total=0,
+                    root_unchanged=root_unchanged,
+                    root_added=root_added,
+                    root_changed=root_changed,
+                )
+            if raw_metadata:
+                index_records.append(
+                    {
+                        "track": dict(raw_metadata),
+                        "size": row.get("size"),
+                        "mtime_ns": row.get("mtime_ns"),
+                    }
+                )
+                tracks_indexed += 1
+                if collect_tracks:
+                    tracks.append(self._apply_override(raw_metadata))
+
+        def drain_metadata() -> None:
+            while pending_metadata:
+                control.checkpoint()
+                flush_one_metadata()
+
         try:
             while not producer_done.is_set() or not work_queue.empty():
                 control.checkpoint()
@@ -504,36 +562,45 @@ class LocalFilesProvider(MusicProvider):
                     )
 
                     if reusable:
-                        raw_metadata = previous_track
                         root_unchanged += 1
+                        pending_metadata.append(
+                            {
+                                "path": p,
+                                "size": size,
+                                "mtime_ns": mtime_ns,
+                                "raw_metadata": previous_track,
+                            }
+                        )
                     else:
                         if previous is None:
                             root_added += 1
                         else:
                             root_changed += 1
-                        with probe.metadata_read():
-                            raw_metadata = self._metadata(p)
-                        emit(
-                            "metadata",
-                            current=p.name,
-                            completed=probe.metrics.metadata_attempts,
-                            total=0,
-                            root_unchanged=root_unchanged,
-                            root_added=root_added,
-                            root_changed=root_changed,
-                        )
-
-                    if raw_metadata:
-                        index_records.append(
+                        pending_metadata.append(
                             {
-                                "track": dict(raw_metadata),
+                                "path": p,
                                 "size": size,
                                 "mtime_ns": mtime_ns,
+                                "future": metadata_executor.submit(
+                                    read_metadata,
+                                    p,
+                                ),
                             }
                         )
-                        tracks_indexed += 1
-                        if collect_tracks:
-                            tracks.append(self._apply_override(raw_metadata))
+
+                    decision = concurrency.decision()
+                    max_metadata_in_flight = max(
+                        max_metadata_in_flight,
+                        sum(
+                            1
+                            for row in pending_metadata
+                            if isinstance(row.get("future"), Future)
+                        ),
+                    )
+                    while len(pending_metadata) >= decision.in_flight_limit:
+                        control.checkpoint()
+                        flush_one_metadata()
+
                     emit(
                         "discovering",
                         current=p.parent.name,
@@ -571,6 +638,7 @@ class LocalFilesProvider(MusicProvider):
                     continue
 
                 if item_type == "root_end":
+                    drain_metadata()
                     if current_root_state is None:
                         continue
                     walk_errors = int(item.get("walk_errors") or 0)
@@ -620,6 +688,11 @@ class LocalFilesProvider(MusicProvider):
             if cancelled:
                 control.cancel()
             producer.join(timeout=1.0)
+            metadata_executor.shutdown(
+                wait=not cancelled,
+                cancel_futures=cancelled,
+            )
+            final_concurrency = concurrency.decision()
             metrics = probe.finish(
                 tracks_indexed=0 if cancelled else tracks_indexed
             )
@@ -639,6 +712,12 @@ class LocalFilesProvider(MusicProvider):
                     "directory_manifest_hits": int(directory_manifest_hits),
                     "directory_manifest_misses": int(directory_manifest_misses),
                     "directory_manifests": len(directory_manifests),
+                    "storage_profile": final_concurrency.profile,
+                    "storage_average_stat_ms": final_concurrency.average_stat_ms,
+                    "storage_network_hint": final_concurrency.network_hint,
+                    "metadata_worker_limit": final_concurrency.metadata_workers,
+                    "metadata_in_flight_limit": final_concurrency.in_flight_limit,
+                    "metadata_max_in_flight": int(max_metadata_in_flight),
                     "pipeline_queue_capacity": int(queue_capacity),
                     "pipeline_max_queue_depth": int(max_queue_depth),
                     "pipeline_backpressure_events": int(
