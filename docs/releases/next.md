@@ -1,9 +1,9 @@
 # Next release — draft notes
 
-**Melodex v0.7.10 release candidate.**
+**Development after Melodex v0.7.10.**
 
-Current target version: **0.7.10**.
+Current development version: **0.7.11.dev0**.
 
-This release contains Campaign 11: NAS/network-storage hardening, deterministic fault qualification, persistent cached-library fallback UX, and privacy-safe beta diagnostics on top of the v0.7.9 Elastic Library Engine.
+This file tracks changes intended for the next release after **v0.7.10**.
 
-After v0.7.10 is published, this file can return to the next development target.
+No post-v0.7.10 campaigns have been added yet.
