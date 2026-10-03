@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import melodex.providers.local_files as local_files
+from melodex.library_index import LocalLibraryIndex
 from melodex.providers.local_files import LocalFilesProvider
 
 
@@ -144,3 +145,47 @@ def test_p11d_scandir_skips_stat_for_non_audio_sidecars(
     assert len(snapshot["tracks"]) == 1
     assert stat_calls == ["one.flac"]
     assert snapshot["metrics"]["stat_failures"] == 0
+
+
+def test_p11d_incomplete_network_rescan_keeps_last_committed_index(
+    monkeypatch,
+    tmp_path: Path,
+):
+    root = tmp_path / "music"
+    root.mkdir()
+    track = root / "one.flac"
+    track.write_bytes(b"x")
+
+    monkeypatch.setattr(
+        LocalFilesProvider,
+        "_metadata",
+        staticmethod(_metadata),
+    )
+    provider = LocalFilesProvider(scan_on_init=False)
+    index = LocalLibraryIndex(tmp_path / "library.sqlite3")
+
+    first = provider.scan_snapshot([root])
+    first_persistence = index.replace_scan([root], first)
+    assert first_persistence["tracks_persisted"] == 1
+    assert len(index.load_tracks([root])) == 1
+
+    monkeypatch.setattr(
+        local_files.os,
+        "scandir",
+        lambda _path: (_ for _ in ()).throw(OSError("SMB share stalled")),
+    )
+    interrupted = provider.scan_snapshot(
+        [root],
+        cached_entries=index.load_scan_cache([root]),
+        cached_directories=index.load_directory_manifests([root]),
+        collect_tracks=False,
+    )
+    assert interrupted["root_states"][0]["complete"] is False
+
+    persistence = index.replace_scan([root], interrupted)
+
+    assert persistence["roots_persisted"] == 0
+    assert persistence["roots_incomplete"] == 1
+    preserved = index.load_tracks([root])
+    assert len(preserved) == 1
+    assert preserved[0]["artist"] == "NAS Test Artist"
