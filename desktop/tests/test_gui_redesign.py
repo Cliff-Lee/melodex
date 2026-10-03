@@ -263,7 +263,7 @@ def test_redesigned_main_window_builds_with_goal_navigation(monkeypatch, tmp_pat
     assert "now_playing" not in window.nav_buttons
     assert "album_wall" not in window.nav_buttons
     assert not hasattr(window, "library_browser")
-    assert not hasattr(window, "rich_now")
+    assert not hasattr(window.playback_feature, "rich_now")
     assert window._built_lazy_pages == set()
 
     window.open_page("library")
@@ -276,16 +276,16 @@ def test_redesigned_main_window_builds_with_goal_navigation(monkeypatch, tmp_pat
 
     window.open_page("now_playing")
     app.processEvents()
-    assert not hasattr(window, "rich_now")
+    assert not hasattr(window.playback_feature, "rich_now")
     QTest.qWait(window._page_refresh_delay_ms + 10)
     app.processEvents()
-    assert hasattr(window.rich_now, "import_lyrics_button")
-    assert hasattr(window.rich_now, "paste_lyrics_button")
-    assert hasattr(window.rich_now, "find_lyrics_plugin_button")
-    assert hasattr(window.rich_now, "online_lyrics_button")
-    assert window.rich_now.online_lyrics_button.text() == "Refresh lyrics"
-    assert hasattr(window.rich_now, "auto_online_lyrics")
-    assert window.rich_now.auto_online_lyrics.isChecked() is False
+    assert hasattr(window.playback_feature.rich_now, "import_lyrics_button")
+    assert hasattr(window.playback_feature.rich_now, "paste_lyrics_button")
+    assert hasattr(window.playback_feature.rich_now, "find_lyrics_plugin_button")
+    assert hasattr(window.playback_feature.rich_now, "online_lyrics_button")
+    assert window.playback_feature.rich_now.online_lyrics_button.text() == "Refresh lyrics"
+    assert hasattr(window.playback_feature.rich_now, "auto_online_lyrics")
+    assert window.playback_feature.rich_now.auto_online_lyrics.isChecked() is False
     assert "now_playing" in window._built_lazy_pages
     assert hasattr(window, "sources_feature")
     assert set(window.sources_feature.source_feature_buttons) == {
@@ -296,8 +296,8 @@ def test_redesigned_main_window_builds_with_goal_navigation(monkeypatch, tmp_pat
         "context",
     }
     assert window.sources_feature.source_feature_buttons["lyrics"].text() == "Lyrics"
-    assert window.now_views.tabText(0) == "Now Playing"
-    assert window.now_views.tabText(1) == "Visuals"
+    assert window.playback_feature.now_views.tabText(0) == "Now Playing"
+    assert window.playback_feature.now_views.tabText(1) == "Visuals"
     assert window.playlists_stack.currentWidget() is window.playlists_empty
     assert (
         window.journey_workspace.archive.journey_recipes_stack.currentWidget()
@@ -320,7 +320,7 @@ def test_redesigned_main_window_builds_with_goal_navigation(monkeypatch, tmp_pat
     window.power_toggle.setChecked(False)
     app.processEvents()
     assert not window.sources_feature.source_power_panel.isVisible()
-    assert not window.player_power_actions.isVisible()
+    assert not window.playback_feature.player_power_actions.isVisible()
 
     window.close()
     app.processEvents()
@@ -854,9 +854,9 @@ def test_plugins_surface_where_their_features_are_used(monkeypatch, tmp_path):
     assert bool(window.artwork_plugin_presence.property("active"))
 
     assert "Taste Helper" in window.recommendation_plugin_presence.label.text()
-    assert not hasattr(window.rich_now, "lyrics_plugin_presence")
-    assert "Liner Notes" in window.rich_now.context_plugin_presence.label.text()
-    assert "Needs Setup" not in window.rich_now.context_plugin_presence.label.text()
+    assert not hasattr(window.playback_feature.rich_now, "lyrics_plugin_presence")
+    assert "Liner Notes" in window.playback_feature.rich_now.context_plugin_presence.label.text()
+    assert "Needs Setup" not in window.playback_feature.rich_now.context_plugin_presence.label.text()
 
     opened = []
     monkeypatch.setattr(
@@ -868,8 +868,8 @@ def test_plugins_surface_where_their_features_are_used(monkeypatch, tmp_path):
     window.search_plugin_presence.action.click()
     window.artwork_plugin_presence.action.click()
     window.recommendation_plugin_presence.action.click()
-    window.rich_now.manage_lyrics_sources_action.trigger()
-    window.rich_now.context_plugin_presence.action.click()
+    window.playback_feature.rich_now.manage_lyrics_sources_action.trigger()
+    window.playback_feature.rich_now.context_plugin_presence.action.click()
 
     assert opened == [
         "search",
@@ -926,7 +926,7 @@ def test_lyrics_lookup_outcomes_are_distinct_in_now_playing(monkeypatch, tmp_pat
 
     window = main_window.MainWindow()
     window.navigation.ensure_lazy_page_built("now_playing")
-    widget = window.rich_now
+    widget = window.playback_feature.rich_now
     widget.track = {
         "artist": "Example Artist",
         "title": "Example Song",
@@ -1007,7 +1007,7 @@ def test_synced_lyrics_seek_source_switch_and_editability(monkeypatch, tmp_path)
 
     window = main_window.MainWindow()
     window.navigation.ensure_lazy_page_built("now_playing")
-    widget = window.rich_now
+    widget = window.playback_feature.rich_now
     audio = tmp_path / "song.mp3"
     audio.write_bytes(b"audio")
     widget.track = {
@@ -1080,7 +1080,7 @@ def test_fullscreen_lyrics_tracks_synced_position(monkeypatch, tmp_path):
 
     window = main_window.MainWindow()
     window.navigation.ensure_lazy_page_built("now_playing")
-    widget = window.rich_now
+    widget = window.playback_feature.rich_now
     widget.track = {
         "artist": "Example Artist",
         "title": "Example Song",
@@ -1169,7 +1169,7 @@ def test_translate_lyrics_is_explicit_and_uses_configured_llm(monkeypatch, tmp_p
         lambda language, text: shown.append((language, text)),
     )
 
-    window._translate_lyrics({
+    window.playback_feature._translate_lyrics({
         "text": "First line\nSecond line",
         "artist": "Example Artist",
         "title": "Example Song",
@@ -1199,7 +1199,7 @@ def test_online_lyrics_translation_signal_contains_only_current_lyrics(monkeypat
 
     window = main_window.MainWindow()
     window.navigation.ensure_lazy_page_built("now_playing")
-    widget = window.rich_now
+    widget = window.playback_feature.rich_now
     widget.track = {
         "artist": "Artist",
         "title": "Song",
@@ -1248,7 +1248,7 @@ def test_online_lyrics_miss_does_not_replace_existing_local_lyrics(monkeypatch, 
 
     window = main_window.MainWindow()
     window.navigation.ensure_lazy_page_built("now_playing")
-    widget = window.rich_now
+    widget = window.playback_feature.rich_now
     widget.track = {
         "artist": "Example Artist",
         "title": "Example Song",
@@ -1464,7 +1464,7 @@ def test_native_lyrics_toolbar_hides_plugin_management_chrome(monkeypatch, tmp_p
 
     window = main_window.MainWindow()
     window.navigation.ensure_lazy_page_built("now_playing")
-    widget = window.rich_now
+    widget = window.playback_feature.rich_now
 
     assert not hasattr(widget, "lyrics_plugin_presence")
     assert widget.online_lyrics_button.text() == "Refresh lyrics"
@@ -1508,7 +1508,7 @@ def test_refresh_lyrics_checks_native_and_installed_sources_before_online(monkey
 
     window = main_window.MainWindow()
     window.navigation.ensure_lazy_page_built("now_playing")
-    widget = window.rich_now
+    widget = window.playback_feature.rich_now
     widget.track = {
         "artist": "Example Artist",
         "title": "Example Song",
@@ -2154,7 +2154,7 @@ def test_love_and_keep_acknowledge_before_persistence(monkeypatch, tmp_path):
         "Track",
         1,
     )
-    window.current_track = dict(track)
+    window.playback_feature._current_track = dict(track)
     pending = []
 
     def hold_async(fn, done, on_error=None, **_kwargs):
@@ -2162,11 +2162,11 @@ def test_love_and_keep_acknowledge_before_persistence(monkeypatch, tmp_path):
 
     monkeypatch.setattr(window, "_run_async", hold_async)
 
-    window._feedback(True)
+    window.playback_feature.record_feedback(True)
 
     # The visual action completes before persistence is even allowed to run.
-    assert window.love_button.text() == "♥ Loved"
-    assert window.love_button.isEnabled() is False
+    assert window.playback_feature.love_button.text() == "♥ Loved"
+    assert window.playback_feature.love_button.isEnabled() is False
     assert len(pending) == 1
     assert window.state.track_signal(track).get("loves", 0) == 0
 
@@ -2174,11 +2174,11 @@ def test_love_and_keep_acknowledge_before_persistence(monkeypatch, tmp_path):
     assert result is True
     assert window.state.track_signal(track)["loves"] == 1
 
-    window._set_taste_action_state(loved=False, kept=False)
-    window._keep()
+    window.playback_feature._set_taste_action_state(loved=False, kept=False)
+    window.playback_feature.keep_current()
 
-    assert window.keep_button.text() == "✓ Kept"
-    assert window.keep_button.isEnabled() is False
+    assert window.playback_feature.keep_button.text() == "✓ Kept"
+    assert window.playback_feature.keep_button.isEnabled() is False
     assert len(pending) == 1
     assert window.state.track_signal(track).get("keeps", 0) == 0
 
@@ -2203,7 +2203,7 @@ def test_optimistic_taste_action_rolls_back_if_persistence_fails(monkeypatch, tm
     monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
 
     window = main_window.MainWindow()
-    window.current_track = _track(
+    window.playback_feature._current_track = _track(
         str(tmp_path / "track.mp3"),
         "Artist",
         "Album",
@@ -2217,16 +2217,16 @@ def test_optimistic_taste_action_rolls_back_if_persistence_fails(monkeypatch, tm
 
     monkeypatch.setattr(window, "_run_async", hold_async)
 
-    window._feedback(True)
-    assert window.love_button.text() == "♥ Loved"
-    assert window.love_button.isEnabled() is False
+    window.playback_feature.record_feedback(True)
+    assert window.playback_feature.love_button.text() == "♥ Loved"
+    assert window.playback_feature.love_button.isEnabled() is False
 
     error = pending[0][2]
     assert error is not None
     error("synthetic database failure")
 
-    assert window.love_button.text() == "♥"
-    assert window.love_button.isEnabled() is True
+    assert window.playback_feature.love_button.text() == "♥"
+    assert window.playback_feature.love_button.isEnabled() is True
     assert "Could not save preference" in window.statusBar().currentMessage()
 
     window.close()
@@ -2289,40 +2289,40 @@ def test_next_track_prefetch_is_local_only_and_consumed_on_advance(monkeypatch, 
 
     monkeypatch.setattr(window, "_run_async", immediate_async)
 
-    window._prefetch_sequence = 1
-    window._prefetch_next_track_assets(1)
+    window.playback_feature._prefetch_sequence = 1
+    window.playback_feature._prefetch_next_track_assets(1)
 
     token = main_window.UserState.track_key(upcoming)
     assert artwork_calls == ["Next"]
-    assert token in window._prefetched_track_assets
-    assert window._prefetched_track_assets[token]["analysis"] is cached_analysis
+    assert token in window.playback_feature._prefetched_track_assets
+    assert window.playback_feature._prefetched_track_assets[token]["analysis"] is cached_analysis
 
     cover_calls = []
     analysis_calls = []
     monkeypatch.setattr(
-        window.player_cover,
+        window.playback_feature.player_cover,
         "set_cover",
         lambda path, **kwargs: cover_calls.append(path),
     )
     monkeypatch.setattr(
-        window.living_canvas,
+        window.playback_feature.living_canvas,
         "set_track",
         lambda track, analysis: analysis_calls.append(analysis),
     )
-    monkeypatch.setattr(window.living_canvas, "refresh_context", lambda: None)
-    monkeypatch.setattr(window.rich_now, "set_track", lambda _track: None)
+    monkeypatch.setattr(window.playback_feature.living_canvas, "refresh_context", lambda: None)
+    monkeypatch.setattr(window.playback_feature.rich_now, "set_track", lambda _track: None)
     monkeypatch.setattr(window, "_refresh_home_continue", lambda: None)
 
     # If prefetch worked, advancing must not call local_artwork a second time.
     window.player.index = 1
-    window.current_track = None
-    window.current_track_started = 0
-    window._on_track_changed(dict(upcoming))
+    window.playback_feature._current_track = None
+    window.playback_feature._current_track_started = 0
+    window.playback_feature.on_track_changed(dict(upcoming))
 
     assert artwork_calls == ["Next"]
     assert cover_calls[-1] == str(tmp_path / "next-cover.jpg")
     assert analysis_calls[-1] is cached_analysis
-    assert token not in window._prefetched_track_assets
+    assert token not in window.playback_feature._prefetched_track_assets
 
     window.close()
     app.processEvents()
@@ -2354,11 +2354,11 @@ def test_next_track_prefetch_yields_to_large_library_scan(monkeypatch, tmp_path)
         lambda *args, **kwargs: calls.append((args, kwargs)),
     )
 
-    window._prefetch_sequence = 3
-    window._prefetch_next_track_assets(3)
+    window.playback_feature._prefetch_sequence = 3
+    window.playback_feature._prefetch_next_track_assets(3)
 
     assert calls == []
-    assert window._prefetched_track_assets == {}
+    assert window.playback_feature._prefetched_track_assets == {}
 
     window.local_scan._runner = None
     window.close()
