@@ -150,3 +150,56 @@ def test_memory_atlas_is_named_and_status_explains_visual_semantics():
 
     view.deleteLater()
     app.processEvents()
+
+
+def test_memory_atlas_reuses_static_render_cache_until_inputs_change():
+    _QEvent, _QPointF, _Qt, QColor, QImage, _QMouseEvent, QApplication = _qt()
+    from melodex.visualization_models import MemoryMark
+    from melodex.visualization_profile import build_visual_profile
+    from melodex.visualization_scene import LivingScene
+
+    app = QApplication.instance() or QApplication([])
+    scene = LivingScene()
+    scene.resize(960, 540)
+    scene.set_profile(build_visual_profile({"artist": "Current", "title": "Track"}))
+    scene.set_mode("memory")
+    marks = tuple(
+        MemoryMark(
+            f"Session {index}",
+            f"Artist {index % 5}",
+            1 + index % 4,
+            (205 + index * 17) % 360,
+            index / 31.0,
+            0.14 + 0.68 * ((index * 7) % 24) / 23.0,
+            0.01,
+            f"Oct 03 · {index % 24:02d}:00",
+            f"Track {index}",
+            "Evening",
+        )
+        for index in range(32)
+    )
+    scene.set_memory(marks, "sessions")
+
+    image = QImage(scene.size(), QImage.Format_ARGB32)
+    image.fill(QColor("#000000"))
+    scene.render(image)
+    first_key = scene._memory_cache.cacheKey()
+    assert first_key
+
+    scene.render(image)
+    assert scene._memory_cache.cacheKey() == first_key
+
+    scene.set_accent_color(QColor("#86b9ff"))
+    assert scene._memory_cache.isNull()
+    scene.render(image)
+    second_key = scene._memory_cache.cacheKey()
+    assert second_key and second_key != first_key
+
+    scene.resize(1100, 620)
+    larger = QImage(scene.size(), QImage.Format_ARGB32)
+    larger.fill(QColor("#000000"))
+    scene.render(larger)
+    assert scene._memory_cache.size() == scene.size()
+
+    scene.deleteLater()
+    app.processEvents()
