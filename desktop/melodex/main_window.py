@@ -4323,7 +4323,6 @@ class MainWindow(QMainWindow):
         )
 
     def _start_local_scan(self, reason: str = "scan") -> None:
-        from .library_scan_process import LibraryScanProcess
         roots=self.providers.local_roots()
         if not roots:
             self.statusBar().showMessage("Add a music folder first",3000)
@@ -4348,7 +4347,6 @@ class MainWindow(QMainWindow):
         self._local_scan_last_progress={"phase":"discovering","audio_files_seen":0}
         self._local_scan_session=start_scan_session(reason,len(roots))
         roots_snapshot=[Path(root) for root in roots]
-        roots_key=scan_roots_key(roots_snapshot)
         if hasattr(self,"library_browser"):
             self.library_browser.begin_scan(reason)
         self._refresh_background_scan_activity()
@@ -4362,13 +4360,17 @@ class MainWindow(QMainWindow):
             )
 
         try:
-            sequence=self.local_scan.start(roots_snapshot)
+            self.local_scan.start(roots_snapshot)
         except Exception as exc:
             self._local_scan_failed(self.local_scan.sequence,str(exc))
             return
+        self._refresh_background_scan_activity()
 
     def _local_scan_done(self, sequence: int, snapshot: object) -> None:
-        if self._closing or not self.local_scan.finish(sequence):
+        if self._closing or not self.local_scan.is_current(sequence):
+            return
+        scanned_roots_key=self.local_scan.roots_key
+        if not self.local_scan.finish(sequence):
             return
         self._background_activity_timer.stop()
         self.background_activity.hide()
@@ -4376,104 +4378,102 @@ class MainWindow(QMainWindow):
         result=dict(snapshot or {})
 
         if bool(result.get("cancelled")):
-                elapsed=max(0.0,time.monotonic()-self._local_scan_started_at)
-                self._local_scan_session.update(
-                    {
-                        "status": "cancelled",
-                        "running": False,
-                        "paused": False,
-                        "pending_rescan": bool(self.local_scan.pending),
-                        "elapsed_seconds": round(elapsed, 3),
-                        "hard_cancelled": bool(result.get("hard_cancelled")),
-                    }
-                )
-                if hasattr(self,"library_browser"):
-                    self.library_browser.finish_scan("cancelled")
-                    QTimer.singleShot(3500,self.library_browser.clear_scan_status)
-                self._show_home()
-                if bool(result.get("hard_cancelled")):
-                    self.statusBar().showMessage(
-                        "Music indexing stopped · unresponsive scanner terminated · existing library kept",
-                        6500,
-                    )
-                else:
-                    self.statusBar().showMessage(
-                        "Music indexing cancelled · existing library kept",
-                        5000,
-                    )
-                if self.local_scan.pending:
-                    self.local_scan.clear_pending()
-                    QTimer.singleShot(
-                        0,
-                        lambda:self._start_local_scan("queued rescan"),
-                    )
-                return
-
-            # If roots changed while the disposable worker was scanning, its
-            # catalog is not applied. A queued scan immediately rebuilds the
-            # current root set.
-            if current_key != roots_key:
-                self.local_scan.clear_pending()
-                QTimer.singleShot(
-                    0,
-                    lambda:self._start_local_scan("queued change"),
-                )
-                return
-
-            from .scan_outcome import scan_storage_message, scan_storage_outcome
-
-            count=self.providers.apply_local_scan_snapshot(result)
-            changes=dict(result.get("changes") or {})
-            outcome=scan_storage_outcome(result)
             elapsed=max(0.0,time.monotonic()-self._local_scan_started_at)
             self._local_scan_session.update(
                 {
-                    "status": "degraded" if outcome["degraded"] else "complete",
+                    "status": "cancelled",
                     "running": False,
                     "paused": False,
                     "pending_rescan": bool(self.local_scan.pending),
                     "elapsed_seconds": round(elapsed, 3),
-                    "phase": "complete",
-                    "completed": count,
-                    "total": count,
-                    "storage_state": str(outcome["state"]),
-                    "root_count": int(outcome["root_count"]),
-                    "roots_unavailable": int(outcome["roots_unavailable"]),
-                    "roots_incomplete": int(outcome["roots_incomplete"]),
-                    "io_retries": int(outcome["io_retries"]),
+                    "hard_cancelled": bool(result.get("hard_cancelled")),
                 }
             )
-            self._refresh_library()
-            self._show_home()
-            storage_message=scan_storage_message(outcome)
             if hasattr(self,"library_browser"):
-                self.library_browser.finish_scan(
-                    "degraded" if outcome["degraded"] else "complete",
-                    count=count,
-                    changes=changes,
-                    storage_outcome=outcome,
-                )
-                # Keep degraded NAS status visible until the next scan/user
-                # action; clean completion can fade away as before.
-                if not outcome["degraded"]:
-                    QTimer.singleShot(3500,self.library_browser.clear_scan_status)
-            if outcome["degraded"]:
-                message=f"NAS/library warning · {storage_message}"
-                self.statusBar().showMessage(message,12000)
-                if hasattr(self,"home_status"):
-                    self.home_status.setText(storage_message)
-            else:
-                suffix=scan_change_suffix(changes)
+                self.library_browser.finish_scan("cancelled")
+                QTimer.singleShot(3500,self.library_browser.clear_scan_status)
+            self._show_home()
+            if bool(result.get("hard_cancelled")):
                 self.statusBar().showMessage(
-                    f"Music indexing complete · {count:,} tracks{suffix}",
+                    "Music indexing stopped · unresponsive scanner terminated · existing library kept",
                     6500,
                 )
-            if self.local_scan.pending:
-                self.local_scan.clear_pending()
+            else:
+                self.statusBar().showMessage(
+                    "Music indexing cancelled · existing library kept",
+                    5000,
+                )
+            if self.local_scan.take_pending():
                 QTimer.singleShot(
                     0,
                     lambda:self._start_local_scan("queued rescan"),
                 )
+            return
+
+        # If roots changed while the disposable worker was scanning, its
+        # catalog is not applied. A fresh scan immediately rebuilds the
+        # current root set.
+        if current_key != scanned_roots_key:
+            self.local_scan.clear_pending()
+            QTimer.singleShot(
+                0,
+                lambda:self._start_local_scan("queued change"),
+            )
+            return
+
+        from .scan_outcome import scan_storage_message, scan_storage_outcome
+
+        count=self.providers.apply_local_scan_snapshot(result)
+        changes=dict(result.get("changes") or {})
+        outcome=scan_storage_outcome(result)
+        elapsed=max(0.0,time.monotonic()-self._local_scan_started_at)
+        self._local_scan_session.update(
+            {
+                "status": "degraded" if outcome["degraded"] else "complete",
+                "running": False,
+                "paused": False,
+                "pending_rescan": bool(self.local_scan.pending),
+                "elapsed_seconds": round(elapsed, 3),
+                "phase": "complete",
+                "completed": count,
+                "total": count,
+                "storage_state": str(outcome["state"]),
+                "root_count": int(outcome["root_count"]),
+                "roots_unavailable": int(outcome["roots_unavailable"]),
+                "roots_incomplete": int(outcome["roots_incomplete"]),
+                "io_retries": int(outcome["io_retries"]),
+            }
+        )
+        self._refresh_library()
+        self._show_home()
+        storage_message=scan_storage_message(outcome)
+        if hasattr(self,"library_browser"):
+            self.library_browser.finish_scan(
+                "degraded" if outcome["degraded"] else "complete",
+                count=count,
+                changes=changes,
+                storage_outcome=outcome,
+            )
+            # Keep degraded NAS status visible until the next scan/user
+            # action; clean completion can fade away as before.
+            if not outcome["degraded"]:
+                QTimer.singleShot(3500,self.library_browser.clear_scan_status)
+        if outcome["degraded"]:
+            message=f"NAS/library warning · {storage_message}"
+            self.statusBar().showMessage(message,12000)
+            if hasattr(self,"home_status"):
+                self.home_status.setText(storage_message)
+        else:
+            suffix=scan_change_suffix(changes)
+            self.statusBar().showMessage(
+                f"Music indexing complete · {count:,} tracks{suffix}",
+                6500,
+            )
+        if self.local_scan.take_pending():
+            QTimer.singleShot(
+                0,
+                lambda:self._start_local_scan("queued rescan"),
+            )
 
     def _local_scan_failed(self, sequence: int, error: str) -> None:
         if self._closing or not self.local_scan.finish(sequence):
