@@ -1127,8 +1127,8 @@ class MainWindow(QMainWindow):
     def _build_home(self):
         l=self._page_layout(
             "home",
-            "What do you feel like hearing?",
-            "Start with an intention. Melodex can stay familiar, help you rediscover something, or take you somewhere less expected.",
+            "Home",
+            "Pick something to play, or carry on where you left off.",
         )
 
         hero=QFrame()
@@ -1137,15 +1137,14 @@ class MainWindow(QMainWindow):
         hero_l.setContentsMargins(22,20,22,20)
         hero_l.setSpacing(10)
         prompt=QLabel("Start listening")
-        prompt.setStyleSheet("font-size:20px;font-weight:720")
+        prompt.setObjectName("heroTitle")
         hero_l.addWidget(prompt)
-        explanation=QLabel(
-            "One click builds a listening session from your own library. "
-            "You can fine-tune it later if you want."
+        self.home_explanation=QLabel(
+            "A session from your library, shaped as you listen."
         )
-        explanation.setWordWrap(True)
-        explanation.setStyleSheet("color:#9fa9b8")
-        hero_l.addWidget(explanation)
+        self.home_explanation.setWordWrap(True)
+        self.home_explanation.setObjectName("mutedText")
+        hero_l.addWidget(self.home_explanation)
 
         self.home_primary_button=QPushButton("▶  Play something")
         self.home_primary_button.setObjectName("primaryButton")
@@ -1154,11 +1153,13 @@ class MainWindow(QMainWindow):
         set_help(
             self.home_primary_button,
             "Play something",
-            "Builds a balanced one-hour session from your local library using your listening history and Flow when available.",
+            "Starts a balanced session from your library. You can steer it later.",
         )
         hero_l.addWidget(self.home_primary_button)
 
-        moods=QHBoxLayout()
+        self.home_moods_widget=QWidget()
+        moods=QHBoxLayout(self.home_moods_widget)
+        moods.setContentsMargins(0,0,0,0)
         comfort=QPushButton("Comfort")
         explore=QPushButton("Explore")
         rediscover=QPushButton("Rediscover")
@@ -1176,12 +1177,12 @@ class MainWindow(QMainWindow):
         moods.addWidget(rediscover)
         moods.addStretch(1)
         moods.addWidget(tune)
-        hero_l.addLayout(moods)
+        hero_l.addWidget(self.home_moods_widget)
         l.addWidget(hero)
 
-        continue_title=QLabel("Continue listening")
-        continue_title.setStyleSheet("font-size:18px;font-weight:700;margin-top:10px")
-        l.addWidget(continue_title)
+        self.home_continue_heading=QLabel("Continue listening")
+        self.home_continue_heading.setStyleSheet("font-size:18px;font-weight:700;margin-top:10px")
+        l.addWidget(self.home_continue_heading)
 
         self.home_continue=QFrame()
         self.home_continue.setObjectName("continueCard")
@@ -1195,7 +1196,7 @@ class MainWindow(QMainWindow):
         self.home_continue_title.setStyleSheet("font-size:17px;font-weight:700")
         self.home_continue_meta=QLabel("Play something and it will be easy to return here.")
         self.home_continue_meta.setWordWrap(True)
-        self.home_continue_meta.setStyleSheet("color:#98a3b3")
+        self.home_continue_meta.setObjectName("mutedText")
         continue_text.addStretch(1)
         continue_text.addWidget(self.home_continue_title)
         continue_text.addWidget(self.home_continue_meta)
@@ -1213,27 +1214,29 @@ class MainWindow(QMainWindow):
         continue_l.addWidget(self.home_continue_button)
         l.addWidget(self.home_continue)
 
-        explore_title=QLabel("Explore your music")
-        explore_title.setStyleSheet("font-size:18px;font-weight:700;margin-top:10px")
-        l.addWidget(explore_title)
-        cards=QHBoxLayout()
+        self.home_explore_heading=QLabel("Explore your music")
+        self.home_explore_heading.setStyleSheet("font-size:18px;font-weight:700;margin-top:10px")
+        l.addWidget(self.home_explore_heading)
+        self.home_explore_widget=QWidget()
+        cards=QHBoxLayout(self.home_explore_widget)
+        cards.setContentsMargins(0,0,0,0)
         library_card=ActionCard(
             "Browse your collection",
-            "Albums, artists and tracks with artwork instead of file-system detail.",
+            "Albums, artists and tracks.",
             eyebrow="My Music",
             action_text="Browse",
         )
         library_card.clicked.connect(lambda:self.open_page("library"))
         wall_card=ActionCard(
             "Album Wall",
-            "Explore your records spatially and move between sonic, time and familiarity views.",
+            "Browse your collection as a wall of covers.",
             eyebrow="Visual",
             action_text="Explore",
         )
         wall_card.clicked.connect(lambda:self.open_page("album_wall"))
         map_card=ActionCard(
             "Music Map",
-            "See relationships between tracks and plan a route when you want deeper exploration.",
+            "See how tracks in your library connect.",
             eyebrow="Deep explore",
             action_text="Open map",
         )
@@ -1241,11 +1244,11 @@ class MainWindow(QMainWindow):
         cards.addWidget(library_card,1)
         cards.addWidget(wall_card,1)
         cards.addWidget(map_card,1)
-        l.addLayout(cards)
+        l.addWidget(self.home_explore_widget)
 
         self.home_status=QLabel()
         self.home_status.setWordWrap(True)
-        self.home_status.setStyleSheet("color:#7f8b9b;margin-top:8px")
+        self.home_status.setObjectName("subtleText")
         l.addWidget(self.home_status)
         l.addStretch(1)
 
@@ -2533,17 +2536,25 @@ class MainWindow(QMainWindow):
     def _show_home(self):
         self._refresh_taste()
         count=self.providers.local_catalog_count()
-        src=len(self.providers.providers)
-        ext=len(self.providers.extensions(cached_config=True))
-        flow_text = (
-            "Flow analysis ready"
-            if self.flow.analysis_available
-            else "metadata mode; install ffmpeg for deeper sonic analysis"
-        )
-        self.home_status.setText(
-            f"{count:,} local tracks · {src} music sources · {ext} plugin"
-            f"{'s' if ext != 1 else ''} · {flow_text}"
-        )
+        has_library=bool(count)
+        if hasattr(self,"home_explanation"):
+            self.home_explanation.setText(
+                "A session from your library, shaped as you listen."
+                if has_library
+                else "Add a folder of music. Your files stay where they are."
+            )
+        if hasattr(self,"home_moods_widget"):
+            self.home_moods_widget.setVisible(has_library)
+        if hasattr(self,"home_explore_heading"):
+            self.home_explore_heading.setVisible(has_library)
+        if hasattr(self,"home_explore_widget"):
+            self.home_explore_widget.setVisible(has_library)
+        if hasattr(self,"home_status"):
+            self.home_status.setVisible(has_library)
+            if has_library:
+                self.home_status.setText(
+                    f"{count:,} track{'s' if count != 1 else ''} in your library"
+                )
         if hasattr(self,"home_primary_button"):
             if count:
                 self.home_primary_button.setText("▶  Play something")
@@ -2574,6 +2585,9 @@ class MainWindow(QMainWindow):
         track = dict(self.current_track or (recent[0] if recent else {}))
         self.home_recent_track = track
         if not track:
+            if hasattr(self,"home_continue_heading"):
+                self.home_continue_heading.hide()
+            self.home_continue.hide()
             self.home_continue_cover.set_cover("",title="Your music",key="empty-home")
             self.home_continue_title.setText("Nothing played yet")
             self.home_continue_meta.setText(
@@ -2581,6 +2595,9 @@ class MainWindow(QMainWindow):
             )
             self.home_continue_button.setEnabled(False)
             return
+        if hasattr(self,"home_continue_heading"):
+            self.home_continue_heading.show()
+        self.home_continue.show()
         title=str(track.get("title") or "Unknown track")
         artist=str(track.get("artist") or "Unknown artist")
         album=str(track.get("album") or "")
