@@ -21,6 +21,7 @@ class ScanMetrics:
     audio_files_seen: int = 0
     metadata_attempts: int = 0
     metadata_seconds: float = 0.0
+    metadata_work_seconds: float = 0.0
     total_seconds: float = 0.0
     tracks_indexed: int = 0
 
@@ -39,6 +40,7 @@ class ScanMetrics:
             "audio_files_seen": self.audio_files_seen,
             "metadata_attempts": self.metadata_attempts,
             "metadata_seconds": round(self.metadata_seconds, 6),
+            "metadata_work_seconds": round(self.metadata_work_seconds, 6),
             "non_metadata_seconds": round(non_metadata, 6),
             "total_seconds": round(self.total_seconds, 6),
             "tracks_indexed": self.tracks_indexed,
@@ -86,9 +88,14 @@ class ScanProbe:
         finally:
             self.metrics.metadata_seconds += max(0.0, time.perf_counter() - started)
 
-    def record_metadata_result(self, elapsed_seconds: float) -> None:
+    def metadata_submitted(self) -> None:
         self.metrics.metadata_attempts += 1
-        self.metrics.metadata_seconds += max(0.0, float(elapsed_seconds))
+
+    def record_metadata_result(self, elapsed_seconds: float) -> None:
+        self.metrics.metadata_work_seconds += max(
+            0.0,
+            float(elapsed_seconds),
+        )
 
     def finish(self, *, tracks_indexed: int) -> dict[str, object]:
         if not self._finished:
