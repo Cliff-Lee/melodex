@@ -204,6 +204,42 @@ class MemoryMark:
     hue: int
     x: float
     y: float
+    span: float = 0.0
+    time_label: str = ""
+    representative: str = ""
+    daypart: str = ""
+
+
+def _average_clock_hour(group: list[tuple[float, Mapping[str, Any]]]) -> float:
+    """Circular mean of local listening time so 23:55 + 00:05 stays near midnight."""
+
+    if not group:
+        return 12.0
+    sin_total = 0.0
+    cos_total = 0.0
+    for stamp, _track in group:
+        moment = datetime.fromtimestamp(stamp)
+        hour = moment.hour + moment.minute / 60.0 + moment.second / 3600.0
+        angle = math.tau * hour / 24.0
+        sin_total += math.sin(angle)
+        cos_total += math.cos(angle)
+    if abs(sin_total) < 1e-9 and abs(cos_total) < 1e-9:
+        return 12.0
+    angle = math.atan2(sin_total, cos_total) % math.tau
+    return 24.0 * angle / math.tau
+
+
+def _daypart(hour: float) -> str:
+    hour = float(hour) % 24.0
+    if hour < 5:
+        return "Late night"
+    if hour < 12:
+        return "Morning"
+    if hour < 17:
+        return "Afternoon"
+    if hour < 22:
+        return "Evening"
+    return "Late night"
 
 
 def build_visual_memory(
@@ -212,7 +248,12 @@ def build_visual_memory(
     *,
     limit: int = 128,
 ) -> tuple[MemoryMark, ...]:
-    """Aggregate existing local play records into a bounded visual atlas."""
+    """Aggregate local play records into a readable listening map.
+
+    Horizontal position is chronological time. Vertical position is the
+    circular-average time of day for the group. Size remains play count.
+    Nothing is placed on an arbitrary random Y coordinate.
+    """
 
     mode = str(granularity or "sessions").casefold()
     if mode not in {"sessions", "albums", "weeks", "years"}:
@@ -259,31 +300,73 @@ def build_visual_memory(
 
     groups = groups[-max(1, min(128, int(limit))):]
     first_stamp, last_stamp = rows[0][0], rows[-1][0]
-    span = max(1.0, last_stamp - first_stamp)
+    span_seconds = max(1.0, last_stamp - first_stamp)
     result: list[MemoryMark] = []
-    for index, group in enumerate(groups):
+    for group in groups:
         start = group[0][0]
+        finish = group[-1][0]
+        midpoint = (start + finish) * 0.5
         first = group[0][1]
         album = _text(first.get("album"))
         artist = _text(first.get("artist"))
+        title = _text(first.get("title"))
+        average_hour = _average_clock_hour(group)
+        daypart = _daypart(average_hour)
+
         if mode == "albums":
-            label = album or _text(first.get("title")) or "Untitled album"
+            label = album or title or "Untitled album"
             detail = artist or "Unknown artist"
         elif mode == "years":
             label = datetime.fromtimestamp(start).strftime("%Y")
             detail = f"{len(group)} plays"
         elif mode == "weeks":
-            label = datetime.fromtimestamp(start).strftime("%b %d")
-            detail = f"{len(group)} plays · {datetime.fromtimestamp(start).strftime('%Y') }"
+            iso = datetime.fromtimestamp(start).isocalendar()
+            label = f"Week {iso.week}"
+            detail = f"{len(group)} plays · {iso.year}"
         else:
             label = datetime.fromtimestamp(start).strftime("%a %H:%M")
-            artists = list(dict.fromkeys(_text(row.get("artist")) for _, row in group if _text(row.get("artist"))))
+            artists = list(dict.fromkeys(
+                _text(row.get("artist"))
+                for _, row in group
+                if _text(row.get("artist"))
+            ))
             detail = ", ".join(artists[:2]) or f"{len(group)} tracks"
+
+        representative = title
+        if artist and title:
+            representative = f"{title} · {artist}"
+        elif artist and not representative:
+            representative = artist
+
+        start_dt = datetime.fromtimestamp(start)
+        finish_dt = datetime.fromtimestamp(finish)
+        if start_dt.date() == finish_dt.date():
+            if finish - start < 60:
+                time_label = start_dt.strftime("%a %b %d · %H:%M")
+            else:
+                time_label = f"{start_dt.strftime('%a %b %d · %H:%M')}–{finish_dt.strftime('%H:%M')}"
+        else:
+            time_label = f"{start_dt.strftime('%b %d')}–{finish_dt.strftime('%b %d')}"
+
         identity = "\x1f".join((_key(label), _key(detail), mode))
         seed = int.from_bytes(_digest(identity), "big")
-        x = (start - first_stamp) / span if len(groups) > 1 else 0.5
-        y = 0.22 + ((seed % 10000) / 10000.0) * 0.56
-        if len(groups) == 1:
-            x = 0.5 + (index - (len(groups) - 1) / 2) * 0.08
-        result.append(MemoryMark(label, detail, len(group), seed % 360, x, y))
+        x = (midpoint - first_stamp) / span_seconds if len(groups) > 1 else 0.5
+        horizontal_span = (finish - start) / span_seconds if len(groups) > 1 else 0.0
+        y = 0.14 + (average_hour / 24.0) * 0.68
+
+        result.append(
+            MemoryMark(
+                label=label,
+                detail=detail,
+                count=len(group),
+                hue=seed % 360,
+                x=max(0.0, min(1.0, x)),
+                y=max(0.14, min(0.82, y)),
+                span=max(0.0, min(1.0, horizontal_span)),
+                time_label=time_label,
+                representative=representative,
+                daypart=daypart,
+            )
+        )
     return tuple(result)
+
