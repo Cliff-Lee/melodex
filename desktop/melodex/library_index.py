@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 def _canonical_path(path: str | Path) -> str:
@@ -129,6 +129,7 @@ class LocalLibraryIndex:
                     generation_id TEXT NOT NULL,
                     local_path TEXT NOT NULL,
                     root_id TEXT NOT NULL,
+                    relative_path TEXT,
                     metadata_json TEXT NOT NULL,
                     size INTEGER,
                     mtime_ns INTEGER,
@@ -143,6 +144,17 @@ class LocalLibraryIndex:
                 "CREATE INDEX IF NOT EXISTS scan_stage_generation_idx "
                 "ON scan_stage_tracks(generation_id)"
             )
+            stage_columns = {
+                str(row["name"])
+                for row in db.execute(
+                    "PRAGMA table_info(scan_stage_tracks)"
+                ).fetchall()
+            }
+            if "relative_path" not in stage_columns:
+                db.execute(
+                    "ALTER TABLE scan_stage_tracks "
+                    "ADD COLUMN relative_path TEXT"
+                )
             db.execute(
                 """
                 INSERT INTO index_meta(key, value)
@@ -405,7 +417,9 @@ class LocalLibraryIndex:
     ) -> int:
         """Checkpoint successfully read changed metadata outside the live index."""
         clean = [Path(root) for root in roots]
-        rows: list[tuple[str, str, str, str, int | None, int | None]] = []
+        rows: list[
+            tuple[str, str, str, str, str, int | None, int | None]
+        ] = []
         for record in records:
             if not isinstance(record, dict):
                 continue
@@ -426,6 +440,7 @@ class LocalLibraryIndex:
                     str(generation_id),
                     _canonical_path(local_path),
                     _root_id(root),
+                    self._relative_path(local_path, root),
                     json.dumps(
                         track,
                         ensure_ascii=False,
@@ -460,13 +475,15 @@ class LocalLibraryIndex:
                     generation_id,
                     local_path,
                     root_id,
+                    relative_path,
                     metadata_json,
                     size,
                     mtime_ns
                 )
-                VALUES(?, ?, ?, ?, ?, ?)
+                VALUES(?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(generation_id, local_path) DO UPDATE SET
                     root_id=excluded.root_id,
+                    relative_path=excluded.relative_path,
                     metadata_json=excluded.metadata_json,
                     size=excluded.size,
                     mtime_ns=excluded.mtime_ns
@@ -563,6 +580,216 @@ class LocalLibraryIndex:
                 "resume_staged": True,
             }
         return cache
+
+    def publish_scan_generation(
+        self,
+        generation_id: str,
+        roots: list[Path],
+        snapshot: dict[str, Any],
+        *,
+        cancelled: Callable[[], bool] | None = None,
+    ) -> dict[str, Any]:
+        """Atomically publish a bounded staged generation into the live index."""
+        clean_roots = [Path(root) for root in roots]
+        self.ensure_roots(clean_roots)
+        root_by_id = {_root_id(root): root for root in clean_roots}
+
+        states = [
+            dict(row)
+            for row in list((snapshot or {}).get("root_states") or [])
+            if isinstance(row, dict)
+        ]
+        available_ids = {
+            _root_id(str(row.get("path") or ""))
+            for row in states
+            if bool(row.get("available"))
+            and bool(row.get("complete"))
+            and str(row.get("path") or "")
+        }
+
+        incoming_dirs: dict[str, dict[str, tuple[str, int]]] = {
+            root_id: {} for root_id in available_ids
+        }
+        for row in list((snapshot or {}).get("directory_manifests") or []):
+            if not isinstance(row, dict):
+                continue
+            root_path = str(row.get("root_path") or "")
+            directory_path = str(row.get("path") or "")
+            if not root_path or not directory_path:
+                continue
+            root_id = _root_id(root_path)
+            root = root_by_id.get(root_id)
+            if root is None or root_id not in available_ids:
+                continue
+            relative_dir = os.path.relpath(
+                _canonical_path(directory_path),
+                _canonical_path(root),
+            )
+            incoming_dirs.setdefault(root_id, {})[relative_dir] = (
+                str(row.get("manifest") or ""),
+                max(0, int(row.get("file_count") or 0)),
+            )
+
+        preserved: dict[str, set[str]] = {
+            root_id: set() for root_id in available_ids
+        }
+        for row in list((snapshot or {}).get("preserve_directories") or []):
+            if not isinstance(row, dict):
+                continue
+            root_path = str(row.get("root_path") or "")
+            directory_path = str(row.get("path") or "")
+            if not root_path or not directory_path:
+                continue
+            root_id = _root_id(root_path)
+            root = root_by_id.get(root_id)
+            if root is None or root_id not in available_ids:
+                continue
+            preserved.setdefault(root_id, set()).add(
+                os.path.relpath(
+                    _canonical_path(directory_path),
+                    _canonical_path(root),
+                )
+            )
+
+        now = datetime.now(timezone.utc).isoformat()
+        rows_written = 0
+        rows_deleted = 0
+        with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            try:
+                for root_id in available_ids:
+                    if cancelled is not None and cancelled():
+                        db.rollback()
+                        return {"cancelled": True}
+
+                    old_dirs = {
+                        str(row["relative_dir"])
+                        for row in db.execute(
+                            "SELECT relative_dir FROM directories "
+                            "WHERE root_id = ?",
+                            (root_id,),
+                        ).fetchall()
+                    }
+                    new_dirs = set(incoming_dirs.get(root_id, {}))
+                    replace_dirs = (new_dirs - preserved.get(root_id, set()))
+                    replace_dirs.update(old_dirs - new_dirs)
+
+                    for relative_dir in replace_dirs:
+                        if relative_dir in {"", "."}:
+                            cursor = db.execute(
+                                """
+                                DELETE FROM tracks
+                                WHERE root_id = ?
+                                  AND instr(relative_path, ?) = 0
+                                  AND instr(relative_path, ?) = 0
+                                """,
+                                (root_id, "/", "\\"),
+                            )
+                        else:
+                            prefix_slash = relative_dir.replace("\\", "/") + "/"
+                            prefix_back = relative_dir.replace("/", "\\") + "\\"
+                            cursor = db.execute(
+                                """
+                                DELETE FROM tracks
+                                WHERE root_id = ?
+                                  AND (
+                                    (relative_path LIKE ? AND
+                                     instr(substr(relative_path, ?), '/') = 0)
+                                    OR
+                                    (relative_path LIKE ? AND
+                                     instr(substr(relative_path, ?), '\\') = 0)
+                                  )
+                                """,
+                                (
+                                    root_id,
+                                    prefix_slash + "%",
+                                    len(prefix_slash) + 1,
+                                    prefix_back + "%",
+                                    len(prefix_back) + 1,
+                                ),
+                            )
+                        rows_deleted += max(0, int(cursor.rowcount or 0))
+
+                    db.execute(
+                        "DELETE FROM directories WHERE root_id = ?",
+                        (root_id,),
+                    )
+                    dir_rows = incoming_dirs.get(root_id, {})
+                    if dir_rows:
+                        db.executemany(
+                            """
+                            INSERT INTO directories(
+                                root_id, relative_dir, manifest, file_count
+                            )
+                            VALUES(?, ?, ?, ?)
+                            """,
+                            [
+                                (root_id, relative_dir, manifest, file_count)
+                                for relative_dir, (manifest, file_count)
+                                in dir_rows.items()
+                            ],
+                        )
+
+                    before = db.total_changes
+                    db.execute(
+                        """
+                        INSERT OR REPLACE INTO tracks(
+                            root_id,
+                            relative_path,
+                            metadata_json,
+                            size,
+                            mtime_ns
+                        )
+                        SELECT
+                            root_id,
+                            relative_path,
+                            metadata_json,
+                            size,
+                            mtime_ns
+                        FROM scan_stage_tracks
+                        WHERE generation_id = ?
+                          AND root_id = ?
+                          AND relative_path IS NOT NULL
+                        """,
+                        (str(generation_id), root_id),
+                    )
+                    rows_written += max(0, db.total_changes - before)
+
+                    current_count = int(
+                        db.execute(
+                            "SELECT COUNT(*) FROM tracks WHERE root_id = ?",
+                            (root_id,),
+                        ).fetchone()[0]
+                    )
+                    db.execute(
+                        """
+                        UPDATE roots
+                        SET last_scan_at = ?, last_track_count = ?
+                        WHERE root_id = ?
+                        """,
+                        (now, current_count, root_id),
+                    )
+                db.commit()
+            except Exception:
+                db.rollback()
+                raise
+
+        return {
+            "cancelled": False,
+            "roots_persisted": len(available_ids),
+            "tracks_written": int(rows_written),
+            "tracks_deleted": int(rows_deleted),
+            "tracks_persisted": sum(
+                int(
+                    self._connect().execute(
+                        "SELECT COUNT(*) FROM tracks WHERE root_id = ?",
+                        (root_id,),
+                    ).fetchone()[0]
+                )
+                for root_id in available_ids
+            ),
+            "staged_generation": True,
+        }
 
     def finish_scan_generation(
         self,
