@@ -103,3 +103,26 @@ Record hesitation points and fix those rather than adding more features.
 - no broad visual rewrite;
 - no removal of advanced features merely because they are unusual;
 - no fake minimalism that makes useful capabilities harder to reach.
+
+
+## H2 visual grammar
+
+The first H2 pass standardises the visible shell without changing Melodex's
+overall dark visual identity.
+
+Rules introduced:
+
+- page titles, subtitles, section headings, panel headings and muted supporting
+  copy use shared object styles rather than one-off inline CSS;
+- primary, secondary and quiet actions have visibly different weight;
+- secondary buttons should not compete with a page's main action;
+- common cards and panels use a consistent 12 px corner radius;
+- card and empty-state padding is slightly tighter so screens feel designed
+  rather than assembled from oversized generic components;
+- supporting card copy is deliberately quieter than titles and actions;
+- the visual system keeps the player, artwork and current musical context more
+  prominent than explanatory chrome.
+
+H2 should continue by removing remaining one-off styling only where doing so
+makes adjacent surfaces visibly more coherent. It is not a mandate to flatten
+distinctive tools such as Album Wall or Music Map into generic cards.
