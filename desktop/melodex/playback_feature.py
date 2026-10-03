@@ -437,7 +437,11 @@ class PlaybackFeature(QObject):
         self.rich_now.knowledgeChanged.connect(self._remember_now_playing_knowledge)
         self.rich_now.accentChanged.connect(self.living_canvas.set_accent_color)
         self.rich_now.paletteChanged.connect(self.living_canvas.set_palette)
+        self.rich_now.artworkChanged.connect(self.living_canvas.set_artwork)
         self.rich_now.lyricsStateChanged.connect(self.living_canvas.set_lyrics)
+        self.rich_now.lyricsFullscreenRequested.connect(
+            self.living_canvas.show_lyric_flow_fullscreen
+        )
         self.rich_now.lyricsSeekRequested.connect(self.seekRequested.emit)
         self.rich_now.lyricsTranslationRequested.connect(self._translate_lyrics)
         self.rich_now.lyricsPluginRequested.connect(
