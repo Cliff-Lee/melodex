@@ -1,4 +1,4 @@
-# Campaign 11c–11e — NAS resilience and beta qualification
+# Campaign 11c–11f — NAS resilience and beta qualification
 
 Campaign 11 prepares Melodex for external testers with NAS, SMB, NFS and other
 network-mounted music libraries. Campaign 10 established the scalable library
@@ -10,6 +10,7 @@ failure modes and defines the user-facing acceptance contract.
 | 11c | repeatable offline/reconnect/cancellation qualification |
 | 11d | bounded transient-I/O retry and fail-safe NAS traversal |
 | 11e | deterministic NAS latency/fault injection and resilience gates |
+| 11f | persistent NAS fallback UX and privacy-safe beta diagnostics |
 
 The qualification harness is intentionally small and deterministic. Real SMB/NFS
 latency, server firmware and mount behavior still require external beta testing.
@@ -75,6 +76,40 @@ The permanent cases are:
 This does not claim to emulate every SMB/NFS implementation. It qualifies the
 Melodex behavior that should remain invariant when real storage becomes slow or
 unreliable.
+
+## Campaign 11f tester UX and diagnostics
+
+P11f makes the network-storage fallback visible instead of silently looking like
+a successful scan.
+
+When a configured music location is unavailable, Melodex keeps the committed
+SQLite catalog and shows:
+
+> **Library kept available**  
+> 1 music location unavailable  
+> Showing your last indexed library. No cached tracks were removed.
+
+When traversal starts but cannot complete reliably, Melodex shows the same
+last-known-good behavior with an incomplete-storage message. These warnings stay
+visible until the next scan or user action; stale success timers cannot erase
+them.
+
+Unexpected scan-worker failures now use privacy-safe user wording rather than
+printing raw filesystem exception text into the persistent library panel.
+
+For beta reports, **Sources & plugins → Export redacted diagnostics…** is
+available without enabling Power tools. The export includes:
+
+- packaged/source build state and Melodex/platform version;
+- aggregate catalog/index counts;
+- latest scan phase, elapsed time and aggregate counts;
+- unavailable/incomplete root counts and NAS I/O retry count;
+- adaptive storage profile and metadata concurrency;
+- responsiveness/background scheduler summaries.
+
+The export deliberately excludes library roots, mount/share names, directories,
+filenames, credentials, stream/playback URLs, headers/cookies and raw exception
+messages. Testers should still review the JSON before sharing it.
 
 ## Automated NAS qualification harness
 
