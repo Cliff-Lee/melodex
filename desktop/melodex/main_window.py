@@ -315,6 +315,24 @@ class MainWindow(QMainWindow):
             QTimer.singleShot(0, lambda: self._start_local_scan("initial index"))
         self._startup_mark("main_window_init_ready")
 
+    def _playback_current_track_changed(self, track: object) -> None:
+        row = dict(track or {}) if isinstance(track, dict) else {}
+        if not row:
+            return
+        if hasattr(self, "journey_workspace"):
+            self.journey_workspace.on_track_changed(row)
+        if hasattr(self, "album_wall"):
+            self.album_wall.highlight_track(row)
+        if self.current_page == "home":
+            self._refresh_home_continue()
+
+    def _playback_knowledge_changed(self) -> None:
+        if (
+            self.current_page == "music_map"
+            and hasattr(self, "journey_workspace")
+        ):
+            self.journey_workspace.refresh_knowledge_graph()
+
     # ------------------------------- UI
     def _build_ui(self):
         root = QWidget()
@@ -415,7 +433,7 @@ class MainWindow(QMainWindow):
             knowledge=lambda: self.knowledge,
             metadata=lambda: self.metadata,
             run_async=self._run_async,
-            current_track=lambda: self.current_track,
+            current_track=self.playback_feature.current_track,
             page_titles=self.page_titles,
         )
         self.journey_workspace.navigationRequested.connect(self.open_page)
@@ -450,7 +468,9 @@ class MainWindow(QMainWindow):
             "moments",
             "ask",
         ]:
-            if name in self.journey_workspace.pages:
+            if name == "now_playing":
+                page = self.playback_feature.now_playing_page
+            elif name in self.journey_workspace.pages:
                 page = self.journey_workspace.pages[name]
             else:
                 page = QWidget()
@@ -481,6 +501,9 @@ class MainWindow(QMainWindow):
         self.sources_feature.statusMessageRequested.connect(
             lambda message, timeout: self.statusBar().showMessage(message, timeout)
         )
+        self.playback_feature.pluginDirectoryRequested.connect(
+            self.sources_feature.open_plugin_directory
+        )
         self.pages["sources"] = self.sources_feature
         self.stack.addWidget(self.sources_feature)
         self.page_titles["sources"] = self.sources_feature.title_label
@@ -490,7 +513,7 @@ class MainWindow(QMainWindow):
         self.navigation.set_lazy_builders(
             {
                 "library": self._build_library,
-                "now_playing": self._build_now_playing,
+                "now_playing": self.playback_feature.build_now_playing,
                 "album_wall": self._build_album_wall,
                 "music_map": self.journey_workspace.build_music_map,
             }
@@ -512,31 +535,7 @@ class MainWindow(QMainWindow):
         self._build_ask()
 
         # Queue is contextual and stays out of the primary navigation.
-        self.queue_panel = QWidget()
-        self.queue_panel.setObjectName("queuePanel")
-        self.queue_panel.setFixedWidth(330)
-        ql = QVBoxLayout(self.queue_panel)
-        ql.setContentsMargins(14, 14, 14, 14)
-        qhead = QHBoxLayout()
-        qtitle = QLabel("Up next")
-        qtitle.setObjectName("panelTitle")
-        qhead.addWidget(qtitle)
-        qhead.addStretch(1)
-        flow_btn = QPushButton("Refine with Flow")
-        flow_btn.setObjectName("quietButton")
-        flow_btn.clicked.connect(self._flow_queue)
-        set_help(
-            flow_btn,
-            "Refine with Flow",
-            "Reorders upcoming music to make transitions feel more coherent while preserving the current track.",
-        )
-        qhead.addWidget(flow_btn)
-        ql.addLayout(qhead)
-        self.queue_list = QListWidget()
-        self.queue_list.itemDoubleClicked.connect(self._queue_jump)
-        ql.addWidget(self.queue_list, 1)
-        self.queue_panel.hide()
-        body_l.addWidget(self.queue_panel)
+        body_l.addWidget(self.playback_feature.queue_panel)
 
         # ------------------------------------------------------------------
         # Long-running background work stays visible without taking over the UI.
@@ -588,93 +587,14 @@ class MainWindow(QMainWindow):
         )
 
         # ------------------------------------------------------------------
-        # Persistent player. It behaves as the gateway to Now Playing rather
-        # than requiring a permanent sidebar destination.
-        bar = QWidget()
-        bar.setObjectName("playerBar")
-        bar.setFixedHeight(92)
-        bl = QHBoxLayout(bar)
-        bl.setContentsMargins(16, 10, 18, 10)
-        bl.setSpacing(9)
-
-        prev = QPushButton("⏮")
-        prev.setObjectName("transportButton")
-        prev.clicked.connect(self.player.previous)
-        self.play_button = QPushButton("▶")
-        self.play_button.setObjectName("transportButton")
-        self.play_button.clicked.connect(self.player.play_pause)
-        nxt = QPushButton("⏭")
-        nxt.setObjectName("transportButton")
-        nxt.clicked.connect(self.player.next)
-        self.player.playingChanged.connect(self._update_play_button)
-        set_help(prev, "Previous", "Restart the current track or return to the previous track.")
-        set_help(self.play_button, "Play / pause", "Pause or continue the current music.")
-        set_help(nxt, "Next", "Move to the next track in the queue.")
-        bl.addWidget(prev)
-        bl.addWidget(self.play_button)
-        bl.addWidget(nxt)
-
-        self.player_cover = CoverLabel(56)
-        self.player_cover.set_cover("", title="Melodex", key="melodex")
-        self.player_cover.setToolTip("Now playing artwork")
-        bl.addWidget(self.player_cover)
-
-        text_col = QVBoxLayout()
-        text_col.setSpacing(1)
-        self.now_title = QPushButton("Nothing playing")
-        self.now_title.setObjectName("nowPlayingTitle")
-        self.now_title.clicked.connect(lambda: self.open_page("now_playing"))
-        set_help(
-            self.now_title,
-            "Open Now Playing",
-            "See large artwork, lyrics, track information and visualisations for the current music.",
+        # Persistent playback presentation belongs to PlaybackFeature.
+        self.playback_feature.set_open_now_playing_handler(
+            lambda: self.open_page("now_playing")
         )
-        self.now_meta = QLabel("")
-        self.now_meta.setObjectName("nowPlayingMeta")
-        self.now_meta.setOpenExternalLinks(True)
-        text_col.addWidget(self.now_title)
-        text_col.addWidget(self.now_meta)
-        self.seek = QSlider(Qt.Horizontal)
-        self.seek.setRange(0, 1000)
-        self.seek.sliderReleased.connect(self._seek_released)
-        text_col.addWidget(self.seek)
-        bl.addLayout(text_col, 1)
-
-        self.keep_button = QPushButton("Keep")
-        self.keep_button.setObjectName("playerAction")
-        self.keep_button.clicked.connect(self._keep)
-        self.love_button = QPushButton("♥")
-        self.love_button.setObjectName("playerAction")
-        self.love_button.clicked.connect(lambda: self._feedback(True))
-        queue = QPushButton("Queue")
-        queue.setObjectName("playerAction")
-        queue.clicked.connect(
-            lambda: self.queue_panel.setVisible(not self.queue_panel.isVisible())
+        self.playback_feature.set_power_tools_visible(
+            self.power_toggle.isChecked()
         )
-        set_help(self.keep_button, "Keep", "Teach Melodex that this track is worth keeping around in future listening.")
-        set_help(self.love_button, "Love", "Mark this as a strong positive preference.")
-        set_help(queue, "Queue", "Show or hide the music that is coming next.")
-        bl.addWidget(self.keep_button)
-        bl.addWidget(self.love_button)
-        bl.addWidget(queue)
-
-        self.player_power_actions = QWidget()
-        power_row = QHBoxLayout(self.player_power_actions)
-        power_row.setContentsMargins(0, 0, 0, 0)
-        power_row.setSpacing(6)
-        match = QPushButton("Match")
-        match.setObjectName("quietButton")
-        match.clicked.connect(self._inspect_current_match)
-        more = QPushButton("•••")
-        more.setObjectName("quietButton")
-        more.clicked.connect(self._more_actions)
-        set_help(match, "Inspect match", "Show how Melodex resolved this track to its playable source.")
-        set_help(more, "More actions", "Open technical and less frequently used actions for the current track.")
-        power_row.addWidget(match)
-        power_row.addWidget(more)
-        self.player_power_actions.setVisible(self.power_toggle.isChecked())
-        bl.addWidget(self.player_power_actions)
-        outer.addWidget(bar)
+        outer.addWidget(self.playback_feature.player_bar)
 
         # Expert speed: command palette without forcing more controls onto
         # everybody else's screen.
