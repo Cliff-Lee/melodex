@@ -35,8 +35,10 @@ jobs:
           TAG="v$VERSION_VALUE"
           REMOTE_TAG_SHA="$(git ls-remote "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git" "refs/tags/$TAG" | awk '{print $1}')"
           if [[ -n "$REMOTE_TAG_SHA" && "$REMOTE_TAG_SHA" != "$GITHUB_SHA" ]]; then
-            echo "::error::Tag $TAG already points to $REMOTE_TAG_SHA, not this release commit $GITHUB_SHA."
-            exit 1
+            echo "Tag $TAG already identifies release commit $REMOTE_TAG_SHA."
+            echo "This main-branch commit keeps VERSION=$VERSION_VALUE, so it is a post-release change; no release will be created."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
 
           echo "publish=true" >> "$GITHUB_OUTPUT"
