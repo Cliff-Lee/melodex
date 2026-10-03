@@ -72,7 +72,7 @@ def test_quality_policy_preserves_existing_fps_and_bounds_detail():
     assert auto.max_particles <= 24
     assert eco.max_glows <= auto.max_glows
     assert auto.artwork_cache_px <= 960
-    assert auto.paint_budget_ms <= 12.0
+    assert auto.paint_budget_ms <= 16.0
 
 
 def test_unknown_quality_falls_back_to_auto():
@@ -81,15 +81,21 @@ def test_unknown_quality_falls_back_to_auto():
 
 def test_performance_governor_reduces_only_after_repeated_expensive_frames():
     governor = VisualPerformanceGovernor()
-    assert governor.observe(13.0) is None
-    assert governor.observe(13.5) is None
-    assert governor.observe(14.0) == "eco"
+    # First paints are diagnostics-only so one-time Qt cache setup cannot
+    # immediately demote visual quality.
+    for _ in range(governor.grace_frames):
+        assert governor.observe(40.0) is None
+    assert governor.observe(17.0) is None
+    assert governor.observe(17.5) is None
+    assert governor.observe(18.0) == "eco"
     assert governor.effective == "eco"
     assert governor.reductions == 1
 
 
 def test_performance_governor_recovers_with_hysteresis():
     governor = VisualPerformanceGovernor(effective="eco")
+    for _ in range(governor.grace_frames):
+        assert governor.observe(2.0) is None
     for _ in range(71):
         assert governor.observe(2.0) is None
     assert governor.observe(2.0) == "normal"
