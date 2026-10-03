@@ -120,7 +120,7 @@ def test_p10b_incomplete_changed_root_discards_streamed_rows(
         assert partial["changes"]["incomplete_roots"] == 1
         assert partial["changes"]["removed"] == 0
         assert partial["tracks"] == []
-        assert partial["index_tracks"] == []
+        assert "index_tracks" not in partial
         assert partial["index_records"] == []
 
         manager.persist_local_scan_snapshot([root], partial)
