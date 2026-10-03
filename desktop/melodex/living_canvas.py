@@ -9,7 +9,7 @@ from typing import Any
 from PySide6.QtCore import Qt, Signal, QRectF, QPointF
 from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen, QMouseEvent
 from PySide6.QtWidgets import (
-    QComboBox, QFileDialog, QHBoxLayout, QLabel, QMessageBox, QPushButton,
+    QComboBox, QDialog, QFileDialog, QHBoxLayout, QLabel, QMessageBox, QPushButton,
     QSlider, QVBoxLayout, QWidget,
 )
 
@@ -195,7 +195,7 @@ class LivingCanvasView(QWidget):
         ("Song Fingerprint", "fingerprint"),
         ("Musical Journey", "journey"),
         ("Constellation", "constellation"),
-        ("Lyrics Typography", "lyrics"),
+        ("Lyric Flow", "lyrics"),
         ("Album World", "album_world"),
         ("Sonic Weather", "weather"),
         ("Visual Memory", "memory"),
@@ -210,6 +210,13 @@ class LivingCanvasView(QWidget):
         self._position_ms = 0
         self._syncing_slider = False
         self._lyrics = LyricsDocument.empty()
+        self._accent_color = QColor("#7eb4ff")
+        self._palette_colors: tuple[str, ...] = ()
+        self._artwork_path = ""
+        self._playing = False
+        self._window_minimized = False
+        self._lyric_flow_dialog: QDialog | None = None
+        self._lyric_flow_scene: LivingScene | None = None
         self._visualizer_dir = Path(visualizer_dir or Path.home() / ".melodex" / "visualizers")
         self._plugins: dict[str, Any] = {}
         self._neighbours: tuple[VisualNeighbour, ...] = ()
@@ -344,18 +351,36 @@ class LivingCanvasView(QWidget):
         self._update_status()
 
     def set_accent_color(self, color: QColor) -> None:
+        self._accent_color = QColor(color)
         self.scene.set_accent_color(color)
         self.journey.set_accent_color(color)
+        if self._lyric_flow_scene is not None:
+            self._lyric_flow_scene.set_accent_color(color)
 
     def set_palette(self, colors: object) -> None:
         if isinstance(colors, (tuple, list)):
-            self.scene.set_palette(tuple(str(value) for value in colors))
+            self._palette_colors = tuple(str(value) for value in colors)
+            self.scene.set_palette(self._palette_colors)
+            if self._lyric_flow_scene is not None:
+                self._lyric_flow_scene.set_palette(self._palette_colors)
+
+    def set_artwork(self, path: str) -> None:
+        self._artwork_path = str(path or "")
+        self.scene.set_artwork(self._artwork_path)
+        if self._lyric_flow_scene is not None:
+            self._lyric_flow_scene.set_artwork(self._artwork_path)
 
     def set_playing(self, playing: bool) -> None:
-        self.scene.set_playing(playing)
+        self._playing = bool(playing)
+        self.scene.set_playing(self._playing)
+        if self._lyric_flow_scene is not None:
+            self._lyric_flow_scene.set_playing(self._playing)
 
     def set_window_minimized(self, minimized: bool) -> None:
-        self.scene.set_window_minimized(minimized)
+        self._window_minimized = bool(minimized)
+        self.scene.set_window_minimized(self._window_minimized)
+        if self._lyric_flow_scene is not None:
+            self._lyric_flow_scene.set_window_minimized(self._window_minimized)
 
     def set_lyrics(self, lyrics: object) -> None:
         self._lyrics = build_lyrics_document(lyrics)
@@ -383,6 +408,55 @@ class LivingCanvasView(QWidget):
         elif self._active_mode == "memory":
             self.modeDataRequested.emit("memory:" + str(self.memory_scale.currentData() or "sessions"))
 
+    def show_lyric_flow_fullscreen(self) -> None:
+        if not self._lyrics.has_content:
+            QMessageBox.information(
+                self,
+                "Lyric Flow",
+                "Lyrics are not available for this track yet.",
+            )
+            return
+        if self._lyric_flow_dialog is not None:
+            self._lyric_flow_dialog.raise_()
+            self._lyric_flow_dialog.activateWindow()
+            return
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Lyric Flow · Melodex")
+        dialog.setModal(False)
+        dialog.setStyleSheet("QDialog{background:#070b12;}")
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        scene = LivingScene(dialog)
+        scene.setMinimumHeight(540)
+        scene.set_immersive(True)
+        scene.set_mode("lyrics")
+        if self._profile is not None:
+            scene.set_profile(self._profile)
+        scene.set_accent_color(self._accent_color)
+        if self._palette_colors:
+            scene.set_palette(self._palette_colors)
+        scene.set_artwork(self._artwork_path)
+        scene.set_quality(str(self.quality_combo.currentData() or "auto"))
+        scene.set_position_fraction(
+            self._position_ms / self._duration_ms if self._duration_ms > 0 else 0.0
+        )
+        scene.set_lyrics(self._lyrics.frame(self._position_ms, self._duration_ms))
+        scene.set_playing(self._playing)
+        scene.set_window_minimized(self._window_minimized)
+        layout.addWidget(scene, 1)
+
+        dialog.finished.connect(self._lyric_flow_closed)
+        self._lyric_flow_dialog = dialog
+        self._lyric_flow_scene = scene
+        dialog.showFullScreen()
+
+    def _lyric_flow_closed(self, _result: int) -> None:
+        self._lyric_flow_scene = None
+        self._lyric_flow_dialog = None
+
     def set_position(self, position_ms: int, duration_ms: int | None = None) -> None:
         if duration_ms is not None and duration_ms > 0:
             self._duration_ms = int(duration_ms)
@@ -404,9 +478,16 @@ class LivingCanvasView(QWidget):
             self.scene.set_position_fraction(0.0)
         self._position_ms = position
         self._update_lyric_frame()
+        if self._lyric_flow_scene is not None:
+            self._lyric_flow_scene.set_position_fraction(
+                position / duration if duration > 0 else 0.0
+            )
 
     def _update_lyric_frame(self) -> None:
-        self.scene.set_lyrics(self._lyrics.frame(self._position_ms, self._duration_ms))
+        frame = self._lyrics.frame(self._position_ms, self._duration_ms)
+        self.scene.set_lyrics(frame)
+        if self._lyric_flow_scene is not None:
+            self._lyric_flow_scene.set_lyrics(frame)
 
     def _mode_changed(self, _index: int) -> None:
         data = self.mode_combo.currentData()
@@ -434,7 +515,10 @@ class LivingCanvasView(QWidget):
             self.modeDataRequested.emit("memory:" + str(self.memory_scale.currentData() or "sessions"))
 
     def _quality_changed(self, _index: int) -> None:
-        self.scene.set_quality(str(self.quality_combo.currentData() or "auto"))
+        quality = str(self.quality_combo.currentData() or "auto")
+        self.scene.set_quality(quality)
+        if self._lyric_flow_scene is not None:
+            self._lyric_flow_scene.set_quality(quality)
 
     def _quality_adjusted(self, quality: str) -> None:
         if quality == "eco":
@@ -461,12 +545,12 @@ class LivingCanvasView(QWidget):
         elif mode == "constellation":
             self.status.setText(f"{len(self._neighbours)} nearby queue/history tracks · click to inspect, double-click to queue · local context only.")
         elif mode == "lyrics":
-            if self._lyrics.get("synced"):
-                self.status.setText("Timed local lyrics follow the playhead. Lyrics stay on this device.")
-            elif self._lyrics.get("text"):
-                self.status.setText("Untimed local lyrics are paced across the track; their timing is an estimate.")
+            if self._lyrics.synced:
+                self.status.setText("Lyric Flow follows synchronized lyrics with restrained music-reactive glow.")
+            elif self._lyrics.text.strip():
+                self.status.setText("Untimed lyrics use the same reader text, paced gently across the track.")
             else:
-                self.status.setText("This view uses embedded lyrics or local .lrc / .txt sidecars only.")
+                self.status.setText("Lyric Flow is ready when lyrics become available.")
         elif mode == "album_world":
             self.status.setText("A deterministic world shaped by cached Flow and the cover-art palette.")
         elif mode == "weather":
