@@ -42,7 +42,7 @@ def _scandir_walk(
             continue
 
         directories: list[Path] = []
-        files: list[tuple[str, os.stat_result | None]] = []
+        files: list[tuple[str, os.stat_result | None, float | None]] = []
         for entry in entries:
             try:
                 if entry.is_dir(follow_symlinks=False):
@@ -54,11 +54,15 @@ def _scandir_walk(
                 continue
 
             stat_result = None
+            stat_elapsed: float | None = None
+            started = time.perf_counter()
             try:
                 stat_result = entry.stat()
             except OSError:
                 pass
-            files.append((entry.name, stat_result))
+            finally:
+                stat_elapsed = max(0.0, time.perf_counter() - started)
+            files.append((entry.name, stat_result, stat_elapsed))
 
         # os.walk is depth-first in practice. Reverse the sorted children so
         # popping the stack visits them in ascending lexical order.
@@ -405,7 +409,7 @@ class LocalFilesProvider(MusicProvider):
                         except TypeError:
                             legacy = os.walk(root)
                         walker = (
-                            (base, [(name, None) for name in files])
+                            (base, [(name, None, None) for name in files])
                             for base, _, files in legacy
                         )
                         fast_scandir = False
@@ -415,7 +419,7 @@ class LocalFilesProvider(MusicProvider):
                         probe.directory_seen()
                         manifest = hashlib.sha256()
                         audio_count = 0
-                        for name, direntry_stat in files:
+                        for name, direntry_stat, direntry_stat_elapsed in files:
                             control.checkpoint()
                             p = Path(base) / name
                             is_audio = p.suffix.lower() in AUDIO_EXTS
@@ -447,9 +451,12 @@ class LocalFilesProvider(MusicProvider):
                             except OSError:
                                 stat_failures += 1
                             finally:
-                                concurrency.observe_stat(
-                                    time.perf_counter() - stat_started
+                                measured_stat = (
+                                    direntry_stat_elapsed
+                                    if direntry_stat_elapsed is not None
+                                    else time.perf_counter() - stat_started
                                 )
+                                concurrency.observe_stat(measured_stat)
 
                             audio_count += 1
                             manifest.update(
