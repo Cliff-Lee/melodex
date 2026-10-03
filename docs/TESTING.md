@@ -12,18 +12,17 @@ You do not need to be a developer. The most useful feedback is often simple:
 
 ## Who we especially want to hear from
 
-The macOS build has had the most hands-on testing so far. We especially welcome:
+Five kinds of testers are particularly valuable right now:
 
-- Apple Silicon Mac users with small, large or messy local libraries
-- Intel Mac users
-- Windows users
-- Linux users
-- people with large FLAC/MP3 collections
-- people with incomplete tags or missing artwork
-- people who normally use Spotify, Apple Music, YouTube Music, foobar2000, MusicBee or similar players
-- accessibility and keyboard-navigation users
+- 🐘 **Huge libraries** — 50,000+ tracks, especially 100k–1M+
+- 🌐 **NAS / network collections** — SMB, NFS, mounted shares and slower or unreliable storage
+- 🪟 **Windows users** — installation, scanning, playback and normal day-to-day use
+- 🐧 **Linux users** — AppImage/package behaviour and different desktop setups
+- 🧪 **Messy metadata collections** — missing tags, duplicates, odd encodings, unusual artwork and mixed formats
 
-You do not need a huge collection. A fresh-user experience with only a few albums is useful too.
+Apple Silicon and Intel Mac feedback remains welcome too. So does feedback from people who normally use Spotify, Apple Music, YouTube Music, foobar2000, MusicBee or similar players, and from accessibility or keyboard-navigation users.
+
+You do not need a huge collection. A fresh-user experience with only a few albums is useful because it tests whether Melodex is understandable, not just whether it scales.
 
 ## 10-minute test
 
@@ -39,7 +38,7 @@ You do not need a huge collection. A fresh-user experience with only a few album
 
 - [Something broke → Bug report](https://github.com/Cliff-Lee/melodex/issues/new?template=bug_report.yml)
 - [Something should work differently → Feature request](https://github.com/Cliff-Lee/melodex/issues/new?template=feature_request.yml)
-- [General beta experience → Tester feedback](https://github.com/Cliff-Lee/melodex/issues/new?template=tester_feedback.yml)
+- [General beta experience or stress test → Beta Test Report](https://github.com/Cliff-Lee/melodex/issues/new?template=tester_feedback.yml)
 - Discussions are the best place for open-ended questions and ideas.
 
 Screenshots are welcome when they help explain a UI problem. Please do not post copyrighted music files, passwords, API keys, tokens, private URLs, or other secrets.
