@@ -723,3 +723,48 @@ Every scale job produces both:
 - a clean cold-scan RSS measurement without `tracemalloc`.
 
 This is the permanent Campaign 10 scale gate for future releases.
+
+
+### Release-scale qualification results
+
+The first full P10j release matrix completed successfully at 250k, 500k and
+1,000,000 tracks. Every profile passed all permanent qualification gates.
+
+Clean cold-scan measurements below are from the dedicated RSS process without
+`tracemalloc`:
+
+| Tracks | Cold scan | Persist | Scan RSS peak | Post-persist RSS peak | SQLite DB |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 250,000 | 29.2 s | 10.2 s | 329 MiB | 455 MiB | 157 MiB |
+| 500,000 | 26.8 s | 15.6 s | 625 MiB | 876 MiB | 315 MiB |
+| 1,000,000 | 74.6 s | 38.7 s | 1,218 MiB | 1,720 MiB | 629 MiB |
+
+Runner variability means wall times are not expected to scale monotonically
+between independent GitHub-hosted jobs. Memory and database size show the more
+important result: approximately linear scaling.
+
+The full traced qualification at one million tracks also passed:
+
+- discovery queue peak: 256 / 256;
+- metadata in flight: 8 maximum;
+- unchanged rescan metadata reads: 0;
+- unchanged track rewrites: 0;
+- 50 changed + 50 added + 10 deleted produced exactly 100 metadata reads,
+  100 writes and 10 deletes;
+- cancellation returned no partial catalog;
+- 256 staged rows were resumed successfully after restart;
+- unchanged/delta traced Python peak was about 455 MiB;
+- cold traced Python peak was about 1.10 GiB, inside the 1.282 GiB linear gate;
+- SQLite index size was about 629 MiB.
+
+The traced one-million-track qualification took about 302 s for the cold scan
+and about 132–134 s for unchanged/delta scenarios. Those timings are
+intentionally not representative of end-user performance because
+`tracemalloc` heavily distorts a million-object workload. The clean RSS probe
+is the relevant cold-path timing: about 74.6 s scan plus 38.7 s persistence on
+that GitHub runner.
+
+This establishes that Campaign 10's architecture remains bounded and correct at
+one million synthetic tracks. It does not claim that every physical NAS or
+filesystem will match CI wall times; the release workflow retains latency
+injection for those storage-specific qualifications.
