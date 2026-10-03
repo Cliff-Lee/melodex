@@ -149,3 +149,23 @@ Rules:
 
 Progressive disclosure is not feature removal. Every existing H3 action remains
 reachable.
+
+
+## H4 real-world states
+
+H4 assumes users have imperfect libraries and imperfect networks.
+
+Rules:
+
+- describe the state before naming the subsystem that produced it;
+- avoid provider names such as MusicBrainz in ordinary empty/error copy unless
+  provenance is the point of the screen;
+- empty states should state what is missing and offer the next useful action;
+- a folder with no playable music should not sound like a scanner failure;
+- background persistence language should reassure rather than narrate internal
+  indexing architecture;
+- missing lyrics, artwork and artist information are normal content states, not
+  exceptional system failures;
+- diagnostics and provenance remain available where they are genuinely useful.
+
+The first H4 pass applies these rules to My Music scanning and rich Now Playing.
