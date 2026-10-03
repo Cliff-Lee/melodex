@@ -28,10 +28,12 @@ def test_auto_quality_reduces_detail_and_frame_rate_after_sustained_slow_paints(
     scene = LivingScene()
     scene.set_quality("auto")
 
-    scene._adjust_auto_quality(13.0)
-    scene._adjust_auto_quality(13.5)
+    for _ in range(scene._performance.grace_frames):
+        scene._adjust_auto_quality(40.0)
+    scene._adjust_auto_quality(17.0)
+    scene._adjust_auto_quality(17.5)
     assert scene._effective_quality == "normal"
-    scene._adjust_auto_quality(14.0)
+    scene._adjust_auto_quality(18.0)
 
     assert scene._effective_quality == "eco"
     assert scene._timer.interval() == 84
