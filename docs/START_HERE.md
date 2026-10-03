@@ -31,6 +31,7 @@ If you do not have a local collection, use **Explore → Search everything** to 
 - **Comfort** stays close to familiar music.
 - **Explore** moves further away.
 - **Rediscover** brings neglected music back.
+- **Tune it…** lets you choose session length and how adventurous it should be.
 - **Album Wall** is a visual way to browse your collection.
 - **Music Map** shows relationships between tracks.
 - **Journeys** builds a route through music instead of shuffling.
