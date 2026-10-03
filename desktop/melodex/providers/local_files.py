@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import os
 import queue
 import threading
@@ -194,6 +195,7 @@ class LocalFilesProvider(MusicProvider):
         progress: Callable[[dict[str, Any]], None] | None = None,
         control: ScanControl | None = None,
         cached_entries: dict[str, dict[str, Any]] | None = None,
+        cached_directories: dict[str, dict[str, Any]] | None = None,
         collect_tracks: bool = True,
     ) -> dict[str, Any]:
         """Scan roots through a bounded discovery/metadata pipeline.
@@ -212,10 +214,16 @@ class LocalFilesProvider(MusicProvider):
             for key, value in dict(cached_entries or {}).items()
             if isinstance(value, dict)
         }
+        cached_dirs = {
+            self._override_key(key): dict(value)
+            for key, value in dict(cached_directories or {}).items()
+            if isinstance(value, dict)
+        }
         control = control or ScanControl()
         throttle = ProgressThrottle()
         tracks: list[dict[str, Any]] = []
         index_records: list[dict[str, Any]] = []
+        directory_manifests: list[dict[str, Any]] = []
         tracks_indexed = 0
         root_states: list[dict[str, Any]] = []
         probe = ScanProbe(len(scan_roots))
@@ -236,6 +244,8 @@ class LocalFilesProvider(MusicProvider):
         producer_error: list[BaseException] = []
         max_queue_depth = 0
         queue_backpressure_events = 0
+        directory_manifest_hits = 0
+        directory_manifest_misses = 0
 
         def emit(
             phase: str,
@@ -330,7 +340,9 @@ class LocalFilesProvider(MusicProvider):
                     for base, _, files in walker:
                         control.checkpoint()
                         probe.directory_seen()
-                        for name in files:
+                        manifest = hashlib.sha256()
+                        audio_count = 0
+                        for name in sorted(files):
                             control.checkpoint()
                             p = Path(base) / name
                             is_audio = p.suffix.lower() in AUDIO_EXTS
@@ -357,6 +369,22 @@ class LocalFilesProvider(MusicProvider):
                             except OSError:
                                 stat_failures += 1
 
+                            audio_count += 1
+                            manifest.update(
+                                (
+                                    name
+                                    + "\0"
+                                    + str(size if size is not None else "?")
+                                    + "\0"
+                                    + str(
+                                        mtime_ns
+                                        if mtime_ns is not None
+                                        else "?"
+                                    )
+                                    + "\n"
+                                ).encode("utf-8", errors="surrogatepass")
+                            )
+
                             put_work(
                                 {
                                     "type": "file",
@@ -367,6 +395,17 @@ class LocalFilesProvider(MusicProvider):
                                     "root_key": root_key,
                                 }
                             )
+
+                        put_work(
+                            {
+                                "type": "directory_manifest",
+                                "path": str(base),
+                                "root_path": str(root),
+                                "root_key": root_key,
+                                "manifest": manifest.hexdigest(),
+                                "file_count": audio_count,
+                            }
+                        )
 
                     put_work(
                         {
@@ -395,6 +434,7 @@ class LocalFilesProvider(MusicProvider):
         current_root_state: dict[str, Any] | None = None
         current_tracks_start = 0
         current_index_records_start = 0
+        current_directory_manifests_start = 0
         current_tracks_indexed_start = 0
         current_root_seen: set[str] = set()
         root_unchanged = 0
@@ -423,6 +463,7 @@ class LocalFilesProvider(MusicProvider):
                     root_states.append(current_root_state)
                     current_tracks_start = len(tracks)
                     current_index_records_start = len(index_records)
+                    current_directory_manifests_start = len(directory_manifests)
                     current_tracks_indexed_start = tracks_indexed
                     current_root_seen = set()
                     root_unchanged = 0
@@ -502,6 +543,33 @@ class LocalFilesProvider(MusicProvider):
                     )
                     continue
 
+                if item_type == "directory_manifest":
+                    directory_path = str(item.get("path") or "")
+                    manifest_value = str(item.get("manifest") or "")
+                    file_count = max(0, int(item.get("file_count") or 0))
+                    previous_dir = cached_dirs.get(
+                        self._override_key(directory_path)
+                    )
+                    if (
+                        previous_dir
+                        and str(previous_dir.get("manifest") or "")
+                        == manifest_value
+                        and int(previous_dir.get("file_count") or 0)
+                        == file_count
+                    ):
+                        directory_manifest_hits += 1
+                    else:
+                        directory_manifest_misses += 1
+                    directory_manifests.append(
+                        {
+                            "path": directory_path,
+                            "root_path": str(item.get("root_path") or ""),
+                            "manifest": manifest_value,
+                            "file_count": file_count,
+                        }
+                    )
+                    continue
+
                 if item_type == "root_end":
                     if current_root_state is None:
                         continue
@@ -518,6 +586,9 @@ class LocalFilesProvider(MusicProvider):
                     else:
                         del tracks[current_tracks_start:]
                         del index_records[current_index_records_start:]
+                        del directory_manifests[
+                            current_directory_manifests_start:
+                        ]
                         tracks_indexed = current_tracks_indexed_start
                     current_root_state = None
                     current_root_key = ""
@@ -565,6 +636,9 @@ class LocalFilesProvider(MusicProvider):
                     "bounded_pipeline": True,
                     "collect_tracks": bool(collect_tracks),
                     "snapshot_track_copies": 2 if collect_tracks else 1,
+                    "directory_manifest_hits": int(directory_manifest_hits),
+                    "directory_manifest_misses": int(directory_manifest_misses),
+                    "directory_manifests": len(directory_manifests),
                     "pipeline_queue_capacity": int(queue_capacity),
                     "pipeline_max_queue_depth": int(max_queue_depth),
                     "pipeline_backpressure_events": int(
@@ -589,6 +663,7 @@ class LocalFilesProvider(MusicProvider):
             return {
                 "tracks": [],
                 "index_records": [],
+                "directory_manifests": [],
                 "metrics": metrics,
                 "root_states": root_states,
                 "cancelled": True,
@@ -603,6 +678,7 @@ class LocalFilesProvider(MusicProvider):
         return {
             "tracks": tracks,
             "index_records": index_records,
+            "directory_manifests": directory_manifests,
             "metrics": metrics,
             "root_states": root_states,
             "changes": {
