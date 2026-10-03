@@ -201,6 +201,7 @@ class LocalFilesProvider(MusicProvider):
         cached_entries: dict[str, dict[str, Any]] | None = None,
         cached_directories: dict[str, dict[str, Any]] | None = None,
         collect_tracks: bool = True,
+        checkpoint: Callable[[dict[str, Any]], None] | None = None,
     ) -> dict[str, Any]:
         """Scan roots through a bounded discovery/metadata pipeline.
 
@@ -483,13 +484,14 @@ class LocalFilesProvider(MusicProvider):
                     root_changed=root_changed,
                 )
             if raw_metadata:
-                index_records.append(
-                    {
-                        "track": dict(raw_metadata),
-                        "size": row.get("size"),
-                        "mtime_ns": row.get("mtime_ns"),
-                    }
-                )
+                record = {
+                    "track": dict(raw_metadata),
+                    "size": row.get("size"),
+                    "mtime_ns": row.get("mtime_ns"),
+                }
+                if bool(row.get("checkpoint")) and checkpoint is not None:
+                    checkpoint(dict(record))
+                index_records.append(record)
                 tracks_indexed += 1
                 if collect_tracks:
                     tracks.append(self._apply_override(raw_metadata))
@@ -589,6 +591,7 @@ class LocalFilesProvider(MusicProvider):
                                     read_metadata,
                                     p,
                                 ),
+                                "checkpoint": True,
                             }
                         )
 
