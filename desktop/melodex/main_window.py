@@ -2152,7 +2152,7 @@ class MainWindow(QMainWindow):
         l=self._page_layout(
             "sources",
             "Sources & plugins",
-            "See what Melodex includes, what you have connected, and which optional enhancements are installed. Technical details stay under Power tools.",
+            "Choose where your music and extra features come from.",
         )
 
         self.source_welcome=QFrame()
@@ -2163,12 +2163,10 @@ class MainWindow(QMainWindow):
 
         welcome_text=QVBoxLayout()
         welcome_text.setSpacing(3)
-        welcome_title=QLabel("You are already ready to listen")
+        welcome_title=QLabel("Nothing else is required")
         welcome_title.setObjectName("sourceFirstRunTitle")
         welcome_body=QLabel(
-            "Your own library and the sources included with Melodex work without extra setup. "
-            "Plugins are optional: add them only when you want more music, artwork, lyrics, "
-            "recommendations or context."
+            "Your library works on its own. Add sources or plugins only when you want them."
         )
         welcome_body.setObjectName("sourceFirstRunBody")
         welcome_body.setWordWrap(True)
@@ -2197,11 +2195,13 @@ class MainWindow(QMainWindow):
         overview_l.setSpacing(12)
 
         overview_head=QHBoxLayout()
-        overview_title=QLabel("Your Melodex ecosystem")
+        overview_title=QLabel("Your sources")
         overview_title.setStyleSheet("font-size:18px;font-weight:720")
         overview_head.addWidget(overview_title)
         overview_head.addStretch(1)
         self.source_check_all=QPushButton("Check connections")
+        self.source_check_all.setObjectName("quietButton")
+        self.source_check_all.setVisible(self.power_toggle.isChecked())
         self.source_check_all.clicked.connect(self._test_all_plugins)
         set_help(
             self.source_check_all,
@@ -2212,41 +2212,12 @@ class MainWindow(QMainWindow):
         overview_l.addLayout(overview_head)
 
         self.sources_overview=QLabel(
-            "Your own music works without plugins. Included sources and optional enhancements can add more places to listen, artwork, lyrics and discovery."
+            "Local music first. Add other sources and features when they are useful."
         )
         self.sources_overview.setWordWrap(True)
-        self.sources_overview.setStyleSheet("color:#93a0b2")
+        self.sources_overview.setObjectName("mutedText")
         overview_l.addWidget(self.sources_overview)
 
-        summary=QHBoxLayout()
-        summary.setSpacing(10)
-        def summary_card(glyph: str, title: str):
-            card=QFrame()
-            card.setObjectName("sourceSummaryCard")
-            row=QHBoxLayout(card)
-            row.setContentsMargins(12,10,12,10)
-            row.setSpacing(9)
-            icon=QLabel(glyph)
-            icon.setObjectName("sourceSummaryIcon")
-            icon.setAlignment(Qt.AlignCenter)
-            icon.setFixedSize(34,34)
-            row.addWidget(icon)
-            col=QVBoxLayout()
-            col.setSpacing(0)
-            label=QLabel(title)
-            label.setStyleSheet("font-weight:700")
-            value=QLabel("—")
-            value.setObjectName("sourceSummaryValue")
-            col.addWidget(label)
-            col.addWidget(value)
-            row.addLayout(col,1)
-            summary.addWidget(card,1)
-            return value
-
-        self.source_summary_library=summary_card("♫","Your music")
-        self.source_summary_included=summary_card("＋","Included")
-        self.source_summary_enhancements=summary_card("✦","Enhancements")
-        overview_l.addLayout(summary)
         l.addWidget(overview)
 
         actions=QHBoxLayout()
@@ -2255,12 +2226,13 @@ class MainWindow(QMainWindow):
         local.clicked.connect(self._choose_music_folder)
         directory=QPushButton("Add features…")
         directory.setObjectName("secondaryButton")
-        directory.clicked.connect(self._plugin_directory)
+        directory.clicked.connect(self._toggle_source_feature_picker)
         streams=QPushButton("My streams")
         streams.clicked.connect(self._user_streams_dialog)
         self.source_primary_button=QPushButton("Use selected")
         self.source_primary_button.clicked.connect(self._source_primary_action)
         self.source_primary_button.setEnabled(False)
+        self.source_primary_button.hide()
         set_help(
             local,
             "Add local music",
@@ -2288,9 +2260,9 @@ class MainWindow(QMainWindow):
         actions.addWidget(self.source_primary_button)
         l.addLayout(actions)
 
-        feature_picker=QFrame()
-        feature_picker.setObjectName("pluginFeaturePicker")
-        feature_l=QHBoxLayout(feature_picker)
+        self.source_feature_picker=QFrame()
+        self.source_feature_picker.setObjectName("pluginFeaturePicker")
+        feature_l=QHBoxLayout(self.source_feature_picker)
         feature_l.setContentsMargins(14,10,14,10)
         feature_l.setSpacing(8)
         feature_text=QVBoxLayout()
@@ -2298,7 +2270,7 @@ class MainWindow(QMainWindow):
         feature_title=QLabel("What would you like to add?")
         feature_title.setObjectName("pluginFeatureTitle")
         feature_subtitle=QLabel(
-            "Jump straight to plugins for a particular job."
+            "Browse plugins by what they add."
         )
         feature_subtitle.setObjectName("pluginFeatureSubtitle")
         feature_text.addWidget(feature_title)
@@ -2307,6 +2279,7 @@ class MainWindow(QMainWindow):
 
         self.source_feature_buttons={}
         for label,capability in (
+            ("All features",""),
             ("More music","search"),
             ("Lyrics","lyrics"),
             ("Artwork","artwork"),
@@ -2320,7 +2293,8 @@ class MainWindow(QMainWindow):
             )
             self.source_feature_buttons[capability]=button
             feature_l.addWidget(button)
-        l.addWidget(feature_picker)
+        self.source_feature_picker.hide()
+        l.addWidget(self.source_feature_picker)
 
         self.sources_list=QListWidget()
         self.sources_list.setObjectName("sourcesList")
@@ -2329,10 +2303,11 @@ class MainWindow(QMainWindow):
         l.addWidget(self.sources_list,1)
 
         self.source_hint=QLabel(
-            "Select a source to see what you can do with it. Technical controls are hidden unless Power tools is enabled."
+            "Select a source for its available actions."
         )
         self.source_hint.setWordWrap(True)
-        self.source_hint.setStyleSheet("color:#8793a4")
+        self.source_hint.setObjectName("subtleText")
+        self.source_hint.hide()
         l.addWidget(self.source_hint)
 
         support_row=QHBoxLayout()
@@ -2669,6 +2644,8 @@ class MainWindow(QMainWindow):
         self.state.set_bool("power_tools",enabled)
         if hasattr(self, "source_power_panel"):
             self.source_power_panel.setVisible(enabled)
+        if hasattr(self, "source_check_all"):
+            self.source_check_all.setVisible(enabled)
         if hasattr(self, "explore_ask_button"):
             self.explore_ask_button.setVisible(
                 enabled and bool(self.providers.local_catalog_count())
@@ -2929,10 +2906,15 @@ class MainWindow(QMainWindow):
                 state=dict(extension.get("configuration_status") or {})
                 if state.get("declared") and state.get("ready") is False:
                     setup_needed+=1
+            local_count=len(self.providers.local_catalog())
+            plugin_text=(
+                f"{optional_count} plugin{'s' if optional_count!=1 else ''}"
+                if optional_count else "no plugins"
+            )
             summary=(
-                f"{len(builtins)} built-in connections · "
-                f"{active_included} included sources · "
-                f"{optional_count} installed optional plugin{'s' if optional_count!=1 else ''}"
+                f"{local_count:,} local track{'s' if local_count!=1 else ''} · "
+                f"{active_included} included source{'s' if active_included!=1 else ''} · "
+                f"{plugin_text}"
             )
             if setup_needed:
                 summary+=f" · {setup_needed} need setup"
@@ -3044,13 +3026,13 @@ class MainWindow(QMainWindow):
         enabled=bool(key)
         if hasattr(self,"source_primary_button"):
             self.source_primary_button.setEnabled(enabled)
+            self.source_primary_button.setVisible(enabled)
+        if hasattr(self,"source_hint"):
+            self.source_hint.setVisible(enabled)
         if not hasattr(self,"source_hint"):
             return
         if not key:
             self.source_primary_button.setText("Use selected")
-            self.source_hint.setText(
-                "Select a source or plugin. The main button will show where it is actually used in Melodex; technical controls stay under Power tools."
-            )
             return
 
         if key=="local":
