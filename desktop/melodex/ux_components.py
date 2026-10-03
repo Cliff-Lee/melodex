@@ -163,10 +163,10 @@ class ActionCard(QFrame):
         super().__init__(parent)
         self.setObjectName("actionCard")
         self.setCursor(Qt.PointingHandCursor)
-        self.setMinimumHeight(118)
+        self.setMinimumHeight(106)
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(18, 16, 18, 15)
-        layout.setSpacing(5)
+        layout.setContentsMargins(16, 14, 16, 14)
+        layout.setSpacing(4)
 
         if eyebrow:
             eyebrow_label = QLabel(str(eyebrow).upper())
@@ -284,7 +284,7 @@ class SourceCard(QFrame):
         self.setObjectName("sourceCard")
         self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
         outer = QHBoxLayout(self)
-        outer.setContentsMargins(13, 11, 13, 11)
+        outer.setContentsMargins(12, 10, 12, 10)
         outer.setSpacing(12)
 
         badge = QLabel()
@@ -343,8 +343,8 @@ class EmptyState(QFrame):
         super().__init__(parent)
         self.setObjectName("emptyState")
         outer = QVBoxLayout(self)
-        outer.setContentsMargins(28, 34, 28, 34)
-        outer.setSpacing(10)
+        outer.setContentsMargins(24, 28, 24, 28)
+        outer.setSpacing(8)
         outer.addStretch(1)
 
         title_label = QLabel(title)

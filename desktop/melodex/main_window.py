@@ -214,12 +214,6 @@ class MainWindow(QMainWindow):
         self._local_scan_sequence = 0
         self._local_scan_started_at = 0.0
         self._local_scan_last_progress: dict[str, Any] = {}
-        self._local_scan_session: dict[str, Any] = {
-            "status": "idle",
-            "running": False,
-            "pending_rescan": False,
-            "storage_state": "unknown",
-        }
         self._prefetched_track_assets: dict[str, dict[str, Any]] = {}
         self._prefetch_sequence = 0
         self._prefetch_delay_ms = 350
@@ -599,6 +593,46 @@ class MainWindow(QMainWindow):
                 font-size:13px;
             }
             QLabel{background:transparent}
+            QLabel#pageTitle{
+                font-size:27px;
+                font-weight:720;
+            }
+            QLabel#pageSubtitle{
+                color:#99a4b3;
+                font-size:13px;
+                margin-bottom:6px;
+            }
+            QLabel#pageHint{
+                color:#758297;
+                margin-top:8px;
+            }
+            QLabel#heroTitle{
+                font-size:20px;
+                font-weight:720;
+            }
+            QLabel#sectionTitle{
+                font-size:17px;
+                font-weight:700;
+                margin-top:12px;
+            }
+            QLabel#sectionTitleCompact{
+                font-size:17px;
+                font-weight:700;
+            }
+            QLabel#panelHeading{
+                font-size:15px;
+                font-weight:700;
+            }
+            QLabel#mutedText{color:#98a3b3}
+            QLabel#subtleText{
+                color:#7f8b9b;
+                margin-top:6px;
+            }
+            QLabel#searchStatus{
+                color:#98a4b4;
+                padding:6px 2px 4px 2px;
+                font-size:12px;
+            }
             QWidget#sidebar{
                 background:#0a0d12;
                 border-right:1px solid #202733;
@@ -648,7 +682,12 @@ class MainWindow(QMainWindow):
                 font-weight:700;
                 padding:11px 17px;
             }
-            QPushButton#secondaryButton{font-weight:650}
+            QPushButton#secondaryButton{
+                background:#151b24;
+                border-color:#283443;
+                color:#d7dde7;
+                font-weight:600;
+            }
             QPushButton#quietButton{
                 background:transparent;
                 border-color:#28313e;
@@ -737,7 +776,7 @@ class MainWindow(QMainWindow):
             QFrame#actionCard{
                 background:#141b25;
                 border:1px solid #293544;
-                border-radius:14px;
+                border-radius:12px;
             }
             QFrame#actionCard:hover{
                 background:#182231;
@@ -749,7 +788,10 @@ class MainWindow(QMainWindow):
                 font-weight:700;
             }
             QLabel#cardTitle{font-size:18px;font-weight:720}
-            QLabel#cardBody{color:#9fa9b8}
+            QLabel#cardBody{
+                color:#929dac;
+                font-size:12px;
+            }
             QLabel#cardAction{color:#72aefb;font-weight:650}
             QFrame#albumCard{
                 background:transparent;
@@ -802,19 +844,19 @@ class MainWindow(QMainWindow):
             QFrame#emptyState{
                 background:#121821;
                 border:1px dashed #313d4e;
-                border-radius:15px;
+                border-radius:12px;
             }
             QLabel#emptyTitle{font-size:20px;font-weight:720}
             QLabel#emptyBody{color:#97a2b2;font-size:13px}
             QFrame#homeHero{
                 background:#131c29;
                 border:1px solid #2a3d56;
-                border-radius:16px;
+                border-radius:12px;
             }
             QFrame#continueCard{
                 background:#121923;
                 border:1px solid #273343;
-                border-radius:13px;
+                border-radius:12px;
             }
             QFrame#powerPanel{
                 background:#111821;
@@ -824,7 +866,7 @@ class MainWindow(QMainWindow):
             QFrame#sourceOverview{
                 background:#121b26;
                 border:1px solid #2a3a4d;
-                border-radius:14px;
+                border-radius:12px;
             }
             QFrame#sourceFirstRun{
                 background:#102033;
@@ -1074,12 +1116,12 @@ class MainWindow(QMainWindow):
             self._clear_layout_items(lay)
         lay.setContentsMargins(28,24,28,24)
         lay.setSpacing(6)
-        t=QLabel(title); t.setStyleSheet("font-size:28px;font-weight:700"); lay.addWidget(t)
+        t=QLabel(title); t.setObjectName("pageTitle"); lay.addWidget(t)
         self.page_titles[page]=t
         if subtitle:
             subtitle_label=QLabel(subtitle)
             subtitle_label.setWordWrap(True)
-            subtitle_label.setStyleSheet("color:#aab0ba")
+            subtitle_label.setObjectName("pageSubtitle")
             lay.addWidget(subtitle_label)
         return lay
 
@@ -1091,7 +1133,7 @@ class MainWindow(QMainWindow):
     ) -> None:
         lay=self._page_layout(page,title,subtitle)
         hint=QLabel("Opening…")
-        hint.setStyleSheet("color:#758297;margin-top:8px")
+        hint.setObjectName("pageHint")
         lay.addWidget(hint)
         lay.addStretch(1)
 
@@ -1127,8 +1169,8 @@ class MainWindow(QMainWindow):
     def _build_home(self):
         l=self._page_layout(
             "home",
-            "What do you feel like hearing?",
-            "Start with an intention. Melodex can stay familiar, help you rediscover something, or take you somewhere less expected.",
+            "Home",
+            "Pick something to play, or carry on where you left off.",
         )
 
         hero=QFrame()
@@ -1137,15 +1179,14 @@ class MainWindow(QMainWindow):
         hero_l.setContentsMargins(22,20,22,20)
         hero_l.setSpacing(10)
         prompt=QLabel("Start listening")
-        prompt.setStyleSheet("font-size:20px;font-weight:720")
+        prompt.setObjectName("heroTitle")
         hero_l.addWidget(prompt)
-        explanation=QLabel(
-            "One click builds a listening session from your own library. "
-            "You can fine-tune it later if you want."
+        self.home_explanation=QLabel(
+            "A session from your library, shaped as you listen."
         )
-        explanation.setWordWrap(True)
-        explanation.setStyleSheet("color:#9fa9b8")
-        hero_l.addWidget(explanation)
+        self.home_explanation.setWordWrap(True)
+        self.home_explanation.setObjectName("mutedText")
+        hero_l.addWidget(self.home_explanation)
 
         self.home_primary_button=QPushButton("▶  Play something")
         self.home_primary_button.setObjectName("primaryButton")
@@ -1154,11 +1195,13 @@ class MainWindow(QMainWindow):
         set_help(
             self.home_primary_button,
             "Play something",
-            "Builds a balanced one-hour session from your local library using your listening history and Flow when available.",
+            "Starts a balanced session from your library. You can steer it later.",
         )
         hero_l.addWidget(self.home_primary_button)
 
-        moods=QHBoxLayout()
+        self.home_moods_widget=QWidget()
+        moods=QHBoxLayout(self.home_moods_widget)
+        moods.setContentsMargins(0,0,0,0)
         comfort=QPushButton("Comfort")
         explore=QPushButton("Explore")
         rediscover=QPushButton("Rediscover")
@@ -1176,12 +1219,12 @@ class MainWindow(QMainWindow):
         moods.addWidget(rediscover)
         moods.addStretch(1)
         moods.addWidget(tune)
-        hero_l.addLayout(moods)
+        hero_l.addWidget(self.home_moods_widget)
         l.addWidget(hero)
 
-        continue_title=QLabel("Continue listening")
-        continue_title.setStyleSheet("font-size:18px;font-weight:700;margin-top:10px")
-        l.addWidget(continue_title)
+        self.home_continue_heading=QLabel("Continue listening")
+        self.home_continue_heading.setStyleSheet("font-size:18px;font-weight:700;margin-top:10px")
+        l.addWidget(self.home_continue_heading)
 
         self.home_continue=QFrame()
         self.home_continue.setObjectName("continueCard")
@@ -1195,7 +1238,7 @@ class MainWindow(QMainWindow):
         self.home_continue_title.setStyleSheet("font-size:17px;font-weight:700")
         self.home_continue_meta=QLabel("Play something and it will be easy to return here.")
         self.home_continue_meta.setWordWrap(True)
-        self.home_continue_meta.setStyleSheet("color:#98a3b3")
+        self.home_continue_meta.setObjectName("mutedText")
         continue_text.addStretch(1)
         continue_text.addWidget(self.home_continue_title)
         continue_text.addWidget(self.home_continue_meta)
@@ -1213,27 +1256,29 @@ class MainWindow(QMainWindow):
         continue_l.addWidget(self.home_continue_button)
         l.addWidget(self.home_continue)
 
-        explore_title=QLabel("Explore your music")
-        explore_title.setStyleSheet("font-size:18px;font-weight:700;margin-top:10px")
-        l.addWidget(explore_title)
-        cards=QHBoxLayout()
+        self.home_explore_heading=QLabel("Explore your music")
+        self.home_explore_heading.setStyleSheet("font-size:18px;font-weight:700;margin-top:10px")
+        l.addWidget(self.home_explore_heading)
+        self.home_explore_widget=QWidget()
+        cards=QHBoxLayout(self.home_explore_widget)
+        cards.setContentsMargins(0,0,0,0)
         library_card=ActionCard(
             "Browse your collection",
-            "Albums, artists and tracks with artwork instead of file-system detail.",
+            "Albums, artists and tracks.",
             eyebrow="My Music",
             action_text="Browse",
         )
         library_card.clicked.connect(lambda:self.open_page("library"))
         wall_card=ActionCard(
             "Album Wall",
-            "Explore your records spatially and move between sonic, time and familiarity views.",
+            "Browse your collection as a wall of covers.",
             eyebrow="Visual",
             action_text="Explore",
         )
         wall_card.clicked.connect(lambda:self.open_page("album_wall"))
         map_card=ActionCard(
             "Music Map",
-            "See relationships between tracks and plan a route when you want deeper exploration.",
+            "See how tracks in your library connect.",
             eyebrow="Deep explore",
             action_text="Open map",
         )
@@ -1241,11 +1286,11 @@ class MainWindow(QMainWindow):
         cards.addWidget(library_card,1)
         cards.addWidget(wall_card,1)
         cards.addWidget(map_card,1)
-        l.addLayout(cards)
+        l.addWidget(self.home_explore_widget)
 
         self.home_status=QLabel()
         self.home_status.setWordWrap(True)
-        self.home_status.setStyleSheet("color:#7f8b9b;margin-top:8px")
+        self.home_status.setObjectName("subtleText")
         l.addWidget(self.home_status)
         l.addStretch(1)
 
@@ -1257,7 +1302,7 @@ class MainWindow(QMainWindow):
         l=self._page_layout(
             "now_playing",
             "Now playing",
-            "Stay with the music first. Artwork, lyrics and context are primary; visualisations are there when you want them.",
+            "Artwork, lyrics and context for what is playing now.",
         )
         self.now_views = QTabWidget()
         self.rich_now = RichNowPlayingWidget(
@@ -1294,7 +1339,7 @@ class MainWindow(QMainWindow):
         l=self._page_layout(
             "for_you",
             "Tune your listening",
-            "These controls are optional. Start simple, then adjust how long the session lasts and how far Melodex should move from familiar music.",
+            "Choose how long to listen and how adventurous the session should be.",
         )
 
         row=QHBoxLayout()
@@ -1352,18 +1397,18 @@ class MainWindow(QMainWindow):
 
         self.taste_label=QLabel()
         self.taste_label.setWordWrap(True)
-        self.taste_label.setStyleSheet("color:#8490a1")
+        self.taste_label.setObjectName("subtleText")
         l.addWidget(self.taste_label)
 
-        intel_title=QLabel("More ways to explore")
+        intel_title=QLabel("From your library")
         intel_title.setStyleSheet("font-size:18px;font-weight:650;margin-top:10px")
         l.addWidget(intel_title)
 
         intel_help=QLabel(
-            "These suggestions use your own library and listening history. Audio analysis stays on this computer."
+            "Local suggestions based on what you have and what you play."
         )
         intel_help.setWordWrap(True)
-        intel_help.setStyleSheet("color:#aab0ba")
+        intel_help.setObjectName("mutedText")
         l.addWidget(intel_help)
 
         self.recommendation_plugin_presence=FeaturePresenceBar(
@@ -1424,7 +1469,7 @@ class MainWindow(QMainWindow):
         l=self._page_layout(
             "discover",
             "Discover",
-            "Search all connected music sources. One slow or unavailable source will no longer stop the rest of your search.",
+            "Search your library and connected sources.",
         )
         row=QHBoxLayout()
         self.search_box=QLineEdit()
@@ -1475,7 +1520,7 @@ class MainWindow(QMainWindow):
         l=self._page_layout(
             "library",
             "My Music",
-            "Browse the collection you chose to keep on this device. Album artwork and musical identity come first; file details stay out of the way.",
+            "Albums, artists and tracks from your library.",
         )
         self.artwork_plugin_presence=FeaturePresenceBar(
             "Artwork helpers",
@@ -1484,6 +1529,9 @@ class MainWindow(QMainWindow):
         )
         self.artwork_plugin_presence.actionRequested.connect(
             lambda:self._plugin_directory("artwork")
+        )
+        self.artwork_plugin_presence.setVisible(
+            bool(self.providers.local_catalog_count())
         )
         l.addWidget(self.artwork_plugin_presence)
 
@@ -1512,62 +1560,72 @@ class MainWindow(QMainWindow):
         l=self._page_layout(
             "explore",
             "Explore",
-            "Choose the kind of exploration you want. Search is direct; Album Wall is visual; Music Map goes deeper into relationships and routes.",
+            "Search, browse visually, or follow connections through your music.",
         )
 
         cards=QHBoxLayout()
         search_card=ActionCard(
             "Search everything",
-            "Find artists, albums or tracks across all the music sources you have connected.",
+            "Find artists, albums and tracks.",
             eyebrow="Search",
             action_text="Search",
         )
         search_card.clicked.connect(lambda:self.open_page("discover"))
-        wall_card=ActionCard(
+        self.explore_wall_card=ActionCard(
             "Album Wall",
-            "Browse your own collection as a stable visual place built from album covers.",
+            "Browse your collection by cover.",
             eyebrow="Browse",
             action_text="Open wall",
         )
-        wall_card.clicked.connect(lambda:self.open_page("album_wall"))
-        map_card=ActionCard(
+        self.explore_wall_card.clicked.connect(lambda:self.open_page("album_wall"))
+        self.explore_map_card=ActionCard(
             "Music Map",
-            "Explore sonic relationships between tracks. Advanced route-planning appears when you need it.",
+            "Follow relationships between tracks.",
             eyebrow="Relationships",
             action_text="Open map",
         )
-        map_card.clicked.connect(lambda:self.open_page("music_map"))
+        self.explore_map_card.clicked.connect(lambda:self.open_page("music_map"))
         cards.addWidget(search_card,1)
-        cards.addWidget(wall_card,1)
-        cards.addWidget(map_card,1)
+        cards.addWidget(self.explore_wall_card,1)
+        cards.addWidget(self.explore_map_card,1)
         l.addLayout(cards)
 
-        help_title=QLabel("Not sure where to start?")
-        help_title.setStyleSheet("font-size:18px;font-weight:700;margin-top:18px")
-        l.addWidget(help_title)
+        self.explore_try_section=QWidget()
+        try_l=QVBoxLayout(self.explore_try_section)
+        try_l.setContentsMargins(0,0,0,0)
+        try_l.setSpacing(8)
+        help_title=QLabel("Try something")
+        help_title.setObjectName("sectionTitle")
+        try_l.addWidget(help_title)
         help_row=QHBoxLayout()
-        similar=QPushButton("More like what is playing")
-        similar.clicked.connect(lambda:self._run_local_intelligence("similar"))
+        self.explore_similar_button=QPushButton("More like what is playing")
+        self.explore_similar_button.clicked.connect(
+            lambda:self._run_local_intelligence("similar")
+        )
         rediscover=QPushButton("Find a forgotten favourite")
         rediscover.clicked.connect(lambda:self._run_local_intelligence("rediscover"))
-        ask=QPushButton("Ask Melodex…")
-        ask.clicked.connect(lambda:self.open_page("ask"))
-        set_help(similar,"More like this","Uses local intelligence to look for nearby music in your own library.")
+        self.explore_ask_button=QPushButton("Ask Melodex…")
+        self.explore_ask_button.setObjectName("quietButton")
+        self.explore_ask_button.clicked.connect(lambda:self.open_page("ask"))
+        set_help(self.explore_similar_button,"More like this","Uses local intelligence to look for nearby music in your own library.")
         set_help(rediscover,"Forgotten favourite","Looks for music you used to play but have not heard for a while.")
-        set_help(ask,"Ask Melodex","Use an optional connected LLM for natural-language listening requests. Melodex still works without one.")
-        help_row.addWidget(similar)
+        set_help(self.explore_ask_button,"Ask Melodex","Use an optional connected LLM for natural-language listening requests. Melodex still works without one.")
+        help_row.addWidget(self.explore_similar_button)
         help_row.addWidget(rediscover)
-        help_row.addWidget(ask)
+        help_row.addWidget(self.explore_ask_button)
         help_row.addStretch(1)
-        l.addLayout(help_row)
+        try_l.addLayout(help_row)
 
         note=QLabel(
-            "Tip: Album Wall is designed for visual browsing. Music Map is the power tool for understanding and shaping routes between tracks."
+            "Album Wall is for browsing. Music Map is for connections and routes."
         )
         note.setWordWrap(True)
-        note.setStyleSheet("color:#8793a4;margin-top:12px")
-        l.addWidget(note)
+        note.setObjectName("subtleText")
+        try_l.addWidget(note)
+        l.addWidget(self.explore_try_section)
         l.addStretch(1)
+
+        self._refresh_explore_visibility()
 
     def _build_album_wall(self):
         from .album_wall import AlbumWallWidget
@@ -1580,6 +1638,7 @@ class MainWindow(QMainWindow):
 
         actions=QHBoxLayout()
         self.album_wall_options_button=QPushButton("Wall options…")
+        self.album_wall_options_button.setObjectName("quietButton")
         self.album_wall_options_button.clicked.connect(self._toggle_album_wall_tools)
         self.album_wall_play_button=QPushButton("▶ Play selected")
         self.album_wall_play_button.clicked.connect(self._play_album_wall_selected)
@@ -1654,6 +1713,7 @@ class MainWindow(QMainWindow):
 
         simple=QHBoxLayout()
         self.music_map_options_button=QPushButton("Map options…")
+        self.music_map_options_button.setObjectName("quietButton")
         self.music_map_options_button.clicked.connect(self._toggle_music_map_options)
         self.music_map_play_button=QPushButton("▶ Play selected")
         self.music_map_play_button.clicked.connect(self._play_music_map_selected)
@@ -1662,6 +1722,7 @@ class MainWindow(QMainWindow):
         self.music_map_queue_button.clicked.connect(self._queue_music_map_selected)
         self.music_map_queue_button.setEnabled(False)
         self.music_map_plan_button=QPushButton("Plan a route…")
+        self.music_map_plan_button.setObjectName("secondaryButton")
         self.music_map_plan_button.clicked.connect(self._toggle_music_map_tools)
         set_help(
             self.music_map_options_button,
@@ -1713,8 +1774,10 @@ class MainWindow(QMainWindow):
         start_here=QPushButton("Start listening here")
         start_here.clicked.connect(self._journey_from_music_map)
         journey_options=QPushButton("Journey options…")
+        journey_options.setObjectName("quietButton")
         journey_options.clicked.connect(self._toggle_music_journey_options)
         close_tools=QPushButton("Hide route tools")
+        close_tools.setObjectName("quietButton")
         close_tools.clicked.connect(self._toggle_music_map_tools)
         top.addWidget(power_title)
         top.addStretch(1)
@@ -1736,12 +1799,16 @@ class MainWindow(QMainWindow):
         set_end=QPushButton("Use selected as destination")
         set_end.clicked.connect(self._music_path_set_end)
         find_path=QPushButton("Find route")
+        find_path.setObjectName("primaryButton")
         find_path.clicked.connect(self._music_path_find)
         play_path=QPushButton("▶ Play route")
+        play_path.setObjectName("secondaryButton")
         play_path.clicked.connect(self._music_path_play)
         queue_path=QPushButton("+ Queue route")
+        queue_path.setObjectName("secondaryButton")
         queue_path.clicked.connect(self._music_path_queue)
         clear_path=QPushButton("Clear")
+        clear_path.setObjectName("quietButton")
         clear_path.clicked.connect(self._music_path_clear)
         self.music_path_label=QLabel("Start —  →  Destination —")
         self.music_path_label.setStyleSheet("color:#aab0ba")
@@ -1920,7 +1987,7 @@ class MainWindow(QMainWindow):
         l=self._page_layout(
             "journeys",
             "Journeys",
-            "A journey is a listening route that develops gradually instead of shuffling randomly. Save designs you want to reuse; run history stays private on this computer.",
+            "Build a listening route that changes gradually as it plays.",
         )
 
         top=QHBoxLayout()
@@ -1951,10 +2018,10 @@ class MainWindow(QMainWindow):
         saved_l=QVBoxLayout(saved)
         saved_l.setContentsMargins(0,10,0,0)
         saved_help=QLabel(
-            "Saved journeys remember the route idea. When you reuse one, Melodex can resolve it against the music available now."
+            "Routes you want to use again."
         )
         saved_help.setWordWrap(True)
-        saved_help.setStyleSheet("color:#8f9bad")
+        saved_help.setObjectName("mutedText")
         saved_l.addWidget(saved_help)
         self.journey_recipes_stack=QStackedWidget()
         self.journey_recipes_list=QListWidget()
@@ -1994,10 +2061,10 @@ class MainWindow(QMainWindow):
         runs_l=QVBoxLayout(runs)
         runs_l.setContentsMargins(0,10,0,0)
         runs_help=QLabel(
-            "Recent runs show what actually happened after skips, steering and live replanning. This history is local to Melodex."
+            "What actually played, including any changes you made on the way."
         )
         runs_help.setWordWrap(True)
-        runs_help.setStyleSheet("color:#8f9bad")
+        runs_help.setObjectName("mutedText")
         runs_l.addWidget(runs_help)
         self.journey_runs_stack=QStackedWidget()
         self.journey_runs_list=QListWidget()
@@ -2040,14 +2107,15 @@ class MainWindow(QMainWindow):
         l=self._page_layout(
             "playlists",
             "Playlists",
-            "Keep ordinary playlists alongside AI-generated or imported ones. Melodex stores them locally and resolves tracks through the sources you have connected.",
+            "Keep playlists here, whether you made them elsewhere or built them in Melodex.",
         )
 
         top=QHBoxLayout()
         imp=QPushButton("Import playlist…")
+        imp.setObjectName("primaryButton")
         imp.clicked.connect(self._import_playlist_file)
         ai=QPushButton("Paste from AI…")
-        ai.setObjectName("primaryButton")
+        ai.setObjectName("secondaryButton")
         ai.clicked.connect(self._open_ai_playlist_import)
         set_help(
             imp,
@@ -2059,8 +2127,8 @@ class MainWindow(QMainWindow):
             "Paste from AI",
             "Paste a playlist generated in ChatGPT, Claude, Gemini or another AI. No AI account is connected and the pasted text is not sent back to an AI service.",
         )
-        top.addWidget(ai)
         top.addWidget(imp)
+        top.addWidget(ai)
         top.addStretch(1)
         l.addLayout(top)
 
@@ -2070,10 +2138,10 @@ class MainWindow(QMainWindow):
         self.playlists_list.itemSelectionChanged.connect(self._playlist_selection_changed)
         self.playlists_empty=EmptyState(
             "No playlists yet",
-            "Paste one from an AI chat, import an existing playlist, or export the music already in your queue.",
-            "Paste from AI",
+            "Import a playlist, or save music from your current queue.",
+            "Import playlist",
         )
-        self.playlists_empty.actionRequested.connect(self._open_ai_playlist_import)
+        self.playlists_empty.actionRequested.connect(self._import_playlist_file)
         self.playlists_stack.addWidget(self.playlists_list)
         self.playlists_stack.addWidget(self.playlists_empty)
         l.addWidget(self.playlists_stack,1)
@@ -2136,7 +2204,7 @@ class MainWindow(QMainWindow):
         l=self._page_layout(
             "sources",
             "Sources & plugins",
-            "See what Melodex includes, what you have connected, and which optional enhancements are installed. Technical details stay under Power tools.",
+            "Choose where your music and extra features come from.",
         )
 
         self.source_welcome=QFrame()
@@ -2147,12 +2215,10 @@ class MainWindow(QMainWindow):
 
         welcome_text=QVBoxLayout()
         welcome_text.setSpacing(3)
-        welcome_title=QLabel("You are already ready to listen")
+        welcome_title=QLabel("Nothing else is required")
         welcome_title.setObjectName("sourceFirstRunTitle")
         welcome_body=QLabel(
-            "Your own library and the sources included with Melodex work without extra setup. "
-            "Plugins are optional: add them only when you want more music, artwork, lyrics, "
-            "recommendations or context."
+            "Your library works on its own. Add sources or plugins only when you want them."
         )
         welcome_body.setObjectName("sourceFirstRunBody")
         welcome_body.setWordWrap(True)
@@ -2181,11 +2247,13 @@ class MainWindow(QMainWindow):
         overview_l.setSpacing(12)
 
         overview_head=QHBoxLayout()
-        overview_title=QLabel("Your Melodex ecosystem")
+        overview_title=QLabel("Your sources")
         overview_title.setStyleSheet("font-size:18px;font-weight:720")
         overview_head.addWidget(overview_title)
         overview_head.addStretch(1)
         self.source_check_all=QPushButton("Check connections")
+        self.source_check_all.setObjectName("quietButton")
+        self.source_check_all.setVisible(self.power_toggle.isChecked())
         self.source_check_all.clicked.connect(self._test_all_plugins)
         set_help(
             self.source_check_all,
@@ -2196,41 +2264,12 @@ class MainWindow(QMainWindow):
         overview_l.addLayout(overview_head)
 
         self.sources_overview=QLabel(
-            "Your own music works without plugins. Included sources and optional enhancements can add more places to listen, artwork, lyrics and discovery."
+            "Local music first. Add other sources and features when they are useful."
         )
         self.sources_overview.setWordWrap(True)
-        self.sources_overview.setStyleSheet("color:#93a0b2")
+        self.sources_overview.setObjectName("mutedText")
         overview_l.addWidget(self.sources_overview)
 
-        summary=QHBoxLayout()
-        summary.setSpacing(10)
-        def summary_card(glyph: str, title: str):
-            card=QFrame()
-            card.setObjectName("sourceSummaryCard")
-            row=QHBoxLayout(card)
-            row.setContentsMargins(12,10,12,10)
-            row.setSpacing(9)
-            icon=QLabel(glyph)
-            icon.setObjectName("sourceSummaryIcon")
-            icon.setAlignment(Qt.AlignCenter)
-            icon.setFixedSize(34,34)
-            row.addWidget(icon)
-            col=QVBoxLayout()
-            col.setSpacing(0)
-            label=QLabel(title)
-            label.setStyleSheet("font-weight:700")
-            value=QLabel("—")
-            value.setObjectName("sourceSummaryValue")
-            col.addWidget(label)
-            col.addWidget(value)
-            row.addLayout(col,1)
-            summary.addWidget(card,1)
-            return value
-
-        self.source_summary_library=summary_card("♫","Your music")
-        self.source_summary_included=summary_card("＋","Included")
-        self.source_summary_enhancements=summary_card("✦","Enhancements")
-        overview_l.addLayout(summary)
         l.addWidget(overview)
 
         actions=QHBoxLayout()
@@ -2239,12 +2278,13 @@ class MainWindow(QMainWindow):
         local.clicked.connect(self._choose_music_folder)
         directory=QPushButton("Add features…")
         directory.setObjectName("secondaryButton")
-        directory.clicked.connect(self._plugin_directory)
+        directory.clicked.connect(self._toggle_source_feature_picker)
         streams=QPushButton("My streams")
         streams.clicked.connect(self._user_streams_dialog)
         self.source_primary_button=QPushButton("Use selected")
         self.source_primary_button.clicked.connect(self._source_primary_action)
         self.source_primary_button.setEnabled(False)
+        self.source_primary_button.hide()
         set_help(
             local,
             "Add local music",
@@ -2272,9 +2312,9 @@ class MainWindow(QMainWindow):
         actions.addWidget(self.source_primary_button)
         l.addLayout(actions)
 
-        feature_picker=QFrame()
-        feature_picker.setObjectName("pluginFeaturePicker")
-        feature_l=QHBoxLayout(feature_picker)
+        self.source_feature_picker=QFrame()
+        self.source_feature_picker.setObjectName("pluginFeaturePicker")
+        feature_l=QHBoxLayout(self.source_feature_picker)
         feature_l.setContentsMargins(14,10,14,10)
         feature_l.setSpacing(8)
         feature_text=QVBoxLayout()
@@ -2282,7 +2322,7 @@ class MainWindow(QMainWindow):
         feature_title=QLabel("What would you like to add?")
         feature_title.setObjectName("pluginFeatureTitle")
         feature_subtitle=QLabel(
-            "Jump straight to plugins for a particular job."
+            "Browse plugins by what they add."
         )
         feature_subtitle.setObjectName("pluginFeatureSubtitle")
         feature_text.addWidget(feature_title)
@@ -2291,6 +2331,7 @@ class MainWindow(QMainWindow):
 
         self.source_feature_buttons={}
         for label,capability in (
+            ("All features",""),
             ("More music","search"),
             ("Lyrics","lyrics"),
             ("Artwork","artwork"),
@@ -2304,7 +2345,8 @@ class MainWindow(QMainWindow):
             )
             self.source_feature_buttons[capability]=button
             feature_l.addWidget(button)
-        l.addWidget(feature_picker)
+        self.source_feature_picker.hide()
+        l.addWidget(self.source_feature_picker)
 
         self.sources_list=QListWidget()
         self.sources_list.setObjectName("sourcesList")
@@ -2313,10 +2355,11 @@ class MainWindow(QMainWindow):
         l.addWidget(self.sources_list,1)
 
         self.source_hint=QLabel(
-            "Select a source to see what you can do with it. Technical controls are hidden unless Power tools is enabled."
+            "Select a source for its available actions."
         )
         self.source_hint.setWordWrap(True)
-        self.source_hint.setStyleSheet("color:#8793a4")
+        self.source_hint.setObjectName("subtleText")
+        self.source_hint.hide()
         l.addWidget(self.source_hint)
 
         support_row=QHBoxLayout()
@@ -2331,7 +2374,7 @@ class MainWindow(QMainWindow):
         )
         support_row.addWidget(diagnostics)
         support_note=QLabel("Useful for beta reports · review the JSON before sharing")
-        support_note.setStyleSheet("color:#8793a4")
+        support_note.setObjectName("subtleText")
         support_row.addWidget(support_note)
         support_row.addStretch(1)
         l.addLayout(support_row)
@@ -2483,6 +2526,8 @@ class MainWindow(QMainWindow):
         elif name=="library":
             self._refresh_library()
             self._refresh_plugin_presence()
+        elif name=="explore":
+            self._refresh_explore_visibility()
         elif name=="album_wall":
             self._refresh_album_wall()
         elif name=="music_map":
@@ -2530,20 +2575,43 @@ class MainWindow(QMainWindow):
             button.style().polish(button)
             button.update()
 
+    def _refresh_explore_visibility(self) -> None:
+        has_library=bool(self.providers.local_catalog_count())
+        if hasattr(self,"explore_wall_card"):
+            self.explore_wall_card.setVisible(has_library)
+        if hasattr(self,"explore_map_card"):
+            self.explore_map_card.setVisible(has_library)
+        if hasattr(self,"explore_try_section"):
+            self.explore_try_section.setVisible(has_library)
+        if hasattr(self,"explore_similar_button"):
+            self.explore_similar_button.setEnabled(bool(self.current_track))
+        if hasattr(self,"explore_ask_button"):
+            self.explore_ask_button.setVisible(
+                has_library and self.power_toggle.isChecked()
+            )
+
     def _show_home(self):
         self._refresh_taste()
         count=self.providers.local_catalog_count()
-        src=len(self.providers.providers)
-        ext=len(self.providers.extensions(cached_config=True))
-        flow_text = (
-            "Flow analysis ready"
-            if self.flow.analysis_available
-            else "metadata mode; install ffmpeg for deeper sonic analysis"
-        )
-        self.home_status.setText(
-            f"{count:,} local tracks · {src} music sources · {ext} plugin"
-            f"{'s' if ext != 1 else ''} · {flow_text}"
-        )
+        has_library=bool(count)
+        if hasattr(self,"home_explanation"):
+            self.home_explanation.setText(
+                "A session from your library, shaped as you listen."
+                if has_library
+                else "Add a folder of music. Your files stay where they are."
+            )
+        if hasattr(self,"home_moods_widget"):
+            self.home_moods_widget.setVisible(has_library)
+        if hasattr(self,"home_explore_heading"):
+            self.home_explore_heading.setVisible(has_library)
+        if hasattr(self,"home_explore_widget"):
+            self.home_explore_widget.setVisible(has_library)
+        if hasattr(self,"home_status"):
+            self.home_status.setVisible(has_library)
+            if has_library:
+                self.home_status.setText(
+                    f"{count:,} track{'s' if count != 1 else ''} in your library"
+                )
         if hasattr(self,"home_primary_button"):
             if count:
                 self.home_primary_button.setText("▶  Play something")
@@ -2574,6 +2642,9 @@ class MainWindow(QMainWindow):
         track = dict(self.current_track or (recent[0] if recent else {}))
         self.home_recent_track = track
         if not track:
+            if hasattr(self,"home_continue_heading"):
+                self.home_continue_heading.hide()
+            self.home_continue.hide()
             self.home_continue_cover.set_cover("",title="Your music",key="empty-home")
             self.home_continue_title.setText("Nothing played yet")
             self.home_continue_meta.setText(
@@ -2581,6 +2652,9 @@ class MainWindow(QMainWindow):
             )
             self.home_continue_button.setEnabled(False)
             return
+        if hasattr(self,"home_continue_heading"):
+            self.home_continue_heading.show()
+        self.home_continue.show()
         title=str(track.get("title") or "Unknown track")
         artist=str(track.get("artist") or "Unknown artist")
         album=str(track.get("album") or "")
@@ -2622,6 +2696,12 @@ class MainWindow(QMainWindow):
         self.state.set_bool("power_tools",enabled)
         if hasattr(self, "source_power_panel"):
             self.source_power_panel.setVisible(enabled)
+        if hasattr(self, "source_check_all"):
+            self.source_check_all.setVisible(enabled)
+        if hasattr(self, "explore_ask_button"):
+            self.explore_ask_button.setVisible(
+                enabled and bool(self.providers.local_catalog_count())
+            )
         if hasattr(self, "player_power_actions"):
             self.player_power_actions.setVisible(enabled)
         # Spatial browsing uses its own progressive disclosures. Global Power
@@ -2878,10 +2958,15 @@ class MainWindow(QMainWindow):
                 state=dict(extension.get("configuration_status") or {})
                 if state.get("declared") and state.get("ready") is False:
                     setup_needed+=1
+            local_count=len(self.providers.local_catalog())
+            plugin_text=(
+                f"{optional_count} plugin{'s' if optional_count!=1 else ''}"
+                if optional_count else "no plugins"
+            )
             summary=(
-                f"{len(builtins)} built-in connections · "
-                f"{active_included} included sources · "
-                f"{optional_count} installed optional plugin{'s' if optional_count!=1 else ''}"
+                f"{local_count:,} local track{'s' if local_count!=1 else ''} · "
+                f"{active_included} included source{'s' if active_included!=1 else ''} · "
+                f"{plugin_text}"
             )
             if setup_needed:
                 summary+=f" · {setup_needed} need setup"
@@ -2993,13 +3078,13 @@ class MainWindow(QMainWindow):
         enabled=bool(key)
         if hasattr(self,"source_primary_button"):
             self.source_primary_button.setEnabled(enabled)
+            self.source_primary_button.setVisible(enabled)
+        if hasattr(self,"source_hint"):
+            self.source_hint.setVisible(enabled)
         if not hasattr(self,"source_hint"):
             return
         if not key:
             self.source_primary_button.setText("Use selected")
-            self.source_hint.setText(
-                "Select a source or plugin. The main button will show where it is actually used in Melodex; technical controls stay under Power tools."
-            )
             return
 
         if key=="local":
@@ -3155,9 +3240,12 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Source priority updated",2500)
 
     def _refresh_library(self):
+        catalog=self.providers.local_catalog()
+        if hasattr(self,"artwork_plugin_presence"):
+            self.artwork_plugin_presence.setVisible(bool(catalog))
         if hasattr(self,"library_browser"):
             self.library_browser.set_catalog(
-                self.providers.local_catalog(),
+                catalog,
                 revision=self.providers.local_catalog_revision(),
             )
 
@@ -4138,7 +4226,10 @@ class MainWindow(QMainWindow):
         if p not in roots:
             roots.append(p)
         self.providers.configure_local_roots(roots)
+        came_from_home = self.current_page == "home"
         self._start_local_scan("folder added")
+        if came_from_home:
+            self.open_page("library")
 
     def _rescan(self):
         self._start_local_scan("rescan")
@@ -4636,6 +4727,16 @@ class MainWindow(QMainWindow):
     def _refresh_sources_and_plugin_presence(self) -> None:
         self._refresh_sources()
         self._refresh_plugin_presence()
+
+    def _toggle_source_feature_picker(self) -> None:
+        if not hasattr(self, "source_feature_picker"):
+            return
+        visible = not self.source_feature_picker.isVisible()
+        self.source_feature_picker.setVisible(visible)
+        self.statusBar().showMessage(
+            "Choose what you want to add" if visible else "Feature picker hidden",
+            1800,
+        )
 
     def _plugin_directory(self, capability: str = ""):
         from .plugin_directory import PluginDirectoryDialog
