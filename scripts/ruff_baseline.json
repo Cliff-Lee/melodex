@@ -12,12 +12,6 @@
       "code": "F821",
       "message": "Undefined name `OPENAI_FUNCTION_TOOLS`",
       "source": "return self._send(200, OPENAI_FUNCTION_TOOLS)"
-    },
-    {
-      "path": "desktop/melodex/main_window.py",
-      "code": "F821",
-      "message": "Undefined name `LibraryScanProcess`",
-      "source": "self._local_scan_runner: LibraryScanProcess | None = None"
     }
   ]
 }
