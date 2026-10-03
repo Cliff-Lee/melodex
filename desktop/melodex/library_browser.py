@@ -469,13 +469,14 @@ class LibraryBrowser(QWidget):
         self.last_view_metrics: dict[str, object] = {}
         self._scan_active = False
         self._scan_paused = False
-        self._scan_status_persistent = False
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(12)
 
-        top = QHBoxLayout()
+        self.library_top_controls = QWidget()
+        top = QHBoxLayout(self.library_top_controls)
+        top.setContentsMargins(0, 0, 0, 0)
         self.search = QLineEdit()
         self.search.setPlaceholderText("Search your music…")
         self.search.setClearButtonEnabled(True)
@@ -496,9 +497,11 @@ class LibraryBrowser(QWidget):
             self.view_buttons[key] = button
             top.addWidget(button)
         self.view_buttons["albums"].setChecked(True)
-        outer.addLayout(top)
+        outer.addWidget(self.library_top_controls)
 
-        actions = QHBoxLayout()
+        self.library_action_controls = QWidget()
+        actions = QHBoxLayout(self.library_action_controls)
+        actions.setContentsMargins(0, 0, 0, 0)
         add = QPushButton("+ Add music")
         add.setObjectName("secondaryButton")
         add.clicked.connect(self.addFolderRequested)
@@ -545,7 +548,7 @@ class LibraryBrowser(QWidget):
         actions.addWidget(moments)
         actions.addWidget(self.images_button)
         actions.addStretch(1)
-        outer.addLayout(actions)
+        outer.addWidget(self.library_action_controls)
 
         self.scan_progress_panel=QFrame()
         self.scan_progress_panel.setObjectName("artworkProgressPanel")
@@ -730,12 +733,14 @@ class LibraryBrowser(QWidget):
         self.stack.addWidget(self.track_list)
 
         self.empty = EmptyState(
-            "Your library is waiting",
-            "Add a folder of music and Melodex will organise it into albums while keeping everything on this computer.",
+            "No music added yet",
+            "Choose a folder that already contains your music. Melodex will index it where it is.",
             "Add my music",
         )
         self.empty.actionRequested.connect(self.addFolderRequested)
         self.stack.addWidget(self.empty)
+        self.library_top_controls.hide()
+        self.library_action_controls.hide()
 
     def eventFilter(self, watched, event):
         if event.type() == QEvent.Resize:
@@ -855,10 +860,15 @@ class LibraryBrowser(QWidget):
         if not self.catalog:
             self.albums = []
             self.artist_rows = []
+            self.library_top_controls.hide()
+            self.library_action_controls.hide()
             self.stack.setCurrentWidget(self.empty)
             metrics["total_seconds"] = round(time.perf_counter() - started, 6)
             self.last_catalog_metrics = metrics
             return
+
+        self.library_top_controls.show()
+        self.library_action_controls.show()
 
         album_started = time.perf_counter()
         wall = build_album_wall(self.catalog, max_albums=4000)
@@ -1012,16 +1022,16 @@ class LibraryBrowser(QWidget):
                 self.scan_progress.setRange(0,1)
                 self.scan_progress.setValue(0)
                 self.scan_progress.setFormat("No audio files found")
-                self.scan_progress_summary.setText("No supported audio files found")
+                self.scan_progress_summary.setText("No playable audio found")
                 self.scan_progress_detail.setText(
-                    "No supported audio files were discovered."
+                    "This folder does not contain audio Melodex can play."
                 )
         elif phase=="saving":
             self.scan_progress.setRange(0,0)
             self.scan_progress.setFormat("")
             self.scan_progress_summary.setText("Saving library index…")
             self.scan_progress_detail.setText(
-                "Saving metadata locally so Melodex can reopen this library without rescanning your music."
+                "Saving the library index on this computer."
             )
         elif phase=="cancelled":
             self.scan_progress_summary.setText("Cancelled")
