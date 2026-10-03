@@ -24,6 +24,10 @@ def test_constellation_is_bounded_deterministic_and_display_only():
     assert [node.token for node in first] == [7, 8]
     assert first[0].relation == "Up next"
     assert first[0].artist == "North"
+    assert first[0].strength > first[1].strength
+    first_radius = ((first[0].x - 0.5) ** 2 + ((first[0].y - 0.5) / 0.72) ** 2) ** 0.5
+    second_radius = ((first[1].x - 0.5) ** 2 + ((first[1].y - 0.5) / 0.72) ** 2) ** 0.5
+    assert first_radius < second_radius
     assert not hasattr(first[0], "local_path")
     assert all(0 <= node.x <= 1 and 0 <= node.y <= 1 for node in first)
     assert len(build_constellation(current, candidates * 20)) <= 24
