@@ -93,7 +93,7 @@ def main() -> int:
         "Install .mdxprovider…",
         "Install .mdxplugin…",
         "Provider Bridge…",
-        "Export diagnostics…",
+        "Export redacted diagnostics…",
     ):
         if label not in ui:
             errors.append(f"expected current Sources UI label is missing: {label!r}")
