@@ -87,7 +87,7 @@ def test_scan_metrics_make_slow_metadata_visible(monkeypatch, tmp_path: Path):
 
     metrics = provider.last_scan_metrics
     assert metrics["metadata_attempts"] == 3
-    assert metrics["metadata_seconds"] >= 0.015
+    assert metrics["metadata_work_seconds"] >= 0.015
     assert metrics["total_seconds"] >= metrics["metadata_seconds"]
 
 
