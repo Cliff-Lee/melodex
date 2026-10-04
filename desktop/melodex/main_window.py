@@ -1489,6 +1489,14 @@ class MainWindow(QMainWindow):
         self.library_browser.artistImageRequested.connect(self._library_artist_images_requested)
         self.library_browser.artistImageCacheRequested.connect(self._library_cached_artist_images_requested)
         self.library_browser.artistPhotoFileRequested.connect(self._choose_artist_photo_file)
+        if self.local_scan.active:
+            # The first import starts before the lazy My Music page is built.
+            # Replay its current state so the page does not briefly look empty.
+            self.library_browser.begin_scan("scan in progress")
+            self.library_browser.set_scan_progress(self._local_scan_last_progress)
+            runner = self.local_scan.runner
+            if runner is not None and runner.paused:
+                self.library_browser.set_scan_paused(True)
         l.addWidget(self.library_browser,1)
 
 
