@@ -1626,95 +1626,73 @@ class LivingScene(QWidget):
                 0.7 + size * 0.35,
             )
 
+        # A handful of broad, low-opacity washes make this feel like a listening
+        # landscape. They are cached with the artwork and never animate per frame.
+        for wash_index in range(5):
+            wash_center = QPointF(
+                rect.left() + rect.width() * (0.13 + wash_index * 0.19),
+                rect.top() + rect.height() * (0.30 + 0.36 * math.sin(wash_index * 1.31)),
+            )
+            wash_color = QColor(self._color(wash_index + 1))
+            wash_color.setAlpha(23)
+            wash = QRadialGradient(wash_center, rect.width() * 0.34)
+            wash.setColorAt(0.0, wash_color)
+            wash_color.setAlpha(11)
+            wash.setColorAt(0.58, wash_color)
+            wash_color.setAlpha(0)
+            wash.setColorAt(1.0, wash_color)
+            cache.setPen(Qt.NoPen)
+            cache.setBrush(wash)
+            cache.drawEllipse(
+                QRectF(
+                    wash_center.x() - rect.width() * 0.34,
+                    wash_center.y() - rect.height() * 0.42,
+                    rect.width() * 0.68,
+                    rect.height() * 0.84,
+                )
+            )
+
         for index, mark in enumerate(self._memory):
             point, radius_x, radius_y, count_scale, color = geometry[index]
+            spread = 1.75 + 0.35 * count_scale
 
-            island_radius = max(radius_x, radius_y) * 1.18
-            island = QRadialGradient(point, island_radius)
-            core = QColor(color)
-            core.setAlpha(75 + int(80 * count_scale))
-            edge = QColor(color)
-            edge.setAlpha(28 + int(24 * count_scale))
-            fade = QColor(color)
-            fade.setAlpha(0)
-            island.setColorAt(0.0, core)
-            island.setColorAt(0.58, edge)
-            island.setColorAt(1.0, fade)
-            cache.setPen(Qt.NoPen)
-            cache.setBrush(island)
-            cache.drawEllipse(
-                QRectF(
-                    point.x() - radius_x * 1.18,
-                    point.y() - radius_y * 1.65,
-                    radius_x * 2.36,
-                    radius_y * 3.3,
+            # Paint several offset, soft gradients instead of outlined nodes. The
+            # deterministic offsets give every memory a distinct, organic shape.
+            for blob in range(4):
+                angle = (index * 2.399963 + blob * 1.5708) % (math.pi * 2)
+                distance = 0.18 + 0.12 * ((index * 7 + blob * 3) % 5)
+                offset = QPointF(
+                    point.x() + math.cos(angle) * radius_x * distance,
+                    point.y() + math.sin(angle) * radius_y * distance,
                 )
-            )
-
-            outer = QColor(color)
-            outer.setAlpha(44 + int(34 * count_scale))
-            cache.setPen(Qt.NoPen)
-            cache.setBrush(outer)
-            cache.drawEllipse(
-                QRectF(
-                    point.x() - radius_x,
-                    point.y() - radius_y,
-                    radius_x * 2,
-                    radius_y * 2,
+                blob_color = QColor(color if blob < 3 else self._color(index + 2))
+                alpha = 42 + int(26 * count_scale) if blob else 82 + int(45 * count_scale)
+                blob_color.setAlpha(alpha)
+                radius = max(radius_x, radius_y) * spread * (0.72 if blob else 1.0)
+                cloud = QRadialGradient(offset, radius)
+                cloud.setColorAt(0.0, blob_color)
+                edge = QColor(blob_color)
+                edge.setAlpha(max(8, alpha // 3))
+                cloud.setColorAt(0.54, edge)
+                edge.setAlpha(0)
+                cloud.setColorAt(1.0, edge)
+                cache.setPen(Qt.NoPen)
+                cache.setBrush(cloud)
+                cache.drawEllipse(
+                    QRectF(
+                        offset.x() - radius,
+                        offset.y() - radius * 0.76,
+                        radius * 2,
+                        radius * 1.52,
+                    )
                 )
-            )
 
-            inner = QColor(color)
-            inner.setAlpha(92 + int(70 * count_scale))
-            cache.setBrush(inner)
-            cache.drawEllipse(
-                QRectF(
-                    point.x() - radius_x * 0.58,
-                    point.y() - radius_y * 0.58,
-                    radius_x * 1.16,
-                    radius_y * 1.16,
-                )
-            )
-
-            outline = QColor("#eef6ff")
-            outline.setAlpha(96 + int(66 * count_scale))
-            cache.setPen(QPen(outline, 0.65))
-            cache.setBrush(Qt.NoBrush)
-            cache.drawEllipse(
-                QRectF(
-                    point.x() - radius_x * 0.62,
-                    point.y() - radius_y * 0.62,
-                    radius_x * 1.24,
-                    radius_y * 1.24,
-                )
-            )
+            # Fine sparks add depth without turning every memory into a point on a graph.
+            spark = QColor("#f3f8ff")
+            spark.setAlpha(80 + int(count_scale * 70))
             cache.setPen(Qt.NoPen)
-            cache.setBrush(QColor(247, 251, 255, 95))
-            cache.drawEllipse(
-                point,
-                1.8 + 1.2 * count_scale,
-                1.8 + 1.2 * count_scale,
-            )
-
-        step = max(1, len(self._memory) // 12)
-        for ordinal, index in enumerate(ordered_indices):
-            if ordinal % step != 0:
-                continue
-            mark = self._memory[index]
-            point = positions[index]
-            label_color = QColor("#dce6f1")
-            label_color.setAlpha(222)
-            cache.setFont(QFont("sans-serif", 9, QFont.DemiBold))
-            label_box = QRectF(point.x() - 68, point.y() + 18, 136, 22)
-            cache.setPen(Qt.NoPen)
-            cache.setBrush(QColor(5, 12, 22, 166))
-            cache.drawRoundedRect(label_box, 8, 8)
-            cache.setPen(label_color)
-            cache.drawText(
-                label_box,
-                Qt.AlignHCenter | Qt.AlignVCenter,
-                mark.label[:20],
-            )
+            cache.setBrush(spark)
+            cache.drawEllipse(point, 1.1 + count_scale * 1.0, 1.1 + count_scale * 1.0)
 
         self._draw_caption(
             cache,
