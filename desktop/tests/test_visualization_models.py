@@ -71,14 +71,18 @@ def test_lyric_frame_uses_timestamps_when_available():
     assert active.source == "local LRC"
 
 
-def test_untimed_lyrics_are_paced_across_the_track_and_labelled_unsynced():
-    lyrics = {"text": "one\ntwo\nthree\nfour"}
+def test_untimed_lyrics_are_static_and_never_guess_a_current_line():
+    text = "one\ntwo\nthree\nfour"
+    lyrics = {"text": text}
 
     start = lyric_frame(lyrics, 0, 10000)
     later = lyric_frame(lyrics, 7500, 10000)
-    assert start.current == "one"
-    assert later.current == "four"
-    assert later.synced is False
+    for frame in (start, later):
+        assert frame.current == ""
+        assert frame.previous == ""
+        assert frame.following == ""
+        assert frame.full_text == text
+        assert frame.synced is False
 
 
 def test_visual_memory_groups_local_history_at_different_scales():

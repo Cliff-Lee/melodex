@@ -33,11 +33,19 @@ def test_synced_document_is_normalized_once_and_shared_frame_is_stable():
     assert build_lyrics_document(doc) is doc
 
 
-def test_plain_lyrics_have_one_pacing_rule_for_all_presentations():
-    doc = build_lyrics_document({"text": "one\ntwo\nthree\nfour", "source": "local"})
-    assert doc.frame(0, 4000).current == "one"
-    assert doc.frame(2100, 4000).current == "three"
-    assert doc.frame(4000, 4000).current == "four"
+def test_untimed_lyrics_never_guess_a_current_line():
+    text = "one\ntwo\nthree\nfour"
+    doc = build_lyrics_document({"text": text, "source": "local"})
+    start = doc.frame(0, 4000)
+    middle = doc.frame(2100, 4000)
+    end = doc.frame(4000, 4000)
+
+    for frame in (start, middle, end):
+        assert frame.current == ""
+        assert frame.previous == ""
+        assert frame.following == ""
+        assert frame.full_text == text
+        assert frame.synced is False
 
 
 def test_instrumental_counts_as_content_without_fake_text():
