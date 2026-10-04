@@ -55,6 +55,16 @@ def test_now_playing_and_visuals_share_one_lyrics_document():
     assert visual.scene._lyrics.index == 1
     assert visual.scene._lyrics.current == "Second line"
 
+    # The reader's Full screen action must open Lyric Flow with the same
+    # canonical document and current playback position.
+    now.lyricsFullscreenRequested.connect(visual.show_lyric_flow_fullscreen)
+    now.fullscreen_lyrics_button.click()
+    app.processEvents()
+    assert visual._lyric_flow_scene is not None
+    assert visual._lyric_flow_scene._lyrics.current == "Second line"
+    visual._lyric_flow_dialog.close()
+    app.processEvents()
+
     now.deleteLater()
     visual.deleteLater()
     app.processEvents()
@@ -90,6 +100,9 @@ def test_reader_search_and_seekable_synced_lines_survive_state_consolidation():
     from PySide6.QtCore import QUrl
     now._lyrics_anchor_clicked(QUrl("seek:2500"))
     assert sought == [2500]
+    html = now._synced_lyrics_html(1)
+    assert "color:inherit" not in html
+    assert "color:#ffffff" in html
 
     now.deleteLater()
     app.processEvents()

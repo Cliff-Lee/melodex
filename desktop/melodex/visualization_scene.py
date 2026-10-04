@@ -128,8 +128,8 @@ class LivingScene(QWidget):
             # Deliberately downsample once.  Scaling this soft source back to the
             # scene gives the atmospheric artwork wash without a live blur pass.
             self._artwork_source = image.scaled(
-                72,
-                72,
+                128,
+                128,
                 Qt.KeepAspectRatioByExpanding,
                 Qt.SmoothTransformation,
             )
@@ -363,7 +363,7 @@ class LivingScene(QWidget):
         base.setColorAt(1.0, QColor("#111925"))
         painter.fillRect(bounds, base)
 
-        if self.mode == "lyrics" and not self._artwork_source.isNull():
+        if self.mode in {"lyrics", "weather", "constellation"} and not self._artwork_source.isNull():
             size = self.size()
             budget = self._quality_budget()
             width = max(1, size.width())
@@ -384,10 +384,16 @@ class LivingScene(QWidget):
                     Qt.SmoothTransformation,
                 )
             painter.save()
-            painter.setOpacity(0.27 + 0.07 * self._visual_state.glow)
+            opacity = {
+                "lyrics": 0.27 + 0.07 * self._visual_state.glow,
+                "weather": 0.31 + 0.04 * self._visual_state.glow,
+                "constellation": 0.22 + 0.04 * self._visual_state.glow,
+            }[self.mode]
+            painter.setOpacity(opacity)
             painter.drawImage(bounds, self._artwork_cache)
             painter.setOpacity(1.0)
-            painter.fillRect(bounds, QColor(4, 9, 17, 148))
+            overlay = {"lyrics": 148, "weather": 126, "constellation": 112}[self.mode]
+            painter.fillRect(bounds, QColor(4, 9, 17, overlay))
             painter.restore()
 
         if profile is not None:
@@ -895,12 +901,14 @@ class LivingScene(QWidget):
             painter.setPen(QPen(trail_color, 1.0, Qt.DotLine, Qt.RoundCap, Qt.RoundJoin))
             painter.drawPath(trail)
 
-        # Curved paths communicate relationship strength. Hovering one star
-        # illuminates its route and quiets unrelated routes.
+        # Keep the field atmospheric at rest; reveal one relation path on
+        # hover instead of drawing a hub-and-spoke diagram.
         for index, node in enumerate(self._neighbours):
             point = positions[node.token]
             color = QColor(self._relation_color(node.relation))
             selected = node.token == active_token
+            if not selected:
+                continue
             alpha = (170 + int(55 * node.strength)) if selected else int(24 + 54 * node.strength)
             if active_token is not None and not selected:
                 alpha = max(12, alpha // 3)
@@ -945,24 +953,47 @@ class LivingScene(QWidget):
 
         # The centre reuses the same deterministic Track Sigil geometry shown in
         # the header. Geometry is identity; glow/pulse is playback state.
-        sigil_rect = QRectF(center.x() - 15, center.y() - 15, 30, 30)
-        paint_track_sigil(
-            painter,
-            sigil_rect,
-            profile.seed,
-            current,
-            glow=0.25 + 0.45 * state.glow,
-            compact=True,
-        )
+        if not self._artwork_source.isNull():
+            cover_size = min(104.0, max(76.0, min(rect.width(), rect.height()) * 0.20))
+            cover_rect = QRectF(
+                center.x() - cover_size / 2,
+                center.y() - cover_size / 2,
+                cover_size,
+                cover_size,
+            )
+            painter.save()
+            clip = QPainterPath()
+            clip.addEllipse(cover_rect)
+            painter.setClipPath(clip)
+            painter.drawImage(cover_rect, self._artwork_source)
+            painter.fillRect(cover_rect, QColor(3, 8, 15, 25))
+            painter.restore()
+            painter.setBrush(Qt.NoBrush)
+            painter.setPen(QPen(QColor("#f0f7ff"), 2.0))
+            painter.drawEllipse(cover_rect)
+            rim = QColor(current)
+            rim.setAlpha(118)
+            painter.setPen(QPen(rim, 1.0))
+            painter.drawEllipse(cover_rect.adjusted(-5, -5, 5, 5))
+        else:
+            sigil_rect = QRectF(center.x() - 18, center.y() - 18, 36, 36)
+            paint_track_sigil(
+                painter,
+                sigil_rect,
+                profile.seed,
+                current,
+                glow=0.25 + 0.45 * state.glow,
+                compact=True,
+            )
 
         for index, node in enumerate(self._neighbours):
             point = positions[node.token]
             selected = node.token == active_token
             color = QColor(self._relation_color(node.relation))
             pulse = 0.5 + 0.5 * math.sin(self._phase * 0.62 + index * 1.47)
-            size = 3.8 + node.strength * 4.3 + pulse * 0.65
+            size = 6.5 + node.strength * 5.2 + pulse * 0.9
             if selected:
-                size += 2.4
+                size += 3.0
 
             if selected:
                 self._draw_glow(painter, point, size * 4.0, color, 42 + int(34 * state.glow))
@@ -1339,6 +1370,30 @@ class LivingScene(QWidget):
             front_color.setAlpha(11 + int(19 * state.glow))
             painter.setBrush(Qt.NoBrush)
             painter.setPen(QPen(front_color, 0.9, Qt.SolidLine, Qt.RoundCap))
+            painter.drawPath(path)
+
+        # Wide, slow aurora ribbons give the scene a clear focal composition.
+        # Four fixed paths and simple pens avoid per-frame blur work.
+        for ribbon in range(4):
+            phase = self._phase * (0.035 + 0.008 * state.drift) + ribbon * 1.42
+            y = rect.top() + rect.height() * (0.27 + ribbon * 0.115)
+            amplitude = rect.height() * (0.075 + 0.035 * state.energy)
+            path = QPainterPath(QPointF(rect.left() - 12, y))
+            path.cubicTo(
+                QPointF(rect.left() + rect.width() * 0.27, y + math.sin(phase) * amplitude),
+                QPointF(rect.left() + rect.width() * 0.68, y - math.cos(phase * 0.82) * amplitude),
+                QPointF(rect.right() + 12, y + math.sin(phase * 0.61) * amplitude * 0.55),
+            )
+            ribbon_color = QColor(self._color(ribbon + (1 if state.warmth > 0.55 else 0)))
+            painter.setBrush(Qt.NoBrush)
+            ribbon_color.setAlpha(13 + int(15 * state.glow))
+            painter.setPen(QPen(ribbon_color, 22.0 + 12.0 * state.density, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+            painter.drawPath(path)
+            ribbon_color.setAlpha(25 + int(25 * state.glow))
+            painter.setPen(QPen(ribbon_color, 7.0 + 4.0 * state.energy, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+            painter.drawPath(path)
+            ribbon_color.setAlpha(74 + int(56 * state.glow))
+            painter.setPen(QPen(ribbon_color, 1.1 + state.rhythm * 0.6, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
             painter.drawPath(path)
 
         painter.save()

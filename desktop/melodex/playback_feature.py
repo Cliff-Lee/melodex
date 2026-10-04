@@ -349,6 +349,17 @@ class PlaybackFeature(QObject):
         if hasattr(self, "living_canvas"):
             self.living_canvas.set_playing(self._playing)
 
+    def _open_lyric_flow_fullscreen(self) -> None:
+        """Reconcile the visual canvas with the reader immediately before opening."""
+        if not hasattr(self, "living_canvas") or not hasattr(self, "rich_now"):
+            return
+        self.living_canvas.set_lyrics(self.rich_now.lyrics_document)
+        self.living_canvas.set_position(
+            self._visual_position_ms,
+            self._visual_duration_ms,
+        )
+        self.living_canvas.show_lyric_flow_fullscreen()
+
     def on_playing_changed(self, playing: bool) -> None:
         self._playing = bool(playing)
         self.play_button.setText("❚❚" if self._playing else "▶")
@@ -442,7 +453,7 @@ class PlaybackFeature(QObject):
         self.rich_now.artworkChanged.connect(self.living_canvas.set_artwork)
         self.rich_now.lyricsStateChanged.connect(self.living_canvas.set_lyrics)
         self.rich_now.lyricsFullscreenRequested.connect(
-            self.living_canvas.show_lyric_flow_fullscreen
+            self._open_lyric_flow_fullscreen
         )
         self.rich_now.lyricsSeekRequested.connect(self.seekRequested.emit)
         self.rich_now.lyricsTranslationRequested.connect(self._translate_lyrics)

@@ -651,7 +651,7 @@ class LivingCanvasView(QWidget):
             self.status.setText("Cached Flow energy across the recording. Click or drag the contour below to seek.") if profile.energy_curve else self.status.setText("No cached Flow contour is available yet. Seeking still works from the position control below.")
         elif mode == "constellation":
             self.status.setText(
-                f"{len(self._neighbours)} nearby tracks · distance shows relationship strength · "
+                f"{len(self._neighbours)} nearby tracks arranged around the current cover · "
                 "hover for artwork, click to hold, double-click to queue."
             )
         elif mode == "lyrics":

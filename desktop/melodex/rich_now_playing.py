@@ -258,6 +258,11 @@ class RichNowPlayingWidget(QWidget):
             "border:1px solid #30465e;border-radius:11px;padding:20px;"
             "selection-background-color:#315f8f;selection-color:#ffffff;}"
         )
+        # QTextDocument does not consistently resolve CSS `inherit` for links;
+        # set a document default as well as explicit per-line colours below.
+        self.lyrics.document().setDefaultStyleSheet(
+            "body, p, div { color: #edf3fa; } a { color: #edf3fa; }"
+        )
         lyrics_layout.addWidget(self.lyrics,1)
 
         self.artist_info = QTextBrowser(); self.releases = QTextBrowser(); self.credits = QTextBrowser(); self.info = QTextBrowser()
@@ -1304,18 +1309,21 @@ class RichNowPlayingWidget(QWidget):
             line=_escape(row.get("text")) or "&nbsp;"
             stamp=max(0,int(row.get("time_ms") or 0))
             if i==current:
+                link_color="#ffffff"
                 style=(
                     f"font-size:{active}px;font-weight:750;color:#ffffff;"
                     f"margin:{margin}px 0"
                 )
             elif current>=0 and abs(i-current)<=2:
+                link_color="#d9e3ee"
                 style="color:#d9e3ee;margin:8px 0"
             else:
+                link_color="#aab8c8"
                 style="color:#aab8c8;margin:7px 0"
             parts.append(
                 f"<a name='line-{i}'></a>"
                 f"<div style='{style}'>"
-                f"<a href='seek:{stamp}' style='color:inherit;text-decoration:none'>{line}</a>"
+                f"<a href='seek:{stamp}' style='color:{link_color};text-decoration:none'>{line}</a>"
                 "</div>"
             )
         parts.append("</div>")
