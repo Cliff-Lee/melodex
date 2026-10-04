@@ -273,7 +273,7 @@ class TrackListModel(QAbstractListModel):
 
     TrackRole = int(Qt.UserRole) + 1
 
-    def __init__(self, parent=None, *, scan_session=None):
+    def __init__(self, parent=None):
         super().__init__(parent)
         self._tracks: list[dict[str, Any]] = []
 
@@ -401,7 +401,7 @@ class LibraryBrowser(QWidget):
     scanPauseRequested = Signal()
     scanCancelRequested = Signal()
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, *, scan_session=None):
         super().__init__(parent)
         self.catalog: list[dict[str, Any]] = []
         self._catalog_revision: int | None = None
