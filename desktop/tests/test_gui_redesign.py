@@ -2383,6 +2383,82 @@ def test_next_track_prefetch_yields_to_large_library_scan(monkeypatch, tmp_path)
     app.processEvents()
 
 
+def test_lazy_library_page_replays_active_first_import_progress(monkeypatch, tmp_path):
+    try:
+        from PySide6.QtTest import QTest
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+
+    class HoldingRunner:
+        def __init__(
+            self,
+            data_dir,
+            roots,
+            *,
+            on_progress,
+            on_done,
+            on_error,
+            **_kwargs,
+        ):
+            self.roots = [Path(x) for x in roots]
+            self.on_progress = on_progress
+            self.on_done = on_done
+            self.on_error = on_error
+            self.paused = False
+
+        def start(self):
+            self.on_progress(
+                {"phase": "discovering", "audio_files_seen": 120}
+            )
+
+        def pause(self):
+            self.paused = True
+
+        def resume(self):
+            self.paused = False
+
+        def cancel(self, **_kwargs):
+            self.on_done({"tracks": [], "cancelled": True})
+
+        def shutdown(self, **_kwargs):
+            return None
+
+    monkeypatch.setattr(library_scan_process, "LibraryScanProcess", HoldingRunner)
+
+    window = main_window.MainWindow()
+    window.show()
+    root = tmp_path / "first-import"
+    root.mkdir()
+    window.providers.configure_local_roots([root])
+
+    # Match Add music from Home: scanning starts before My Music is built.
+    window._start_local_scan("folder added")
+    app.processEvents()
+    assert window.local_scan.active
+    assert not hasattr(window, "library_browser")
+
+    window.open_page("library")
+    QTest.qWait(window._page_refresh_delay_ms + 10)
+    app.processEvents()
+
+    assert hasattr(window, "library_browser")
+    assert window.library_browser.scan_progress_panel.isVisible()
+    assert "120 tracks found" in window.library_browser.scan_progress_summary.text()
+    assert "120 found" in window.background_activity_label.text()
+
+    window._cancel_local_scan()
+    app.processEvents()
+    window.close()
+    app.processEvents()
+
+
 def test_global_scan_activity_persists_across_navigation(monkeypatch, tmp_path):
     try:
         from PySide6.QtWidgets import QApplication
