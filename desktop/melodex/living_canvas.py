@@ -658,7 +658,7 @@ class LivingCanvasView(QWidget):
             if self._lyrics.synced:
                 self.status.setText("Lyric Flow follows synchronized lyrics with restrained music-reactive glow.")
             elif self._lyrics.text.strip():
-                self.status.setText("Untimed lyrics use the same reader text, paced gently across the track.")
+                self.status.setText("Untimed lyrics stay static; no sentence is highlighted without line timing.")
             else:
                 self.status.setText("Lyric Flow is ready when lyrics become available.")
         elif mode == "album_world":

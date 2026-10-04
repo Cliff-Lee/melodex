@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import sys
+import threading
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -105,4 +106,77 @@ def test_reader_search_and_seekable_synced_lines_survive_state_consolidation():
     assert "color:#ffffff" in html
 
     now.deleteLater()
+    app.processEvents()
+
+
+def test_untimed_lyrics_never_guess_the_current_sentence():
+    from melodex.lyrics_state import build_lyrics_document
+
+    document = build_lyrics_document({
+        "text": "First untimed line\nSecond untimed line\nThird untimed line",
+        "source": "LRCLIB community lyrics",
+    })
+    start = document.frame(0, 180_000)
+    middle = document.frame(90_000, 180_000)
+
+    assert not start.synced
+    assert start.current == middle.current == ""
+    assert start.previous == middle.previous == ""
+    assert start.following == middle.following == ""
+    assert start.full_text == middle.full_text == document.text
+
+
+def test_related_album_art_and_artist_details_rehydrate_immediately(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    try:
+        from PySide6.QtGui import QImage, QColor
+        from PySide6.QtWidgets import QApplication
+        from melodex.rich_now_playing import RichNowPlayingWidget
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    class Metadata:
+        def __init__(self):
+            self.release = threading.Event()
+
+        def enrich_identity(self, track):
+            self.release.wait(1.0)
+            return {"identity": {}, "lyrics": {}}
+
+        def enrich_artwork(self, track, identity):
+            return {"artwork": {}}
+
+    app = QApplication.instance() or QApplication([])
+    metadata = Metadata()
+    widget = RichNowPlayingWidget(metadata)
+    cover = QImage(32, 32, QImage.Format_ARGB32)
+    cover.fill(QColor("#ae42ff"))
+    cover_path = tmp_path / "album.png"
+    assert cover.save(str(cover_path))
+    track = {
+        "artist": "Example Artist",
+        "album": "The Same Album",
+        "title": "",
+    }
+    album_key = widget._album_cache_key(track)
+    artist_key = widget._artist_cache_key(track)
+    artist = {"name": "Example Artist", "type": "Group"}
+    widget._album_art_cache[album_key] = {
+        "path": str(cover_path),
+        "source": "cached album artwork",
+    }
+    widget._artist_display_cache[artist_key] = {
+        "artist": artist,
+        "artist_photo": {},
+    }
+
+    widget.set_track(track)
+    assert not widget.art.pixmap().isNull()
+    assert widget.bundle["artwork"]["source"] == "cached album artwork"
+    assert widget.bundle["artist"]["name"] == "Example Artist"
+    assert "Example Artist" in widget.artist_info.toPlainText()
+
+    metadata.release.set()
+    widget.deleteLater()
     app.processEvents()

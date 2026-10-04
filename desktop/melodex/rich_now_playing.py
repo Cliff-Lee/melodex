@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import html
 import threading
+from collections import OrderedDict
 from pathlib import Path
 from typing import Any, Callable
 
@@ -81,6 +82,8 @@ class RichNowPlayingWidget(QWidget):
         self._online_lyrics: dict[str, Any] = {}
         self._active_lyrics_source = ""
         self._identity: dict[str, Any] = {}
+        self._album_art_cache: OrderedDict[str, dict[str, Any]] = OrderedDict()
+        self._artist_display_cache: OrderedDict[str, dict[str, Any]] = OrderedDict()
         self._pending: set[str] = set()
         self._context_started = False
         self._auto_online_lyrics = bool(auto_online_lyrics)
@@ -345,6 +348,7 @@ class RichNowPlayingWidget(QWidget):
         self.facts.setText(" · ".join(x for x in (provider, duration_text) if x))
         self.progress.setText("Identifying track and checking capability extensions…")
         self.links.clear(); self.art_source.clear(); self.artist_photo_credit.clear(); self._set_art(""); self._set_artist_photo(""); self._empty_tabs()
+        self._restore_related_cache(request_track)
         key = track_key(request_track)
         if not key:
             self.progress.setText("Not enough metadata to identify this track")
@@ -358,6 +362,65 @@ class RichNowPlayingWidget(QWidget):
             self._signals.stage.emit(key, "identity", payload)
 
         threading.Thread(target=identify_work, daemon=True).start()
+
+    @staticmethod
+    def _normal_cache_part(value: object) -> str:
+        return " ".join(str(value or "").casefold().split())
+
+    @classmethod
+    def _album_cache_key(cls, track: dict[str, Any]) -> str:
+        artist = cls._normal_cache_part(track.get("artist"))
+        album = cls._normal_cache_part(track.get("album"))
+        return f"{artist}|{album}" if artist and album else ""
+
+    @classmethod
+    def _artist_cache_key(cls, track: dict[str, Any]) -> str:
+        artist = cls._normal_cache_part(track.get("artist"))
+        return artist
+
+    @staticmethod
+    def _bounded_cache_put(cache: OrderedDict[str, dict[str, Any]], key: str, value: dict[str, Any]) -> None:
+        if not key:
+            return
+        cache[key] = dict(value)
+        cache.move_to_end(key)
+        while len(cache) > 64:
+            cache.popitem(last=False)
+
+    def _restore_related_cache(self, track: dict[str, Any]) -> None:
+        album_key = self._album_cache_key(track)
+        artwork = self._album_art_cache.get(album_key) if album_key else None
+        if artwork:
+            self.bundle["artwork"] = dict(artwork)
+            self._apply_artwork(dict(artwork))
+
+        artist_key = self._artist_cache_key(track)
+        cached = self._artist_display_cache.get(artist_key) if artist_key else None
+        if not cached:
+            return
+        artist = dict(cached.get("artist") or {})
+        photo = dict(cached.get("artist_photo") or {})
+        if artist:
+            self.bundle["artist"] = artist
+            self.bundle["artist_photo"] = photo
+            self._apply_artist(artist)
+            self._set_artist_photo(str(photo.get("path") or ""))
+            self._set_artist_photo_credit(photo)
+            self.artist_info.setHtml(self._artist_html(artist, photo))
+
+    def _cache_artist_display(self) -> None:
+        key = self._artist_cache_key(self.track)
+        if not key:
+            return
+        previous = self._artist_display_cache.get(key, {})
+        artist = self.bundle.get("artist") or previous.get("artist") or {}
+        photo = self.bundle.get("artist_photo") or previous.get("artist_photo") or {}
+        if artist:
+            self._bounded_cache_put(
+                self._artist_display_cache,
+                key,
+                {"artist": dict(artist), "artist_photo": dict(photo)},
+            )
 
     def _run_stage(self, key: str, name: str, fn: Callable[[], object]) -> None:
         self._pending.add(name)
@@ -462,6 +525,11 @@ class RichNowPlayingWidget(QWidget):
         elif stage == "artwork":
             artwork = payload.get("artwork") if isinstance(payload.get("artwork"), dict) else {}
             self.bundle["artwork"] = artwork
+            self._bounded_cache_put(
+                self._album_art_cache,
+                self._album_cache_key(self.track),
+                artwork,
+            )
             self._apply_artwork(artwork)
 
         elif stage == "artist":
@@ -471,6 +539,7 @@ class RichNowPlayingWidget(QWidget):
             if qid:
                 self._identity["wikidata_id"] = qid
             self._apply_artist(artist)
+            self._cache_artist_display()
             if artist:
                 self._run_stage(key, "artist photo", lambda: self.metadata.enrich_artist_photo(artist))
 
@@ -481,6 +550,7 @@ class RichNowPlayingWidget(QWidget):
             self._set_artist_photo_credit(photo)
             artist = self.bundle.get("artist") if isinstance(self.bundle.get("artist"), dict) else {}
             self.artist_info.setHtml(self._artist_html(artist, photo))
+            self._cache_artist_display()
 
         elif stage == "credits":
             credits = [x for x in list(payload.get("credits") or []) if isinstance(x, dict)]
@@ -1333,4 +1403,3 @@ class RichNowPlayingWidget(QWidget):
         self.lyrics.setHtml(self._synced_lyrics_html(current))
         if current >= 0:
             self.lyrics.scrollToAnchor(f"line-{current}")
-        self._sync_fullscreen_lyrics()
