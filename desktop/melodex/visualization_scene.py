@@ -196,6 +196,7 @@ class LivingScene(QWidget):
     def set_memory(self, marks: tuple[MemoryMark, ...] | list[MemoryMark], scale: str = "sessions") -> None:
         self._memory = tuple(marks[:128])
         self._memory_scale = str(scale or "sessions")
+        self._memory_cache = QImage()
         self._hovered_memory_index = None
         self._selected_memory_index = None
         self._memory_hit_points = ()
