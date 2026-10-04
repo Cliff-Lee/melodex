@@ -273,7 +273,7 @@ class TrackListModel(QAbstractListModel):
 
     TrackRole = int(Qt.UserRole) + 1
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, *, scan_session=None):
         super().__init__(parent)
         self._tracks: list[dict[str, Any]] = []
 
@@ -742,6 +742,8 @@ class LibraryBrowser(QWidget):
         self.stack.addWidget(self.empty)
         self.library_top_controls.hide()
         self.library_action_controls.hide()
+        if isinstance(scan_session, dict):
+            self.restore_scan_session(scan_session)
 
     def eventFilter(self, watched, event):
         if event.type() == QEvent.Resize:
@@ -948,6 +950,14 @@ class LibraryBrowser(QWidget):
         self.scan_cancel_button.setText("Cancel")
         self.scan_cancel_button.setEnabled(True)
         self.scan_progress_panel.show()
+
+    def restore_scan_session(self, session: object) -> None:
+        if not isinstance(session, dict) or not session.get("running"):
+            return
+        self.begin_scan("scan in progress")
+        self.set_scan_progress(session)
+        if session.get("paused"):
+            self.set_scan_paused(True)
 
     def set_scan_progress(self, payload: object) -> None:
         if not isinstance(payload,dict):
