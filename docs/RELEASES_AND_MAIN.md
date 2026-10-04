@@ -22,7 +22,7 @@ If an installed release does not contain something described in current document
 
 This distinction is normal for an actively developed project, but it should be stated rather than left for users to infer.
 
-The latest published release is **v0.7.8**. Current `main` is the **0.7.9.dev0** development cycle; its final release scope has not yet been fixed.
+The GitHub Releases page is the source of truth for the latest published release. `main` can be ahead while a stable candidate is being prepared or after development work has moved past the latest tag. Check the version and release notes together to determine whether a change is available in a published build.
 
 ## App version policy
 
