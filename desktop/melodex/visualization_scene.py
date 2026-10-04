@@ -128,8 +128,8 @@ class LivingScene(QWidget):
             # Deliberately downsample once.  Scaling this soft source back to the
             # scene gives the atmospheric artwork wash without a live blur pass.
             self._artwork_source = image.scaled(
-                72,
-                72,
+                256,
+                256,
                 Qt.KeepAspectRatioByExpanding,
                 Qt.SmoothTransformation,
             )
@@ -196,6 +196,7 @@ class LivingScene(QWidget):
     def set_memory(self, marks: tuple[MemoryMark, ...] | list[MemoryMark], scale: str = "sessions") -> None:
         self._memory = tuple(marks[:128])
         self._memory_scale = str(scale or "sessions")
+        self._memory_cache = QImage()
         self._hovered_memory_index = None
         self._selected_memory_index = None
         self._memory_hit_points = ()
@@ -363,7 +364,7 @@ class LivingScene(QWidget):
         base.setColorAt(1.0, QColor("#111925"))
         painter.fillRect(bounds, base)
 
-        if self.mode == "lyrics" and not self._artwork_source.isNull():
+        if self.mode in {"lyrics", "weather", "constellation"} and not self._artwork_source.isNull():
             size = self.size()
             budget = self._quality_budget()
             width = max(1, size.width())
@@ -384,10 +385,16 @@ class LivingScene(QWidget):
                     Qt.SmoothTransformation,
                 )
             painter.save()
-            painter.setOpacity(0.27 + 0.07 * self._visual_state.glow)
+            opacity = {
+                "lyrics": 0.27 + 0.07 * self._visual_state.glow,
+                "weather": 0.31 + 0.04 * self._visual_state.glow,
+                "constellation": 0.22 + 0.04 * self._visual_state.glow,
+            }[self.mode]
+            painter.setOpacity(opacity)
             painter.drawImage(bounds, self._artwork_cache)
             painter.setOpacity(1.0)
-            painter.fillRect(bounds, QColor(4, 9, 17, 148))
+            overlay = {"lyrics": 148, "weather": 126, "constellation": 112}[self.mode]
+            painter.fillRect(bounds, QColor(4, 9, 17, overlay))
             painter.restore()
 
         if profile is not None:
@@ -517,8 +524,8 @@ class LivingScene(QWidget):
         rect = self._area()
         center = rect.center()
         state = self._visual_state
-        base = min(rect.width(), rect.height()) * 0.34
-        points = self._detail_count(56)
+        base = min(rect.width(), rect.height()) * 0.46
+        points = self._detail_count(72)
         seed_phase = (profile.seed % 10007) / 10007.0 * math.tau
 
         # A broad luminous field replaces the old radar/tick-ring appearance.
@@ -543,10 +550,12 @@ class LivingScene(QWidget):
             9 + int(16 * state.brightness),
         )
 
-        layer_count = 2 if self._requested_quality == "eco" or self._effective_quality == "eco" else 4
+        layer_count = 3 if self._requested_quality == "eco" or self._effective_quality == "eco" else 5
+        if self._requested_quality == "high":
+            layer_count = 6
         for layer in range(layer_count):
             layer_fraction = layer / max(1, layer_count - 1)
-            layer_radius = base * (0.48 + 0.13 * layer)
+            layer_radius = base * (0.39 + 0.105 * layer)
             phase_offset = seed_phase * (0.55 + 0.22 * layer) + self._phase * (0.025 + 0.012 * layer)
             ring_points: list[QPointF] = []
             for index in range(points):
@@ -583,16 +592,17 @@ class LivingScene(QWidget):
             path = self._smooth_closed_path(ring_points)
 
             color = QColor(self._color(layer))
+            color = color.lighter(145)
             halo = QColor(color)
-            halo.setAlpha(17 + int(16 * state.glow) + int(8 * layer_fraction))
+            halo.setAlpha(38 + int(30 * state.glow) + int(14 * layer_fraction))
             core = QColor(color)
-            core.setAlpha(105 + int(60 * layer_fraction) + int(35 * state.energy))
+            core.setAlpha(165 + int(55 * layer_fraction) + int(30 * state.energy))
 
             painter.setBrush(Qt.NoBrush)
             painter.setPen(
                 QPen(
                     halo,
-                    5.0 + 1.2 * layer_fraction,
+                    9.0 + 2.0 * layer_fraction,
                     Qt.SolidLine,
                     Qt.RoundCap,
                     Qt.RoundJoin,
@@ -602,7 +612,7 @@ class LivingScene(QWidget):
             painter.setPen(
                 QPen(
                     core,
-                    1.15 + 0.55 * layer_fraction,
+                    2.0 + 0.75 * layer_fraction,
                     Qt.SolidLine,
                     Qt.RoundCap,
                     Qt.RoundJoin,
@@ -612,7 +622,7 @@ class LivingScene(QWidget):
 
         # Sparse luminous motes orbit slowly around the profile rather than
         # looking like a fixed instrument scale.
-        mote_count = self._particle_count(12)
+        mote_count = self._particle_count(20)
         for index, (sx, sy, size, phase) in enumerate(self._stars[:mote_count]):
             angle = sx * math.tau + self._phase * (0.010 + profile.rhythm * 0.018)
             orbit = base * (0.78 + 0.44 * sy)
@@ -620,10 +630,10 @@ class LivingScene(QWidget):
             y = center.y() + math.sin(angle) * orbit * 0.88
             twinkle = 0.5 + 0.5 * math.sin(self._phase * 0.55 + phase + index)
             mote = QColor(self._color(index + 1))
-            mote.setAlpha(34 + int(72 * twinkle))
+            mote.setAlpha(70 + int(110 * twinkle))
             painter.setPen(Qt.NoPen)
             painter.setBrush(mote)
-            painter.drawEllipse(QPointF(x, y), 0.9 + size * 0.45, 0.9 + size * 0.45)
+            painter.drawEllipse(QPointF(x, y), 1.4 + size * 0.65, 1.4 + size * 0.65)
 
         # The centre is the playback pulse: bright, small and deliberately calm.
         core_color = QColor(self._color(0))
@@ -638,8 +648,16 @@ class LivingScene(QWidget):
         center_fill = QColor(core_color)
         center_fill.setAlpha(135 + int(85 * state.energy))
         painter.setBrush(center_fill)
-        core_radius = base * (0.055 + 0.010 * state.pulse)
+        core_radius = base * (0.072 + 0.018 * state.pulse)
         painter.drawEllipse(center, core_radius, core_radius)
+        # The brighter concentric core makes the pulse legible at a glance.
+        for index in range(3):
+            ring = QColor(self._color(index + 1)).lighter(155)
+            ring.setAlpha(122 - index * 24 + int(22 * state.glow))
+            painter.setBrush(Qt.NoBrush)
+            painter.setPen(QPen(ring, 1.6 + index * 0.35))
+            radius = core_radius * (1.55 + index * 0.58)
+            painter.drawEllipse(center, radius, radius)
         painter.setBrush(QColor(248, 252, 255, 225))
         painter.drawEllipse(center, 2.2 + state.pulse * 0.8, 2.2 + state.pulse * 0.8)
 
@@ -895,12 +913,14 @@ class LivingScene(QWidget):
             painter.setPen(QPen(trail_color, 1.0, Qt.DotLine, Qt.RoundCap, Qt.RoundJoin))
             painter.drawPath(trail)
 
-        # Curved paths communicate relationship strength. Hovering one star
-        # illuminates its route and quiets unrelated routes.
+        # Keep the field atmospheric at rest; reveal one relation path on
+        # hover instead of drawing a hub-and-spoke diagram.
         for index, node in enumerate(self._neighbours):
             point = positions[node.token]
             color = QColor(self._relation_color(node.relation))
             selected = node.token == active_token
+            if not selected:
+                continue
             alpha = (170 + int(55 * node.strength)) if selected else int(24 + 54 * node.strength)
             if active_token is not None and not selected:
                 alpha = max(12, alpha // 3)
@@ -945,24 +965,47 @@ class LivingScene(QWidget):
 
         # The centre reuses the same deterministic Track Sigil geometry shown in
         # the header. Geometry is identity; glow/pulse is playback state.
-        sigil_rect = QRectF(center.x() - 15, center.y() - 15, 30, 30)
-        paint_track_sigil(
-            painter,
-            sigil_rect,
-            profile.seed,
-            current,
-            glow=0.25 + 0.45 * state.glow,
-            compact=True,
-        )
+        if not self._artwork_source.isNull():
+            cover_size = min(104.0, max(76.0, min(rect.width(), rect.height()) * 0.20))
+            cover_rect = QRectF(
+                center.x() - cover_size / 2,
+                center.y() - cover_size / 2,
+                cover_size,
+                cover_size,
+            )
+            painter.save()
+            clip = QPainterPath()
+            clip.addEllipse(cover_rect)
+            painter.setClipPath(clip)
+            painter.drawImage(cover_rect, self._artwork_source)
+            painter.fillRect(cover_rect, QColor(3, 8, 15, 25))
+            painter.restore()
+            painter.setBrush(Qt.NoBrush)
+            painter.setPen(QPen(QColor("#f0f7ff"), 2.0))
+            painter.drawEllipse(cover_rect)
+            rim = QColor(current)
+            rim.setAlpha(118)
+            painter.setPen(QPen(rim, 1.0))
+            painter.drawEllipse(cover_rect.adjusted(-5, -5, 5, 5))
+        else:
+            sigil_rect = QRectF(center.x() - 18, center.y() - 18, 36, 36)
+            paint_track_sigil(
+                painter,
+                sigil_rect,
+                profile.seed,
+                current,
+                glow=0.25 + 0.45 * state.glow,
+                compact=True,
+            )
 
         for index, node in enumerate(self._neighbours):
             point = positions[node.token]
             selected = node.token == active_token
             color = QColor(self._relation_color(node.relation))
             pulse = 0.5 + 0.5 * math.sin(self._phase * 0.62 + index * 1.47)
-            size = 3.8 + node.strength * 4.3 + pulse * 0.65
+            size = 6.5 + node.strength * 5.2 + pulse * 0.9
             if selected:
-                size += 2.4
+                size += 3.0
 
             if selected:
                 self._draw_glow(painter, point, size * 4.0, color, 42 + int(34 * state.glow))
@@ -1080,6 +1123,39 @@ class LivingScene(QWidget):
 
     def _paint_lyrics(self, painter: QPainter) -> None:
         rect = self._area()
+        if not self._lyrics.synced and self._lyrics.full_text.strip():
+            # With no line timestamps, keep every line at equal weight. Do not
+            # infer a "current" sentence from song progress.
+            text_box = rect.adjusted(
+                rect.width() * 0.09,
+                rect.height() * 0.12,
+                -rect.width() * 0.09,
+                -rect.height() * 0.14,
+            )
+            line_count = max(1, len(self._lyrics.full_text.splitlines()))
+            font_size = max(
+                14,
+                min(
+                    34 if self._immersive else 26,
+                    int(text_box.height() / max(4.0, line_count * 1.35)),
+                ),
+            )
+            painter.save()
+            painter.setFont(QFont("sans-serif", font_size, QFont.Medium))
+            painter.setPen(QColor("#edf3fa"))
+            painter.drawText(
+                text_box,
+                Qt.AlignCenter | Qt.TextWordWrap,
+                self._lyrics.full_text,
+            )
+            painter.restore()
+            self._draw_caption(
+                painter,
+                QRectF(rect.left(), rect.bottom() - 12, rect.width(), 16),
+                "UNTIMED LYRICS   ·   LINE HIGHLIGHTING OFF",
+                QColor(178, 193, 210, 150),
+            )
+            return
         if not self._lyrics.current and not self._lyrics.following:
             painter.setPen(QColor("#b8c4d2"))
             painter.setFont(QFont("sans-serif", 17 if self._immersive else 14, QFont.Normal))
@@ -1341,6 +1417,30 @@ class LivingScene(QWidget):
             painter.setPen(QPen(front_color, 0.9, Qt.SolidLine, Qt.RoundCap))
             painter.drawPath(path)
 
+        # Wide, slow aurora ribbons give the scene a clear focal composition.
+        # Four fixed paths and simple pens avoid per-frame blur work.
+        for ribbon in range(4):
+            phase = self._phase * (0.035 + 0.008 * state.drift) + ribbon * 1.42
+            y = rect.top() + rect.height() * (0.27 + ribbon * 0.115)
+            amplitude = rect.height() * (0.075 + 0.035 * state.energy)
+            path = QPainterPath(QPointF(rect.left() - 12, y))
+            path.cubicTo(
+                QPointF(rect.left() + rect.width() * 0.27, y + math.sin(phase) * amplitude),
+                QPointF(rect.left() + rect.width() * 0.68, y - math.cos(phase * 0.82) * amplitude),
+                QPointF(rect.right() + 12, y + math.sin(phase * 0.61) * amplitude * 0.55),
+            )
+            ribbon_color = QColor(self._color(ribbon + (1 if state.warmth > 0.55 else 0)))
+            painter.setBrush(Qt.NoBrush)
+            ribbon_color.setAlpha(13 + int(15 * state.glow))
+            painter.setPen(QPen(ribbon_color, 22.0 + 12.0 * state.density, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+            painter.drawPath(path)
+            ribbon_color.setAlpha(25 + int(25 * state.glow))
+            painter.setPen(QPen(ribbon_color, 7.0 + 4.0 * state.energy, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+            painter.drawPath(path)
+            ribbon_color.setAlpha(74 + int(56 * state.glow))
+            painter.setPen(QPen(ribbon_color, 1.1 + state.rhythm * 0.6, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+            painter.drawPath(path)
+
         painter.save()
         painter.setFont(QFont("sans-serif", 15, QFont.DemiBold))
         painter.setPen(QColor(239, 245, 252, 225))
@@ -1514,123 +1614,98 @@ class LivingScene(QWidget):
         cache = QPainter(image)
         cache.setRenderHint(QPainter.Antialiasing, True)
 
-        dayparts = (
-            ("LATE NIGHT", 2.5),
-            ("MORNING", 8.5),
-            ("AFTERNOON", 14.0),
-            ("EVENING", 19.0),
-            ("LATE NIGHT", 23.0),
-        )
-        for label, hour in dayparts:
-            y_fraction = 0.14 + (hour / 24.0) * 0.68
-            y = rect.top() + rect.height() * y_fraction
-            line = QColor("#8fa3ba")
-            line.setAlpha(20)
-            cache.setPen(QPen(line, 1.0, Qt.DotLine))
-            cache.drawLine(
-                QPointF(rect.left() + 104, y),
-                QPointF(rect.right(), y),
-            )
-            self._draw_caption(
-                cache,
-                QRectF(rect.left(), y - 8, 96, 16),
-                label,
-                QColor(143, 159, 178, 105),
-                Qt.AlignLeft | Qt.AlignVCenter,
+        # A quiet star field gives the memories space without chart axes or a
+        # connecting line that makes the atlas read like a plotted diagram.
+        for index, (x, y, size, _phase) in enumerate(self._stars):
+            star = QColor(self._color(index))
+            star.setAlpha(32 + (index % 4) * 8)
+            cache.setPen(Qt.NoPen)
+            cache.setBrush(star)
+            cache.drawEllipse(
+                QPointF(rect.left() + x * rect.width(), rect.top() + y * rect.height()),
+                0.7 + size * 0.35,
+                0.7 + size * 0.35,
             )
 
-        if len(ordered_indices) > 1:
-            path = QPainterPath(positions[ordered_indices[0]])
-            for position_index, index in enumerate(ordered_indices[1:], start=1):
-                previous = positions[ordered_indices[position_index - 1]]
-                current = positions[index]
-                mid_x = (previous.x() + current.x()) * 0.5
-                path.cubicTo(
-                    QPointF(mid_x, previous.y()),
-                    QPointF(mid_x, current.y()),
-                    current,
+        # A handful of broad, low-opacity washes make this feel like a listening
+        # landscape. They are cached with the artwork and never animate per frame.
+        for wash_index in range(5):
+            wash_center = QPointF(
+                rect.left() + rect.width() * (0.13 + wash_index * 0.19),
+                rect.top() + rect.height() * (0.30 + 0.36 * math.sin(wash_index * 1.31)),
+            )
+            wash_color = QColor(self._color(wash_index + 1))
+            wash_color.setAlpha(23)
+            wash = QRadialGradient(wash_center, rect.width() * 0.34)
+            wash.setColorAt(0.0, wash_color)
+            wash_color.setAlpha(11)
+            wash.setColorAt(0.58, wash_color)
+            wash_color.setAlpha(0)
+            wash.setColorAt(1.0, wash_color)
+            cache.setPen(Qt.NoPen)
+            cache.setBrush(wash)
+            cache.drawEllipse(
+                QRectF(
+                    wash_center.x() - rect.width() * 0.34,
+                    wash_center.y() - rect.height() * 0.42,
+                    rect.width() * 0.68,
+                    rect.height() * 0.84,
                 )
-            trail = QColor(self._color(0))
-            trail.setAlpha(30)
-            cache.setBrush(Qt.NoBrush)
-            cache.setPen(QPen(trail, 1.15, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
-            cache.drawPath(path)
+            )
 
         for index, mark in enumerate(self._memory):
             point, radius_x, radius_y, count_scale, color = geometry[index]
+            spread = 1.75 + 0.35 * count_scale
 
-            outer = QColor(color)
-            outer.setAlpha(16 + int(18 * count_scale))
+            # Paint several offset, soft gradients instead of outlined nodes. The
+            # deterministic offsets give every memory a distinct, organic shape.
+            for blob in range(4):
+                angle = (index * 2.399963 + blob * 1.5708) % (math.pi * 2)
+                distance = 0.18 + 0.12 * ((index * 7 + blob * 3) % 5)
+                offset = QPointF(
+                    point.x() + math.cos(angle) * radius_x * distance,
+                    point.y() + math.sin(angle) * radius_y * distance,
+                )
+                blob_color = QColor(color if blob < 3 else self._color(index + 2))
+                alpha = 42 + int(26 * count_scale) if blob else 82 + int(45 * count_scale)
+                blob_color.setAlpha(alpha)
+                radius = max(radius_x, radius_y) * spread * (0.72 if blob else 1.0)
+                cloud = QRadialGradient(offset, radius)
+                cloud.setColorAt(0.0, blob_color)
+                edge = QColor(blob_color)
+                edge.setAlpha(max(8, alpha // 3))
+                cloud.setColorAt(0.54, edge)
+                edge.setAlpha(0)
+                cloud.setColorAt(1.0, edge)
+                cache.setPen(Qt.NoPen)
+                cache.setBrush(cloud)
+                cache.drawEllipse(
+                    QRectF(
+                        offset.x() - radius,
+                        offset.y() - radius * 0.76,
+                        radius * 2,
+                        radius * 1.52,
+                    )
+                )
+
+            # Fine sparks add depth without turning every memory into a point on a graph.
+            spark = QColor("#f3f8ff")
+            spark.setAlpha(80 + int(count_scale * 70))
             cache.setPen(Qt.NoPen)
-            cache.setBrush(outer)
-            cache.drawEllipse(
-                QRectF(
-                    point.x() - radius_x,
-                    point.y() - radius_y,
-                    radius_x * 2,
-                    radius_y * 2,
-                )
-            )
-
-            inner = QColor(color)
-            inner.setAlpha(44 + int(48 * count_scale))
-            cache.setBrush(inner)
-            cache.drawEllipse(
-                QRectF(
-                    point.x() - radius_x * 0.58,
-                    point.y() - radius_y * 0.58,
-                    radius_x * 1.16,
-                    radius_y * 1.16,
-                )
-            )
-
-            outline = QColor("#eef6ff")
-            outline.setAlpha(46 + int(38 * count_scale))
-            cache.setPen(QPen(outline, 0.65))
-            cache.setBrush(Qt.NoBrush)
-            cache.drawEllipse(
-                QRectF(
-                    point.x() - radius_x * 0.62,
-                    point.y() - radius_y * 0.62,
-                    radius_x * 1.24,
-                    radius_y * 1.24,
-                )
-            )
-            cache.setPen(Qt.NoPen)
-            cache.setBrush(QColor(247, 251, 255, 95))
-            cache.drawEllipse(
-                point,
-                1.8 + 1.2 * count_scale,
-                1.8 + 1.2 * count_scale,
-            )
-
-        step = max(1, len(self._memory) // 8)
-        for ordinal, index in enumerate(ordered_indices):
-            if ordinal % step != 0:
-                continue
-            mark = self._memory[index]
-            point = positions[index]
-            label_color = QColor("#dce6f1")
-            label_color.setAlpha(175)
-            cache.setPen(label_color)
-            cache.setFont(QFont("sans-serif", 8, QFont.Medium))
-            cache.drawText(
-                QRectF(point.x() - 60, point.y() + 16, 120, 18),
-                Qt.AlignHCenter | Qt.AlignVCenter,
-                mark.label[:20],
-            )
+            cache.setBrush(spark)
+            cache.drawEllipse(point, 1.1 + count_scale * 1.0, 1.1 + count_scale * 1.0)
 
         self._draw_caption(
             cache,
             QRectF(rect.left(), rect.top() + 2, rect.width(), 16),
-            "MEMORY ATLAS   ·   LEFT → RIGHT IS TIME   ·   HEIGHT / COLOUR IS TIME OF DAY   ·   SIZE IS PLAYS",
-            QColor(165, 182, 202, 145),
+            "MEMORY ATLAS   ·   LISTENING MOMENTS",
+            QColor(208, 220, 235, 195),
         )
         self._draw_caption(
             cache,
             QRectF(rect.left(), rect.bottom() - 18, rect.width(), 16),
-            f"{self._memory_scale.upper()}   ·   {len(self._memory)} GROUPS   ·   HOVER TO EXPLORE",
-            QColor(165, 182, 202, 135),
+            f"{self._memory_scale.upper()}   ·   {len(self._memory)} MEMORIES   ·   HOVER TO EXPLORE",
+            QColor(190, 207, 226, 180),
         )
         cache.end()
         self._memory_cache = image
@@ -1732,37 +1807,77 @@ class LivingScene(QWidget):
     def _paint_minimal(self, painter: QPainter, profile: VisualProfile) -> None:
         rect = self._area()
         center = rect.center()
-        size = min(rect.width(), rect.height()) * 0.25
-        base = self._color(0)
-        self._draw_glow(painter, center, size * 1.75, base, 28)
-        painter.setPen(Qt.NoPen)
-        for index in range(60):
-            angle = math.tau * index / 60
-            inner = size * 1.27
-            outer = size * (1.36 if index % 5 == 0 else 1.31)
-            tick = QColor(self._color(0))
-            tick.setAlpha(54 if index % 5 == 0 else 22)
-            painter.setPen(QPen(tick, 1.0))
-            painter.drawLine(
-                QPointF(center.x() + math.cos(angle) * inner, center.y() + math.sin(angle) * inner),
-                QPointF(center.x() + math.cos(angle) * outer, center.y() + math.sin(angle) * outer),
-            )
-        accent = self._color(0)
-        accent.setAlpha(210)
-        painter.setPen(QPen(accent, 2.0))
+        short_side = min(rect.width(), rect.height())
+        art_size = short_side * (0.43 + 0.012 * self._visual_state.pulse)
+        breathing = 1.0 + 0.018 * math.sin(self._phase * 0.035)
+        art_size *= breathing
+        accent = QColor(self._color(0)).lighter(150)
+        self._draw_glow(
+            painter,
+            center,
+            art_size * (0.92 + 0.08 * self._visual_state.glow),
+            accent,
+            42 + int(42 * self._visual_state.glow),
+        )
+
+        # A handful of large, bright orbit rings replace the tiny instrument
+        # dial. Their palette comes from this recording's cover art.
         painter.setBrush(Qt.NoBrush)
-        painter.drawEllipse(center, size, size)
-        accent.setAlpha(55)
-        painter.setPen(QPen(accent, 1.0))
-        painter.drawEllipse(center, size * 1.11, size * 1.11)
+        for index, fraction in enumerate((0.58, 0.66, 0.76, 0.86, 0.96)):
+            color = QColor(self._color(index)).lighter(150)
+            color.setAlpha(38 + int(35 * self._visual_state.glow) + index * 8)
+            radius = art_size * fraction
+            painter.setPen(QPen(color, 1.15 + (index % 2) * 0.55))
+            painter.drawEllipse(center, radius * (1.0 + 0.018 * index), radius)
+
+        cover = QRectF(
+            center.x() - art_size / 2,
+            center.y() - art_size / 2,
+            art_size,
+            art_size,
+        )
+        if not self._artwork_source.isNull():
+            painter.save()
+            clip = QPainterPath()
+            clip.addRoundedRect(cover, art_size * 0.075, art_size * 0.075)
+            painter.setClipPath(clip)
+            painter.drawImage(cover, self._artwork_source)
+            painter.fillRect(cover, QColor(3, 8, 15, 17))
+            painter.restore()
+        else:
+            gradient = QRadialGradient(cover.center(), art_size * 0.72)
+            for index in range(4):
+                color = QColor(self._color(index))
+                color.setAlpha(214 - index * 38)
+                gradient.setColorAt(index / 3, color)
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(gradient)
+            painter.drawRoundedRect(cover, art_size * 0.075, art_size * 0.075)
+            paint_track_sigil(
+                painter,
+                cover.adjusted(art_size * 0.30, art_size * 0.30, -art_size * 0.30, -art_size * 0.30),
+                profile.seed,
+                accent,
+                glow=0.7,
+                compact=True,
+            )
+
+        painter.setBrush(Qt.NoBrush)
+        rim = QColor("#f5f8ff")
+        rim.setAlpha(210)
+        painter.setPen(QPen(rim, 2.0))
+        painter.drawRoundedRect(cover, art_size * 0.075, art_size * 0.075)
+
+        orbit = art_size * 0.70
+        orbit_rect = QRectF(center.x() - orbit, center.y() - orbit, orbit * 2, orbit * 2)
         accent.setAlpha(220)
-        painter.setPen(QPen(accent, 2.5, Qt.SolidLine, Qt.RoundCap))
-        painter.drawArc(QRectF(center.x() - size * 1.11, center.y() - size * 1.11, size * 2.22, size * 2.22), 90 * 16, -int(360 * self._position_fraction * 16))
+        painter.setPen(QPen(accent, 3.2, Qt.SolidLine, Qt.RoundCap))
+        painter.drawArc(orbit_rect, 90 * 16, -int(360 * self._position_fraction * 16))
         angle = math.pi / 2 - math.tau * self._position_fraction
-        dot = QPointF(center.x() + math.cos(angle) * size * 1.11, center.y() - math.sin(angle) * size * 1.11)
+        dot = QPointF(center.x() + math.cos(angle) * orbit, center.y() - math.sin(angle) * orbit)
         painter.setPen(Qt.NoPen)
-        painter.setBrush(QColor("#eef5ff"))
-        painter.drawEllipse(dot, 3.1, 3.1)
+        painter.setBrush(QColor("#f5fbff"))
+        painter.drawEllipse(dot, 4.2, 4.2)
         self._draw_caption(
             painter,
             QRectF(rect.left(), rect.bottom() - 24, rect.width(), 18),

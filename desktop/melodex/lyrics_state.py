@@ -35,6 +35,7 @@ class LyricFrame:
     synced: bool
     source: str
     index: int = -1
+    full_text: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -117,14 +118,10 @@ class LyricsDocument:
         duration = _safe_int(duration_ms)
         fraction = min(1.0, position / duration) if duration else 0.0
         index = min(len(lines) - 1, int(fraction * len(lines)))
-        return LyricFrame(
-            lines[index - 1] if index else "",
-            lines[index],
-            lines[index + 1] if index + 1 < len(lines) else "",
-            False,
-            self.source,
-            index,
-        )
+        # Untimed lyrics cannot identify the line currently sung. Preserve the
+        # complete text for a static, unhighlighted presentation instead of
+        # guessing from elapsed time and emphasizing the wrong sentence.
+        return LyricFrame("", "", "", False, self.source, -1, "\n".join(lines))
 
     def as_payload(self) -> dict[str, Any]:
         payload: dict[str, Any] = {

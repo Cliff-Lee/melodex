@@ -651,14 +651,14 @@ class LivingCanvasView(QWidget):
             self.status.setText("Cached Flow energy across the recording. Click or drag the contour below to seek.") if profile.energy_curve else self.status.setText("No cached Flow contour is available yet. Seeking still works from the position control below.")
         elif mode == "constellation":
             self.status.setText(
-                f"{len(self._neighbours)} nearby tracks · distance shows relationship strength · "
+                f"{len(self._neighbours)} nearby tracks arranged around the current cover · "
                 "hover for artwork, click to hold, double-click to queue."
             )
         elif mode == "lyrics":
             if self._lyrics.synced:
                 self.status.setText("Lyric Flow follows synchronized lyrics with restrained music-reactive glow.")
             elif self._lyrics.text.strip():
-                self.status.setText("Untimed lyrics use the same reader text, paced gently across the track.")
+                self.status.setText("Untimed lyrics stay static; no sentence is highlighted without line timing.")
             else:
                 self.status.setText("Lyric Flow is ready when lyrics become available.")
         elif mode == "album_world":
