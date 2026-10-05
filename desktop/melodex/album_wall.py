@@ -5,7 +5,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QAbstractAnimation, QEasingCurve, QRect, QRectF, Qt, QTimer, QVariantAnimation, Signal
+from PySide6.QtCore import QAbstractAnimation, QEasingCurve, QRectF, Qt, QTimer, QVariantAnimation, Signal
 from PySide6.QtGui import QBrush, QColor, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import (
     QComboBox,
@@ -59,6 +59,14 @@ class _AlbumTile(QGraphicsObject):
         self._selected_callback = selected
         self._activated_callback = activated
         self._pixmap = QPixmap()
+        self._cover_prepares = 0
+        self._placeholder_colours = _placeholder_colours(self.key)
+        title = str(self.album.get("title") or "?").strip()
+        words = [word for word in title.replace("-", " ").split() if word]
+        self._monogram = (
+            "".join(word[0] for word in words[:2]).upper()
+            if len(words) > 1 else title[:2].upper()
+        ) or "?"
         self._selected = False
         self._current = False
         self.setAcceptHoverEvents(True)
@@ -87,12 +95,25 @@ class _AlbumTile(QGraphicsObject):
             f"{self.album.get('title') or 'Unknown album'}\n{line}\n{analysis}"
         )
 
-    def set_cover_path(self, value: str) -> None:
+    def set_cover_path(self, value: str) -> bool:
+        """Decode and prepare the cover once; paint only blits the result."""
         path = Path(str(value or ""))
         pixmap = QPixmap(str(path)) if path.is_file() else QPixmap()
-        if not pixmap.isNull():
-            self._pixmap = pixmap
+        if pixmap.isNull():
+            return False
+        target = max(1, int(_COVER))
+        scaled = pixmap.scaled(
+            target,
+            target,
+            Qt.KeepAspectRatioByExpanding,
+            Qt.SmoothTransformation,
+        )
+        left = max(0, (scaled.width() - target) // 2)
+        top = max(0, (scaled.height() - target) // 2)
+        self._pixmap = scaled.copy(left, top, target, target)
+        self._cover_prepares += 1
         self.update()
+        return True
 
     def set_selected_visual(self, value: bool) -> None:
         self._selected = bool(value)
@@ -105,9 +126,6 @@ class _AlbumTile(QGraphicsObject):
     def paint(self, painter: QPainter, option, widget=None):
         lod = QStyleOptionGraphicsItem.levelOfDetailFromTransform(painter.worldTransform())
         cover = QRectF(6, 5, _COVER, _COVER)
-        painter.setRenderHint(QPainter.Antialiasing, True)
-        painter.setRenderHint(QPainter.SmoothPixmapTransform, True)
-
         # A quiet shadow makes the wall feel like physical sleeves rather than
         # debug nodes, without using expensive QGraphicsDropShadowEffect items.
         painter.setPen(Qt.NoPen)
@@ -120,25 +138,18 @@ class _AlbumTile(QGraphicsObject):
         painter.setClipPath(clip)
 
         if self._pixmap.isNull():
-            a, b = _placeholder_colours(self.key)
+            a, b = self._placeholder_colours
             gradient = QLinearGradient(cover.topLeft(), cover.bottomRight())
             gradient.setColorAt(0.0, a.darker(150))
             gradient.setColorAt(1.0, b.darker(175))
             painter.fillRect(cover, QBrush(gradient))
 
-            title = str(self.album.get("title") or "?").strip()
-            words = [word for word in title.replace("-", " ").split() if word]
-            monogram = (
-                "".join(word[0] for word in words[:2]).upper()
-                if len(words) > 1
-                else title[:2].upper()
-            )
             font = painter.font()
             font.setBold(True)
             font.setPointSizeF(34)
             painter.setFont(font)
             painter.setPen(QColor(255, 255, 255, 150))
-            painter.drawText(cover, Qt.AlignCenter, monogram or "?")
+            painter.drawText(cover, Qt.AlignCenter, self._monogram)
             painter.setPen(QPen(QColor(255, 255, 255, 18), 1))
             step = 22
             x = int(cover.left()) - int(cover.height())
@@ -151,21 +162,7 @@ class _AlbumTile(QGraphicsObject):
                 )
                 x += step
         else:
-            target_w = max(1, int(cover.width()))
-            target_h = max(1, int(cover.height()))
-            scaled = self._pixmap.scaled(
-                target_w,
-                target_h,
-                Qt.KeepAspectRatioByExpanding,
-                Qt.SmoothTransformation,
-            )
-            source = QRect(
-                max(0, (scaled.width() - target_w) // 2),
-                max(0, (scaled.height() - target_h) // 2),
-                min(target_w, scaled.width()),
-                min(target_h, scaled.height()),
-            )
-            painter.drawPixmap(cover.toRect(), scaled, source)
+            painter.drawPixmap(cover.toRect(), self._pixmap)
         painter.restore()
 
         painter.setBrush(Qt.NoBrush)
@@ -220,16 +217,24 @@ class _AlbumTile(QGraphicsObject):
 
 
 class _WallView(QGraphicsView):
-    """Canvas-like wall navigation with gentle zoom and trackpad panning."""
+    """Canvas-like navigation with coalesced signals and cheap motion frames."""
 
     viewportChanged = Signal()
+    viewportSettled = Signal()
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self._viewport_emit_pending = False
+        self._motion_active = False
+        self._settle_timer = QTimer(self)
+        self._settle_timer.setSingleShot(True)
+        self._settle_timer.setInterval(90)
+        self._settle_timer.timeout.connect(self._settle_motion)
         self._zoom_animation = QVariantAnimation(self)
         self._zoom_animation.setDuration(135)
         self._zoom_animation.setEasingCurve(QEasingCurve.OutCubic)
         self._zoom_animation.valueChanged.connect(self._apply_zoom_value)
+        self.setOptimizationFlag(QGraphicsView.DontAdjustForAntialiasing, True)
 
     def _apply_zoom_value(self, value) -> None:
         target = float(value)
@@ -237,7 +242,7 @@ class _WallView(QGraphicsView):
         factor = target / current
         if abs(factor - 1.0) > 0.0005:
             self.scale(factor, factor)
-        self.viewportChanged.emit()
+        self._queue_viewport_changed()
 
     def smooth_zoom(self, multiplier: float) -> None:
         current = max(0.0001, float(self.transform().m11()))
@@ -265,7 +270,6 @@ class _WallView(QGraphicsView):
                 self.verticalScrollBar().value() - pixel.y()
             )
             event.accept()
-            self.viewportChanged.emit()
             return
 
         delta = event.angleDelta().y()
@@ -277,13 +281,40 @@ class _WallView(QGraphicsView):
         self.smooth_zoom(1.10 ** steps)
         event.accept()
 
+    def _queue_viewport_changed(self) -> None:
+        if not self._motion_active:
+            self._motion_active = True
+            self.setRenderHint(QPainter.Antialiasing, False)
+            self.setRenderHint(QPainter.SmoothPixmapTransform, False)
+        self._settle_timer.start()
+        if not self._viewport_emit_pending:
+            self._viewport_emit_pending = True
+            QTimer.singleShot(0, self._emit_viewport_changed)
+
+    def _emit_viewport_changed(self) -> None:
+        self._viewport_emit_pending = False
+        self.viewportChanged.emit()
+
+    def _settle_motion(self) -> None:
+        if not self._motion_active:
+            return
+        self._motion_active = False
+        self.setRenderHint(QPainter.Antialiasing, True)
+        self.setRenderHint(QPainter.SmoothPixmapTransform, True)
+        self.viewport().update()
+        self.viewportSettled.emit()
+
+    @property
+    def motion_active(self) -> bool:
+        return bool(self._motion_active)
+
     def scrollContentsBy(self, dx: int, dy: int):
         super().scrollContentsBy(dx, dy)
-        self.viewportChanged.emit()
+        self._queue_viewport_changed()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        self.viewportChanged.emit()
+        self._queue_viewport_changed()
 
 
 class AlbumWallWidget(QWidget):
@@ -307,11 +338,15 @@ class AlbumWallWidget(QWidget):
         self._end_positions: dict[str, tuple[float, float]] = {}
         self._runtime_metrics: dict[str, float | int] = {
             "viewport_changes": 0,
+            "viewport_settles": 0,
             "visible_art_scans": 0,
+            "visible_art_candidates_last": 0,
+            "visible_art_candidates_max": 0,
             "visible_art_batches": 0,
             "visible_art_items_requested": 0,
             "artwork_apply_batches": 0,
             "artwork_items_applied": 0,
+            "cover_prepares": 0,
             "visible_art_scan_last_ms": 0.0,
             "visible_art_scan_max_ms": 0.0,
             "artwork_apply_last_ms": 0.0,
@@ -376,6 +411,7 @@ class AlbumWallWidget(QWidget):
         actual.clicked.connect(self.actual_size)
         overview.clicked.connect(self.fit_wall)
         self.view.viewportChanged.connect(self._viewport_changed)
+        self.view.viewportSettled.connect(self._viewport_settled)
         self._art_timer = QTimer(self)
         self._art_timer.setSingleShot(True)
         self._art_timer.setInterval(120)
@@ -588,7 +624,10 @@ class AlbumWallWidget(QWidget):
 
     def _viewport_changed(self) -> None:
         self._runtime_metrics["viewport_changes"] += 1
-        self._schedule_visible_art()
+
+    def _viewport_settled(self) -> None:
+        self._runtime_metrics["viewport_settles"] += 1
+        self._request_visible_art()
 
     def _schedule_visible_art(self) -> None:
         self._art_timer.start()
@@ -606,11 +645,24 @@ class AlbumWallWidget(QWidget):
             return
         viewport = self.view.viewport().rect()
         visible = self.view.mapToScene(viewport).boundingRect().adjusted(-220, -220, 220, 220)
+        candidates = [
+            item for item in self.scene.items(
+                visible,
+                Qt.IntersectsItemBoundingRect,
+                Qt.AscendingOrder,
+            )
+            if isinstance(item, _AlbumTile)
+        ]
+        count = len(candidates)
+        self._runtime_metrics["visible_art_candidates_last"] = count
+        self._runtime_metrics["visible_art_candidates_max"] = max(
+            int(self._runtime_metrics["visible_art_candidates_max"]),
+            count,
+        )
         batch = []
-        for key, tile in self.tiles.items():
+        for tile in candidates:
+            key = tile.key
             if key in self._art_requested:
-                continue
-            if not tile.sceneBoundingRect().intersects(visible):
                 continue
             album = self.albums.get(key) or {}
             track = dict(album.get("representative_track") or {})
@@ -639,14 +691,22 @@ class AlbumWallWidget(QWidget):
             return
         viewport = self.view.viewport().rect()
         visible = self.view.mapToScene(viewport).boundingRect().adjusted(-100, -100, 100, 100)
+        visible_tiles = [
+            item for item in self.scene.items(
+                visible,
+                Qt.IntersectsItemBoundingRect,
+                Qt.AscendingOrder,
+            )
+            if isinstance(item, _AlbumTile)
+        ]
         batch = []
         preferred = [self.selected_key] if self.selected_key else []
-        preferred.extend(key for key in self.tiles if key != self.selected_key)
+        preferred.extend(
+            tile.key for tile in visible_tiles if tile.key != self.selected_key
+        )
         for key in preferred:
             tile = self.tiles.get(key)
             if tile is None or key in self._online_requested or not tile._pixmap.isNull():
-                continue
-            if key != self.selected_key and not tile.sceneBoundingRect().intersects(visible):
                 continue
             album = self.albums.get(key) or {}
             track = dict(album.get("representative_track") or {})
@@ -671,9 +731,9 @@ class AlbumWallWidget(QWidget):
             key = str(key)
             self._online_requested.discard(key)
             tile = self.tiles.get(key)
-            if tile and path:
-                tile.set_cover_path(str(path))
+            if tile and path and tile.set_cover_path(str(path)):
                 loaded += 1
+                self._runtime_metrics["cover_prepares"] += 1
         if loaded:
             self._runtime_metrics["artwork_items_applied"] += loaded
         elapsed_ms = (time.perf_counter() - started) * 1000.0
@@ -695,6 +755,7 @@ class AlbumWallWidget(QWidget):
             "tile_count": len(self.tiles),
             "art_requested_count": len(self._art_requested),
             "online_requested_count": len(self._online_requested),
+            "motion_active": bool(self.view.motion_active),
         }
 
 
