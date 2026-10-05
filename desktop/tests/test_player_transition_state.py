@@ -30,6 +30,110 @@ def _player():
     return player
 
 
+def test_transition_plan_is_requested_once_for_current_pair_and_applied_by_token():
+    player = _player()
+    player.queue = [{"track_id": "a"}, {"track_id": "b"}]
+    requested = []
+    player.transitionPlanRequested.connect(
+        lambda token, left, right: requested.append(
+            (int(token), left["track_id"], right["track_id"])
+        )
+    )
+
+    assert player._commit_track(0, 0, announce_queue=False) is True
+
+    assert len(requested) == 1
+    token, left, right = requested[0]
+    assert (left, right) == ("a", "b")
+    assert player._transition_plan_ready is False
+    assert player._transition_duration() == 4500
+
+    assert player.apply_transition_plan(token, {"duration_ms": 7600}) is True
+    assert player._transition_plan_ready is True
+    assert player._transition_duration() == 7600
+
+    snapshot = player.diagnostics_snapshot()
+    assert snapshot["transition_plan_requests"] == 1
+    assert snapshot["transition_plan_applied"] == 1
+    assert snapshot["transition_plan_duration_ms"] == 7600
+
+    player.close()
+
+
+def test_stale_transition_plan_cannot_replace_plan_for_new_pair():
+    player = _player()
+    player.queue = [
+        {"track_id": "a"},
+        {"track_id": "b"},
+        {"track_id": "c"},
+    ]
+    requested = []
+    player.transitionPlanRequested.connect(
+        lambda token, left, right: requested.append(
+            (int(token), left["track_id"], right["track_id"])
+        )
+    )
+
+    player._commit_track(0, 0, announce_queue=False)
+    first_token = requested[-1][0]
+    player._commit_track(1, 0, announce_queue=True)
+    second_token = requested[-1][0]
+
+    assert second_token > first_token
+    assert player.apply_transition_plan(first_token, {"duration_ms": 11000}) is False
+    assert player.apply_transition_plan(second_token, {"duration_ms": 1800}) is True
+    assert player._transition_duration() == 1800
+    assert player.diagnostics_snapshot()["transition_plan_stale"] == 1
+
+    player.close()
+
+
+def test_playback_tick_never_calls_legacy_transition_callback():
+    QMediaPlayer = _media_player_type()
+    import pytest
+
+    try:
+        from PySide6.QtWidgets import QApplication
+        from melodex.player import FlowPlayer
+    except ImportError as exc:
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    QApplication.instance() or QApplication([])
+    calls = []
+
+    def forbidden_transition(*_args):
+        calls.append(True)
+        raise AssertionError("transition planning ran inside playback tick")
+
+    player = FlowPlayer(lambda track: dict(track), transition_for=forbidden_transition)
+    player._timer.stop()
+
+    class FakePlayer:
+        def duration(self):
+            return 100_000
+
+        def position(self):
+            return 1_000
+
+        def playbackState(self):
+            return QMediaPlayer.PlayingState
+
+    player.players = [FakePlayer(), FakePlayer()]
+    player.queue = [{"track_id": "a"}, {"track_id": "b"}]
+    player.index = 0
+    player.active = 0
+    player._transition_plan_duration_ms = 7300
+    player._transition_plan_ready = True
+
+    player._tick()
+
+    assert calls == []
+    assert player._transition_duration() == 7300
+    assert player.diagnostics_snapshot()["ticks"] == 1
+
+    player.gateway.close()
+
+
 def test_outgoing_end_of_media_commits_a_started_crossfade_once():
     QMediaPlayer = _media_player_type()
     player = _player()
