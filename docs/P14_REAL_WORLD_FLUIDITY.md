@@ -69,6 +69,12 @@ Introduce explicit scrub ownership:
 Player position updates must never overwrite the slider while the user owns it. Seek
 requests are committed once and reconciled against backend confirmation.
 
+P14b also makes the whole slider groove a direct seek target rather than relying on
+platform-default QSlider page-step behaviour. Click, drag, keyboard and wheel gestures
+all enter the same ownership path. After commit, stale position ticks are suppressed
+until the backend reports the requested location (within tolerance) or a bounded
+timeout releases ownership. A track change cancels any pending seek.
+
 Qualification covers FLAC, MP3, M4A/AAC and WAV, forward/backward seeking, pause,
 rapid repeated seeks and near-EOF seeking.
 
