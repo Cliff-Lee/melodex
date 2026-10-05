@@ -22,6 +22,7 @@ from .provider_manager import ProviderManager
 from .flow import FlowEngine
 from .user_state import UserState
 from .player import FlowPlayer
+from .playback_transition_planner import PlaybackTransitionPlanner
 from .bridge_server import ProviderBridge
 from .responsiveness import UiResponsivenessMonitor
 from .background_scheduler import BackgroundScheduler
@@ -214,9 +215,10 @@ class MainWindow(QMainWindow):
         self.externalCommand.connect(self._on_external_command)
 
         self.player = FlowPlayer(
-            self.providers.resolve, self._transition_for, self,
+            self.providers.resolve, parent=self,
             playback_refresher=self.providers.refresh_playback,
         )
+        self.transition_planner=PlaybackTransitionPlanner(self.flow,self._path_for,self._run_async,self.player)
 
         from .playback_feature import PlaybackFeature
 
@@ -3434,9 +3436,6 @@ class MainWindow(QMainWindow):
     # ------------------------------- Flow / Mind
     def _path_for(self,t):
         p=str(t.get("local_path") or ""); return Path(p) if p else None
-
-    def _transition_for(self,a,b):
-        aa=self.flow.cached_analysis_for(self._path_for(a)); bb=self.flow.cached_analysis_for(self._path_for(b)); return self.flow.transition(aa,bb).as_dict()
 
     def _play_for_me(self,mode,minutes,adventure):
         catalog=self.providers.local_catalog()
