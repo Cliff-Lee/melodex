@@ -142,8 +142,22 @@ Flow crossfade between its tracks.
 
 ### P14f — Album Wall render hot path
 
-Decode/crop/scale artwork outside paint. During active movement, favour immediate
-motion over refinement and defer expensive visual work until the viewport settles.
+Album tiles now prepare each cover once when artwork arrives. Smooth resize/crop is
+performed at that boundary; `paint()` only blits the already-prepared 164×164 pixmap.
+Repainting or panning therefore creates no temporary scaled pixmaps.
+
+Viewport traffic is coalesced to at most one notification per event-loop turn. During
+active pan/zoom/resize motion the view temporarily disables antialiasing and smooth
+pixmap filtering, then restores full-quality rendering after 90 ms of quiet.
+
+Visible-art discovery is also spatial rather than O(all albums): the scene index is
+queried for the viewport plus overscan and only those tile candidates are considered.
+Artwork lookup is deferred until motion settles, so continuous trackpad movement does
+not compete with painting for the UI thread.
+
+Artwork decode itself still occurs at the application boundary in this phase. P14g moves
+that work into the shared decoded-artwork service with cache/deduplication/generation
+control; P14f's contract is specifically that continuous motion and `paint()` are cheap.
 
 ### P14g — Shared artwork service
 
