@@ -5,7 +5,7 @@ import time
 from typing import Any
 
 from PySide6.QtCore import QAbstractAnimation, QEasingCurve, QRectF, Qt, QTimer, QVariantAnimation, Signal
-from PySide6.QtGui import QBrush, QColor, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap
+from PySide6.QtGui import QBrush, QColor, QImage, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import (
     QComboBox,
     QGraphicsItem,
@@ -109,6 +109,26 @@ class _AlbumTile(QGraphicsObject):
         left = max(0, (scaled.width() - target) // 2)
         top = max(0, (scaled.height() - target) // 2)
         self._pixmap = scaled.copy(left, top, target, target)
+        self._cover_prepares += 1
+        self.update()
+        return True
+
+    def set_cover_image(self, image: QImage) -> bool:
+        if not isinstance(image, QImage) or image.isNull():
+            return False
+        pixmap = QPixmap.fromImage(image)
+        target = max(1, int(_COVER))
+        if pixmap.width() != target or pixmap.height() != target:
+            pixmap = pixmap.scaled(
+                target,
+                target,
+                Qt.KeepAspectRatioByExpanding,
+                Qt.SmoothTransformation,
+            )
+            left = max(0, (pixmap.width() - target) // 2)
+            top = max(0, (pixmap.height() - target) // 2)
+            pixmap = pixmap.copy(left, top, target, target)
+        self._pixmap = pixmap
         self._cover_prepares += 1
         self.update()
         return True
@@ -331,6 +351,7 @@ class AlbumWallWidget(QWidget):
         self.current_key = ""
         self._art_requested: set[str] = set()
         self._online_requested: set[str] = set()
+        self._art_generation = 0
         self._animation: QVariantAnimation | None = None
         self._start_positions: dict[str, tuple[float, float]] = {}
         self._end_positions: dict[str, tuple[float, float]] = {}
@@ -416,6 +437,7 @@ class AlbumWallWidget(QWidget):
         self._art_timer.timeout.connect(self._request_visible_art)
 
     def set_model(self, model: dict[str, Any], current_track: dict[str, Any] | None = None) -> None:
+        self._art_generation += 1
         self.model = dict(model or {})
         if self._animation is not None:
             self._animation.stop()
@@ -666,7 +688,11 @@ class AlbumWallWidget(QWidget):
             track = dict(album.get("representative_track") or {})
             if track:
                 self._art_requested.add(key)
-                batch.append({"key": key, "track": track})
+                batch.append({
+                    "key": key,
+                    "generation": self._art_generation,
+                    "track": track,
+                })
             if len(batch) >= 36:
                 break
         if batch:
@@ -710,7 +736,11 @@ class AlbumWallWidget(QWidget):
             track = dict(album.get("representative_track") or {})
             if track:
                 self._online_requested.add(key)
-                batch.append({"key": key, "track": track})
+                batch.append({
+                    "key": key,
+                    "generation": self._art_generation,
+                    "track": track,
+                })
             if len(batch) >= 6:
                 break
         if not batch:
@@ -719,17 +749,30 @@ class AlbumWallWidget(QWidget):
         self.status.setText(f"Looking up {len(batch)} missing cover{'s' if len(batch) != 1 else ''}…")
         self.onlineArtworkRequested.emit(batch)
 
-    def set_artwork(self, mapping: dict[str, str]) -> None:
+    def set_artwork(self, mapping: dict[str, object]) -> None:
         started = time.perf_counter()
         loaded = 0
         rows = dict(mapping or {})
         if rows:
             self._runtime_metrics["artwork_apply_batches"] += 1
-        for key, path in rows.items():
+        for key, raw in rows.items():
             key = str(key)
+            structured = isinstance(raw, dict)
+            payload = dict(raw) if structured else {"path": str(raw or "")}
+            generation = int(payload.get("generation") or self._art_generation)
             self._online_requested.discard(key)
+            if generation != self._art_generation:
+                self._art_requested.discard(key)
+                continue
             tile = self.tiles.get(key)
-            if tile and path and tile.set_cover_path(str(path)):
+            image = payload.get("image")
+            path = str(payload.get("path") or "")
+            applied = False
+            if tile is not None and isinstance(image, QImage):
+                applied = tile.set_cover_image(image)
+            elif tile is not None and not structured and path:
+                applied = tile.set_cover_path(path)
+            if applied:
                 loaded += 1
                 self._runtime_metrics["cover_prepares"] += 1
         if loaded:
