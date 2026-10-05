@@ -197,6 +197,23 @@ class RichMetadataService:
     def artwork_image_cache_snapshot(self) -> dict[str, Any]:
         return self.artwork_images.snapshot()
 
+    def prepared_artwork_payload(
+        self,
+        path: str,
+        generation: int,
+        size: int,
+        secondary_size: int = 0,
+    ) -> dict[str, Any]:
+        path=str(path or "")
+        payload={
+            "path":path,
+            "generation":int(generation),
+            "image":self.prepared_artwork_image(path,size) if path else None,
+        }
+        if path and int(secondary_size)>0:
+            payload["track_image"]=self.prepared_artwork_image(path,secondary_size)
+        return payload
+
     # ---------------------------- cache / HTTP
     @staticmethod
     def _hash(value: str) -> str:
