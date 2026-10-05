@@ -218,7 +218,7 @@ class MainWindow(QMainWindow):
             self.providers.resolve, parent=self,
             playback_refresher=self.providers.refresh_playback,
         )
-        self.transition_planner=PlaybackTransitionPlanner(self.flow,self._path_for,self._run_async,self.player)
+        self.transition_planner=PlaybackTransitionPlanner(self.flow,self.providers,self._path_for,self._run_async,self.player)
 
         from .playback_feature import PlaybackFeature
 
