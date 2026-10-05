@@ -653,7 +653,6 @@ class FlowPlayer(QObject):
         self.outputs[incoming].setVolume(self._volume)
         self._clear_transition_state()
         self._runtime_metrics["crossfade_completed"] += 1
-        self._emit_audio_processing_state()
         if reason == "end_of_media":
             self._runtime_metrics["crossfade_eof_commits"] += 1
 
