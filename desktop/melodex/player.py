@@ -53,6 +53,8 @@ class FlowPlayer(QObject):
         self.index = -1
         self._crossfading = False
         self._transition_ms = 0
+        self._crossfade_target_index: int | None = None
+        self._crossfade_deck: int | None = None
         # P14 runtime counters are deliberately metadata-free. They exist so a
         # beta tester can export evidence of playback/transport divergence
         # without exposing track names, paths, URLs or provider credentials.
@@ -64,14 +66,21 @@ class FlowPlayer(QObject):
             "manual_previous": 0,
             "crossfade_started": 0,
             "crossfade_completed": 0,
+            "crossfade_eof_commits": 0,
+            "natural_ends": 0,
+            "transition_aborts": 0,
+            "queue_position_commits": 0,
         }
         self._last_seek_requested_ms = 0
         self._timer = QTimer(self)
         self._timer.setInterval(100)
         self._timer.timeout.connect(self._tick)
         self._timer.start()
-        for player in self.players:
+        for deck, player in enumerate(self.players):
             player.errorOccurred.connect(lambda _error, msg: self.error.emit(str(msg)))
+            player.mediaStatusChanged.connect(
+                lambda status, deck=deck: self._on_media_status(deck, status)
+            )
 
     def set_queue(self, tracks: list[dict[str, Any]], start: int = 0, autoplay: bool = True) -> None:
         self.queue = [dict(item) for item in tracks]
