@@ -274,6 +274,7 @@ def test_transition_planner_runs_once_per_pair_not_inside_hot_loop():
     player._timer.stop()
     player.queue = [{"track_id": "a"}, {"track_id": "b"}]
     player.index = 0
+    player._playback_intent = "journey"
 
     player._schedule_transition_plan()
 
@@ -326,6 +327,7 @@ def test_stale_transition_plan_cannot_replace_new_queue_pair():
     player._timer.stop()
     player.queue = [{"track_id": "a"}, {"track_id": "b"}]
     player.index = 0
+    player._playback_intent = "journey"
     player._schedule_transition_plan()
 
     player.queue[1] = {"track_id": "c"}
@@ -366,6 +368,7 @@ def test_rejected_background_transition_job_uses_bounded_fallback():
     player._timer.stop()
     player.queue = [{"track_id": "a"}, {"track_id": "b"}]
     player.index = 0
+    player._playback_intent = "journey"
 
     player._schedule_transition_plan()
 
