@@ -121,7 +121,10 @@ def test_music_map_defaults_to_selection_focused_relationships():
     app.processEvents()
 
     assert widget.edge_mode.currentData() == "focused"
+    assert widget.edge_mode.isHidden()
     assert len(widget.edge_items) == 0
+    assert widget.node_items["a"].boundingRect().width() == 190.0
+    assert widget.node_items["a"].boundingRect().height() == 126.0
     assert widget.view.minimumHeight() >= 500
 
     widget._select_ref("a")

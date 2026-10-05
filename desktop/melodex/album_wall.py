@@ -24,9 +24,9 @@ from PySide6.QtWidgets import (
 from .album_wall_model import layout_album_positions
 
 
-_TILE_W = 176.0
-_TILE_H = 216.0
-_COVER = 164.0
+_TILE_W = 244.0
+_TILE_H = 296.0
+_COVER = 228.0
 
 
 def _norm(value: Any) -> str:
@@ -170,7 +170,7 @@ class _AlbumTile(QGraphicsObject):
 
             font = painter.font()
             font.setBold(True)
-            font.setPointSizeF(34)
+            font.setPointSizeF(46)
             painter.setFont(font)
             painter.setPen(QColor(255, 255, 255, 150))
             painter.drawText(cover, Qt.AlignCenter, self._monogram)
@@ -213,13 +213,13 @@ class _AlbumTile(QGraphicsObject):
             font.setPointSizeF(max(7.8, min(11.0, 9.4 * lod)))
             font.setBold(True)
             painter.setFont(font)
-            painter.drawText(QRectF(6, 173, 164, 18), Qt.AlignLeft | Qt.AlignVCenter, title[:36])
+            painter.drawText(QRectF(8, 240, 228, 22), Qt.AlignLeft | Qt.AlignVCenter, title[:36])
             if lod >= 0.56:
                 font.setBold(False)
                 font.setPointSizeF(max(7.2, min(9.8, 8.3 * lod)))
                 painter.setFont(font)
                 painter.setPen(QColor("#9da7b8"))
-                painter.drawText(QRectF(6, 193, 164, 17), Qt.AlignLeft | Qt.AlignVCenter, artist[:36])
+                painter.drawText(QRectF(8, 264, 228, 20), Qt.AlignLeft | Qt.AlignVCenter, artist[:36])
 
     def mousePressEvent(self, event):
         self._selected_callback(self.key)
@@ -280,29 +280,26 @@ class _WallView(QGraphicsView):
         self._zoom_animation.start()
 
     def wheelEvent(self, event):
-        # Native-feeling trackpad navigation: two-finger scrolling pans the
-        # wall. Mouse wheels still zoom; Cmd/Ctrl + trackpad scroll zooms.
+        # Scrolling always moves through the wall. Zoom is deliberate and
+        # uses the familiar Cmd/Ctrl + wheel gesture.
         pixel = event.pixelDelta()
-        zoom_modifier = bool(
-            event.modifiers() & (Qt.ControlModifier | Qt.MetaModifier)
-        )
-        if not pixel.isNull() and not zoom_modifier:
-            self.horizontalScrollBar().setValue(
-                self.horizontalScrollBar().value() - pixel.x()
-            )
-            self.verticalScrollBar().setValue(
-                self.verticalScrollBar().value() - pixel.y()
-            )
+        zoom_modifier = bool(event.modifiers() & (Qt.ControlModifier | Qt.MetaModifier))
+        if zoom_modifier:
+            delta = event.angleDelta().y() or pixel.y()
+            if delta:
+                steps = max(-3.0, min(3.0, float(delta) / 120.0))
+                self.smooth_zoom(1.10 ** steps)
             event.accept()
             return
-
-        delta = event.angleDelta().y()
-        if not delta and not pixel.isNull():
-            delta = pixel.y()
-        if not delta:
-            return
-        steps = max(-3.0, min(3.0, float(delta) / 120.0))
-        self.smooth_zoom(1.10 ** steps)
+        if not pixel.isNull():
+            self.horizontalScrollBar().setValue(self.horizontalScrollBar().value() - pixel.x())
+            self.verticalScrollBar().setValue(self.verticalScrollBar().value() - pixel.y())
+        else:
+            delta = event.angleDelta().y()
+            if event.modifiers() & Qt.ShiftModifier:
+                self.horizontalScrollBar().setValue(self.horizontalScrollBar().value() - int(delta * 0.4))
+            else:
+                self.verticalScrollBar().setValue(self.verticalScrollBar().value() - int(delta * 0.4))
         event.accept()
 
     def _queue_viewport_changed(self) -> None:

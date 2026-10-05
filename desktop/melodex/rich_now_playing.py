@@ -63,6 +63,9 @@ class RichNowPlayingWidget(QWidget):
     network enrichment never leaves the whole page looking unidentified.
     """
 
+    _lyrics_session_cache: OrderedDict[str, dict[str, Any]] = OrderedDict()
+    _lyrics_session_cache_limit = 128
+
     def __init__(
         self,
         metadata: RichMetadataService,
@@ -349,6 +352,15 @@ class RichNowPlayingWidget(QWidget):
         self.progress.setText("Identifying track and checking capability extensions…")
         self.links.clear(); self.art_source.clear(); self.artist_photo_credit.clear(); self._set_art(""); self._set_artist_photo(""); self._empty_tabs()
         self._restore_related_cache(request_track)
+        cached_lyrics = self._lyrics_session_cache.get(track_key(request_track))
+        if cached_lyrics and self._lyrics_has_content(cached_lyrics):
+            cached_lyrics = dict(cached_lyrics)
+            self._lyrics_session_cache.move_to_end(track_key(request_track))
+            self._online_lyrics = cached_lyrics
+            self.bundle["lyrics"] = cached_lyrics
+            source = str(cached_lyrics.get("source") or "").casefold()
+            self._online_lyrics_attempted = source.startswith("lrclib")
+            self._apply_lyrics(cached_lyrics)
         key = track_key(request_track)
         if not key:
             self.progress.setText("Not enough metadata to identify this track")
@@ -615,6 +627,8 @@ class RichNowPlayingWidget(QWidget):
     def _apply_identity(self, payload: dict[str, Any]) -> None:
         identity = payload.get("identity") if isinstance(payload.get("identity"), dict) else {}
         lyrics = payload.get("lyrics") if isinstance(payload.get("lyrics"), dict) else {}
+        if not self._lyrics_has_content(lyrics) and self._lyrics_has_content(self._online_lyrics):
+            lyrics = dict(self._online_lyrics)
         self.bundle["identity"] = dict(identity)
         self.bundle["lyrics"] = dict(lyrics)
         self._local_lyrics = dict(lyrics)
@@ -638,6 +652,11 @@ class RichNowPlayingWidget(QWidget):
         self._refresh_info()
 
     def _apply_lyrics(self, lyrics: dict[str, Any]) -> None:
+        key = track_key(self.track)
+        if key and self._lyrics_has_content(lyrics):
+            self._bounded_cache_put(self._lyrics_session_cache, key, dict(lyrics))
+            while len(self._lyrics_session_cache) > self._lyrics_session_cache_limit:
+                self._lyrics_session_cache.popitem(last=False)
         self._lyrics_document = build_lyrics_document(lyrics)
         document = self._lyrics_document
         lyric_text = document.text

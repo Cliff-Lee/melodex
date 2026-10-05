@@ -180,3 +180,48 @@ def test_related_album_art_and_artist_details_rehydrate_immediately(tmp_path):
     metadata.release.set()
     widget.deleteLater()
     app.processEvents()
+
+
+
+def test_found_lyrics_return_immediately_when_track_is_revisited(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    try:
+        from PySide6.QtWidgets import QApplication
+        from melodex.rich_now_playing import RichNowPlayingWidget
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    class Metadata:
+        def __init__(self):
+            self.release = threading.Event()
+
+        def enrich_identity(self, track):
+            self.release.wait(2.0)
+            return {"identity": {}, "lyrics": {}}
+
+    app = QApplication.instance() or QApplication([])
+    widget = RichNowPlayingWidget(Metadata())
+    track = {
+        "artist": "Cache Test Artist",
+        "title": "The Returned Song",
+        "album": "Fast Return",
+        "local_path": str(tmp_path / "returned-song.flac"),
+    }
+    widget.set_track(track)
+    lyric_payload = {
+        "text": "The first line is already here",
+        "source": "LRCLIB community lyrics",
+        "status": "found",
+    }
+    widget._apply_lyrics(lyric_payload)
+
+    widget.set_track(track)
+    app.processEvents()
+    assert "The first line is already here" in widget.lyrics.toPlainText()
+    assert widget.bundle["lyrics"]["source"] == "LRCLIB community lyrics"
+    assert widget._online_lyrics_attempted
+
+    widget.metadata.release.set()
+    widget.deleteLater()
+    app.processEvents()
