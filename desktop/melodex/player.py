@@ -115,6 +115,7 @@ class FlowPlayer(QObject):
         self._cancel_transition(stop_incoming=True, count_abort=True)
         self._stop_all_decks()
         self._playback_intent = _normalise_playback_intent(intent)
+        self._invalidate_transition_plan()
         self.queue = [dict(item) for item in tracks]
         self.index = max(0, min(len(self.queue) - 1, start)) if self.queue else -1
         self.queueChanged.emit(self.queue)
