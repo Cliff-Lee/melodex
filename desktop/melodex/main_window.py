@@ -216,8 +216,8 @@ class MainWindow(QMainWindow):
         self.player = FlowPlayer(
             self.providers.resolve, self._transition_for, self,
             playback_refresher=self.providers.refresh_playback,
+            transition_submit=self.background_scheduler.submit,
         )
-
         from .playback_feature import PlaybackFeature
 
         self.playback_feature = PlaybackFeature(

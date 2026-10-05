@@ -288,6 +288,13 @@ def test_diagnostics_filters_ui_performance_fields():
                 "natural_ends": 4,
                 "transition_aborts": 1,
                 "queue_position_commits": 6,
+                "transition_plan_requests": 7,
+                "transition_plan_completed": 5,
+                "transition_plan_stale": 1,
+                "transition_plan_failures": 1,
+                "transition_plan_submit_rejected": 0,
+                "planned_transition_target": 4,
+                "planned_transition_ms": 5200,
                 "queue_length": 12,
                 "queue_index": 3,
                 "queue_index_valid": True,
@@ -421,6 +428,13 @@ def test_diagnostics_filters_ui_performance_fields():
     assert playback["natural_ends"] == 4
     assert playback["transition_aborts"] == 1
     assert playback["queue_position_commits"] == 6
+    assert playback["transition_plan_requests"] == 7
+    assert playback["transition_plan_completed"] == 5
+    assert playback["transition_plan_stale"] == 1
+    assert playback["transition_plan_failures"] == 1
+    assert playback["transition_plan_submit_rejected"] == 0
+    assert playback["planned_transition_target"] == 4
+    assert playback["planned_transition_ms"] == 5200
     assert playback["transition_state_valid"] is True
     assert playback["transition_target_index"] is None
     assert playback["transition_deck"] is None
