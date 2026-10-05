@@ -81,11 +81,21 @@ rapid repeated seeks and near-EOF seeking.
 ### P14c — Authoritative playback state
 
 Unify natural EOF, Next, Previous, queue jumps and crossfade completion behind one
-track-transition commit path.
+track-transition commit path. QMediaPlayer `EndOfMedia` is handled explicitly on
+both decks, so a started incoming deck cannot keep playing after the outgoing deck
+ends while Melodex remains stuck on the old queue index.
 
-Required invariant:
+Queue-position changes are committed before `trackChanged` is published. Delayed
+`EndOfMedia` events from an old deck are ignored, and manual queue changes cancel
+any in-flight crossfade before loading another track.
 
-`audible track == player current track == queue[index] == transport current track`
+Required invariant outside an intentional crossfade:
+
+`audible track == active deck == queue[index] == transport current track`
+
+During an intentional crossfade there are two audible decks, but there is still one
+explicit outgoing index and one validated incoming target. When the transition commits,
+the incoming deck, queue index and transport update atomically through the same path.
 
 ### P14d — Remove work from the 100 ms playback tick
 
