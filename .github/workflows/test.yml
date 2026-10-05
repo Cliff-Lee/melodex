@@ -194,6 +194,11 @@ jobs:
           QT_QPA_PLATFORM: offscreen
         run: |
           pytest -q             desktop/tests/test_seek_control.py             desktop/tests/test_playback_feature.py             desktop/tests/test_player_transition_state.py             desktop/tests/test_player_playback_intent.py             -k "seek or transition or crossfade or end_of_media or final_track or intent"
+      - name: Run P14 Album Wall render contracts
+        env:
+          PYTHONPATH: desktop
+          QT_QPA_PLATFORM: offscreen
+        run: pytest -q desktop/tests/test_album_wall_widget.py
       - name: Run 1k and 12.7k synthetic GUI baselines
         env:
           PYTHONPATH: desktop
