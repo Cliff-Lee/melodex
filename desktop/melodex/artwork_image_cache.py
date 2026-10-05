@@ -26,7 +26,7 @@ class ArtworkImageCache:
         negative_ttl_seconds: float = 30.0,
         wait_timeout_seconds: float = 5.0,
     ) -> None:
-        self.budget_bytes = max(4 * 1024 * 1024, int(budget_bytes))
+        self.budget_bytes = max(64 * 1024, int(budget_bytes))
         self.negative_ttl_seconds = max(1.0, float(negative_ttl_seconds))
         self.wait_timeout_seconds = max(0.25, float(wait_timeout_seconds))
         self._lock = threading.RLock()
@@ -40,6 +40,7 @@ class ArtworkImageCache:
         self._metrics = {
             "requests": 0,
             "hits": 0,
+            "peek_hits": 0,
             "misses": 0,
             "negative_hits": 0,
             "decode_failures": 0,
@@ -53,6 +54,18 @@ class ArtworkImageCache:
     def _base_key(path: str, size: int) -> tuple[str, int]:
         expanded = os.path.expanduser(str(path or "").strip())
         return os.path.abspath(expanded), max(1, int(size))
+
+    def peek(self, path: str, size: int) -> QImage:
+        """Return a prepared image already in memory without touching storage."""
+        base = self._base_key(path, size)
+        with self._lock:
+            key = self._latest.get(base)
+            cached = self._cache.get(key) if key is not None else None
+            if cached is None:
+                return QImage()
+            self._cache.move_to_end(key)
+            self._metrics["peek_hits"] += 1
+            return QImage(cached[0])
 
     def prepare(self, path: str, size: int) -> QImage:
         """Return a square prepared QImage, or a null image on failure."""
@@ -202,4 +215,11 @@ class ArtworkImageCache:
             }
 
 
-__all__ = ["ArtworkImageCache"]
+_SHARED_ARTWORK_IMAGE_CACHE = ArtworkImageCache()
+
+
+def shared_artwork_image_cache() -> ArtworkImageCache:
+    return _SHARED_ARTWORK_IMAGE_CACHE
+
+
+__all__ = ["ArtworkImageCache", "shared_artwork_image_cache"]
