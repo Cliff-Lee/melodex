@@ -133,6 +133,12 @@ class _AlbumTile(QGraphicsObject):
         self.update()
         return True
 
+    def clear_cover(self) -> None:
+        if self._pixmap.isNull():
+            return
+        self._pixmap = QPixmap()
+        self.update()
+
     def set_selected_visual(self, value: bool) -> None:
         self._selected = bool(value)
         self.update()
@@ -351,6 +357,8 @@ class AlbumWallWidget(QWidget):
         self.current_key = ""
         self._art_requested: set[str] = set()
         self._online_requested: set[str] = set()
+        self._resident_art: dict[str, None] = {}
+        self._resident_art_limit = 192
         self._art_generation = 0
         self._animation: QVariantAnimation | None = None
         self._start_positions: dict[str, tuple[float, float]] = {}
@@ -366,6 +374,7 @@ class AlbumWallWidget(QWidget):
             "artwork_apply_batches": 0,
             "artwork_items_applied": 0,
             "cover_prepares": 0,
+            "resident_cover_evictions": 0,
             "visible_art_scan_last_ms": 0.0,
             "visible_art_scan_max_ms": 0.0,
             "artwork_apply_last_ms": 0.0,
@@ -448,6 +457,7 @@ class AlbumWallWidget(QWidget):
         self._track_to_album.clear()
         self._art_requested.clear()
         self._online_requested.clear()
+        self._resident_art.clear()
         self.selected_key = ""
         self.current_key = ""
 
@@ -648,10 +658,49 @@ class AlbumWallWidget(QWidget):
 
     def _viewport_settled(self) -> None:
         self._runtime_metrics["viewport_settles"] += 1
+        self._trim_resident_artwork()
         self._request_visible_art()
 
     def _schedule_visible_art(self) -> None:
         self._art_timer.start()
+
+    def _trim_resident_artwork(self) -> None:
+        if not self._resident_art:
+            return
+        viewport=self.view.viewport().rect()
+        keep_rect=self.view.mapToScene(viewport).boundingRect().adjusted(-520,-520,520,520)
+        protected={
+            item.key
+            for item in self.scene.items(
+                keep_rect,
+                Qt.IntersectsItemBoundingRect,
+                Qt.AscendingOrder,
+            )
+            if isinstance(item,_AlbumTile)
+        }
+        evict=[
+            key for key in list(self._resident_art)
+            if key not in protected
+        ]
+        remaining=max(0,len(self._resident_art)-len(evict)-self._resident_art_limit)
+        if remaining:
+            evict.extend(
+                key for key in list(self._resident_art)
+                if key in protected and key not in evict
+            )
+            evict=evict[: len(evict)-remaining+remaining] if False else evict
+        while len(self._resident_art)-len(set(evict)) > self._resident_art_limit:
+            for key in self._resident_art:
+                if key not in evict:
+                    evict.append(key)
+                    break
+        for key in dict.fromkeys(evict):
+            tile=self.tiles.get(key)
+            if tile is not None:
+                tile.clear_cover()
+            self._resident_art.pop(key,None)
+            self._art_requested.discard(key)
+            self._runtime_metrics["resident_cover_evictions"] += 1
 
     def _request_visible_art(self) -> None:
         started = time.perf_counter()
@@ -776,6 +825,8 @@ class AlbumWallWidget(QWidget):
                 applied = tile.set_cover_path(path)
             if applied:
                 loaded += 1
+                self._resident_art.pop(key,None)
+                self._resident_art[key]=None
                 self._runtime_metrics["cover_prepares"] += 1
         if loaded:
             self._runtime_metrics["artwork_items_applied"] += loaded
@@ -799,6 +850,8 @@ class AlbumWallWidget(QWidget):
             "art_requested_count": len(self._art_requested),
             "online_requested_count": len(self._online_requested),
             "motion_active": bool(self.view.motion_active),
+            "resident_cover_count": len(self._resident_art),
+            "resident_cover_limit": int(self._resident_art_limit),
         }
 
 
