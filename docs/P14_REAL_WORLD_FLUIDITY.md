@@ -99,9 +99,20 @@ the incoming deck, queue index and transport update atomically through the same 
 
 ### P14d — Remove work from the 100 ms playback tick
 
-Transition planning must be calculated once per relevant track pair. The timer hot loop
-must perform no filesystem stat, NAS access, SQLite query, metadata lookup, network
-request or audio analysis.
+Transition planning is calculated once per relevant current → next pair by
+`PlaybackTransitionPlanner` on the bounded background scheduler. Flow cache lookup,
+including path fingerprinting, NAS filesystem access, SQLite reads and JSON decoding,
+never runs from the player timer.
+
+`FlowPlayer` now owns only an in-memory transition snapshot. Queue/index changes issue
+a generation-token request; stale results are rejected if the pair changes before the
+background result returns. Until a result is ready, playback uses the existing bounded
+4.5-second fallback rather than blocking the UI/audio state machine.
+
+The timer hot loop must perform no filesystem stat, NAS access, SQLite query, metadata
+lookup, network request or audio analysis. A dedicated regression test supplies a
+legacy transition callback that raises if invoked and proves that `_tick()` never calls
+it.
 
 ### P14e — Playback intent
 
