@@ -293,6 +293,8 @@ def test_diagnostics_filters_ui_performance_fields():
                 "transition_plan_stale": 1,
                 "transition_plan_failures": 1,
                 "transition_plan_submit_rejected": 0,
+                "planned_transition_target": 4,
+                "planned_transition_ms": 5200,
                 "queue_length": 12,
                 "queue_index": 3,
                 "queue_index_valid": True,
@@ -431,6 +433,8 @@ def test_diagnostics_filters_ui_performance_fields():
     assert playback["transition_plan_stale"] == 1
     assert playback["transition_plan_failures"] == 1
     assert playback["transition_plan_submit_rejected"] == 0
+    assert playback["planned_transition_target"] == 4
+    assert playback["planned_transition_ms"] == 5200
     assert playback["transition_state_valid"] is True
     assert playback["transition_target_index"] is None
     assert playback["transition_deck"] is None
