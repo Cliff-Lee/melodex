@@ -2786,6 +2786,7 @@ class MainWindow(QMainWindow):
                 ) or {}
             )
         if hasattr(self,"album_wall"): ui_metrics["album_wall_runtime"]=self.album_wall.diagnostics_snapshot()
+        ui_metrics["artwork_image_cache"]=self.metadata.artwork_image_cache_snapshot()
         ui_metrics["playback_runtime"]=self.player.diagnostics_snapshot()
         ui_metrics["local_scan_session"] = dict(self._local_scan_session or {})
         if hasattr(self, "background_scheduler"):
