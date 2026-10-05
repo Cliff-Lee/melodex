@@ -225,6 +225,56 @@ def test_transport_seek_and_queue_actions_are_semantic(tmp_path):
     app.processEvents()
 
 
+def test_seek_slider_keeps_user_target_until_backend_acknowledges(tmp_path):
+    app, feature, _state, _statuses = _feature(tmp_path)
+    seeks = []
+    feature.seekRequested.connect(seeks.append)
+
+    feature.on_position(30_000, 120_000)
+    assert feature.seek.value() == 250
+
+    feature._seek_started()
+    feature.seek.setValue(750)
+    feature.on_position(31_000, 120_000)
+    assert feature.seek.value() == 750
+
+    feature._seek_finished(750)
+    assert seeks == [90_000]
+
+    # The next player tick still reports the old FLAC position. Before P14b
+    # this overwrote the slider immediately and made the seek appear to fail.
+    feature.on_position(32_000, 120_000)
+    assert feature.seek.value() == 750
+    assert feature._seek_interaction.state == "committing"
+
+    # Once the media backend reports the target, normal tracking resumes.
+    feature.on_position(89_500, 120_000)
+    assert 740 <= feature.seek.value() <= 750
+    assert feature._seek_interaction.state == "idle"
+    assert feature._seek_interaction.snapshot()["acknowledged"] == 1
+
+    feature.deleteLater()
+    app.processEvents()
+
+
+def test_track_change_cancels_pending_seek_ownership(tmp_path):
+    app, feature, _state, _statuses = _feature(tmp_path)
+
+    feature.on_position(10_000, 100_000)
+    feature._seek_started()
+    feature.seek.setValue(800)
+    feature._seek_finished(800)
+    assert feature._seek_interaction.state == "committing"
+
+    feature.on_track_changed(_track("Next", 2))
+
+    assert feature._seek_interaction.state == "idle"
+    assert feature.seek.value() == 0
+
+    feature.deleteLater()
+    app.processEvents()
+
+
 def test_track_change_updates_owned_state_and_emits_snapshot(tmp_path):
     app, feature, state, _statuses = _feature(tmp_path)
     changed = []
