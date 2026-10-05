@@ -166,6 +166,143 @@ def test_music_map_defaults_to_selection_focused_relationships():
     app.processEvents()
 
 
+def test_album_wall_pan_and_zoom_survive_repeated_resizes():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    try:
+        from PySide6.QtWidgets import QApplication
+        from melodex.album_wall import AlbumWallWidget
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    widget = AlbumWallWidget()
+    widget.resize(1000, 700)
+    widget.show()
+    widget.set_model(_album_model(80), {})
+    app.processEvents()
+
+    widget.view.centerOn(900, 500)
+    widget.view.scale(1.15, 1.15)
+    app.processEvents()
+    center = widget.view.mapToScene(widget.view.viewport().rect().center())
+    scale = float(widget.view.transform().m11())
+
+    for size in ((820, 560), (1180, 780), (940, 660), (760, 520)):
+        widget.resize(*size)
+        app.processEvents()
+        center_after = widget.view.mapToScene(widget.view.viewport().rect().center())
+        assert abs(center_after.x() - center.x()) < 4
+        assert abs(center_after.y() - center.y()) < 4
+        assert abs(float(widget.view.transform().m11()) - scale) < 0.01
+
+    widget.close()
+    app.processEvents()
+
+
+def test_music_map_pan_and_zoom_survive_repeated_resizes():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    try:
+        from PySide6.QtWidgets import QApplication
+        from melodex.music_map import MusicMapWidget
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    widget = MusicMapWidget()
+    widget.resize(1100, 760)
+    widget.show()
+    nodes = [
+        {"ref": f"r{i}", "artist": f"Artist {i}", "title": f"Track {i}",
+         "x": (i % 5) / 2 - 1, "y": (i // 5) / 2 - 1}
+        for i in range(20)
+    ]
+    refs = {
+        row["ref"]: {"track_id": row["ref"], "artist": row["artist"], "title": row["title"]}
+        for row in nodes
+    }
+    widget.set_map({"nodes": nodes, "edges": [], "analysed": 20}, refs)
+    app.processEvents()
+
+    widget.view.centerOn(700, 410)
+    widget.view.scale(1.2, 1.2)
+    app.processEvents()
+    center = widget.view.mapToScene(widget.view.viewport().rect().center())
+    scale = float(widget.view.transform().m11())
+
+    for size in ((820, 560), (1220, 800), (960, 640), (760, 520)):
+        widget.resize(*size)
+        app.processEvents()
+        center_after = widget.view.mapToScene(widget.view.viewport().rect().center())
+        assert abs(center_after.x() - center.x()) < 4
+        assert abs(center_after.y() - center.y()) < 4
+        assert abs(float(widget.view.transform().m11()) - scale) < 0.01
+
+    widget.close()
+    app.processEvents()
+
+
+def test_main_window_resize_stays_stable_and_restores_geometry(monkeypatch, tmp_path: Path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    try:
+        from PySide6.QtTest import QTest
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    class Settings:
+        values = {}
+
+        def __init__(self, *_args):
+            pass
+
+        def value(self, key):
+            return self.values.get(key)
+
+        def setValue(self, key, value):
+            self.values[key] = value
+
+    monkeypatch.setattr(main_window, "QSettings", Settings)
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+
+    app = QApplication.instance() or QApplication([])
+    screen = app.primaryScreen()
+    available = screen.availableGeometry()
+    window = main_window.MainWindow()
+    window.show()
+    app.processEvents()
+
+    sizes = (
+        (int(available.width() * 0.72), int(available.height() * 0.72)),
+        (int(available.width() * 0.92), int(available.height() * 0.88)),
+        (int(available.width() * 0.78), int(available.height() * 0.76)),
+    )
+    for width, height in sizes:
+        window.resize(width, height)
+        window.move(available.x() + 12, available.y() + 12)
+        app.processEvents()
+        QTest.qWait(80)
+        stable_geometry = window.geometry()
+        QTest.qWait(80)
+        assert window.geometry() == stable_geometry
+        assert window.width() <= available.width()
+        assert window.height() <= available.height()
+        assert window.frameGeometry().bottom() < available.bottom()
+
+    saved_geometry = window.geometry()
+    window.close()
+    app.processEvents()
+
+    restored = main_window.MainWindow()
+    assert restored.geometry() == saved_geometry
+    restored.close()
+    app.processEvents()
+
+
 def test_spatial_pages_use_progressive_disclosure(monkeypatch, tmp_path: Path):
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     try:
