@@ -241,10 +241,11 @@ class _AlbumTile(QGraphicsObject):
 
 
 class _WallView(QGraphicsView):
-    """Canvas-like navigation with coalesced signals and cheap motion frames."""
+    """Canvas navigation with cheap frames and settled-only resize work."""
 
     viewportChanged = Signal()
     viewportSettled = Signal()
+    RESIZE_SETTLE_MS = 180
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -302,11 +303,12 @@ class _WallView(QGraphicsView):
                 self.verticalScrollBar().setValue(self.verticalScrollBar().value() - int(delta * 0.4))
         event.accept()
 
-    def _queue_viewport_changed(self) -> None:
+    def _queue_viewport_changed(self, *, settle_ms: int = 90) -> None:
         if not self._motion_active:
             self._motion_active = True
             self.setRenderHint(QPainter.Antialiasing, False)
             self.setRenderHint(QPainter.SmoothPixmapTransform, False)
+        self._settle_timer.setInterval(max(90, int(settle_ms)))
         self._settle_timer.start()
         if not self._viewport_emit_pending:
             self._viewport_emit_pending = True
@@ -335,7 +337,9 @@ class _WallView(QGraphicsView):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        self._queue_viewport_changed()
+        # Native window resizing can deliver a long stream of geometry events.
+        # Keep rendering cheap and defer the visible-art scan until the resize ends.
+        self._queue_viewport_changed(settle_ms=self.RESIZE_SETTLE_MS)
 
 
 class AlbumWallWidget(QWidget):
