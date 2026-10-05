@@ -251,6 +251,7 @@ class _WallView(QGraphicsView):
         super().__init__(*args, **kwargs)
         self._viewport_emit_pending = False
         self._motion_active = False
+        self._resize_in_progress = False
         self._settle_timer = QTimer(self)
         self._settle_timer.setSingleShot(True)
         self._settle_timer.setInterval(90)
@@ -303,12 +304,15 @@ class _WallView(QGraphicsView):
                 self.verticalScrollBar().setValue(self.verticalScrollBar().value() - int(delta * 0.4))
         event.accept()
 
-    def _queue_viewport_changed(self, *, settle_ms: int = 90) -> None:
+    def _queue_viewport_changed(self, *, live_resize: bool = False) -> None:
         if not self._motion_active:
             self._motion_active = True
             self.setRenderHint(QPainter.Antialiasing, False)
             self.setRenderHint(QPainter.SmoothPixmapTransform, False)
-        self._settle_timer.setInterval(max(90, int(settle_ms)))
+        if live_resize:
+            self._resize_in_progress = True
+        settle_ms = self.RESIZE_SETTLE_MS if self._resize_in_progress else 90
+        self._settle_timer.setInterval(settle_ms)
         self._settle_timer.start()
         if not self._viewport_emit_pending:
             self._viewport_emit_pending = True
@@ -322,6 +326,7 @@ class _WallView(QGraphicsView):
         if not self._motion_active:
             return
         self._motion_active = False
+        self._resize_in_progress = False
         self.setRenderHint(QPainter.Antialiasing, True)
         self.setRenderHint(QPainter.SmoothPixmapTransform, True)
         self.viewport().update()
@@ -339,7 +344,7 @@ class _WallView(QGraphicsView):
         super().resizeEvent(event)
         # Native window resizing can deliver a long stream of geometry events.
         # Keep rendering cheap and defer the visible-art scan until the resize ends.
-        self._queue_viewport_changed(settle_ms=self.RESIZE_SETTLE_MS)
+        self._queue_viewport_changed(live_resize=True)
 
 
 class AlbumWallWidget(QWidget):
