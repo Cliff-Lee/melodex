@@ -1,11 +1,9 @@
 # Next release — draft notes
 
-**Melodex v0.7.13 release candidate.**
+**Melodex v0.7.14 release candidate.**
 
-Current target version: **0.7.13**.
+Current target version: **0.7.14**.
 
-This release focuses on dependable lyrics and a more polished visual experience:
-synced Now Playing and Lyric Flow state, safe static display for untimed lyrics,
-faster same-album artwork and artist details, and refinements to the visual scenes.
+This release focuses on responsive playback and smoother album browsing: explicit playback intent, backend-acknowledged seeking, authoritative end-of-track transitions, and lower-cost Album Wall motion.
 
-See `docs/releases/v0.7.13.md` for the release notes.
+See `docs/releases/v0.7.14.md` for the release notes.
