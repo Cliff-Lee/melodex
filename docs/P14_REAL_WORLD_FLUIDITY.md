@@ -161,8 +161,24 @@ control; P14f's contract is specifically that continuous motion and `paint()` ar
 
 ### P14g — Shared artwork service
 
-Centralise decoded/rendered artwork caching, request deduplication, viewport priority,
-generation cancellation, memory budgeting and negative caching.
+Artwork decode/resize/crop is now a shared worker-side service backed by `QImage`.
+Album Wall, My Music album cards, track rows and artist cards request UI-sized prepared
+images from the same cache. `QPixmap` creation remains on the Qt thread, but storage
+stat/decode and smooth scaling do not.
+
+The cache is bounded by bytes (64 MiB by default), LRU-evicted, keyed by path/target
+size/mtime/file size, and keeps a short negative cache for missing or undecodable files.
+Concurrent requests for the same image are de-duplicated so one worker decodes while
+others wait for that result. A non-blocking memory peek lets rebuilt cards reuse an
+already-prepared image without touching the filesystem.
+
+Every viewport artwork batch carries a generation token. Search/view/scroll/model changes
+advance that generation; results from superseded viewports are discarded rather than
+painting stale covers. Explicit online artwork recovery still completes its metadata/cache
+work, but stale visual delivery is ignored safely.
+
+Redacted diagnostics expose only aggregate cache counts, memory use, deduplicated waits,
+failures and evictions. Paths, titles and artwork URLs are never exported.
 
 ### P14h — My Music filtering/layout
 
