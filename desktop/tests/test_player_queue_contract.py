@@ -146,3 +146,47 @@ def test_runtime_diagnostics_are_metadata_free_and_count_transport_actions():
     assert "secret.example" not in text
 
     player.close()
+
+
+def test_album_order_diagnostics_are_structural_and_redacted():
+    import json
+
+    player, _loaded = _player()
+    player.set_queue(
+        [
+            {
+                "track_id": "private-one",
+                "local_path": "/Volumes/PrivateNAS/Secret Artist/01.flac",
+                "title": "Secret first track",
+                "disc_number": "1/2",
+                "track_number": "1/10",
+            },
+            {
+                "track_id": "private-two",
+                "local_path": "/Volumes/PrivateNAS/Secret Artist/02.flac",
+                "title": "Secret second track",
+                "disc_number": "1/2",
+                "track_number": "2/10",
+            },
+        ],
+        0,
+        False,
+        intent="album",
+    )
+
+    snapshot = player.diagnostics_snapshot()
+    album_order = snapshot["album_order"]
+    encoded = json.dumps(snapshot)
+
+    assert album_order["track_count"] == 2
+    assert album_order["disc_numbered_tracks"] == 2
+    assert album_order["track_numbered_tracks"] == 2
+    assert album_order["malformed_disc_numbers"] == 0
+    assert album_order["malformed_track_numbers"] == 0
+    assert album_order["duplicate_positions"] == 0
+    assert album_order["ordering_valid"] is True
+    assert "Secret" not in encoded
+    assert "PrivateNAS" not in encoded
+    assert "private-one" not in encoded
+
+    player.close()
