@@ -5,6 +5,16 @@ import os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 
+def _media_player_type():
+    import pytest
+
+    try:
+        from PySide6.QtMultimedia import QMediaPlayer
+    except ImportError as exc:
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+    return QMediaPlayer
+
+
 def _player():
     import pytest
 
@@ -21,8 +31,7 @@ def _player():
 
 
 def test_outgoing_end_of_media_commits_a_started_crossfade_once():
-    from PySide6.QtMultimedia import QMediaPlayer
-
+    QMediaPlayer = _media_player_type()
     player = _player()
     player.queue = [{"track_id": "a"}, {"track_id": "b"}]
     player.index = 0
