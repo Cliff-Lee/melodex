@@ -187,8 +187,14 @@ layout membership rather than clearing/rebuilding grids during every filter chan
 
 ### P14i — Native macOS resize behaviour
 
-Debounce expensive relayout during live resize and remove child geometry feedback that
-can force top-level window size/position.
+During a live resize, Album Wall keeps motion rendering cheap and waits 180 ms after the
+latest geometry event before scanning/requesting visible artwork. Pan and zoom retain the
+shorter 90 ms settle. The view preserves its scene-center anchor and zoom; visual pages do
+not resize or move the top-level window. Offscreen regression coverage stresses repeated
+geometry changes and confirms visible-art work runs once after resize settles.
+
+The physical Mac check below remains necessary for WindowServer, taskbar/dock bounds and
+native edge/corner hit-testing.
 
 ### P14j — Album-order qualification
 
