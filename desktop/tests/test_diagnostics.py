@@ -259,6 +259,45 @@ def test_diagnostics_filters_ui_performance_fields():
                 "private_album": "Secret Album",
                 "private_path": "/Users/example/Music/Secret.flac",
             },
+            "album_wall_runtime": {
+                "viewport_changes": 381,
+                "visible_art_scans": 92,
+                "visible_art_batches": 41,
+                "visible_art_items_requested": 618,
+                "artwork_apply_batches": 39,
+                "artwork_items_applied": 602,
+                "visible_art_scan_last_ms": 2.1,
+                "visible_art_scan_max_ms": 19.7,
+                "artwork_apply_last_ms": 8.4,
+                "artwork_apply_max_ms": 87.2,
+                "tile_count": 954,
+                "art_requested_count": 618,
+                "online_requested_count": 0,
+                "private_album": "Secret Album",
+                "private_path": "/Users/example/Music/Secret.flac",
+            },
+            "playback_runtime": {
+                "ticks": 9012,
+                "track_commits": 8,
+                "seek_requests": 4,
+                "manual_next": 2,
+                "manual_previous": 1,
+                "crossfade_started": 3,
+                "crossfade_completed": 2,
+                "queue_length": 12,
+                "queue_index": 3,
+                "queue_index_valid": True,
+                "active_deck": 1,
+                "crossfading": False,
+                "transition_ms": 5200,
+                "playing": True,
+                "position_ms": 45678,
+                "duration_ms": 231000,
+                "seekable": True,
+                "last_seek_requested_ms": 45000,
+                "current_track": "Secret Song",
+                "private_path": "/Users/example/Music/Secret.flac",
+            },
             "background_scheduler": {
                 "max_workers": 4,
                 "reserved_foreground_slots": 1,
@@ -362,6 +401,16 @@ def test_diagnostics_filters_ui_performance_fields():
     assert artwork["kind"] == "albums"
     assert artwork["requested_now"] == 12
     assert artwork["distant_candidates"] == 82
+    wall_runtime = payload["performance"]["album_wall_runtime"]
+    assert wall_runtime["viewport_changes"] == 381
+    assert wall_runtime["artwork_apply_max_ms"] == 87.2
+    assert wall_runtime["tile_count"] == 954
+    playback = payload["performance"]["playback_runtime"]
+    assert playback["ticks"] == 9012
+    assert playback["seek_requests"] == 4
+    assert playback["queue_index_valid"] is True
+    assert playback["active_deck"] == 1
+    assert "current_track" not in playback
     scheduler = payload["performance"]["background_scheduler"]
     assert scheduler["max_workers"] == 4
     assert scheduler["reserved_foreground_slots"] == 1
@@ -390,6 +439,7 @@ def test_diagnostics_filters_ui_performance_fields():
     assert "private_track" not in text
     assert "private_album" not in text
     assert "private_task_name" not in text
+    assert '"current_track"' not in text
     assert "private_path" not in text
 
 
