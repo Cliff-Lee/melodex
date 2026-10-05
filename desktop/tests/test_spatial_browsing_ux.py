@@ -64,6 +64,17 @@ def test_album_wall_starts_at_readable_scale_and_overview_is_explicit():
 
     initial = float(widget.view.transform().m11())
     assert 0.90 <= initial <= 1.05
+
+    widget.view.centerOn(240, 180)
+    widget.view.scale(1.15, 1.15)
+    old_center = widget.view.mapToScene(widget.view.viewport().rect().center())
+    old_scale = float(widget.view.transform().m11())
+    widget.set_model(_album_model(80), {})
+    app.processEvents()
+    new_center = widget.view.mapToScene(widget.view.viewport().rect().center())
+    assert abs(float(widget.view.transform().m11()) - old_scale) < 0.01
+    assert abs(new_center.x() - old_center.x()) < 3
+    assert abs(new_center.y() - old_center.y()) < 3
     assert (
         widget.view.horizontalScrollBarPolicy()
         == Qt.ScrollBarAlwaysOff
@@ -128,7 +139,18 @@ def test_music_map_defaults_to_selection_focused_relationships():
     assert widget.edge_mode.isVisible()
     assert widget.node_items["a"].boundingRect().width() == 190.0
     assert widget.node_items["a"].boundingRect().height() == 126.0
-    assert widget.view.minimumHeight() >= 500
+    assert widget.view.minimumHeight() >= 340
+
+    widget.view.centerOn(500, 400)
+    widget.view.scale(1.2, 1.2)
+    before_center = widget.view.mapToScene(widget.view.viewport().rect().center())
+    before_scale = float(widget.view.transform().m11())
+    widget.set_map(model, ref_map)
+    app.processEvents()
+    after_center = widget.view.mapToScene(widget.view.viewport().rect().center())
+    assert abs(float(widget.view.transform().m11()) - before_scale) < 0.01
+    assert abs(after_center.x() - before_center.x()) < 3
+    assert abs(after_center.y() - before_center.y()) < 3
 
     widget._select_ref("a")
     app.processEvents()
@@ -159,6 +181,9 @@ def test_spatial_pages_use_progressive_disclosure(monkeypatch, tmp_path: Path):
     monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
 
     window = main_window.MainWindow()
+    available = app.primaryScreen().availableGeometry()
+    assert window.width() <= available.width()
+    assert window.height() <= available.height()
     window.show()
     app.processEvents()
 

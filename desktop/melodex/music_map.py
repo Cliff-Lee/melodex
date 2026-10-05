@@ -256,7 +256,7 @@ class MusicMapWidget(QWidget):
         self.view.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.view.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.view.setBackgroundBrush(QBrush(QColor("#0e141d")))
-        self.view.setMinimumHeight(500)
+        self.view.setMinimumHeight(340)
         layout.addWidget(self.view, 1)
 
         self.status = QLabel("Analyse your local library to build a Music Map.")
@@ -297,11 +297,18 @@ class MusicMapWidget(QWidget):
         current_track: dict[str, Any] | None = None,
         knowledge_graph: dict[str, Any] | None = None,
     ) -> None:
+        old_refs = set(self.node_items)
+        old_selected = self.selected_ref
+        old_center = (
+            self.view.mapToScene(self.view.viewport().rect().center())
+            if old_refs else None
+        )
+        old_scale = float(self.view.transform().m11()) if old_refs else 1.0
         self.model = dict(model or {})
         self.ref_map = {str(key): dict(value) for key, value in ref_map.items()}
         self.knowledge_graph = dict(knowledge_graph or {})
         self.current_identity = _track_identity(dict(current_track or {})) if current_track else ""
-        self.selected_ref = ""
+        self.selected_ref = old_selected
         self.scene.clear()
         self.node_items.clear()
         self.edge_items.clear()
@@ -338,11 +345,21 @@ class MusicMapWidget(QWidget):
             self.node_items[ref] = item
 
         self.scene.setSceneRect(0, 0, width, height)
+        new_refs = set(self.node_items)
+        overlap = len(old_refs & new_refs) / max(1, len(old_refs))
+        if self.selected_ref not in new_refs:
+            self.selected_ref = ""
         self._redraw_edges()
         self._redraw_route()
         self._recolour()
         self.highlight_track(current_track or {})
-        self.reset_view()
+        if old_refs and overlap >= 0.5 and old_center is not None:
+            self.view.resetTransform()
+            scale = max(0.62, min(3.0, old_scale))
+            self.view.scale(scale, scale)
+            self.view.centerOn(old_center)
+        else:
+            self.reset_view()
         analysed = int(self.model.get("analysed") or 0)
         total = int(self.model.get("input_profiles") or 0)
         if analysed:

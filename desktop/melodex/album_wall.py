@@ -418,7 +418,7 @@ class AlbumWallWidget(QWidget):
         self.view.setBackgroundBrush(QBrush(QColor("#0f1116")))
         self.view.setRenderHint(QPainter.Antialiasing, True)
         self.view.setRenderHint(QPainter.SmoothPixmapTransform, True)
-        self.view.setMinimumHeight(430)
+        self.view.setMinimumHeight(300)
         layout.addWidget(self.view, 1)
 
         self.selection = QLabel("Select an album to see its details.")
@@ -443,6 +443,14 @@ class AlbumWallWidget(QWidget):
         self._art_timer.timeout.connect(self._request_visible_art)
 
     def set_model(self, model: dict[str, Any], current_track: dict[str, Any] | None = None) -> None:
+        old_keys = set(self.tiles)
+        old_selected = self.selected_key
+        had_view = bool(old_keys)
+        old_scale = float(self.view.transform().m11()) if had_view else 1.0
+        old_center = (
+            self.view.mapToScene(self.view.viewport().rect().center())
+            if had_view else None
+        )
         self._art_generation += 1
         self.model = dict(model or {})
         if self._animation is not None:
@@ -479,7 +487,17 @@ class AlbumWallWidget(QWidget):
         analysed = int(self.model.get("analysed_albums") or 0)
         self._update_lens_info()
         if albums:
-            self._initial_view()
+            new_keys = set(self.tiles)
+            overlap = len(old_keys & new_keys) / max(1, len(old_keys))
+            if had_view and overlap >= 0.5 and old_center is not None:
+                self.view.resetTransform()
+                scale = max(0.58, min(2.35, old_scale))
+                self.view.scale(scale, scale)
+                self.view.centerOn(old_center)
+                if old_selected in self.tiles:
+                    self._select(old_selected)
+            else:
+                self._initial_view()
             self.status.setText(
                 f"{albums:,} albums · {analysed:,} positioned from Flow analysis · "
                 "drag / two-finger scroll to pan · wheel or Cmd/Ctrl-scroll to zoom · "

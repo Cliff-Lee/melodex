@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QEvent, Qt, QTimer, Signal, Slot, QObject
+from PySide6.QtCore import QEvent, QSettings, Qt, QTimer, Signal, Slot, QObject
 from PySide6.QtGui import QAction, QColor, QDesktopServices, QKeySequence, QPixmap, QShortcut
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QListWidget,
@@ -146,8 +146,22 @@ class MainWindow(QMainWindow):
         self._startup_timeline = startup_timeline
         self._startup_mark("main_window_init_enter")
         self.setWindowTitle("Melodex")
-        self.resize(1280, 800)
-        self.data_dir = app_data_dir()
+        self._window_settings = QSettings("Melodex", "Melodex")
+        saved_geometry = self._window_settings.value("window/geometry")
+        if not saved_geometry or not self.restoreGeometry(saved_geometry):
+            screen = QApplication.primaryScreen()
+            available = screen.availableGeometry() if screen else None
+            if available is not None:
+                width = min(1280, max(1, int(available.width() * 0.94)))
+                height = min(800, max(1, int(available.height() * 0.90)))
+                self.resize(width, height)
+                self.move(
+                    available.x() + (available.width() - width) // 2,
+                    available.y() + (available.height() - height) // 2,
+                )
+            else:
+                self.resize(1100, 700)
+                self.data_dir = app_data_dir()
         self.providers = ProviderManager(
             self.data_dir,
             startup_timeline=self._startup_timeline,
@@ -3658,6 +3672,7 @@ class MainWindow(QMainWindow):
             )
 
     def closeEvent(self,event):
+        self._window_settings.setValue("window/geometry", self.saveGeometry())
         # Set the plain-Python gate before any Qt-owned children are torn down.
         if hasattr(self, "_async_closing_event"):
             self._async_closing_event.set()
