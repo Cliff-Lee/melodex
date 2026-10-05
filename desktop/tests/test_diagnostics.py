@@ -284,12 +284,19 @@ def test_diagnostics_filters_ui_performance_fields():
                 "manual_previous": 1,
                 "crossfade_started": 3,
                 "crossfade_completed": 2,
+                "crossfade_eof_commits": 1,
+                "natural_ends": 4,
+                "transition_aborts": 1,
+                "queue_position_commits": 6,
                 "queue_length": 12,
                 "queue_index": 3,
                 "queue_index_valid": True,
                 "active_deck": 1,
                 "crossfading": False,
                 "transition_ms": 5200,
+                "transition_target_index": None,
+                "transition_deck": None,
+                "transition_state_valid": True,
                 "playing": True,
                 "position_ms": 45678,
                 "duration_ms": 231000,
@@ -410,6 +417,13 @@ def test_diagnostics_filters_ui_performance_fields():
     assert playback["seek_requests"] == 4
     assert playback["queue_index_valid"] is True
     assert playback["active_deck"] == 1
+    assert playback["crossfade_eof_commits"] == 1
+    assert playback["natural_ends"] == 4
+    assert playback["transition_aborts"] == 1
+    assert playback["queue_position_commits"] == 6
+    assert playback["transition_state_valid"] is True
+    assert playback["transition_target_index"] is None
+    assert playback["transition_deck"] is None
     assert "current_track" not in playback
     scheduler = payload["performance"]["background_scheduler"]
     assert scheduler["max_workers"] == 4
