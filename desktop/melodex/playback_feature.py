@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
 
 from .motion import FAST_MOTION_MS, STANDARD_MOTION_MS
 from .playback_state import PlaybackSessionState
+from .seek_control import SeekInteraction, SeekSlider
 from .user_state import UserState
 from .ux_components import CoverLabel, set_help
 
@@ -108,6 +109,7 @@ class PlaybackFeature(QObject):
         self._prefetched_track_assets: dict[str, dict[str, Any]] = {}
         self._prefetch_sequence = 0
         self._prefetch_delay_ms = 350
+        self._seek_interaction = SeekInteraction()
         self.now_playing_page = QWidget()
         self.now_playing_built = False
         self.queue_panel = self._build_queue_panel()
@@ -280,9 +282,10 @@ class PlaybackFeature(QObject):
         self.now_meta.setOpenExternalLinks(True)
         text_column.addWidget(self.now_title)
         text_column.addWidget(self.now_meta)
-        self.seek = QSlider(Qt.Horizontal)
+        self.seek = SeekSlider(Qt.Horizontal)
         self.seek.setRange(0, 1000)
-        self.seek.sliderReleased.connect(self._seek_released)
+        self.seek.seekStarted.connect(self._seek_started)
+        self.seek.seekFinished.connect(self._seek_finished)
         text_column.addWidget(self.seek)
         layout.addLayout(text_column, 1)
 
@@ -577,6 +580,8 @@ class PlaybackFeature(QObject):
     def _on_track_changed(self, t):
         if self._is_closing():
             return
+        self._seek_interaction.cancel()
+        self.seek.setValue(0)
         for scope in (
             "now-playing-artwork",
             "taste-action-state",
@@ -892,15 +897,22 @@ class PlaybackFeature(QObject):
             self.living_canvas.set_playing(self._playing)
         if hasattr(self, "rich_now"):
             self.rich_now.set_position(pos)
-        if dur > 0:
+        if dur > 0 and self._seek_interaction.follow_player_position(pos, dur):
             self.seek.setValue(int(1000 * pos / dur))
         if dur > 0 and pos >= dur - 1500 and self._current_history_id:
             self.state.mark_completed(self._playback_state.mark_current_track_completed())
 
-    def _seek_released(self):
-        dur = int(self._visual_duration_ms)
-        if dur > 0:
-            self.seekRequested.emit(int(dur * self.seek.value() / 1000))
+    def _seek_started(self) -> None:
+        self._seek_interaction.begin()
+
+    def _seek_finished(self, value: int) -> None:
+        target = self._seek_interaction.commit(value, self._visual_duration_ms)
+        if target is not None:
+            self.seekRequested.emit(target)
+
+    def _seek_released(self) -> None:
+        """Compatibility shim for older tests/callers using QSlider semantics."""
+        self._seek_finished(int(self.seek.value()))
 
     def _set_taste_action_state(
         self,
