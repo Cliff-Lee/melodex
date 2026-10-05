@@ -241,15 +241,20 @@ class _AlbumTile(QGraphicsObject):
 
 
 class _WallView(QGraphicsView):
-    """Canvas-like navigation with coalesced signals and cheap motion frames."""
+    """Canvas navigation with cheap frames and settled-only resize work."""
 
     viewportChanged = Signal()
     viewportSettled = Signal()
+    RESIZE_SETTLE_MS = 180
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._viewport_emit_pending = False
+        self._viewport_emit_timer = QTimer(self)
+        self._viewport_emit_timer.setSingleShot(True)
+        self._viewport_emit_timer.timeout.connect(self._emit_viewport_changed)
         self._motion_active = False
+        self._resize_in_progress = False
         self._settle_timer = QTimer(self)
         self._settle_timer.setSingleShot(True)
         self._settle_timer.setInterval(90)
@@ -302,15 +307,19 @@ class _WallView(QGraphicsView):
                 self.verticalScrollBar().setValue(self.verticalScrollBar().value() - int(delta * 0.4))
         event.accept()
 
-    def _queue_viewport_changed(self) -> None:
+    def _queue_viewport_changed(self, *, live_resize: bool = False) -> None:
         if not self._motion_active:
             self._motion_active = True
             self.setRenderHint(QPainter.Antialiasing, False)
             self.setRenderHint(QPainter.SmoothPixmapTransform, False)
+        if live_resize:
+            self._resize_in_progress = True
+        settle_ms = self.RESIZE_SETTLE_MS if self._resize_in_progress else 90
+        self._settle_timer.setInterval(settle_ms)
         self._settle_timer.start()
         if not self._viewport_emit_pending:
             self._viewport_emit_pending = True
-            QTimer.singleShot(0, self._emit_viewport_changed)
+            self._viewport_emit_timer.start(0)
 
     def _emit_viewport_changed(self) -> None:
         self._viewport_emit_pending = False
@@ -320,6 +329,7 @@ class _WallView(QGraphicsView):
         if not self._motion_active:
             return
         self._motion_active = False
+        self._resize_in_progress = False
         self.setRenderHint(QPainter.Antialiasing, True)
         self.setRenderHint(QPainter.SmoothPixmapTransform, True)
         self.viewport().update()
@@ -334,8 +344,11 @@ class _WallView(QGraphicsView):
         self._queue_viewport_changed()
 
     def resizeEvent(self, event):
+        self._resize_in_progress = True
         super().resizeEvent(event)
-        self._queue_viewport_changed()
+        # Native resize streams use a longer settle window so visible-art work
+        # waits until the user has finished changing the window geometry.
+        self._queue_viewport_changed(live_resize=True)
 
 
 class AlbumWallWidget(QWidget):

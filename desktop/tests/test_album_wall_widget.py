@@ -372,6 +372,39 @@ def test_album_wall_coalesces_motion_and_requests_art_after_settle():
     assert runtime["visible_art_candidates_last"] < runtime["tile_count"]
     assert len(batches[-1]) <= 36
 
+    # Let the widget's initial layout settle before beginning a separate resize stream.
+    QTest.qWait(widget.view.RESIZE_SETTLE_MS + 40)
+    app.processEvents()
+
+    # A resize burst should keep the view transform stable and delay visible-art
+    # work until the native geometry stream has settled.
+    widget._art_timer.stop()
+    settles.clear()
+    batches.clear()
+    scale = float(widget.view.transform().m11())
+    batches.clear()
+    settles.clear()
+    widget._art_timer.stop()
+
+    for size in ((980, 660), (760, 540), (1120, 740), (840, 600), (1040, 700)):
+        widget.resize(*size)
+        app.processEvents()
+        assert widget.view._resize_in_progress is True
+        assert widget.view.motion_active is True
+        assert batches == []
+        assert settles == []
+        assert abs(float(widget.view.transform().m11()) - scale) < 0.01
+
+    final_geometry = widget.geometry()
+    QTest.qWait(widget.view.RESIZE_SETTLE_MS + 40)
+    app.processEvents()
+
+    assert widget.geometry() == final_geometry
+    assert widget.view._resize_in_progress is False
+    assert widget.view.motion_active is False
+    assert len(settles) == 1
+    assert len(batches) == 1
+
     widget.close()
     widget.deleteLater()
     app.processEvents()
