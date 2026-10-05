@@ -759,7 +759,8 @@ class AlbumWallWidget(QWidget):
             key = str(key)
             structured = isinstance(raw, dict)
             payload = dict(raw) if structured else {"path": str(raw or "")}
-            generation = int(payload.get("generation") or self._art_generation)
+            raw_generation = payload.get("generation")
+            generation = self._art_generation if raw_generation is None else int(raw_generation)
             self._online_requested.discard(key)
             if generation != self._art_generation:
                 self._art_requested.discard(key)
