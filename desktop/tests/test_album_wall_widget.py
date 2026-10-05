@@ -199,3 +199,176 @@ def test_album_wall_artwork_loading_does_not_recurse_without_navigation():
 
     widget.deleteLater()
     app.processEvents()
+
+
+
+def test_album_wall_prepares_cover_once_and_reuses_it_during_render(tmp_path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    try:
+        from PySide6.QtCore import Qt
+        from PySide6.QtGui import QColor, QImage
+        from PySide6.QtWidgets import QApplication
+        from melodex.album_wall import AlbumWallWidget
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    track = {
+        "provider_id": "local",
+        "track_id": "/music/a.flac",
+        "local_path": "/music/a.flac",
+        "artist": "Artist",
+        "album": "Album",
+        "title": "Track",
+    }
+    model = {
+        "album_count": 1,
+        "analysed_albums": 0,
+        "albums": [{
+            "key": "artist|album",
+            "artist": "Artist",
+            "title": "Album",
+            "year": 2024,
+            "genres": [],
+            "track_count": 1,
+            "tracks": [track],
+            "representative_track": track,
+            "analysed_tracks": 0,
+            "sound_x": 0.0,
+            "sound_y": 0.0,
+            "fallback_x": 0.0,
+            "fallback_y": 0.0,
+            "familiarity": 0.0,
+            "rediscovery": 0.0,
+            "plays": 0,
+            "time_x": 0.0,
+            "time_y": 0.0,
+            "familiarity_x": 0.0,
+            "familiarity_y": 0.0,
+            "cover_path": "",
+        }],
+    }
+
+    source = QImage(640, 360, QImage.Format_ARGB32)
+    source.fill(QColor("#225588"))
+    path = tmp_path / "wide-cover.png"
+    assert source.save(str(path))
+
+    widget = AlbumWallWidget()
+    widget.resize(640, 520)
+    widget.set_model(model)
+    widget.show()
+    app.processEvents()
+
+    tile = widget.tiles["artist|album"]
+    widget.set_artwork({"artist|album": str(path)})
+
+    assert tile._cover_prepares == 1
+    assert tile._pixmap.width() == 164
+    assert tile._pixmap.height() == 164
+
+    for _ in range(6):
+        image = QImage(widget.size(), QImage.Format_ARGB32)
+        image.fill(Qt.transparent)
+        widget.render(image)
+        app.processEvents()
+
+    # Repaints must only blit the already-prepared cover. The expensive smooth
+    # resize/crop belongs to artwork arrival, never the paint hot path.
+    assert tile._cover_prepares == 1
+    assert widget.diagnostics_snapshot()["cover_prepares"] == 1
+
+    widget.close()
+    widget.deleteLater()
+    app.processEvents()
+
+
+def test_album_wall_coalesces_motion_and_requests_art_after_settle():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    try:
+        from PySide6.QtTest import QTest
+        from PySide6.QtWidgets import QApplication
+        from melodex.album_wall import AlbumWallWidget
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    albums = []
+    for i in range(180):
+        track = {
+            "provider_id": "local",
+            "track_id": f"/music/{i}.flac",
+            "local_path": f"/music/{i}.flac",
+            "artist": f"Artist {i:03d}",
+            "album": f"Album {i:03d}",
+            "title": "Track",
+        }
+        albums.append({
+            "key": f"k{i}",
+            "artist": track["artist"],
+            "title": track["album"],
+            "year": 2000 + i % 20,
+            "genres": [],
+            "track_count": 1,
+            "tracks": [track],
+            "representative_track": track,
+            "analysed_tracks": 0,
+            "sound_x": 0.0,
+            "sound_y": 0.0,
+            "fallback_x": (i % 18) / 8.5 - 1.0,
+            "fallback_y": (i // 18) / 4.5 - 1.0,
+            "familiarity": 0.0,
+            "rediscovery": 0.0,
+            "plays": 0,
+            "time_x": 0.0,
+            "time_y": 0.0,
+            "familiarity_x": -1.0,
+            "familiarity_y": 0.0,
+            "cover_path": "",
+        })
+
+    widget = AlbumWallWidget()
+    widget.resize(900, 620)
+    widget.set_model({
+        "albums": albums,
+        "album_count": len(albums),
+        "analysed_albums": 0,
+    })
+    widget.show()
+    app.processEvents()
+    widget._art_timer.stop()
+    widget._art_requested.clear()
+
+    changes = []
+    settles = []
+    batches = []
+    widget.view.viewportChanged.connect(lambda: changes.append(True))
+    widget.view.viewportSettled.connect(lambda: settles.append(True))
+    widget.artworkRequested.connect(lambda rows: batches.append(list(rows)))
+
+    targets = list(widget.tiles.values())
+    for index in (10, 70, 140, 30, 160):
+        widget.view.centerOn(targets[index])
+
+    # All moves in one event-loop turn collapse to one viewport notification.
+    app.processEvents()
+    assert len(changes) <= 1
+    assert widget.view.motion_active is True
+    assert batches == []
+
+    QTest.qWait(120)
+    app.processEvents()
+
+    assert len(settles) == 1
+    assert widget.view.motion_active is False
+    assert batches
+    runtime = widget.diagnostics_snapshot()
+    assert runtime["viewport_settles"] >= 1
+    assert runtime["visible_art_candidates_last"] < runtime["tile_count"]
+    assert len(batches[-1]) <= 36
+
+    widget.close()
+    widget.deleteLater()
+    app.processEvents()
