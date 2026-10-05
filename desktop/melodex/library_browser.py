@@ -882,16 +882,7 @@ class LibraryBrowser(QWidget):
             )
             for track in self.catalog
         }
-        self._sorted_catalog = sorted(
-            self.catalog,
-            key=lambda item: (
-                _norm(item.get("artist")),
-                _norm(item.get("album")),
-                int(item.get("disc_number") or 0),
-                int(item.get("track_number") or 0),
-                _norm(item.get("title")),
-            ),
-        )
+        self._sorted_catalog = []
         metrics["search_index_seconds"] = round(time.perf_counter() - search_index_started, 6)
         self._art_requested.clear()
         self._artist_art_requested.clear()
@@ -1641,7 +1632,7 @@ class LibraryBrowser(QWidget):
         view = self.current_view()
         if view in {"albums", "artists"}:
             self._bump_artwork_generation(view)
-        self._apply_filter()
+        self._apply_filter(query)
 
         if query:
             bar = self._scroll_bar_for_view(view)
@@ -1656,13 +1647,13 @@ class LibraryBrowser(QWidget):
         if view in {"albums", "artists"}:
             self._schedule_viewport_artwork(view)
 
-    def _apply_filter(self) -> None:
+    def _apply_filter(self, query: str | None = None) -> None:
         if not self.catalog:
             self.last_filter_metrics = {}
             return
 
         started = time.perf_counter()
-        query = _norm(self.search.text())
+        query = _norm(self.search.text()) if query is None else str(query)
         view = self.current_view()
         album_filter_seconds = 0.0
         artist_filter_seconds = 0.0
@@ -1688,6 +1679,17 @@ class LibraryBrowser(QWidget):
             artist_filter_seconds = time.perf_counter() - phase
         else:
             phase = time.perf_counter()
+            if not self._sorted_catalog:
+                self._sorted_catalog = sorted(
+                    self.catalog,
+                    key=lambda item: (
+                        _norm(item.get("artist")),
+                        _norm(item.get("album")),
+                        int(item.get("disc_number") or 0),
+                        int(item.get("track_number") or 0),
+                        _norm(item.get("title")),
+                    ),
+                )
             self._visible_tracks = [
                 track
                 for track in self._sorted_catalog
