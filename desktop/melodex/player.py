@@ -507,13 +507,12 @@ class FlowPlayer(QObject):
             other = 1 - self.active
             self.players[other].stop()
             self.outputs[other].setVolume(0.0)
-            if not self._load_index(
+            self._load_index(
                 next_index,
                 True,
                 deck=self.active,
                 announce_queue=True,
-            ):
-                self.playingChanged.emit(False)
+            )
             return
 
         self.playingChanged.emit(False)
