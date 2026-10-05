@@ -45,6 +45,28 @@ def test_seek_interaction_times_out_instead_of_sticking_forever():
     assert interaction.snapshot()["timed_out"] == 1
 
 
+def test_rapid_reseek_replaces_the_pending_target():
+    interaction = SeekInteraction()
+
+    interaction.begin()
+    assert interaction.commit(800, 100_000) == 80_000
+    assert interaction.follow_player_position(12_000, 100_000) is False
+
+    interaction.begin()
+    assert interaction.commit(200, 100_000) == 20_000
+
+    # A late acknowledgement for the superseded first seek must not win.
+    assert interaction.follow_player_position(80_000, 100_000) is False
+    assert interaction.state == "committing"
+    assert interaction.target_ms == 20_000
+
+    assert interaction.follow_player_position(20_400, 100_000) is True
+    assert interaction.state == "idle"
+    snapshot = interaction.snapshot()
+    assert snapshot["commits"] == 2
+    assert snapshot["acknowledged"] == 1
+
+
 def test_seek_interaction_cancel_resets_track_transition_state():
     interaction = SeekInteraction()
 
