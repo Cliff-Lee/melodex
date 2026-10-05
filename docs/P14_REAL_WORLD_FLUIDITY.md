@@ -257,7 +257,7 @@ resolution, and a short screen recording if a failure appears.
    window, the previous scroll position returns, and its familiar cover is already visible.
    Repeat once each in Artists and Tracks, including rapid edits and clearing.
 
-3. Start playback, then resize the window smaller and larger from each available edge.
+2. Start playback, then resize the window smaller and larger from each available edge.
    Confirm the whole window, including the bottom controls, stays above the taskbar or dock.
 3. Move the window near each screen edge, maximize it, restore it, and close/reopen Melodex.
    Confirm the window remains visible and its last useful size and position return.
