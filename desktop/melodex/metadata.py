@@ -14,7 +14,7 @@ from typing import Any
 
 import requests
 
-from .artwork_image_cache import ArtworkImageCache
+from .artwork_image_cache import shared_artwork_image_cache
 
 
 _MB_BASE = "https://musicbrainz.org/ws/2"
@@ -188,7 +188,7 @@ class RichMetadataService:
         self._community_lyrics_cache_lock = threading.Lock()
         self.session = session or requests.Session()
         self.capability_broker = capability_broker
-        self.artwork_images = ArtworkImageCache()
+        self.artwork_images = shared_artwork_image_cache()
         self.session.headers.update({"User-Agent": _USER_AGENT, "Accept": "application/json"})
 
     def prepared_artwork_image(self, path: str, size: int):
