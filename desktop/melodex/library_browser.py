@@ -1546,10 +1546,12 @@ class LibraryBrowser(QWidget):
         self.images_button.setEnabled(False)
 
     def _search_changed(self, _text: str = "") -> None:
-        """Reset progressive windows so a new search starts small and fast."""
+        """Reset progressive windows and invalidate artwork from the old view."""
         self._album_render_limit = self._album_batch_size
         self._artist_render_limit = self._artist_batch_size
         self._tracks_built = False
+        self._bump_artwork_generation("albums")
+        self._bump_artwork_generation("artists")
         self._apply_filter()
 
     def _apply_filter(self) -> None:
