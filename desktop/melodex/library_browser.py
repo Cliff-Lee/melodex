@@ -2322,7 +2322,8 @@ class LibraryBrowser(QWidget):
         for key, raw in dict(mapping or {}).items():
             key=str(key)
             payload=dict(raw) if isinstance(raw,dict) else {"path":str(raw or "")}
-            generation=int(payload.get("generation") or current_generation)
+            raw_generation=payload.get("generation")
+            generation=current_generation if raw_generation is None else int(raw_generation)
             if generation != current_generation:
                 self._art_requested.discard(key)
                 continue
@@ -2353,7 +2354,8 @@ class LibraryBrowser(QWidget):
         for key,raw in dict(mapping or {}).items():
             key=str(key)
             payload=dict(raw) if isinstance(raw,dict) else {"path":str(raw or "")}
-            generation=int(payload.get("generation") or current_generation)
+            raw_generation=payload.get("generation")
+            generation=current_generation if raw_generation is None else int(raw_generation)
             if generation != current_generation:
                 self._artist_cache_requested.discard(key)
                 self._artist_art_requested.discard(key)
