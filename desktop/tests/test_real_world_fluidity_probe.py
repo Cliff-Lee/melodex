@@ -17,15 +17,20 @@ def _module():
 
 
 def test_p14_probe_small_profile_exercises_reported_paths():
+    import pytest
+
     module = _module()
 
-    result = module.run_probe(
-        track_count=240,
-        pan_steps=4,
-        resize_cycles=3,
-        pause_ms=0,
-        p99_gap_limit_ms=1000.0,
-    )
+    try:
+        result = module.run_probe(
+            track_count=240,
+            pan_steps=4,
+            resize_cycles=3,
+            pause_ms=0,
+            p99_gap_limit_ms=1000.0,
+        )
+    except ImportError as exc:
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
 
     assert result["schema"] == 1
     assert result["campaign"] == "P14a-real-world-fluidity-baseline"
