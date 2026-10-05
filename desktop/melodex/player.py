@@ -321,6 +321,15 @@ class FlowPlayer(QObject):
         self._runtime_metrics["transition_playback_failures"] += 1
         return True
 
+    def _prepared_resource_for(self, index: int) -> dict[str, Any] | None:
+        if int(index) != self.index + 1:
+            return None
+        prepared = dict(self._prepared_upcoming or {})
+        if not prepared or _expired(prepared.get("expires_at")):
+            return None
+        self._runtime_metrics["transition_playback_uses"] += 1
+        return prepared
+
     def _resolve_for_playback(self, index: int) -> dict[str, Any]:
         resolved = dict(self.resolver(dict(self.queue[index])))
         if _expired(resolved.get("expires_at")) and self.playback_refresher:
@@ -418,7 +427,11 @@ class FlowPlayer(QObject):
         deck = self.active if deck is None else int(deck)
         player = self.players[deck]
         try:
-            resolved = self._resolve_for_playback(index)
+            resolved = (
+                self._prepared_resource_for(index)
+                or self._resolve_for_playback(index)
+            )
+            self.queue[index] = dict(resolved)
             player.setSource(self._media_url_for(resolved))
             if not self._commit_track(index, deck, announce_queue=announce_queue):
                 return False
@@ -513,12 +526,12 @@ class FlowPlayer(QObject):
     def _begin_crossfade(self) -> None:
         if self._crossfading or self.index + 1 >= len(self.queue):
             return
-        prepared = dict(self._prepared_upcoming or {})
-        if not prepared or _expired(prepared.get("expires_at")):
-            self._runtime_metrics["transition_playback_misses"] += 1
-            return
         next_deck = 1 - self.active
         next_index = self.index + 1
+        prepared = self._prepared_resource_for(next_index)
+        if not prepared:
+            self._runtime_metrics["transition_playback_misses"] += 1
+            return
         try:
             url = self._media_url_for(prepared)
             if url.isEmpty():
