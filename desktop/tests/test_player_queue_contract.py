@@ -27,6 +27,7 @@ def _player():
     ):
         player.index = index
         loaded.append((index, bool(play)))
+        return True
 
     player._load_index = fake_load
     return player, loaded
