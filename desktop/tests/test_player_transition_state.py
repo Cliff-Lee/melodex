@@ -73,8 +73,7 @@ def test_outgoing_end_of_media_commits_a_started_crossfade_once():
 
 
 def test_natural_end_without_crossfade_advances_through_load_contract():
-    from PySide6.QtMultimedia import QMediaPlayer
-
+    QMediaPlayer = _media_player_type()
     player = _player()
     player.queue = [{"track_id": "a"}, {"track_id": "b"}]
     player.index = 0
@@ -98,8 +97,7 @@ def test_natural_end_without_crossfade_advances_through_load_contract():
 
 
 def test_end_of_final_track_announces_not_playing():
-    from PySide6.QtMultimedia import QMediaPlayer
-
+    QMediaPlayer = _media_player_type()
     player = _player()
     player.queue = [{"track_id": "only"}]
     player.index = 0
@@ -180,8 +178,7 @@ def test_crossfade_reconciliation_runs_before_outgoing_playback_state_gate():
 
 
 def test_incoming_end_before_commit_aborts_transition_without_changing_track():
-    from PySide6.QtMultimedia import QMediaPlayer
-
+    QMediaPlayer = _media_player_type()
     player = _player()
     player.queue = [{"track_id": "a"}, {"track_id": "b"}]
     player.index = 0
