@@ -30,6 +30,7 @@ class FlowPlayer(QObject):
     queueChanged = Signal(list)
     manualAdvanced = Signal(dict, dict, int, int)
     error = Signal(str)
+    _transitionPlanReady = Signal(int, int, object)
 
     def __init__(
         self,
@@ -37,11 +38,13 @@ class FlowPlayer(QObject):
         transition_for=None,
         parent=None,
         playback_refresher=None,
+        transition_submit=None,
     ):
         super().__init__(parent)
         self.resolver = resolver
         self.playback_refresher = playback_refresher
         self.transition_for = transition_for
+        self._transition_submit = transition_submit
         self.gateway = PlaybackGateway()
         self.players = [QMediaPlayer(self), QMediaPlayer(self)]
         self.outputs = [QAudioOutput(self), QAudioOutput(self)]
@@ -56,6 +59,9 @@ class FlowPlayer(QObject):
         self._crossfade_target_index: int | None = None
         self._crossfade_deck: int | None = None
         self._volume = 1.0
+        self._transition_plan_generation = 0
+        self._planned_transition_target = -1
+        self._planned_transition_ms = 4500
         # P14 runtime counters are deliberately metadata-free. They exist so a
         # beta tester can export evidence of playback/transport divergence
         # without exposing track names, paths, URLs or provider credentials.
@@ -71,8 +77,14 @@ class FlowPlayer(QObject):
             "natural_ends": 0,
             "transition_aborts": 0,
             "queue_position_commits": 0,
+            "transition_plan_requests": 0,
+            "transition_plan_completed": 0,
+            "transition_plan_stale": 0,
+            "transition_plan_failures": 0,
+            "transition_plan_submit_rejected": 0,
         }
         self._last_seek_requested_ms = 0
+        self._transitionPlanReady.connect(self._apply_transition_plan)
         self._timer = QTimer(self)
         self._timer.setInterval(100)
         self._timer.timeout.connect(self._tick)
@@ -92,6 +104,7 @@ class FlowPlayer(QObject):
         if autoplay and self.index >= 0:
             self._load_index(self.index, play=True)
         else:
+            self._schedule_transition_plan()
             self.playingChanged.emit(False)
 
     def append_queue(self, tracks: list[dict[str, Any]], autoplay: bool = False) -> None:
@@ -103,6 +116,7 @@ class FlowPlayer(QObject):
             return
         self.queue.extend(incoming)
         self.queueChanged.emit(self.queue)
+        self._schedule_transition_plan()
 
     def queue_snapshot(self) -> list[dict[str, Any]]:
         return [dict(item) for item in self.queue]
@@ -140,6 +154,8 @@ class FlowPlayer(QObject):
                 True,
                 announce_queue=position_changed,
             )
+        if index in {self.index, self.index + 1}:
+            self._schedule_transition_plan()
         return True
 
     def merge_queue_items(
@@ -148,14 +164,21 @@ class FlowPlayer(QObject):
         changes: dict[str, Any],
     ) -> int:
         updated = 0
+        transition_pair_changed = False
         for index, item in enumerate(list(self.queue)):
             row = dict(item)
             if not predicate(row):
                 continue
             self.queue[index] = {**row, **dict(changes)}
             updated += 1
+            transition_pair_changed = transition_pair_changed or index in {
+                self.index,
+                self.index + 1,
+            }
         if updated:
             self.queueChanged.emit(self.queue)
+        if transition_pair_changed:
+            self._schedule_transition_plan()
         return updated
 
     def clear_queue(self) -> None:
@@ -163,6 +186,7 @@ class FlowPlayer(QObject):
         self._stop_all_decks()
         self.queue = []
         self.index = -1
+        self._invalidate_transition_plan()
         self.queueChanged.emit(self.queue)
         self.playingChanged.emit(False)
 
@@ -172,6 +196,7 @@ class FlowPlayer(QObject):
         self.playingChanged.emit(False)
 
     def close(self) -> None:
+        self._invalidate_transition_plan()
         self.stop()
         self.gateway.close()
 
@@ -228,6 +253,8 @@ class FlowPlayer(QObject):
             "transition_target_index": transition_target,
             "transition_deck": transition_deck,
             "transition_state_valid": bool(transition_valid),
+            "planned_transition_target": int(self._planned_transition_target),
+            "planned_transition_ms": int(self._planned_transition_ms),
             "playing": bool(playing),
             "position_ms": int(player.position()),
             "duration_ms": int(player.duration()),
@@ -316,6 +343,7 @@ class FlowPlayer(QObject):
             self.queueChanged.emit(self.queue)
         self._runtime_metrics["track_commits"] += 1
         self.trackChanged.emit(dict(self.queue[self.index]))
+        self._schedule_transition_plan()
         return True
 
     def _load_index(
@@ -388,6 +416,7 @@ class FlowPlayer(QObject):
             self._cancel_transition(stop_incoming=True, count_abort=True)
         self.queue = self.queue[: self.index + 1] + incoming
         self.queueChanged.emit(self.queue)
+        self._schedule_transition_plan()
 
     def previous(self) -> None:
         self._runtime_metrics["manual_previous"] += 1
@@ -417,16 +446,85 @@ class FlowPlayer(QObject):
         self._volume = value
         self.outputs[self.active].setVolume(value)
 
+    def _invalidate_transition_plan(self) -> None:
+        self._transition_plan_generation += 1
+        self._planned_transition_target = -1
+        self._planned_transition_ms = 4500
+
+    def _schedule_transition_plan(self) -> None:
+        self._transition_plan_generation += 1
+        generation = self._transition_plan_generation
+        target = self.index + 1
+        self._planned_transition_target = -1
+        self._planned_transition_ms = 4500
+        if not (0 <= self.index < len(self.queue)) or target >= len(self.queue):
+            return
+        if not self.transition_for:
+            self._planned_transition_target = target
+            return
+
+        current = dict(self.queue[self.index])
+        upcoming = dict(self.queue[target])
+        self._runtime_metrics["transition_plan_requests"] += 1
+
+        def work() -> None:
+            try:
+                plan = self.transition_for(current, upcoming) or {}
+                payload = {
+                    "ok": True,
+                    "duration_ms": max(300, int(plan.get("duration_ms", 4500))),
+                }
+            except Exception:
+                payload = {"ok": False, "duration_ms": 4500}
+            self._transitionPlanReady.emit(generation, target, payload)
+
+        if self._transition_submit is None:
+            work()
+            return
+        try:
+            accepted = bool(
+                self._transition_submit(
+                    work,
+                    priority="prefetch",
+                    name="transition-plan",
+                    replace_key="transition-plan",
+                )
+            )
+        except Exception:
+            accepted = False
+        if not accepted:
+            self._runtime_metrics["transition_plan_submit_rejected"] += 1
+            self._planned_transition_target = target
+
+    def _apply_transition_plan(
+        self,
+        generation: int,
+        target: int,
+        payload: object,
+    ) -> None:
+        if (
+            int(generation) != self._transition_plan_generation
+            or int(target) != self.index + 1
+        ):
+            self._runtime_metrics["transition_plan_stale"] += 1
+            return
+        row = dict(payload or {}) if isinstance(payload, dict) else {}
+        self._planned_transition_target = int(target)
+        self._planned_transition_ms = max(
+            300,
+            int(row.get("duration_ms") or 4500),
+        )
+        if bool(row.get("ok")):
+            self._runtime_metrics["transition_plan_completed"] += 1
+        else:
+            self._runtime_metrics["transition_plan_failures"] += 1
+
     def _transition_duration(self) -> int:
         if self.index + 1 >= len(self.queue):
             return 0
-        if not self.transition_for:
-            return 4500
-        try:
-            plan = self.transition_for(self.queue[self.index], self.queue[self.index + 1]) or {}
-            return max(300, int(plan.get("duration_ms", 4500)))
-        except Exception:
-            return 4500
+        if self._planned_transition_target == self.index + 1:
+            return int(self._planned_transition_ms)
+        return 4500
 
     def _begin_crossfade(self) -> None:
         if self._crossfading or self.index + 1 >= len(self.queue):
