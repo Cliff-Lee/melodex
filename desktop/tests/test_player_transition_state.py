@@ -243,3 +243,135 @@ def test_incoming_end_before_commit_aborts_transition_without_changing_track():
     assert snapshot["transition_state_valid"] is True
 
     player.close()
+
+
+def test_transition_planner_runs_once_per_pair_not_inside_hot_loop():
+    import pytest
+
+    try:
+        from PySide6.QtWidgets import QApplication
+        from melodex.player import FlowPlayer
+    except ImportError as exc:
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    QApplication.instance() or QApplication([])
+    calls = []
+    jobs = []
+
+    def transition_for(current, upcoming):
+        calls.append((current["track_id"], upcoming["track_id"]))
+        return {"duration_ms": 7300}
+
+    def submit(job, **_kwargs):
+        jobs.append(job)
+        return True
+
+    player = FlowPlayer(
+        lambda track: dict(track),
+        transition_for=transition_for,
+        transition_submit=submit,
+    )
+    player._timer.stop()
+    player.queue = [{"track_id": "a"}, {"track_id": "b"}]
+    player.index = 0
+
+    player._schedule_transition_plan()
+
+    assert len(jobs) == 1
+    assert calls == []
+    for _ in range(100):
+        assert player._transition_duration() == 4500
+    assert calls == []
+
+    jobs.pop(0)()
+    QApplication.processEvents()
+
+    assert calls == [("a", "b")]
+    assert player._transition_duration() == 7300
+    for _ in range(100):
+        assert player._transition_duration() == 7300
+    assert calls == [("a", "b")]
+
+    snapshot = player.diagnostics_snapshot()
+    assert snapshot["transition_plan_requests"] == 1
+    assert snapshot["transition_plan_completed"] == 1
+
+    player.close()
+
+
+def test_stale_transition_plan_cannot_replace_new_queue_pair():
+    import pytest
+
+    try:
+        from PySide6.QtWidgets import QApplication
+        from melodex.player import FlowPlayer
+    except ImportError as exc:
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    QApplication.instance() or QApplication([])
+    jobs = []
+
+    def transition_for(current, upcoming):
+        return {
+            "duration_ms": 7100
+            if upcoming["track_id"] == "b"
+            else 2600
+        }
+
+    player = FlowPlayer(
+        lambda track: dict(track),
+        transition_for=transition_for,
+        transition_submit=lambda job, **_kwargs: jobs.append(job) or True,
+    )
+    player._timer.stop()
+    player.queue = [{"track_id": "a"}, {"track_id": "b"}]
+    player.index = 0
+    player._schedule_transition_plan()
+
+    player.queue[1] = {"track_id": "c"}
+    player._schedule_transition_plan()
+    assert len(jobs) == 2
+
+    jobs[0]()
+    QApplication.processEvents()
+    assert player._transition_duration() == 4500
+
+    jobs[1]()
+    QApplication.processEvents()
+    assert player._transition_duration() == 2600
+    snapshot = player.diagnostics_snapshot()
+    assert snapshot["transition_plan_stale"] == 1
+    assert snapshot["transition_plan_completed"] == 1
+
+    player.close()
+
+
+def test_rejected_background_transition_job_uses_bounded_fallback():
+    import pytest
+
+    try:
+        from PySide6.QtWidgets import QApplication
+        from melodex.player import FlowPlayer
+    except ImportError as exc:
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    QApplication.instance() or QApplication([])
+    calls = []
+
+    player = FlowPlayer(
+        lambda track: dict(track),
+        transition_for=lambda a, b: calls.append((a, b)) or {"duration_ms": 9900},
+        transition_submit=lambda _job, **_kwargs: False,
+    )
+    player._timer.stop()
+    player.queue = [{"track_id": "a"}, {"track_id": "b"}]
+    player.index = 0
+
+    player._schedule_transition_plan()
+
+    assert calls == []
+    assert player._transition_duration() == 4500
+    snapshot = player.diagnostics_snapshot()
+    assert snapshot["transition_plan_submit_rejected"] == 1
+
+    player.close()
