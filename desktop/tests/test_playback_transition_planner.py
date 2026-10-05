@@ -20,13 +20,25 @@ class FakePlayer:
         self.applied = []
         self.rejected = []
 
-    def apply_transition_plan(self, token, plan):
-        self.applied.append((int(token), dict(plan or {})))
+    def apply_transition_plan(self, token, plan, resolved=None):
+        self.applied.append(
+            (int(token), dict(plan or {}), dict(resolved or {}))
+        )
         return True
 
     def reject_transition_plan(self, token):
         self.rejected.append(int(token))
         return True
+
+
+
+class FakeProviders:
+    def __init__(self):
+        self.resolutions = []
+
+    def resolve(self, track):
+        self.resolutions.append(dict(track))
+        return {**dict(track), "local_path": str(track.get("local_path") or "")}
 
 
 class FakeFlow:
@@ -46,6 +58,7 @@ class FakeFlow:
 def test_request_only_schedules_work_and_does_not_touch_flow_cache_inline():
     player = FakePlayer()
     flow = FakeFlow()
+    providers = FakeProviders()
     scheduled = []
 
     def run_async(fn, done, on_error, **kwargs):
@@ -53,6 +66,7 @@ def test_request_only_schedules_work_and_does_not_touch_flow_cache_inline():
 
     planner = PlaybackTransitionPlanner(
         flow,
+        providers,
         lambda track: Path(track["local_path"]),
         run_async,
         player,
@@ -67,24 +81,32 @@ def test_request_only_schedules_work_and_does_not_touch_flow_cache_inline():
     # This is the P14d contract: signal handling on the Qt thread only queues
     # background work. Filesystem/SQLite-backed Flow lookup has not run yet.
     assert flow.lookups == []
+    assert providers.resolutions == []
     assert len(scheduled) == 1
     fn, done, _error, kwargs = scheduled[0]
     assert kwargs["priority"] == "prefetch"
     assert kwargs["replace_key"] == "playback-transition-plan"
 
-    plan = fn()
+    payload = fn()
     assert flow.lookups == [Path("/nas/a.flac"), Path("/nas/b.flac")]
-    done(plan)
-    assert player.applied == [(7, {"duration_ms": 7300, "style": "smooth"})]
+    assert providers.resolutions == [
+        {"local_path": "/nas/b.flac", "title": "Private B"}
+    ]
+    done(payload)
+    assert player.applied == [
+        (7, {"duration_ms": 7300, "style": "smooth"}, {"local_path": "/nas/b.flac", "title": "Private B"})
+    ]
 
 
 def test_planner_rejects_invalid_pair_without_scheduling_io():
     player = FakePlayer()
     flow = FakeFlow()
+    providers = FakeProviders()
     scheduled = []
 
     planner = PlaybackTransitionPlanner(
         flow,
+        providers,
         lambda track: Path(track["local_path"]),
         lambda *args, **kwargs: scheduled.append((args, kwargs)),
         player,
@@ -100,6 +122,7 @@ def test_planner_rejects_invalid_pair_without_scheduling_io():
 def test_planner_failure_returns_token_to_player_without_content():
     player = FakePlayer()
     flow = FakeFlow()
+    providers = FakeProviders()
     captured = {}
 
     def run_async(fn, done, on_error, **kwargs):
@@ -107,6 +130,7 @@ def test_planner_failure_returns_token_to_player_without_content():
 
     planner = PlaybackTransitionPlanner(
         flow,
+        providers,
         lambda track: Path(track["local_path"]),
         run_async,
         player,
