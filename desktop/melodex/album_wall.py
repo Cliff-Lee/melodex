@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import time
 from pathlib import Path
 from typing import Any
 
@@ -304,6 +305,18 @@ class AlbumWallWidget(QWidget):
         self._animation: QVariantAnimation | None = None
         self._start_positions: dict[str, tuple[float, float]] = {}
         self._end_positions: dict[str, tuple[float, float]] = {}
+        self._runtime_metrics: dict[str, float | int] = {
+            "viewport_changes": 0,
+            "visible_art_scans": 0,
+            "visible_art_batches": 0,
+            "visible_art_items_requested": 0,
+            "artwork_apply_batches": 0,
+            "artwork_items_applied": 0,
+            "visible_art_scan_last_ms": 0.0,
+            "visible_art_scan_max_ms": 0.0,
+            "artwork_apply_last_ms": 0.0,
+            "artwork_apply_max_ms": 0.0,
+        }
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -362,7 +375,7 @@ class AlbumWallWidget(QWidget):
         now.clicked.connect(self.centre_current)
         actual.clicked.connect(self.actual_size)
         overview.clicked.connect(self.fit_wall)
-        self.view.viewportChanged.connect(self._schedule_visible_art)
+        self.view.viewportChanged.connect(self._viewport_changed)
         self._art_timer = QTimer(self)
         self._art_timer.setSingleShot(True)
         self._art_timer.setInterval(120)
@@ -573,11 +586,23 @@ class AlbumWallWidget(QWidget):
         else:
             self.status.setText("The current track is not on this local Album Wall.")
 
+    def _viewport_changed(self) -> None:
+        self._runtime_metrics["viewport_changes"] += 1
+        self._schedule_visible_art()
+
     def _schedule_visible_art(self) -> None:
         self._art_timer.start()
 
     def _request_visible_art(self) -> None:
+        started = time.perf_counter()
+        self._runtime_metrics["visible_art_scans"] += 1
         if not self.tiles:
+            elapsed_ms = (time.perf_counter() - started) * 1000.0
+            self._runtime_metrics["visible_art_scan_last_ms"] = round(elapsed_ms, 3)
+            self._runtime_metrics["visible_art_scan_max_ms"] = round(
+                max(float(self._runtime_metrics["visible_art_scan_max_ms"]), elapsed_ms),
+                3,
+            )
             return
         viewport = self.view.viewport().rect()
         visible = self.view.mapToScene(viewport).boundingRect().adjusted(-220, -220, 220, 220)
@@ -595,7 +620,15 @@ class AlbumWallWidget(QWidget):
             if len(batch) >= 36:
                 break
         if batch:
+            self._runtime_metrics["visible_art_batches"] += 1
+            self._runtime_metrics["visible_art_items_requested"] += len(batch)
             self.artworkRequested.emit(batch)
+        elapsed_ms = (time.perf_counter() - started) * 1000.0
+        self._runtime_metrics["visible_art_scan_last_ms"] = round(elapsed_ms, 3)
+        self._runtime_metrics["visible_art_scan_max_ms"] = round(
+            max(float(self._runtime_metrics["visible_art_scan_max_ms"]), elapsed_ms),
+            3,
+        )
 
     def request_missing_covers(self) -> None:
         """Explicitly request online cover recovery for the visible wall."""
@@ -629,8 +662,11 @@ class AlbumWallWidget(QWidget):
         self.onlineArtworkRequested.emit(batch)
 
     def set_artwork(self, mapping: dict[str, str]) -> None:
+        started = time.perf_counter()
         loaded = 0
         rows = dict(mapping or {})
+        if rows:
+            self._runtime_metrics["artwork_apply_batches"] += 1
         for key, path in rows.items():
             key = str(key)
             self._online_requested.discard(key)
@@ -638,11 +674,28 @@ class AlbumWallWidget(QWidget):
             if tile and path:
                 tile.set_cover_path(str(path))
                 loaded += 1
+        if loaded:
+            self._runtime_metrics["artwork_items_applied"] += loaded
+        elapsed_ms = (time.perf_counter() - started) * 1000.0
+        self._runtime_metrics["artwork_apply_last_ms"] = round(elapsed_ms, 3)
+        self._runtime_metrics["artwork_apply_max_ms"] = round(
+            max(float(self._runtime_metrics["artwork_apply_max_ms"]), elapsed_ms),
+            3,
+        )
         if rows:
             if loaded:
                 self.status.setText(f"Loaded {loaded} album cover{'s' if loaded != 1 else ''}.")
             elif any(str(key) in self.tiles for key in rows):
                 self.status.setText("No additional covers were found for that batch.")
+
+    def diagnostics_snapshot(self) -> dict[str, Any]:
+        """Return aggregate Album Wall runtime timings without collection metadata."""
+        return {
+            **dict(self._runtime_metrics),
+            "tile_count": len(self.tiles),
+            "art_requested_count": len(self._art_requested),
+            "online_requested_count": len(self._online_requested),
+        }
 
 
 __all__ = ["AlbumWallWidget"]
