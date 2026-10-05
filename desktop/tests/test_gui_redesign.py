@@ -173,7 +173,7 @@ def test_library_filter_reuses_cards_and_only_processes_active_view(monkeypatch)
     start_scroll = browser.album_scroll.verticalScrollBar().value()
     assert start_scroll > 0
 
-    preserved_key, preserved_card = next(iter(browser.cards.items()))
+    preserved_key, preserved_card = next(reversed(list(browser.cards.items())))
     original_norm = library_browser._norm
     normalized_queries = []
 
@@ -190,6 +190,7 @@ def test_library_filter_reuses_cards_and_only_processes_active_view(monkeypatch)
     assert browser.last_filter_metrics["visible_album_count"] == 1
     assert preserved_key not in browser.cards
     assert browser._album_card_cache[preserved_key] is preserved_card
+    assert len(browser._album_card_cache) <= 2
     assert browser.album_scroll.verticalScrollBar().value() == 0
     assert not browser._visible_tracks
 
@@ -202,6 +203,7 @@ def test_library_filter_reuses_cards_and_only_processes_active_view(monkeypatch)
     assert browser.cards[preserved_key] is preserved_card
     assert browser.album_scroll.verticalScrollBar().value() == start_scroll
     assert len(browser._album_card_cache) <= browser._card_cache_limit
+    assert len(browser._artist_card_cache) <= browser._card_cache_limit
     assert browser.last_filter_metrics["computed_views"] == ["albums"]
 
     browser.deleteLater()
