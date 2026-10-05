@@ -60,6 +60,7 @@ class FlowPlayer(QObject):
         self._transition_plan_generation = 0
         self._transition_plan_duration_ms = 4500
         self._transition_plan_ready = False
+        self._prepared_upcoming: dict[str, Any] | None = None
         # P14 runtime counters are deliberately metadata-free. They exist so a
         # beta tester can export evidence of playback/transport divergence
         # without exposing track names, paths, URLs or provider credentials.
@@ -80,6 +81,8 @@ class FlowPlayer(QObject):
             "transition_plan_stale": 0,
             "transition_plan_failures": 0,
             "transition_plan_fallbacks": 0,
+            "transition_playback_ready": 0,
+            "transition_playback_misses": 0,
         }
         self._last_seek_requested_ms = 0
         self._timer = QTimer(self)
@@ -246,6 +249,7 @@ class FlowPlayer(QObject):
             "transition_plan_generation": int(self._transition_plan_generation),
             "transition_plan_ready": bool(self._transition_plan_ready),
             "transition_plan_duration_ms": int(self._transition_plan_duration_ms),
+            "transition_playback_prepared": bool(self._prepared_upcoming),
             "playing": bool(playing),
             "position_ms": int(player.position()),
             "duration_ms": int(player.duration()),
@@ -257,6 +261,7 @@ class FlowPlayer(QObject):
         self._transition_plan_generation += 1
         self._transition_plan_duration_ms = 4500
         self._transition_plan_ready = False
+        self._prepared_upcoming = None
         return self._transition_plan_generation
 
     def _request_transition_plan(self) -> None:
@@ -270,7 +275,12 @@ class FlowPlayer(QObject):
             dict(self.queue[self.index + 1]),
         )
 
-    def apply_transition_plan(self, token: int, plan: object) -> bool:
+    def apply_transition_plan(
+        self,
+        token: int,
+        plan: object,
+        resolved: object = None,
+    ) -> bool:
         if int(token) != self._transition_plan_generation:
             self._runtime_metrics["transition_plan_stale"] += 1
             return False
@@ -281,6 +291,10 @@ class FlowPlayer(QObject):
             duration = 4500
         self._transition_plan_duration_ms = duration
         self._transition_plan_ready = True
+        prepared = dict(resolved or {}) if isinstance(resolved, dict) else {}
+        self._prepared_upcoming = prepared or None
+        if self._prepared_upcoming:
+            self._runtime_metrics["transition_playback_ready"] += 1
         self._runtime_metrics["transition_plan_applied"] += 1
         return True
 
@@ -484,21 +498,25 @@ class FlowPlayer(QObject):
     def _begin_crossfade(self) -> None:
         if self._crossfading or self.index + 1 >= len(self.queue):
             return
+        prepared = dict(self._prepared_upcoming or {})
+        if not prepared or _expired(prepared.get("expires_at")):
+            self._runtime_metrics["transition_playback_misses"] += 1
+            return
         next_deck = 1 - self.active
         next_index = self.index + 1
-        self._crossfading = True
-        self._crossfade_target_index = next_index
-        self._crossfade_deck = next_deck
-        self._runtime_metrics["crossfade_started"] += 1
-        if not self._transition_plan_ready:
-            self._runtime_metrics["transition_plan_fallbacks"] += 1
-        self._transition_ms = self._transition_duration()
-        self.outputs[next_deck].setVolume(0.0)
         try:
-            resolved = self._resolve_for_playback(next_index)
-            url = self._media_url_for(resolved)
+            url = self._media_url_for(prepared)
             if url.isEmpty():
                 raise RuntimeError("Next track is not playable")
+            self.queue[next_index] = prepared
+            self._crossfading = True
+            self._crossfade_target_index = next_index
+            self._crossfade_deck = next_deck
+            self._runtime_metrics["crossfade_started"] += 1
+            if not self._transition_plan_ready:
+                self._runtime_metrics["transition_plan_fallbacks"] += 1
+            self._transition_ms = self._transition_duration()
+            self.outputs[next_deck].setVolume(0.0)
             self.players[next_deck].setSource(url)
             self.players[next_deck].play()
         except Exception as exc:
