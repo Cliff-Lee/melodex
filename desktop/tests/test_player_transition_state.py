@@ -137,6 +137,56 @@ def test_playback_tick_never_calls_legacy_transition_callback():
     player.gateway.close()
 
 
+def test_tick_never_resolves_upcoming_playback_resource_inline():
+    QMediaPlayer = _media_player_type()
+    import pytest
+
+    try:
+        from PySide6.QtWidgets import QApplication
+        from melodex.player import FlowPlayer
+    except ImportError as exc:
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    QApplication.instance() or QApplication([])
+    resolver_calls = []
+
+    def forbidden_resolver(track):
+        resolver_calls.append(dict(track))
+        raise AssertionError("provider resolution ran inside playback tick")
+
+    player = FlowPlayer(forbidden_resolver)
+    player._timer.stop()
+
+    class FakePlayer:
+        def duration(self):
+            return 100_000
+
+        def position(self):
+            return 99_000
+
+        def playbackState(self):
+            return QMediaPlayer.PlayingState
+
+        def isSeekable(self):
+            return True
+
+    player.players = [FakePlayer(), FakePlayer()]
+    player.queue = [{"track_id": "a"}, {"track_id": "b"}]
+    player.index = 0
+    player.active = 0
+    player._transition_plan_duration_ms = 4500
+    player._transition_plan_ready = False
+    player._prepared_upcoming = None
+
+    player._tick()
+
+    assert resolver_calls == []
+    assert player._crossfading is False
+    assert player.diagnostics_snapshot()["transition_playback_misses"] == 1
+
+    player.gateway.close()
+
+
 def test_outgoing_end_of_media_commits_a_started_crossfade_once():
     QMediaPlayer = _media_player_type()
     player = _player()
