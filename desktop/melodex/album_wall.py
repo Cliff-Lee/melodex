@@ -257,9 +257,6 @@ class _WallView(QGraphicsView):
         self._resize_in_progress = False
         self._restoring_resize_anchor = False
         self._resize_anchor: QPointF | None = None
-        self._resize_anchor_timer = QTimer(self)
-        self._resize_anchor_timer.setSingleShot(True)
-        self._resize_anchor_timer.timeout.connect(self._restore_resize_anchor)
         self._settle_timer = QTimer(self)
         self._settle_timer.setSingleShot(True)
         self._settle_timer.setInterval(90)
@@ -359,10 +356,8 @@ class _WallView(QGraphicsView):
                 self._resize_anchor = self.mapToScene(self.viewport().rect().center())
         self._resize_in_progress = True
         super().resizeEvent(event)
-        # Let the parent layout finish assigning the viewport size before centering.
-        if self._resize_anchor is not None:
-            self._resize_anchor_timer.start(0)
-        # Keep rendering cheap and defer the visible-art scan until resizing ends.
+        # Hold the prior scene anchor while Qt streams geometry changes; restore
+        # it once at settle instead of fighting each native resize event.
         self._queue_viewport_changed(live_resize=True)
 
     def _restore_resize_anchor(self) -> None:
