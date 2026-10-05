@@ -140,6 +140,76 @@ def test_library_reuses_rendered_state_for_same_catalog_revision():
     app.processEvents()
 
 
+def test_library_filter_reuses_cards_and_only_processes_active_view(monkeypatch):
+    try:
+        from PySide6.QtTest import QTest
+        from PySide6.QtWidgets import QApplication
+        import melodex.library_browser as library_browser
+        from melodex.library_browser import LibraryBrowser
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    browser = LibraryBrowser()
+    browser.resize(1100, 760)
+    browser.show()
+    tracks = [
+        _track(
+            f"/filter/{index:04d}.flac",
+            f"Artist {index:04d}",
+            f"Album {index:04d}",
+            f"Track {index:04d}",
+            1,
+        )
+        for index in range(350)
+    ]
+    browser.set_catalog(tracks, revision=1)
+    browser._show_more_albums()
+    app.processEvents()
+
+    browser.album_scroll.verticalScrollBar().setValue(600)
+    app.processEvents()
+    start_scroll = browser.album_scroll.verticalScrollBar().value()
+    assert start_scroll > 0
+
+    preserved_key, preserved_card = next(reversed(list(browser.cards.items())))
+    original_norm = library_browser._norm
+    normalized_queries = []
+
+    def count_normalization(value):
+        normalized_queries.append(str(value))
+        return original_norm(value)
+
+    monkeypatch.setattr(library_browser, "_norm", count_normalization)
+    browser.search.setText("Album 0349")
+    app.processEvents()
+
+    assert normalized_queries == ["Album 0349"]
+    assert browser.last_filter_metrics["computed_views"] == ["albums"]
+    assert browser.last_filter_metrics["visible_album_count"] == 1
+    assert preserved_key not in browser.cards
+    assert browser._album_card_cache[preserved_key] is preserved_card
+    assert len(browser._album_card_cache) <= 2
+    assert browser.album_scroll.verticalScrollBar().value() == 0
+    assert not browser._visible_tracks
+
+    normalized_queries.clear()
+    browser.search.clear()
+    QTest.qWait(20)
+    app.processEvents()
+
+    assert normalized_queries == [""]
+    assert browser.cards[preserved_key] is preserved_card
+    assert browser.album_scroll.verticalScrollBar().value() == start_scroll
+    assert len(browser._album_card_cache) <= browser._card_cache_limit
+    assert len(browser._artist_card_cache) <= browser._card_cache_limit
+    assert browser.last_filter_metrics["computed_views"] == ["albums"]
+
+    browser.deleteLater()
+    app.processEvents()
+
+
 def test_large_library_progressively_renders_widgets():
     try:
         from PySide6.QtWidgets import QApplication
