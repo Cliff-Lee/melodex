@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import time
-from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import QAbstractAnimation, QEasingCurve, QRectF, Qt, QTimer, QVariantAnimation, Signal
@@ -97,8 +96,7 @@ class _AlbumTile(QGraphicsObject):
 
     def set_cover_path(self, value: str) -> bool:
         """Decode and prepare the cover once; paint only blits the result."""
-        path = Path(str(value or ""))
-        pixmap = QPixmap(str(path)) if path.is_file() else QPixmap()
+        pixmap = QPixmap(str(value or ""))
         if pixmap.isNull():
             return False
         target = max(1, int(_COVER))
