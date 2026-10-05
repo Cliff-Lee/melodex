@@ -4,7 +4,7 @@ import hashlib
 import time
 from typing import Any
 
-from PySide6.QtCore import QAbstractAnimation, QEasingCurve, QPointF, QRectF, Qt, QTimer, QVariantAnimation, Signal
+from PySide6.QtCore import QAbstractAnimation, QEasingCurve, QRectF, Qt, QTimer, QVariantAnimation, Signal
 from PySide6.QtGui import QBrush, QColor, QImage, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import (
     QComboBox,
@@ -255,8 +255,6 @@ class _WallView(QGraphicsView):
         self._viewport_emit_timer.timeout.connect(self._emit_viewport_changed)
         self._motion_active = False
         self._resize_in_progress = False
-        self._restoring_resize_anchor = False
-        self._resize_anchor: QPointF | None = None
         self._settle_timer = QTimer(self)
         self._settle_timer.setSingleShot(True)
         self._settle_timer.setInterval(90)
@@ -331,10 +329,7 @@ class _WallView(QGraphicsView):
         if not self._motion_active:
             return
         self._motion_active = False
-        if self._resize_in_progress:
-            self._restore_resize_anchor()
         self._resize_in_progress = False
-        self._resize_anchor = None
         self.setRenderHint(QPainter.Antialiasing, True)
         self.setRenderHint(QPainter.SmoothPixmapTransform, True)
         self.viewport().update()
@@ -346,42 +341,14 @@ class _WallView(QGraphicsView):
 
     def scrollContentsBy(self, dx: int, dy: int):
         super().scrollContentsBy(dx, dy)
-        if not self._restoring_resize_anchor:
-            self._queue_viewport_changed()
+        self._queue_viewport_changed()
 
     def resizeEvent(self, event):
-        if not self._resize_in_progress:
-            scene = self.scene()
-            if scene is not None and not scene.sceneRect().isEmpty():
-                self._resize_anchor = self.mapToScene(self.viewport().rect().center())
         self._resize_in_progress = True
         super().resizeEvent(event)
-        # Hold the prior scene anchor while Qt streams geometry changes; restore
-        # it once at settle instead of fighting each native resize event.
+        # Native resize streams use a longer settle window so visible-art work
+        # waits until the user has finished changing the window geometry.
         self._queue_viewport_changed(live_resize=True)
-
-    def _restore_resize_anchor(self) -> None:
-        if not self._resize_in_progress or self._resize_anchor is None:
-            return
-        scale = max(0.0001, float(self.transform().m11()))
-        half_width = self.viewport().width() / (2.0 * scale) + 12.0
-        half_height = self.viewport().height() / (2.0 * scale) + 12.0
-        anchor_bounds = QRectF(
-            self._resize_anchor.x() - half_width,
-            self._resize_anchor.y() - half_height,
-            half_width * 2.0,
-            half_height * 2.0,
-        )
-        scene = self.scene()
-        if scene is not None:
-            # Keep enough invisible scene margin for the view to center on its
-            # previous point after its viewport grows beyond the item bounds.
-            scene.setSceneRect(scene.sceneRect().united(anchor_bounds))
-        self._restoring_resize_anchor = True
-        try:
-            self.centerOn(self._resize_anchor)
-        finally:
-            self._restoring_resize_anchor = False
 
 
 class AlbumWallWidget(QWidget):
