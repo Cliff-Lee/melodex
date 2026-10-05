@@ -161,7 +161,7 @@ class MainWindow(QMainWindow):
                 )
             else:
                 self.resize(1100, 700)
-                self.data_dir = app_data_dir()
+        self.data_dir = app_data_dir()
         self.providers = ProviderManager(
             self.data_dir,
             startup_timeline=self._startup_timeline,
