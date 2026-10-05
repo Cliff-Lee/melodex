@@ -81,8 +81,11 @@ class FlowPlayer(QObject):
             "transition_plan_stale": 0,
             "transition_plan_failures": 0,
             "transition_plan_fallbacks": 0,
+            "transition_playback_requests": 0,
             "transition_playback_ready": 0,
+            "transition_playback_failures": 0,
             "transition_playback_misses": 0,
+            "transition_playback_uses": 0,
         }
         self._last_seek_requested_ms = 0
         self._timer = QTimer(self)
@@ -269,18 +272,14 @@ class FlowPlayer(QObject):
         if not (0 <= self.index < len(self.queue) - 1):
             return
         self._runtime_metrics["transition_plan_requests"] += 1
+        self._runtime_metrics["transition_playback_requests"] += 1
         self.transitionPlanRequested.emit(
             token,
             dict(self.queue[self.index]),
             dict(self.queue[self.index + 1]),
         )
 
-    def apply_transition_plan(
-        self,
-        token: int,
-        plan: object,
-        resolved: object = None,
-    ) -> bool:
+    def apply_transition_plan(self, token: int, plan: object) -> bool:
         if int(token) != self._transition_plan_generation:
             self._runtime_metrics["transition_plan_stale"] += 1
             return False
@@ -291,10 +290,6 @@ class FlowPlayer(QObject):
             duration = 4500
         self._transition_plan_duration_ms = duration
         self._transition_plan_ready = True
-        prepared = dict(resolved or {}) if isinstance(resolved, dict) else {}
-        self._prepared_upcoming = prepared or None
-        if self._prepared_upcoming:
-            self._runtime_metrics["transition_playback_ready"] += 1
         self._runtime_metrics["transition_plan_applied"] += 1
         return True
 
@@ -304,6 +299,26 @@ class FlowPlayer(QObject):
             return False
         self._transition_plan_ready = False
         self._runtime_metrics["transition_plan_failures"] += 1
+        return True
+
+    def apply_transition_resource(self, token: int, resolved: object) -> bool:
+        if int(token) != self._transition_plan_generation:
+            self._runtime_metrics["transition_plan_stale"] += 1
+            return False
+        prepared = dict(resolved or {}) if isinstance(resolved, dict) else {}
+        self._prepared_upcoming = prepared or None
+        if not self._prepared_upcoming:
+            self._runtime_metrics["transition_playback_failures"] += 1
+            return False
+        self._runtime_metrics["transition_playback_ready"] += 1
+        return True
+
+    def reject_transition_resource(self, token: int) -> bool:
+        if int(token) != self._transition_plan_generation:
+            self._runtime_metrics["transition_plan_stale"] += 1
+            return False
+        self._prepared_upcoming = None
+        self._runtime_metrics["transition_playback_failures"] += 1
         return True
 
     def _resolve_for_playback(self, index: int) -> dict[str, Any]:
