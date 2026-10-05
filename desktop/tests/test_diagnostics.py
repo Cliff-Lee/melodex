@@ -288,6 +288,11 @@ def test_diagnostics_filters_ui_performance_fields():
                 "natural_ends": 4,
                 "transition_aborts": 1,
                 "queue_position_commits": 6,
+                "transition_plan_requests": 7,
+                "transition_plan_applied": 6,
+                "transition_plan_stale": 1,
+                "transition_plan_failures": 0,
+                "transition_plan_fallbacks": 1,
                 "queue_length": 12,
                 "queue_index": 3,
                 "queue_index_valid": True,
@@ -297,6 +302,9 @@ def test_diagnostics_filters_ui_performance_fields():
                 "transition_target_index": None,
                 "transition_deck": None,
                 "transition_state_valid": True,
+                "transition_plan_generation": 8,
+                "transition_plan_ready": True,
+                "transition_plan_duration_ms": 5200,
                 "playing": True,
                 "position_ms": 45678,
                 "duration_ms": 231000,
@@ -421,6 +429,12 @@ def test_diagnostics_filters_ui_performance_fields():
     assert playback["natural_ends"] == 4
     assert playback["transition_aborts"] == 1
     assert playback["queue_position_commits"] == 6
+    assert playback["transition_plan_requests"] == 7
+    assert playback["transition_plan_applied"] == 6
+    assert playback["transition_plan_stale"] == 1
+    assert playback["transition_plan_fallbacks"] == 1
+    assert playback["transition_plan_ready"] is True
+    assert playback["transition_plan_duration_ms"] == 5200
     assert playback["transition_state_valid"] is True
     assert playback["transition_target_index"] is None
     assert playback["transition_deck"] is None
