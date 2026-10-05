@@ -6,6 +6,8 @@ from typing import Any, Callable
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QBrush, QColor, QImage, QLinearGradient, QPainter, QPen, QPixmap
+from .artwork_image_cache import shared_artwork_image_cache
+
 from PySide6.QtWidgets import (
     QDialog,
     QFrame,
@@ -130,6 +132,10 @@ class CoverLabel(QLabel):
         self.setObjectName("coverArt")
 
     def set_cover(self, path: str, *, title: str = "", key: str = "") -> None:
+        cached = shared_artwork_image_cache().peek(path, self._size)
+        if not cached.isNull():
+            self.set_cover_image(cached, title=title, key=key)
+            return
         source = Path(str(path or "")).expanduser()
         pix = QPixmap(str(source)) if source.is_file() else QPixmap()
         if pix.isNull():
