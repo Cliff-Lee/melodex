@@ -293,6 +293,8 @@ def test_diagnostics_filters_ui_performance_fields():
                 "transition_plan_stale": 1,
                 "transition_plan_failures": 0,
                 "transition_plan_fallbacks": 1,
+                "transition_playback_ready": 6,
+                "transition_playback_misses": 2,
                 "queue_length": 12,
                 "queue_index": 3,
                 "queue_index_valid": True,
@@ -305,6 +307,7 @@ def test_diagnostics_filters_ui_performance_fields():
                 "transition_plan_generation": 8,
                 "transition_plan_ready": True,
                 "transition_plan_duration_ms": 5200,
+                "transition_playback_prepared": True,
                 "playing": True,
                 "position_ms": 45678,
                 "duration_ms": 231000,
@@ -433,6 +436,9 @@ def test_diagnostics_filters_ui_performance_fields():
     assert playback["transition_plan_applied"] == 6
     assert playback["transition_plan_stale"] == 1
     assert playback["transition_plan_fallbacks"] == 1
+    assert playback["transition_playback_ready"] == 6
+    assert playback["transition_playback_misses"] == 2
+    assert playback["transition_playback_prepared"] is True
     assert playback["transition_plan_ready"] is True
     assert playback["transition_plan_duration_ms"] == 5200
     assert playback["transition_state_valid"] is True
