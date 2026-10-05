@@ -187,7 +187,13 @@ jobs:
             libxcb-xfixes0 libxcb-xinerama0 libxcb-xinput0 libxcb-xkb1 \
             libxkbcommon0 libxkbcommon-x11-0 libx11-6 libxext6 libxrender1
       - name: Install desktop probe dependencies
-        run: python -m pip install PySide6
+        run: python -m pip install pytest PySide6
+      - name: Run P14 transport seek contract
+        env:
+          PYTHONPATH: desktop
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          pytest -q desktop/tests/test_seek_control.py desktop/tests/test_playback_feature.py -k seek
       - name: Run 1k and 12.7k synthetic GUI baselines
         env:
           PYTHONPATH: desktop
