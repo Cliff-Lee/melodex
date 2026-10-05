@@ -342,6 +342,8 @@ class FlowPlayer(QObject):
                 self.playingChanged.emit(False)
             return True
         except Exception as exc:
+            if play:
+                self.playingChanged.emit(False)
             self.error.emit(str(exc))
             return False
 
