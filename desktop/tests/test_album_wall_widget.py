@@ -372,6 +372,10 @@ def test_album_wall_coalesces_motion_and_requests_art_after_settle():
     assert runtime["visible_art_candidates_last"] < runtime["tile_count"]
     assert len(batches[-1]) <= 36
 
+    # Let the widget's initial layout settle before beginning a separate resize stream.
+    QTest.qWait(widget.view.RESIZE_SETTLE_MS + 40)
+    app.processEvents()
+
     # Move to the middle of the wall so the view is not pinned against a scene
     # boundary, then measure whether the same point stays under the viewport center.
     widget.view.centerOn(widget.scene.sceneRect().center())
