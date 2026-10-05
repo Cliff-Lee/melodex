@@ -124,7 +124,7 @@ def test_album_wall_drops_stale_generation_and_never_decodes_structured_path():
         "artist|album": {
             "path": "/cache/stale.png",
             "generation": generation - 1,
-            "image": _image(164),
+            "image": _image(228),
         }
     })
     assert tile._pixmap.isNull()
@@ -138,12 +138,12 @@ def test_album_wall_drops_stale_generation_and_never_decodes_structured_path():
         "artist|album": {
             "path": "/cache/current.png",
             "generation": generation,
-            "image": _image(164),
+            "image": _image(228),
         }
     })
 
     assert not tile._pixmap.isNull()
-    assert tile._pixmap.width() == tile._pixmap.height() == 164
+    assert tile._pixmap.width() == tile._pixmap.height() == 228
     assert tile._cover_prepares == 1
 
     wall.close()

@@ -3285,7 +3285,7 @@ class MainWindow(QMainWindow):
                 if key and track:
                     path=str(self.metadata.local_artwork(track).get("path") or "")
                     result[key]=self.metadata.prepared_artwork_payload(
-                        path,int(row.get("generation") or 0),164
+                        path,int(row.get("generation") or 0),228
                     )
             return result
         self._run_async(load,self.album_wall.set_artwork, priority="visible", task_name="album-wall-cached-artwork")
@@ -3306,7 +3306,7 @@ class MainWindow(QMainWindow):
                         path=str(self.metadata.artwork(track,identity).get("path") or "")
                 except Exception:path=""
                 result[key]=self.metadata.prepared_artwork_payload(
-                    path,int(row.get("generation") or 0),164
+                    path,int(row.get("generation") or 0),228
                 )
             return result
         self._run_async(load,self.album_wall.set_artwork, priority="background", task_name="album-wall-online-artwork")
