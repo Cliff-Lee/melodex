@@ -444,7 +444,7 @@ class LibraryBrowser(QWidget):
         self.artist_rows: list[dict[str, Any]] = []
         self.artist_cards: dict[str, ArtistCard] = {}
         self._artist_card_cache: OrderedDict[str, ArtistCard] = OrderedDict()
-        self._card_cache_limit = 240
+        self._card_cache_limit = 2
         self._album_search_text: dict[str, str] = {}
         self._artist_search_text: dict[str, str] = {}
         self._track_search_text: dict[str, str] = {}
