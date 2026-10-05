@@ -255,8 +255,8 @@ class MainWindow(QMainWindow):
         self.playback_feature.nextRequested.connect(self.player.next)
         self.playback_feature.seekRequested.connect(self.player.seek)
         self.playback_feature.setQueueRequested.connect(
-            lambda tracks, start, autoplay: self.player.set_queue(
-                list(tracks or []), int(start), bool(autoplay)
+            lambda tracks,start,autoplay,intent:self.player.set_queue(
+                list(tracks or []),int(start),bool(autoplay),intent=str(intent or "manual_queue")
             )
         )
         self.playback_feature.appendQueueRequested.connect(
@@ -427,10 +427,10 @@ class MainWindow(QMainWindow):
         )
         self.journey_workspace.navigationRequested.connect(self.open_page)
         self.journey_workspace.playTracksRequested.connect(
-            lambda tracks: self.player.set_queue(list(tracks or []), 0, True)
+            lambda tracks:self.player.set_queue(list(tracks or []),0,True,intent="journey")
         )
         self.journey_workspace.queueTracksRequested.connect(
-            lambda tracks: self.player.append_queue(list(tracks or []), autoplay=False)
+            lambda tracks:self.player.append_queue(list(tracks or []),autoplay=False,intent="journey")
         )
         self.journey_workspace.replaceUpcomingRequested.connect(
             lambda tracks: self.player.replace_upcoming(list(tracks or []))
@@ -1854,7 +1854,7 @@ class MainWindow(QMainWindow):
     def _home_continue_play(self) -> None:
         track=dict(getattr(self,"home_recent_track",{}) or {})
         if track:
-            self.player.set_queue([track],0,True)
+            self.player.set_queue([track],0,True,intent="manual_queue")
 
     def _power_changed(self, _, announce: bool = True):
         enabled = self.power_toggle.isChecked()
@@ -1967,20 +1967,20 @@ class MainWindow(QMainWindow):
             (i for i,item in enumerate(tracks) if str(item.get("track_id") or "")==tid),
             0,
         )
-        self.player.set_queue(tracks,index,True)
+        self.player.set_queue(tracks,index,True,intent="manual_queue")
 
     def _play_library_artist(self, artist: object) -> None:
         if not isinstance(artist,dict):
             return
         tracks=[dict(x) for x in list(artist.get("tracks") or []) if isinstance(x,dict)]
         if tracks:
-            self.player.set_queue(tracks,0,True)
+            self.player.set_queue(tracks,0,True,intent="playlist")
 
     def _queue_library_track(self, track: object) -> None:
         if not isinstance(track,dict):
             return
         if not self.player.queue:
-            self.player.set_queue([dict(track)],0,False)
+            self.player.set_queue([dict(track)],0,False,intent="manual_queue")
         else:
             self.player.append_queue([dict(track)],autoplay=False)
         self.statusBar().showMessage(
@@ -2091,7 +2091,7 @@ class MainWindow(QMainWindow):
         if not tracks:
             return
         if not self.player.queue:
-            self.player.set_queue(tracks,0,False)
+            self.player.set_queue(tracks,0,False,intent="album")
         else:
             self.player.append_queue(tracks,autoplay=False)
         self.statusBar().showMessage(
@@ -2399,7 +2399,7 @@ class MainWindow(QMainWindow):
 
     def _start_resolved_playlist(self,result):
         tracks=list(result.get("tracks") or []); unresolved=list(result.get("unresolved") or [])
-        if tracks:self.player.set_queue(tracks,0,True)
+        if tracks:self.player.set_queue(tracks,0,True,intent="playlist")
         msg=f"Playing {len(tracks)} matched tracks"
         if unresolved:msg+=f" · {len(unresolved)} could not be matched"
         self.statusBar().showMessage(msg,6000)
@@ -2553,7 +2553,7 @@ class MainWindow(QMainWindow):
         if not track:
             return
         position=max(0,int(data.get("position_ms") or 0))
-        self.player.set_queue([dict(track)],0,True)
+        self.player.set_queue([dict(track)],0,True,intent="manual_queue")
         if position:
             QTimer.singleShot(700,lambda:self.player.seek(position))
 
@@ -3111,7 +3111,7 @@ class MainWindow(QMainWindow):
     def _play_result(self,item):
         if hasattr(self, "responsiveness"):
             self.responsiveness.mark_action("discover:play-result")
-        t=dict(item.data(Qt.UserRole) or {}); self.player.set_queue([t],0,True)
+        t=dict(item.data(Qt.UserRole) or {}); self.player.set_queue([t],0,True,intent="provider")
 
     def _open_selected_source(self):
         item=self.results.currentItem()
@@ -3122,7 +3122,7 @@ class MainWindow(QMainWindow):
         else: self.statusBar().showMessage("This source did not provide a content page",3000)
 
     def _play_library(self,item):
-        t=dict(item.data(Qt.UserRole) or {}); tracks=self.providers.local_catalog(); idx=next((i for i,x in enumerate(tracks) if x.get('track_id')==t.get('track_id')),0); self.player.set_queue(tracks,idx,True)
+        t=dict(item.data(Qt.UserRole) or {}); tracks=self.providers.local_catalog(); idx=next((i for i,x in enumerate(tracks) if x.get('track_id')==t.get('track_id')),0); self.player.set_queue(tracks,idx,True,intent="manual_queue")
 
     def _add_selected_to_queue(self):
         item=self.results.currentItem()
@@ -3219,12 +3219,12 @@ class MainWindow(QMainWindow):
     def _play_intelligence_result(self, item) -> None:
         data = item.data(Qt.UserRole)
         if isinstance(data, dict):
-            self.player.set_queue([dict(data)], 0, True)
+            self.player.set_queue([dict(data)],0,True,intent="manual_queue")
 
     def _play_selected_intelligence(self) -> None:
         track = self._selected_intelligence_track()
         if track:
-            self.player.set_queue([track], 0, True)
+            self.player.set_queue([track],0,True,intent="manual_queue")
 
     def _queue_selected_intelligence(self) -> None:
         track = self._selected_intelligence_track()
@@ -3344,7 +3344,7 @@ class MainWindow(QMainWindow):
     def _play_album_wall_album(self,album):
         tracks=[dict(x) for x in list((album or {}).get("tracks") or []) if isinstance(x,dict)]
         if tracks:
-            self.player.set_queue(tracks,0,True)
+            self.player.set_queue(tracks,0,True,intent="album")
             self.statusBar().showMessage(
                 f"Playing {album.get('artist') or 'Unknown artist'} — {album.get('title') or 'Unknown album'}",
                 4500,
@@ -3362,7 +3362,7 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("Select an album on the wall first",3000)
             return
         if not self.player.queue:
-            self.player.set_queue(tracks,0,False)
+            self.player.set_queue(tracks,0,False,intent="album")
         else:
             self.player.append_queue(tracks,autoplay=False)
         self.statusBar().showMessage(f"Queued {len(tracks)} tracks from {album.get('title') or 'album'}",4000)
@@ -3447,7 +3447,7 @@ class MainWindow(QMainWindow):
 
     def _apply_mind(self,plan):
         tracks=list(plan.get("tracks",[]));
-        if tracks:self.player.set_queue(tracks,0,True)
+        if tracks:self.player.set_queue(tracks,0,True,intent="journey")
         self.statusBar().showMessage(f"Journey ready · {len(tracks)} tracks · {plan.get('new_to_you',0)} new to you",6000)
 
     def _llm_settings(self):
@@ -3536,7 +3536,7 @@ class MainWindow(QMainWindow):
         payload={"tracks":tracks,"unresolved":unresolved,"requested":int(result.get("requested") or len(tracks)+len(unresolved))}
         if requested is not None:payload["requested_tracks"]=[dict(x) for x in requested]
         self.state.save_playlist(playlist_id,name,description,source,payload); self._refresh_playlists()
-        if tracks:self.player.set_queue(tracks,0,True)
+        if tracks:self.player.set_queue(tracks,0,True,intent="playlist")
         msg=f"{name}: matched {len(tracks)} track{'s' if len(tracks)!=1 else ''}"
         if unresolved:msg+=f" · {len(unresolved)} unresolved"
         self.statusBar().showMessage(msg,7000)
@@ -3556,7 +3556,7 @@ class MainWindow(QMainWindow):
             if action=="status":
                 result=self.player.status(); result["page"]=self.current_page; result["taste"]=self.state.taste_summary()
             elif action=="set_queue":
-                tracks=[dict(x) for x in list(args.get("tracks") or []) if isinstance(x,dict)]; self.player.set_queue(tracks,int(args.get("start",0)),bool(args.get("autoplay",True))); result=self.player.status()
+                tracks=[dict(x) for x in list(args.get("tracks") or []) if isinstance(x,dict)]; self.player.set_queue(tracks,int(args.get("start",0)),bool(args.get("autoplay",True)),intent=str(args.get("intent") or "manual_queue")); result=self.player.status()
             elif action=="append_queue":
                 tracks=[dict(x) for x in list(args.get("tracks") or []) if isinstance(x,dict)]; self.player.append_queue(tracks,bool(args.get("autoplay",False))); result=self.player.status()
             elif action=="play_pause":self.player.play_pause(); result=self.player.status()
