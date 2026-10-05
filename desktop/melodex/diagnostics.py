@@ -201,6 +201,8 @@ _PLAYBACK_RUNTIME_FIELDS = (
     "transition_target_index",
     "transition_deck",
     "transition_state_valid",
+    "playback_intent",
+    "journey_transitions_enabled",
     "playing",
     "position_ms",
     "duration_ms",

@@ -115,16 +115,30 @@ scheduler rejection without recording track names or paths.
 
 ### P14e — Playback intent
 
-Add explicit playback intent such as:
+Playback queues now carry one explicit intent:
 
-- album;
-- playlist;
-- journey;
-- manual queue;
-- radio/provider.
+- `album`;
+- `playlist`;
+- `journey`;
+- `manual_queue`;
+- `provider`.
 
-Album playback defaults to disc/track order with no Journey crossfade. Flow transitions
-remain available for Journey listening.
+Only `journey` enables Flow transition planning/crossfading. Album, playlist, manual
+queue and provider playback advance naturally at end-of-media and never submit Flow
+transition-planning work.
+
+Album Wall and My Music album playback explicitly create `album` queues; saved/imported
+and AI-created playlists use `playlist`; Music Map/Play for Me/Refine with Flow use
+`journey`; direct library/history/intelligence playback uses `manual_queue`; online
+search-result playback uses `provider`.
+
+Unknown external-control intent values are normalised to `manual_queue`. The current
+intent and whether Journey transitions are enabled are included in redacted diagnostics,
+but media metadata is not.
+
+This separates "play this recording/collection normally" from "Melodex should actively
+DJ this route." A single album therefore preserves disc/track order without an unexpected
+Flow crossfade between its tracks.
 
 ### P14f — Album Wall render hot path
 

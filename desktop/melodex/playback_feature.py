@@ -52,7 +52,7 @@ class PlaybackFeature(QObject):
     playPauseRequested = Signal()
     nextRequested = Signal()
     seekRequested = Signal(int)
-    setQueueRequested = Signal(object, int, bool)
+    setQueueRequested = Signal(object, int, bool, str)
     appendQueueRequested = Signal(object, bool)
     jumpQueueRequested = Signal(int)
     replaceQueueItemRequested = Signal(int, object, bool)
@@ -500,7 +500,7 @@ class PlaybackFeature(QObject):
 
     def _apply_flow(self, plan):
         tracks = list(plan.get("tracks", []))
-        self.setQueueRequested.emit(tracks, 0, True)
+        self.setQueueRequested.emit(tracks, 0, True, "journey")
         self._status(f"Flow ready · {plan.get('analysed', 0)} tracks audio-analysed", 5000)
 
     def _next_queue_track(self) -> dict[str, Any]:
@@ -1192,7 +1192,7 @@ class PlaybackFeature(QObject):
             return
         idx = int(self._queue_index)
         if idx < 0:
-            self.setQueueRequested.emit([dict(resolved)], 0, True)
+            self.setQueueRequested.emit([dict(resolved)], 0, True, "manual_queue")
             return
         self.replaceQueueItemRequested.emit(idx, dict(resolved), True)
         mode = (

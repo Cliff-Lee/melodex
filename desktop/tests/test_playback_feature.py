@@ -303,7 +303,9 @@ def test_flow_refinement_requests_new_queue_without_player_access(tmp_path):
     app, feature, _state, statuses = _feature(tmp_path)
     requested = []
     feature.setQueueRequested.connect(
-        lambda tracks, start, autoplay: requested.append((list(tracks), int(start), bool(autoplay)))
+        lambda tracks,start,autoplay,intent:requested.append(
+            (list(tracks),int(start),bool(autoplay),str(intent))
+        )
     )
 
     one = _track("One", 1)
@@ -311,7 +313,7 @@ def test_flow_refinement_requests_new_queue_without_player_access(tmp_path):
     feature.on_queue_changed([one, two], 0)
     feature.refine_queue()
 
-    assert requested == [([two, one], 0, True)]
+    assert requested == [([two, one], 0, True, "journey")]
     assert any("Flow ready" in message for message, _ in statuses)
     assert not hasattr(feature, "player")
 
@@ -329,8 +331,8 @@ def test_resolver_application_requests_semantic_queue_mutation(tmp_path):
         )
     )
     feature.setQueueRequested.connect(
-        lambda tracks, start, autoplay: initial_sets.append(
-            (list(tracks), int(start), bool(autoplay))
+        lambda tracks,start,autoplay,intent:initial_sets.append(
+            (list(tracks),int(start),bool(autoplay),str(intent))
         )
     )
 
@@ -342,7 +344,7 @@ def test_resolver_application_requests_semantic_queue_mutation(tmp_path):
 
     feature.on_queue_changed([], -1)
     feature._apply_resolver_match(resolved)
-    assert initial_sets == [([resolved], 0, True)]
+    assert initial_sets == [([resolved], 0, True, "manual_queue")]
 
     feature.deleteLater()
     app.processEvents()

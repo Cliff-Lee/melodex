@@ -304,6 +304,8 @@ def test_diagnostics_filters_ui_performance_fields():
                 "transition_target_index": None,
                 "transition_deck": None,
                 "transition_state_valid": True,
+                "playback_intent": "journey",
+                "journey_transitions_enabled": True,
                 "playing": True,
                 "position_ms": 45678,
                 "duration_ms": 231000,
@@ -436,6 +438,8 @@ def test_diagnostics_filters_ui_performance_fields():
     assert playback["planned_transition_target"] == 4
     assert playback["planned_transition_ms"] == 5200
     assert playback["transition_state_valid"] is True
+    assert playback["playback_intent"] == "journey"
+    assert playback["journey_transitions_enabled"] is True
     assert playback["transition_target_index"] is None
     assert playback["transition_deck"] is None
     assert "current_track" not in playback
