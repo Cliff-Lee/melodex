@@ -128,12 +128,17 @@ class FlowPlayer(QObject):
         index = int(index)
         if not (0 <= index < len(self.queue)):
             return False
+        position_changed = index != self.index
         self.queue[index] = dict(track)
         self.queueChanged.emit(self.queue)
         if autoplay:
             self._cancel_transition(stop_incoming=True, count_abort=True)
             self._stop_all_decks()
-            return self._load_index(index, True)
+            return self._load_index(
+                index,
+                True,
+                announce_queue=position_changed,
+            )
         return True
 
     def merge_queue_items(
@@ -494,12 +499,13 @@ class FlowPlayer(QObject):
             other = 1 - self.active
             self.players[other].stop()
             self.outputs[other].setVolume(0.0)
-            self._load_index(
+            if not self._load_index(
                 next_index,
                 True,
                 deck=self.active,
                 announce_queue=True,
-            )
+            ):
+                self.playingChanged.emit(False)
             return
 
         self.playingChanged.emit(False)
