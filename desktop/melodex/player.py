@@ -55,6 +55,7 @@ class FlowPlayer(QObject):
         self._transition_ms = 0
         self._crossfade_target_index: int | None = None
         self._crossfade_deck: int | None = None
+        self._volume = 1.0
         # P14 runtime counters are deliberately metadata-free. They exist so a
         # beta tester can export evidence of playback/transport divergence
         # without exposing track names, paths, URLs or provider credentials.
@@ -286,7 +287,7 @@ class FlowPlayer(QObject):
             self.players[incoming].stop()
         if 0 <= incoming < len(self.outputs):
             self.outputs[incoming].setVolume(0.0)
-        self.outputs[self.active].setVolume(1.0)
+        self.outputs[self.active].setVolume(self._volume)
         if count_abort:
             self._runtime_metrics["transition_aborts"] += 1
         self._clear_transition_state()
@@ -411,6 +412,7 @@ class FlowPlayer(QObject):
 
     def set_volume(self, value: float) -> None:
         value = max(0.0, min(1.0, float(value)))
+        self._volume = value
         self.outputs[self.active].setVolume(value)
 
     def _transition_duration(self) -> int:
@@ -463,7 +465,7 @@ class FlowPlayer(QObject):
         outgoing = self.active
         self.players[outgoing].stop()
         self.outputs[outgoing].setVolume(0.0)
-        self.outputs[incoming].setVolume(1.0)
+        self.outputs[incoming].setVolume(self._volume)
         self._clear_transition_state()
         self._runtime_metrics["crossfade_completed"] += 1
         if reason == "end_of_media":
@@ -533,8 +535,12 @@ class FlowPlayer(QObject):
                     0.0,
                     min(1.0, remaining / max(1, self._transition_ms)),
                 )
-                self.outputs[self.active].setVolume(max(0.0, 1.0 - progress))
-                self.outputs[incoming].setVolume(min(1.0, progress))
+                self.outputs[self.active].setVolume(
+                    self._volume * max(0.0, 1.0 - progress)
+                )
+                self.outputs[incoming].setVolume(
+                    self._volume * min(1.0, progress)
+                )
                 if progress >= 0.98 or remaining <= 80:
                     self._complete_crossfade("timer")
             return
