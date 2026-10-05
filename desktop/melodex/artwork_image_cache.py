@@ -7,8 +7,17 @@ import time
 from collections import OrderedDict
 from typing import Any
 
-from PySide6.QtCore import QSize, Qt
-from PySide6.QtGui import QImage, QImageReader
+def _qt_image_api():
+    """Import QtGui only when image work is actually requested.
+
+    Metadata-only and provider tests run on Linux runners without libEGL. Keeping
+    QtGui out of module import lets those non-visual paths use RichMetadataService
+    without pulling a graphical runtime into process startup.
+    """
+    from PySide6.QtCore import QSize, Qt
+    from PySide6.QtGui import QImage, QImageReader
+
+    return QSize, Qt, QImage, QImageReader
 
 
 class ArtworkImageCache:
@@ -30,7 +39,7 @@ class ArtworkImageCache:
         self.negative_ttl_seconds = max(1.0, float(negative_ttl_seconds))
         self.wait_timeout_seconds = max(0.25, float(wait_timeout_seconds))
         self._lock = threading.RLock()
-        self._cache: OrderedDict[tuple[str, int, int, int], tuple[QImage, int]] = (
+        self._cache: OrderedDict[tuple[str, int, int, int], tuple[Any, int]] = (
             OrderedDict()
         )
         self._latest: dict[tuple[str, int], tuple[str, int, int, int]] = {}
@@ -55,8 +64,9 @@ class ArtworkImageCache:
         expanded = os.path.expanduser(str(path or "").strip())
         return os.path.abspath(expanded), max(1, int(size))
 
-    def peek(self, path: str, size: int) -> QImage:
+    def peek(self, path: str, size: int):
         """Return a prepared image already in memory without touching storage."""
+        _, _, QImage, _ = _qt_image_api()
         base = self._base_key(path, size)
         with self._lock:
             key = self._latest.get(base)
@@ -67,8 +77,9 @@ class ArtworkImageCache:
             self._metrics["peek_hits"] += 1
             return QImage(cached[0])
 
-    def prepare(self, path: str, size: int) -> QImage:
+    def prepare(self, path: str, size: int):
         """Return a square prepared QImage, or a null image on failure."""
+        _, _, QImage, _ = _qt_image_api()
         base = self._base_key(path, size)
         with self._lock:
             self._metrics["requests"] += 1
@@ -136,7 +147,8 @@ class ArtworkImageCache:
                     done.set()
         return QImage(image)
 
-    def _decode_square(self, path: str, size: int) -> QImage:
+    def _decode_square(self, path: str, size: int):
+        QSize, Qt, QImage, QImageReader = _qt_image_api()
         reader = QImageReader(path)
         reader.setAutoTransform(True)
         source_size = reader.size()
@@ -172,8 +184,9 @@ class ArtworkImageCache:
         self,
         base: tuple[str, int],
         key: tuple[str, int, int, int],
-        image: QImage,
+        image: Any,
     ) -> None:
+        _, _, QImage, _ = _qt_image_api()
         previous_key = self._latest.get(base)
         if previous_key is not None and previous_key != key:
             previous = self._cache.pop(previous_key, None)
