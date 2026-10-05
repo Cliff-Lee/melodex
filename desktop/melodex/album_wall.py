@@ -644,6 +644,7 @@ class AlbumWallWidget(QWidget):
 
     def _viewport_changed(self) -> None:
         self._runtime_metrics["viewport_changes"] += 1
+        self._art_generation += 1
 
     def _viewport_settled(self) -> None:
         self._runtime_metrics["viewport_settles"] += 1
