@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections import defaultdict
+from collections import OrderedDict, defaultdict
 import threading
 import time
 from typing import Any
@@ -440,8 +440,16 @@ class LibraryBrowser(QWidget):
         self._catalog_revision: int | None = None
         self.albums: list[dict[str, Any]] = []
         self.cards: dict[str, AlbumCard] = {}
+        self._album_card_cache: OrderedDict[str, AlbumCard] = OrderedDict()
         self.artist_rows: list[dict[str, Any]] = []
         self.artist_cards: dict[str, ArtistCard] = {}
+        self._artist_card_cache: OrderedDict[str, ArtistCard] = OrderedDict()
+        self._card_cache_limit = 240
+        self._album_search_text: dict[str, str] = {}
+        self._artist_search_text: dict[str, str] = {}
+        self._track_search_text: dict[str, str] = {}
+        self._sorted_catalog: list[dict[str, Any]] = []
+        self._search_scroll_snapshot: dict[str, int] | None = None
         self.track_rows: dict[str, TrackRow] = {}
         self._track_widget_rows: dict[int, str] = {}
         self.track_album_key: dict[str, str] = {}
@@ -811,6 +819,11 @@ class LibraryBrowser(QWidget):
             return
 
         started = time.perf_counter()
+        scroll_snapshot = {
+            "albums": self.album_scroll.verticalScrollBar().value(),
+            "artists": self.artist_scroll.verticalScrollBar().value(),
+            "tracks": self.track_list.verticalScrollBar().value(),
+        }
         current_thread = threading.current_thread()
         metrics: dict[str, object] = {
             "thread_name": current_thread.name,
@@ -834,14 +847,16 @@ class LibraryBrowser(QWidget):
             "total_seconds": 0.0,
         }
 
-        for card in list(self.cards.values()):
+        for card in list(self.cards.values()) + list(self._album_card_cache.values()):
             card.setParent(None)
             card.deleteLater()
-        for card in list(self.artist_cards.values()):
+        for card in list(self.artist_cards.values()) + list(self._artist_card_cache.values()):
             card.setParent(None)
             card.deleteLater()
         self.cards.clear()
+        self._album_card_cache.clear()
         self.artist_cards.clear()
+        self._artist_card_cache.clear()
         self._clear_track_widgets()
         self.track_model.set_tracks([])
         self._clear_grid(self.album_grid)
@@ -859,6 +874,25 @@ class LibraryBrowser(QWidget):
             6,
         )
         metrics["track_count"] = len(self.catalog)
+        search_index_started = time.perf_counter()
+        self._track_search_text = {
+            _track_key(track): _norm(
+                f"{track.get('artist','')} {track.get('title','')} "
+                f"{track.get('album','')} {track.get('genre','')}"
+            )
+            for track in self.catalog
+        }
+        self._sorted_catalog = sorted(
+            self.catalog,
+            key=lambda item: (
+                _norm(item.get("artist")),
+                _norm(item.get("album")),
+                int(item.get("disc_number") or 0),
+                int(item.get("track_number") or 0),
+                _norm(item.get("title")),
+            ),
+        )
+        metrics["search_index_seconds"] = round(time.perf_counter() - search_index_started, 6)
         self._art_requested.clear()
         self._artist_art_requested.clear()
         self._artist_cache_requested.clear()
@@ -916,6 +950,13 @@ class LibraryBrowser(QWidget):
             6,
         )
         metrics["album_count"] = len(self.albums)
+        self._album_search_text = {
+            str(album.get("key") or ""): _norm(
+                f"{album.get('artist','')} {album.get('title','')} "
+                + " ".join(str(x) for x in list(album.get("genres") or []))
+            )
+            for album in self.albums
+        }
         metrics["input_album_count"] = int(
             wall.get("input_album_count") or len(self.albums)
         )
@@ -937,6 +978,16 @@ class LibraryBrowser(QWidget):
 
         artist_started = time.perf_counter()
         self._rebuild_artists()
+        self._artist_search_text = {
+            str(artist.get("key") or ""): _norm(
+                f"{artist.get('name','')} "
+                + " ".join(
+                    str(track.get("album") or "")
+                    for track in artist.get("tracks", [])
+                )
+            )
+            for artist in self.artist_rows
+        }
         metrics["artist_model_seconds"] = round(
             time.perf_counter() - artist_started,
             6,
@@ -944,7 +995,6 @@ class LibraryBrowser(QWidget):
         metrics["artist_count"] = len(self.artist_rows)
 
         layout_started = time.perf_counter()
-        self._apply_filter()
         self.set_view(self.current_view())
         metrics["initial_layout_seconds"] = round(
             time.perf_counter() - layout_started,
@@ -964,6 +1014,28 @@ class LibraryBrowser(QWidget):
         )
         metrics["total_seconds"] = round(time.perf_counter() - started, 6)
         self.last_catalog_metrics = metrics
+        QTimer.singleShot(
+            0,
+            lambda values=scroll_snapshot: self._restore_scroll_positions(values),
+        )
+
+    def _restore_scroll_positions(self, values: dict[str, int]) -> None:
+        bars = {
+            "albums": self.album_scroll.verticalScrollBar(),
+            "artists": self.artist_scroll.verticalScrollBar(),
+            "tracks": self.track_list.verticalScrollBar(),
+        }
+        for name, value in values.items():
+            bar = bars.get(name)
+            if bar is not None:
+                bar.setValue(min(max(0, int(value)), bar.maximum()))
+
+    def _scroll_bar_for_view(self, name: str):
+        return {
+            "albums": self.album_scroll.verticalScrollBar(),
+            "artists": self.artist_scroll.verticalScrollBar(),
+            "tracks": self.track_list.verticalScrollBar(),
+        }.get(str(name))
 
     def begin_scan(self, reason: str = "") -> None:
         self._scan_active = True
@@ -1217,6 +1289,10 @@ class LibraryBrowser(QWidget):
         self.images_button.update()
         filter_started = time.perf_counter()
         self._apply_filter()
+        if _norm(self.search.text()):
+            bar = self._scroll_bar_for_view(name)
+            if bar is not None:
+                QTimer.singleShot(0, lambda current_bar=bar: current_bar.setValue(0))
         if name in {"albums","artists"}:
             self._bump_artwork_generation(name)
             self._schedule_viewport_artwork(name)
@@ -1546,13 +1622,39 @@ class LibraryBrowser(QWidget):
         self.images_button.setEnabled(False)
 
     def _search_changed(self, _text: str = "") -> None:
-        """Reset progressive windows and invalidate artwork from the old view."""
+        """Filter only the active view and keep the pre-search browse position."""
+        query = _norm(self.search.text())
+        if query and self._search_scroll_snapshot is None:
+            self._search_scroll_snapshot = {
+                "albums": self.album_scroll.verticalScrollBar().value(),
+                "artists": self.artist_scroll.verticalScrollBar().value(),
+                "tracks": self.track_list.verticalScrollBar().value(),
+            }
+        restore = None
+        if not query and self._search_scroll_snapshot is not None:
+            restore = self._search_scroll_snapshot
+            self._search_scroll_snapshot = None
+
         self._album_render_limit = self._album_batch_size
         self._artist_render_limit = self._artist_batch_size
         self._tracks_built = False
-        self._bump_artwork_generation("albums")
-        self._bump_artwork_generation("artists")
+        view = self.current_view()
+        if view in {"albums", "artists"}:
+            self._bump_artwork_generation(view)
         self._apply_filter()
+
+        if query:
+            bar = self._scroll_bar_for_view(view)
+            if bar is not None:
+                bar.setValue(0)
+        elif restore is not None:
+            QTimer.singleShot(
+                0,
+                lambda values=restore: self._restore_scroll_positions(values),
+            )
+
+        if view in {"albums", "artists"}:
+            self._schedule_viewport_artwork(view)
 
     def _apply_filter(self) -> None:
         if not self.catalog:
@@ -1561,103 +1663,122 @@ class LibraryBrowser(QWidget):
 
         started = time.perf_counter()
         query = _norm(self.search.text())
+        view = self.current_view()
+        album_filter_seconds = 0.0
+        artist_filter_seconds = 0.0
+        track_filter_seconds = 0.0
 
-        album_started = time.perf_counter()
-        self._visible_albums = [
-            album
-            for album in self.albums
-            if not query
-            or query
-            in _norm(
-                f"{album.get('artist','')} {album.get('title','')} "
-                + " ".join(str(x) for x in list(album.get("genres") or []))
-            )
-        ]
-        album_filter_seconds = time.perf_counter() - album_started
-
-        artist_started = time.perf_counter()
-        self._visible_artists = [
-            artist
-            for artist in self.artist_rows
-            if not query
-            or query
-            in _norm(
-                f"{artist.get('name','')} "
-                + " ".join(str(x.get('album') or '') for x in artist.get('tracks',[]))
-            )
-        ]
-        artist_filter_seconds = time.perf_counter() - artist_started
-
-        track_started = time.perf_counter()
-        self._visible_tracks = sorted(
-            [
-                track
-                for track in self.catalog
+        if view == "albums":
+            phase = time.perf_counter()
+            self._visible_albums = [
+                album
+                for album in self.albums
                 if not query
-                or query
-                in _norm(
-                    f"{track.get('artist','')} {track.get('title','')} "
-                    f"{track.get('album','')} {track.get('genre','')}"
-                )
-            ],
-            key=lambda item: (
-                _norm(item.get("artist")),
-                _norm(item.get("album")),
-                int(item.get("disc_number") or 0),
-                int(item.get("track_number") or 0),
-                _norm(item.get("title")),
-            ),
-        )
-        track_filter_sort_seconds = time.perf_counter() - track_started
+                or query in self._album_search_text.get(str(album.get("key") or ""), "")
+            ]
+            album_filter_seconds = time.perf_counter() - phase
+        elif view == "artists":
+            phase = time.perf_counter()
+            self._visible_artists = [
+                artist
+                for artist in self.artist_rows
+                if not query
+                or query in self._artist_search_text.get(str(artist.get("key") or ""), "")
+            ]
+            artist_filter_seconds = time.perf_counter() - phase
+        else:
+            phase = time.perf_counter()
+            self._visible_tracks = [
+                track
+                for track in self._sorted_catalog
+                if not query
+                or query in self._track_search_text.get(_track_key(track), "")
+            ]
+            track_filter_seconds = time.perf_counter() - phase
 
         layout_started = time.perf_counter()
-        self._layout_album_cards()
-        if self.current_view() == "artists" or self.artist_cards:
+        if view == "albums":
+            self._layout_album_cards()
+        elif view == "artists":
             self._layout_artist_cards()
-        if self.current_view() == "tracks":
+        else:
             self._rebuild_tracks()
             self._tracks_built = True
         layout_seconds = time.perf_counter() - layout_started
 
         self.last_filter_metrics = {
             "query_length": len(query),
-            "view": self.current_view(),
+            "view": view,
+            "computed_views": [view],
             "visible_album_count": len(self._visible_albums),
             "visible_artist_count": len(self._visible_artists),
             "visible_track_count": len(self._visible_tracks),
             "album_filter_seconds": round(album_filter_seconds, 6),
             "artist_filter_seconds": round(artist_filter_seconds, 6),
-            "track_filter_sort_seconds": round(track_filter_sort_seconds, 6),
+            "track_filter_sort_seconds": round(track_filter_seconds, 6),
             "layout_seconds": round(layout_seconds, 6),
             "total_seconds": round(time.perf_counter() - started, 6),
         }
 
+    def _cache_card(self, cache, key: str, card: QWidget) -> None:
+        cache[key] = card
+        cache.move_to_end(key)
+        while len(cache) > self._card_cache_limit:
+            _old_key, evicted = cache.popitem(last=False)
+            evicted.setParent(None)
+            evicted.deleteLater()
+
+    @staticmethod
+    def _grid_positions(grid: QGridLayout) -> dict[QWidget, tuple[int, int]]:
+        positions = {}
+        for index in range(grid.count()):
+            item = grid.itemAt(index)
+            widget = item.widget()
+            if widget is not None:
+                row, column, _row_span, _column_span = grid.getItemPosition(index)
+                positions[widget] = (row, column)
+        return positions
+
     def _layout_album_cards(self) -> None:
-        self._clear_grid(self.album_grid)
         width = max(400, self.album_scroll.viewport().width())
         columns = max(2, min(8, width // 190))
         self._album_columns = columns
         rendered = self._visible_albums[: self._album_render_limit]
-        rendered_keys = {str(album.get("key") or "") for album in rendered}
-        for key in list(self.cards):
-            if key in rendered_keys:
-                continue
-            card = self.cards.pop(key)
-            card.setParent(None)
-            card.deleteLater()
-        for index, album in enumerate(rendered):
+        positions = self._grid_positions(self.album_grid)
+        desired = {
+            str(album.get("key") or ""): divmod(index, columns)
+            for index, album in enumerate(rendered)
+        }
+
+        for key, card in list(self.cards.items()):
+            target = desired.get(key)
+            if target is None:
+                self.album_grid.removeWidget(card)
+                card.hide()
+                self.cards.pop(key)
+                self._cache_card(self._album_card_cache, key, card)
+            elif positions.get(card) != target:
+                self.album_grid.removeWidget(card)
+
+        for album in rendered:
             key = str(album.get("key") or "")
+            target = desired[key]
             card = self.cards.get(key)
             if card is None:
-                card = AlbumCard(album)
-                card.playRequested.connect(self.playAlbumRequested)
-                card.queueRequested.connect(self.queueAlbumRequested)
+                card = self._album_card_cache.pop(key, None)
+                if card is None:
+                    card = AlbumCard(album)
+                    card.playRequested.connect(self.playAlbumRequested)
+                    card.queueRequested.connect(self.queueAlbumRequested)
+                    path = self.artwork_paths.get(key, "")
+                    if path:
+                        card.set_cover(path)
                 self.cards[key] = card
-                path = self.artwork_paths.get(key, "")
-                if path:
-                    card.set_cover(path)
-            row, column = divmod(index, columns)
-            self.album_grid.addWidget(card, row, column, Qt.AlignTop)
+            if positions.get(card) != target:
+                self.album_grid.addWidget(card, target[0], target[1], Qt.AlignTop)
+            if card.isHidden():
+                card.show()
+
         row_count=(len(rendered)+columns-1)//columns if rendered else 0
         spacing=max(0,int(self.album_grid.verticalSpacing()))
         minimum_height=(
@@ -1680,32 +1801,46 @@ class LibraryBrowser(QWidget):
             )
 
     def _layout_artist_cards(self) -> None:
-        self._clear_grid(self.artist_grid)
         width = max(400, self.artist_scroll.viewport().width())
         columns = max(2, min(8, width // 190))
         self._artist_columns = columns
         rendered = self._visible_artists[: self._artist_render_limit]
-        rendered_keys = {str(artist.get("key") or "") for artist in rendered}
-        for key in list(self.artist_cards):
-            if key in rendered_keys:
-                continue
-            card = self.artist_cards.pop(key)
-            card.setParent(None)
-            card.deleteLater()
-        for index, artist in enumerate(rendered):
+        positions = self._grid_positions(self.artist_grid)
+        desired = {
+            str(artist.get("key") or ""): divmod(index, columns)
+            for index, artist in enumerate(rendered)
+        }
+
+        for key, card in list(self.artist_cards.items()):
+            target = desired.get(key)
+            if target is None:
+                self.artist_grid.removeWidget(card)
+                card.hide()
+                self.artist_cards.pop(key)
+                self._cache_card(self._artist_card_cache, key, card)
+            elif positions.get(card) != target:
+                self.artist_grid.removeWidget(card)
+
+        for artist in rendered:
             key = str(artist.get("key") or "")
+            target = desired[key]
             card = self.artist_cards.get(key)
             if card is None:
-                card = ArtistCard(artist)
-                card.openRequested.connect(self._artist_opened)
-                card.playRequested.connect(self.playArtistRequested)
-                card.photoRequested.connect(self.artistPhotoFileRequested)
+                card = self._artist_card_cache.pop(key, None)
+                if card is None:
+                    card = ArtistCard(artist)
+                    card.openRequested.connect(self._artist_opened)
+                    card.playRequested.connect(self.playArtistRequested)
+                    card.photoRequested.connect(self.artistPhotoFileRequested)
+                    artist_path=self.artist_image_paths.get(key,"")
+                    if artist_path:
+                        card.set_image(artist_path,artist_photo=True)
                 self.artist_cards[key] = card
-                artist_path=self.artist_image_paths.get(key,"")
-                if artist_path:
-                    card.set_image(artist_path,artist_photo=True)
-            row, column = divmod(index, columns)
-            self.artist_grid.addWidget(card, row, column, Qt.AlignTop)
+            if positions.get(card) != target:
+                self.artist_grid.addWidget(card, target[0], target[1], Qt.AlignTop)
+            if card.isHidden():
+                card.show()
+
         row_count=(len(rendered)+columns-1)//columns if rendered else 0
         spacing=max(0,int(self.artist_grid.verticalSpacing()))
         minimum_height=(
