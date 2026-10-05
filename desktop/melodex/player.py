@@ -345,6 +345,8 @@ class FlowPlayer(QObject):
             return False
 
     def play_pause(self) -> None:
+        if self._crossfading:
+            self._cancel_transition(stop_incoming=True, count_abort=True)
         player = self.players[self.active]
         if player.playbackState() == QMediaPlayer.PlayingState:
             player.pause()
@@ -403,6 +405,8 @@ class FlowPlayer(QObject):
         target = max(0, int(ms))
         self._runtime_metrics["seek_requests"] += 1
         self._last_seek_requested_ms = target
+        if self._crossfading:
+            self._cancel_transition(stop_incoming=True, count_abort=True)
         self.players[self.active].setPosition(target)
 
     def set_volume(self, value: float) -> None:
