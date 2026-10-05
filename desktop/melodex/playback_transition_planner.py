@@ -11,7 +11,8 @@ class PlaybackTransitionPlanner:
     resolution may perform database or network work. On NAS-backed or remote
     collections those operations can take far longer than a 100 ms playback
     tick, so this adapter delegates both to Melodex's bounded background
-    scheduler. FlowPlayer receives only an in-memory plan and prepared resource.
+    scheduler as two independent tokenized jobs. FlowPlayer receives only an
+    in-memory plan and prepared resource, and neither can delay the other.
     """
 
     def __init__(
@@ -41,29 +42,37 @@ class PlaybackTransitionPlanner:
             self.player.reject_transition_plan(int(token))
             return
 
-        def calculate() -> dict[str, Any]:
+        def calculate_plan() -> dict[str, Any]:
             a = self.flow.cached_analysis_for(self.path_for(left))
             b = self.flow.cached_analysis_for(self.path_for(right))
-            plan = dict(self.flow.transition(a, b).as_dict())
-            try:
-                resolved = dict(self.providers.resolve(dict(right)))
-            except Exception:
-                resolved = {}
-            return {"plan": plan, "resolved": resolved}
+            return dict(self.flow.transition(a, b).as_dict())
 
+        def resolve_playback() -> dict[str, Any]:
+            return dict(self.providers.resolve(dict(right)))
+
+        generation = int(token)
         self.run_async(
-            calculate,
-            lambda payload, generation=int(token): self.player.apply_transition_plan(
+            calculate_plan,
+            lambda plan, generation=generation: self.player.apply_transition_plan(
                 generation,
-                dict((payload or {}).get("plan") or {}),
-                dict((payload or {}).get("resolved") or {}),
+                plan,
             ),
-            lambda _error, generation=int(token): self.player.reject_transition_plan(
+            lambda _error, generation=generation: self.player.reject_transition_plan(
                 generation,
             ),
             priority="prefetch",
             task_name="playback-transition-plan",
             replace_key="playback-transition-plan",
+        )
+        self.run_async(
+            resolve_playback,
+            lambda resolved, generation=generation:
+                self.player.apply_transition_resource(generation, resolved),
+            lambda _error, generation=generation:
+                self.player.reject_transition_resource(generation),
+            priority="prefetch",
+            task_name="playback-transition-resource",
+            replace_key="playback-transition-resource",
         )
 
 
