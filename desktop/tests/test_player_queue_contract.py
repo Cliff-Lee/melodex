@@ -190,3 +190,39 @@ def test_album_order_diagnostics_are_structural_and_redacted():
     assert "private-one" not in encoded
 
     player.close()
+
+def test_audio_processing_snapshot_reports_effective_transition_and_normalization():
+    player, _loaded = _player()
+    queue = [{"title": "private one"}, {"title": "private two"}]
+
+    player.set_queue(queue, 0, False, intent="album")
+    album = player.audio_processing_snapshot()
+    assert album == {
+        "intent": "album",
+        "transition_state": "off",
+        "transition_ms": 0,
+        "normalization": "off",
+    }
+
+    player.set_queue(queue, 0, False, intent="journey")
+    planned = player.audio_processing_snapshot()
+    assert planned["intent"] == "journey"
+    assert planned["transition_state"] == "planned"
+    assert planned["transition_ms"] == 4500
+    assert planned["normalization"] == "off"
+
+    player._planned_transition_ms = 3200
+    player._crossfading = True
+    player._transition_ms = 3200
+    active = player.audio_processing_snapshot()
+    assert active["transition_state"] == "active"
+    assert active["transition_ms"] == 3200
+    assert active["normalization"] == "off"
+
+    player.set_queue(queue, 0, False, intent="playlist")
+    playlist = player.audio_processing_snapshot()
+    assert playlist["transition_state"] == "off"
+    assert playlist["transition_ms"] == 0
+    assert playlist["normalization"] == "off"
+
+    player.close()

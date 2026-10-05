@@ -254,6 +254,12 @@ class MainWindow(QMainWindow):
             page_titles=self.page_titles,
         )
         self.player.trackChanged.connect(self.playback_feature.on_track_changed)
+        self.player.audioProcessingChanged.connect(
+            self.playback_feature.on_audio_processing_changed
+        )
+        self.playback_feature.on_audio_processing_changed(
+            self.player.audio_processing_snapshot()
+        )
         self.player.positionChanged.connect(self.playback_feature.on_position)
         self.player.playingChanged.connect(self.playback_feature.on_playing_changed)
         self.player.queueChanged.connect(

@@ -208,8 +208,16 @@ malformed values and duplicate disc/track positions.
 
 ### P14k — Visible audio settings
 
-Expose transition/normalization state so users can see whether Melodex is applying
-audio behaviour. Do not imply ReplayGain or normalization when it is not enabled.
+The persistent player and Now Playing view show the effective transition behavior:
+Journey crossfade is labeled planned or active with its duration, while album,
+playlist, provider and manual queue playback show crossfade off. Both surfaces
+explicitly show normalization off because Melodex currently applies no normalization
+processor. State updates follow playback intent and transition-plan/crossfade events;
+they do not run from the 100 ms playback tick.
+
+The visible state is derived from the player's effective runtime state and contains no
+track metadata. Regression coverage checks album, Journey planned/active, and playlist
+semantics, including explicit normalization-off reporting.
 
 ### P14l — Scan optimization
 

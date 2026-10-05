@@ -37,6 +37,7 @@ class FlowPlayer(QObject):
     positionChanged = Signal(int, int)
     playingChanged = Signal(bool)
     queueChanged = Signal(list)
+    audioProcessingChanged = Signal(dict)
     manualAdvanced = Signal(dict, dict, int, int)
     error = Signal(str)
     _transitionPlanReady = Signal(int, int, object)
@@ -220,6 +221,7 @@ class FlowPlayer(QObject):
         self._invalidate_transition_plan()
         self.queueChanged.emit(self.queue)
         self.playingChanged.emit(False)
+        self._emit_audio_processing_state()
 
     def stop(self) -> None:
         self._cancel_transition(stop_incoming=True, count_abort=True)
@@ -327,6 +329,37 @@ class FlowPlayer(QObject):
             self.gateway.validate_resource(resolved)
         return QUrl(url)
 
+    def audio_processing_snapshot(self) -> dict[str, Any]:
+        """Describe effective audio behavior without exposing track metadata."""
+        if self._playback_intent == "journey" and self.index + 1 < len(self.queue):
+            if self._crossfading:
+                transition_state = "active"
+                transition_ms = max(0, int(self._transition_ms))
+            else:
+                transition_state = "planned"
+                transition_ms = (
+                    int(self._planned_transition_ms)
+                    if self._planned_transition_target == self.index + 1
+                    else 4500
+                )
+        else:
+            transition_state = "off"
+            transition_ms = 0
+        return {
+            "intent": self._playback_intent,
+            "transition_state": transition_state,
+            "transition_ms": transition_ms,
+            "normalization": "off",
+        }
+
+    def _emit_audio_processing_state(self) -> None:
+        snapshot = self.audio_processing_snapshot()
+        signature = tuple(sorted(snapshot.items()))
+        if signature == getattr(self, "_last_audio_processing_signature", None):
+            return
+        self._last_audio_processing_signature = signature
+        self.audioProcessingChanged.emit(snapshot)
+
     def _clear_transition_state(self) -> None:
         self._crossfading = False
         self._transition_ms = 0
@@ -341,6 +374,7 @@ class FlowPlayer(QObject):
     ) -> None:
         if not self._crossfading:
             self._clear_transition_state()
+            self._emit_audio_processing_state()
             return
         incoming = (
             self._crossfade_deck
@@ -355,6 +389,7 @@ class FlowPlayer(QObject):
         if count_abort:
             self._runtime_metrics["transition_aborts"] += 1
         self._clear_transition_state()
+        self._emit_audio_processing_state()
 
     def _stop_all_decks(self) -> None:
         for deck, player in enumerate(self.players):
@@ -495,11 +530,14 @@ class FlowPlayer(QObject):
         self._planned_transition_target = -1
         self._planned_transition_ms = 4500
         if self._playback_intent != "journey":
+            self._emit_audio_processing_state()
             return
         if not (0 <= self.index < len(self.queue)) or target >= len(self.queue):
+            self._emit_audio_processing_state()
             return
         if not self.transition_for:
             self._planned_transition_target = target
+            self._emit_audio_processing_state()
             return
 
         current = dict(self.queue[self.index])
@@ -519,6 +557,7 @@ class FlowPlayer(QObject):
 
         if self._transition_submit is None:
             work()
+            self._emit_audio_processing_state()
             return
         try:
             accepted = bool(
@@ -534,6 +573,7 @@ class FlowPlayer(QObject):
         if not accepted:
             self._runtime_metrics["transition_plan_submit_rejected"] += 1
             self._planned_transition_target = target
+        self._emit_audio_processing_state()
 
     def _apply_transition_plan(
         self,
@@ -557,6 +597,7 @@ class FlowPlayer(QObject):
             self._runtime_metrics["transition_plan_completed"] += 1
         else:
             self._runtime_metrics["transition_plan_failures"] += 1
+        self._emit_audio_processing_state()
 
     def _transition_duration(self) -> int:
         if self._playback_intent != "journey":
@@ -579,6 +620,7 @@ class FlowPlayer(QObject):
         self._crossfade_deck = next_deck
         self._runtime_metrics["crossfade_started"] += 1
         self._transition_ms = self._transition_duration()
+        self._emit_audio_processing_state()
         self.outputs[next_deck].setVolume(0.0)
         try:
             resolved = self._resolve_for_playback(next_index)
