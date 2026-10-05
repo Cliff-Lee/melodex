@@ -25,6 +25,7 @@ def _expired(value: Any, skew_seconds: int = 15) -> bool:
 
 class FlowPlayer(QObject):
     trackChanged = Signal(dict)
+    transitionPlanRequested = Signal(int, object, object)
     positionChanged = Signal(int, int)
     playingChanged = Signal(bool)
     queueChanged = Signal(list)
@@ -56,6 +57,9 @@ class FlowPlayer(QObject):
         self._crossfade_target_index: int | None = None
         self._crossfade_deck: int | None = None
         self._volume = 1.0
+        self._transition_plan_generation = 0
+        self._transition_plan_duration_ms = 4500
+        self._transition_plan_ready = False
         # P14 runtime counters are deliberately metadata-free. They exist so a
         # beta tester can export evidence of playback/transport divergence
         # without exposing track names, paths, URLs or provider credentials.
@@ -71,6 +75,11 @@ class FlowPlayer(QObject):
             "natural_ends": 0,
             "transition_aborts": 0,
             "queue_position_commits": 0,
+            "transition_plan_requests": 0,
+            "transition_plan_applied": 0,
+            "transition_plan_stale": 0,
+            "transition_plan_failures": 0,
+            "transition_plan_fallbacks": 0,
         }
         self._last_seek_requested_ms = 0
         self._timer = QTimer(self)
@@ -228,12 +237,54 @@ class FlowPlayer(QObject):
             "transition_target_index": transition_target,
             "transition_deck": transition_deck,
             "transition_state_valid": bool(transition_valid),
+            "transition_plan_generation": int(self._transition_plan_generation),
+            "transition_plan_ready": bool(self._transition_plan_ready),
+            "transition_plan_duration_ms": int(self._transition_plan_duration_ms),
             "playing": bool(playing),
             "position_ms": int(player.position()),
             "duration_ms": int(player.duration()),
             "seekable": bool(player.isSeekable()),
             "last_seek_requested_ms": int(self._last_seek_requested_ms),
         }
+
+    def _invalidate_transition_plan(self) -> int:
+        self._transition_plan_generation += 1
+        self._transition_plan_duration_ms = 4500
+        self._transition_plan_ready = False
+        return self._transition_plan_generation
+
+    def _request_transition_plan(self) -> None:
+        token = self._invalidate_transition_plan()
+        if not (0 <= self.index < len(self.queue) - 1):
+            return
+        self._runtime_metrics["transition_plan_requests"] += 1
+        self.transitionPlanRequested.emit(
+            token,
+            dict(self.queue[self.index]),
+            dict(self.queue[self.index + 1]),
+        )
+
+    def apply_transition_plan(self, token: int, plan: object) -> bool:
+        if int(token) != self._transition_plan_generation:
+            self._runtime_metrics["transition_plan_stale"] += 1
+            return False
+        row = dict(plan or {}) if isinstance(plan, dict) else {}
+        try:
+            duration = max(300, int(row.get("duration_ms", 4500)))
+        except (TypeError, ValueError):
+            duration = 4500
+        self._transition_plan_duration_ms = duration
+        self._transition_plan_ready = True
+        self._runtime_metrics["transition_plan_applied"] += 1
+        return True
+
+    def reject_transition_plan(self, token: int) -> bool:
+        if int(token) != self._transition_plan_generation:
+            self._runtime_metrics["transition_plan_stale"] += 1
+            return False
+        self._transition_plan_ready = False
+        self._runtime_metrics["transition_plan_failures"] += 1
+        return True
 
     def _resolve_for_playback(self, index: int) -> dict[str, Any]:
         resolved = dict(self.resolver(dict(self.queue[index])))
@@ -314,6 +365,7 @@ class FlowPlayer(QObject):
         if announce_queue:
             self._runtime_metrics["queue_position_commits"] += 1
             self.queueChanged.emit(self.queue)
+        self._request_transition_plan()
         self._runtime_metrics["track_commits"] += 1
         self.trackChanged.emit(dict(self.queue[self.index]))
         return True
@@ -420,13 +472,7 @@ class FlowPlayer(QObject):
     def _transition_duration(self) -> int:
         if self.index + 1 >= len(self.queue):
             return 0
-        if not self.transition_for:
-            return 4500
-        try:
-            plan = self.transition_for(self.queue[self.index], self.queue[self.index + 1]) or {}
-            return max(300, int(plan.get("duration_ms", 4500)))
-        except Exception:
-            return 4500
+        return int(self._transition_plan_duration_ms)
 
     def _begin_crossfade(self) -> None:
         if self._crossfading or self.index + 1 >= len(self.queue):
@@ -437,6 +483,8 @@ class FlowPlayer(QObject):
         self._crossfade_target_index = next_index
         self._crossfade_deck = next_deck
         self._runtime_metrics["crossfade_started"] += 1
+        if not self._transition_plan_ready:
+            self._runtime_metrics["transition_plan_fallbacks"] += 1
         self._transition_ms = self._transition_duration()
         self.outputs[next_deck].setVolume(0.0)
         try:
