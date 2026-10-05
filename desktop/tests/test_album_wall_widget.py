@@ -338,8 +338,11 @@ def test_album_wall_coalesces_motion_and_requests_art_after_settle():
     })
     widget.show()
     app.processEvents()
+    QTest.qWait(110)
+    app.processEvents()
     widget._art_timer.stop()
     widget._art_requested.clear()
+    widget.view._settle_timer.setInterval(200)
 
     changes = []
     settles = []
@@ -358,7 +361,7 @@ def test_album_wall_coalesces_motion_and_requests_art_after_settle():
     assert widget.view.motion_active is True
     assert batches == []
 
-    QTest.qWait(120)
+    QTest.qWait(240)
     app.processEvents()
 
     assert len(settles) == 1
