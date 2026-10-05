@@ -137,7 +137,7 @@ def test_playback_tick_never_calls_legacy_transition_callback():
     player.gateway.close()
 
 
-def test_tick_never_resolves_upcoming_playback_resource_inline():
+def test_transition_tick_never_resolves_upcoming_playback_resource_inline():
     QMediaPlayer = _media_player_type()
     import pytest
 
@@ -183,6 +183,67 @@ def test_tick_never_resolves_upcoming_playback_resource_inline():
     assert resolver_calls == []
     assert player._crossfading is False
     assert player.diagnostics_snapshot()["transition_playback_misses"] == 1
+
+    player.gateway.close()
+
+
+def test_transition_natural_advance_reuses_prepared_resource_without_resolver():
+    import pytest
+
+    try:
+        from PySide6.QtMultimedia import QMediaPlayer
+    except ImportError as exc:
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    player = _player()
+    resolver_calls = []
+
+    def forbidden_resolve(_index):
+        resolver_calls.append(True)
+        raise AssertionError("prepared next track was resolved again")
+
+    class FakePlayer:
+        def __init__(self):
+            self.source = None
+            self.played = 0
+
+        def setSource(self, source):
+            self.source = source
+
+        def play(self):
+            self.played += 1
+
+        def stop(self):
+            return None
+
+        def playbackState(self):
+            return QMediaPlayer.PlayingState
+
+        def duration(self):
+            return 0
+
+        def position(self):
+            return 0
+
+        def isSeekable(self):
+            return True
+
+    player.players = [FakePlayer(), FakePlayer()]
+    player.queue = [
+        {"track_id": "a", "local_path": "/music/a.flac"},
+        {"track_id": "b", "local_path": "/music/b.flac"},
+    ]
+    player.index = 0
+    player.active = 0
+    player._prepared_upcoming = dict(player.queue[1])
+    player._resolve_for_playback = forbidden_resolve
+
+    assert player._load_index(1, True, deck=0, announce_queue=True) is True
+
+    assert resolver_calls == []
+    assert player.index == 1
+    assert player.players[0].played == 1
+    assert player._runtime_metrics["transition_playback_uses"] == 1
 
     player.gateway.close()
 
