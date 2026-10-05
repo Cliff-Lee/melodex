@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QBrush, QColor, QLinearGradient, QPainter, QPen, QPixmap
+from PySide6.QtGui import QBrush, QColor, QImage, QLinearGradient, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
     QDialog,
     QFrame,
@@ -145,6 +145,28 @@ class CoverLabel(QLabel):
                 x = max(0, (pix.width() - self._size) // 2)
                 y = max(0, (pix.height() - self._size) // 2)
                 pix = pix.copy(x, y, self._size, self._size)
+        self.setPixmap(pix)
+
+    def set_cover_image(
+        self,
+        image: QImage,
+        *,
+        title: str = "",
+        key: str = "",
+    ) -> None:
+        pix = QPixmap.fromImage(image) if isinstance(image, QImage) and not image.isNull() else QPixmap()
+        if pix.isNull():
+            pix = placeholder_cover(title, key or title, self._size)
+        elif pix.width() != self._size or pix.height() != self._size:
+            pix = pix.scaled(
+                self._size,
+                self._size,
+                Qt.KeepAspectRatioByExpanding,
+                Qt.SmoothTransformation,
+            )
+            x = max(0, (pix.width() - self._size) // 2)
+            y = max(0, (pix.height() - self._size) // 2)
+            pix = pix.copy(x, y, self._size, self._size)
         self.setPixmap(pix)
 
 
