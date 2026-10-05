@@ -157,6 +157,43 @@ _LIBRARY_VIEW_METRIC_FIELDS = (
     "empty",
 )
 
+_ALBUM_WALL_RUNTIME_FIELDS = (
+    "viewport_changes",
+    "visible_art_scans",
+    "visible_art_batches",
+    "visible_art_items_requested",
+    "artwork_apply_batches",
+    "artwork_items_applied",
+    "visible_art_scan_last_ms",
+    "visible_art_scan_max_ms",
+    "artwork_apply_last_ms",
+    "artwork_apply_max_ms",
+    "tile_count",
+    "art_requested_count",
+    "online_requested_count",
+)
+
+_PLAYBACK_RUNTIME_FIELDS = (
+    "ticks",
+    "track_commits",
+    "seek_requests",
+    "manual_next",
+    "manual_previous",
+    "crossfade_started",
+    "crossfade_completed",
+    "queue_length",
+    "queue_index",
+    "queue_index_valid",
+    "active_deck",
+    "crossfading",
+    "transition_ms",
+    "playing",
+    "position_ms",
+    "duration_ms",
+    "seekable",
+    "last_seek_requested_ms",
+)
+
 _RESPONSIVENESS_FIELDS = (
     "interval_ms",
     "long_task_threshold_ms",
@@ -386,6 +423,20 @@ def build_diagnostics(
     )
     if artwork_priority:
         performance["artwork_priority"] = artwork_priority
+
+    album_wall_runtime = _metric_summary(
+        supplied_ui.get("album_wall_runtime"),
+        _ALBUM_WALL_RUNTIME_FIELDS,
+    )
+    if album_wall_runtime:
+        performance["album_wall_runtime"] = album_wall_runtime
+
+    playback_runtime = _metric_summary(
+        supplied_ui.get("playback_runtime"),
+        _PLAYBACK_RUNTIME_FIELDS,
+    )
+    if playback_runtime:
+        performance["playback_runtime"] = playback_runtime
 
     background_scheduler = _metric_summary(
         supplied_ui.get("background_scheduler"),
