@@ -192,6 +192,25 @@ class FlowPlayer(QObject):
             (queue_length == 0 and self.index == -1)
             or (queue_length > 0 and 0 <= self.index < queue_length)
         )
+        transition_target = self._crossfade_target_index
+        transition_deck = self._crossfade_deck
+        transition_valid = (
+            not self._crossfading
+            or (
+                transition_target == self.index + 1
+                and transition_target is not None
+                and 0 <= transition_target < queue_length
+                and transition_deck is not None
+                and 0 <= transition_deck < len(self.players)
+                and transition_deck != self.active
+            )
+        )
+        playing = player.playbackState() == QMediaPlayer.PlayingState
+        if self._crossfading and transition_deck is not None:
+            playing = playing or (
+                self.players[transition_deck].playbackState()
+                == QMediaPlayer.PlayingState
+            )
         return {
             **dict(self._runtime_metrics),
             "queue_length": int(queue_length),
@@ -200,7 +219,10 @@ class FlowPlayer(QObject):
             "active_deck": int(self.active),
             "crossfading": bool(self._crossfading),
             "transition_ms": int(self._transition_ms),
-            "playing": player.playbackState() == QMediaPlayer.PlayingState,
+            "transition_target_index": transition_target,
+            "transition_deck": transition_deck,
+            "transition_state_valid": bool(transition_valid),
+            "playing": bool(playing),
             "position_ms": int(player.position()),
             "duration_ms": int(player.duration()),
             "seekable": bool(player.isSeekable()),
