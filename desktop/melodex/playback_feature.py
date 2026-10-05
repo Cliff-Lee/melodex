@@ -109,6 +109,12 @@ class PlaybackFeature(QObject):
         self._prefetch_sequence = 0
         self._prefetch_delay_ms = 350
         self._seek_interaction = SeekInteraction()
+        self._audio_processing = {
+            "intent": "manual_queue",
+            "transition_state": "off",
+            "transition_ms": 0,
+            "normalization": "off",
+        }
         self.now_playing_page = QWidget()
         self.now_playing_built = False
         self.queue_panel = self._build_queue_panel()
@@ -279,8 +285,14 @@ class PlaybackFeature(QObject):
         self.now_meta = QLabel("")
         self.now_meta.setObjectName("nowPlayingMeta")
         self.now_meta.setOpenExternalLinks(True)
+        self.audio_processing_label = QLabel("")
+        self.audio_processing_label.setObjectName("audioProcessingState")
+        self.audio_processing_label.setToolTip(
+            "Shows the transition behavior in effect. Melodex does not currently apply normalization."
+        )
         text_column.addWidget(self.now_title)
         text_column.addWidget(self.now_meta)
+        text_column.addWidget(self.audio_processing_label)
         self.seek = SeekSlider(Qt.Horizontal)
         self.seek.setRange(0, 1000)
         self.seek.seekStarted.connect(self._seek_started)
@@ -362,6 +374,41 @@ class PlaybackFeature(QObject):
         )
         self.living_canvas.show_lyric_flow_fullscreen()
 
+    def on_audio_processing_changed(self, snapshot: object) -> None:
+        self._audio_processing = (
+            dict(snapshot) if isinstance(snapshot, dict) else {}
+        )
+        intent = str(self._audio_processing.get("intent") or "manual_queue")
+        state = str(self._audio_processing.get("transition_state") or "off")
+        transition_ms = max(0, int(self._audio_processing.get("transition_ms") or 0))
+        if intent == "journey" and state in {"planned", "active"}:
+            seconds = transition_ms / 1000
+            transition = (
+                f"Journey crossfade {state} · {seconds:g} s"
+            )
+        elif intent == "journey":
+            transition = "Journey crossfade off"
+        else:
+            intent_label = {
+                "album": "Album",
+                "playlist": "Playlist",
+                "manual_queue": "Queue",
+                "provider": "Provider",
+            }.get(intent, "Queue")
+            transition = f"{intent_label} · crossfade off"
+        normalization = str(
+            self._audio_processing.get("normalization") or "off"
+        )
+        normalization_label = (
+            "Normalization on"
+            if normalization == "on"
+            else "Normalization off"
+        )
+        summary = f"{transition} · {normalization_label}"
+        self.audio_processing_label.setText(summary)
+        if hasattr(self, "now_audio_processing_label"):
+            self.now_audio_processing_label.setText(summary)
+
     def on_playing_changed(self, playing: bool) -> None:
         self._playing = bool(playing)
         self.play_button.setText("❚❚" if self._playing else "▶")
@@ -442,6 +489,13 @@ class PlaybackFeature(QObject):
             "Now playing",
             "Artwork, lyrics and context for what is playing now.",
         )
+        self.now_audio_processing_label = QLabel("")
+        self.now_audio_processing_label.setObjectName("audioProcessingState")
+        self.now_audio_processing_label.setToolTip(
+            "Shows the transition behavior in effect. Melodex does not currently apply normalization."
+        )
+        l.addWidget(self.now_audio_processing_label)
+        self.on_audio_processing_changed(self._audio_processing)
         self.now_views = QTabWidget()
         self.rich_now = RichNowPlayingWidget(
             self.metadata,
