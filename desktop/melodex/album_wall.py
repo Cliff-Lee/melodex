@@ -361,12 +361,27 @@ class _WallView(QGraphicsView):
         self._queue_viewport_changed(live_resize=True)
 
     def _restore_resize_anchor(self) -> None:
-        if self._resize_in_progress and self._resize_anchor is not None:
-            self._restoring_resize_anchor = True
-            try:
-                self.centerOn(self._resize_anchor)
-            finally:
-                self._restoring_resize_anchor = False
+        if not self._resize_in_progress or self._resize_anchor is None:
+            return
+        scale = max(0.0001, float(self.transform().m11()))
+        half_width = self.viewport().width() / (2.0 * scale) + 12.0
+        half_height = self.viewport().height() / (2.0 * scale) + 12.0
+        anchor_bounds = QRectF(
+            self._resize_anchor.x() - half_width,
+            self._resize_anchor.y() - half_height,
+            half_width * 2.0,
+            half_height * 2.0,
+        )
+        scene = self.scene()
+        if scene is not None:
+            # Keep enough invisible scene margin for the view to center on its
+            # previous point after its viewport grows beyond the item bounds.
+            scene.setSceneRect(scene.sceneRect().united(anchor_bounds))
+        self._restoring_resize_anchor = True
+        try:
+            self.centerOn(self._resize_anchor)
+        finally:
+            self._restoring_resize_anchor = False
 
 
 class AlbumWallWidget(QWidget):
