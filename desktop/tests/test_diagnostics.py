@@ -281,6 +281,24 @@ def test_diagnostics_filters_ui_performance_fields():
                 "private_album": "Secret Album",
                 "private_path": "/Users/example/Music/Secret.flac",
             },
+            "artwork_image_cache": {
+                "requests": 240,
+                "hits": 130,
+                "peek_hits": 44,
+                "misses": 66,
+                "negative_hits": 7,
+                "decode_failures": 3,
+                "deduplicated_waits": 9,
+                "deduplicated_timeouts": 0,
+                "evictions": 12,
+                "decoded_images": 63,
+                "entries": 51,
+                "negative_entries": 2,
+                "inflight": 1,
+                "bytes": 5341184,
+                "budget_bytes": 67108864,
+                "private_path": "/Users/example/Music/Secret.jpg",
+            },
             "playback_runtime": {
                 "ticks": 9012,
                 "track_commits": 8,
@@ -431,6 +449,14 @@ def test_diagnostics_filters_ui_performance_fields():
     assert wall_runtime["motion_active"] is False
     assert wall_runtime["artwork_apply_max_ms"] == 87.2
     assert wall_runtime["tile_count"] == 954
+    art_cache = payload["performance"]["artwork_image_cache"]
+    assert art_cache["requests"] == 240
+    assert art_cache["hits"] == 130
+    assert art_cache["peek_hits"] == 44
+    assert art_cache["deduplicated_waits"] == 9
+    assert art_cache["entries"] == 51
+    assert art_cache["budget_bytes"] == 67108864
+    assert "private_path" not in art_cache
     playback = payload["performance"]["playback_runtime"]
     assert playback["ticks"] == 9012
     assert playback["seek_requests"] == 4

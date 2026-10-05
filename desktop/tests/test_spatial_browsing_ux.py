@@ -64,6 +64,17 @@ def test_album_wall_starts_at_readable_scale_and_overview_is_explicit():
 
     initial = float(widget.view.transform().m11())
     assert 0.90 <= initial <= 1.05
+
+    widget.view.centerOn(240, 180)
+    widget.view.scale(1.15, 1.15)
+    old_center = widget.view.mapToScene(widget.view.viewport().rect().center())
+    old_scale = float(widget.view.transform().m11())
+    widget.set_model(_album_model(80), {})
+    app.processEvents()
+    new_center = widget.view.mapToScene(widget.view.viewport().rect().center())
+    assert abs(float(widget.view.transform().m11()) - old_scale) < 0.01
+    assert abs(new_center.x() - old_center.x()) < 3
+    assert abs(new_center.y() - old_center.y()) < 3
     assert (
         widget.view.horizontalScrollBarPolicy()
         == Qt.ScrollBarAlwaysOff
@@ -121,8 +132,25 @@ def test_music_map_defaults_to_selection_focused_relationships():
     app.processEvents()
 
     assert widget.edge_mode.currentData() == "focused"
+    assert widget.edge_mode.isHidden()
     assert len(widget.edge_items) == 0
-    assert widget.view.minimumHeight() >= 500
+    widget.connections_button.click()
+    app.processEvents()
+    assert widget.edge_mode.isVisible()
+    assert widget.node_items["a"].boundingRect().width() == 190.0
+    assert widget.node_items["a"].boundingRect().height() == 126.0
+    assert widget.view.minimumHeight() >= 340
+
+    widget.view.centerOn(500, 400)
+    widget.view.scale(1.2, 1.2)
+    before_center = widget.view.mapToScene(widget.view.viewport().rect().center())
+    before_scale = float(widget.view.transform().m11())
+    widget.set_map(model, ref_map)
+    app.processEvents()
+    after_center = widget.view.mapToScene(widget.view.viewport().rect().center())
+    assert abs(float(widget.view.transform().m11()) - before_scale) < 0.01
+    assert abs(after_center.x() - before_center.x()) < 3
+    assert abs(after_center.y() - before_center.y()) < 3
 
     widget._select_ref("a")
     app.processEvents()
@@ -135,6 +163,148 @@ def test_music_map_defaults_to_selection_focused_relationships():
     assert len(widget.edge_items) == 2
 
     widget.close()
+    app.processEvents()
+
+
+def test_album_wall_pan_and_zoom_survive_repeated_resizes():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    try:
+        from PySide6.QtWidgets import QApplication
+        from melodex.album_wall import AlbumWallWidget
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    widget = AlbumWallWidget()
+    widget.resize(1000, 700)
+    widget.show()
+    widget.set_model(_album_model(80), {})
+    app.processEvents()
+
+    widget.view.centerOn(900, 500)
+    widget.view.scale(1.15, 1.15)
+    app.processEvents()
+    center = widget.view.mapToScene(widget.view.viewport().rect().center())
+    scale = float(widget.view.transform().m11())
+
+    for size in ((820, 560), (1180, 780), (940, 660), (760, 520)):
+        widget.resize(*size)
+        app.processEvents()
+        center_after = widget.view.mapToScene(widget.view.viewport().rect().center())
+        assert abs(center_after.x() - center.x()) < 4
+        assert abs(center_after.y() - center.y()) < 4
+        assert abs(float(widget.view.transform().m11()) - scale) < 0.01
+
+    widget.close()
+    app.processEvents()
+
+
+def test_music_map_pan_and_zoom_survive_repeated_resizes():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    try:
+        from PySide6.QtWidgets import QApplication
+        from melodex.music_map import MusicMapWidget
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    widget = MusicMapWidget()
+    widget.resize(1100, 760)
+    widget.show()
+    nodes = [
+        {"ref": f"r{i}", "artist": f"Artist {i}", "title": f"Track {i}",
+         "x": (i % 5) / 2 - 1, "y": (i // 5) / 2 - 1}
+        for i in range(20)
+    ]
+    refs = {
+        row["ref"]: {"track_id": row["ref"], "artist": row["artist"], "title": row["title"]}
+        for row in nodes
+    }
+    widget.set_map({"nodes": nodes, "edges": [], "analysed": 20}, refs)
+    app.processEvents()
+
+    widget.view.centerOn(700, 410)
+    widget.view.scale(1.2, 1.2)
+    app.processEvents()
+    center = widget.view.mapToScene(widget.view.viewport().rect().center())
+    scale = float(widget.view.transform().m11())
+
+    for size in ((820, 560), (1220, 800), (960, 640), (760, 520)):
+        widget.resize(*size)
+        app.processEvents()
+        center_after = widget.view.mapToScene(widget.view.viewport().rect().center())
+        assert abs(center_after.x() - center.x()) < 4
+        assert abs(center_after.y() - center.y()) < 4
+        assert abs(float(widget.view.transform().m11()) - scale) < 0.01
+
+    widget.close()
+    app.processEvents()
+
+
+def test_main_window_resize_stays_stable_and_restores_geometry(monkeypatch, tmp_path: Path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    try:
+        from PySide6.QtTest import QTest
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    class Settings:
+        values = {}
+
+        def __init__(self, *_args):
+            pass
+
+        def value(self, key):
+            return self.values.get(key)
+
+        def setValue(self, key, value):
+            self.values[key] = value
+
+    monkeypatch.setattr(main_window, "QSettings", Settings)
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+
+    app = QApplication.instance() or QApplication([])
+    screen = app.primaryScreen()
+    available = screen.availableGeometry()
+    window = main_window.MainWindow()
+    window.show()
+    app.processEvents()
+
+    sizes = (
+        (int(available.width() * 0.72), int(available.height() * 0.72)),
+        (int(available.width() * 0.92), int(available.height() * 0.88)),
+        (int(available.width() * 0.78), int(available.height() * 0.76)),
+    )
+    for width, height in sizes:
+        window.resize(width, height)
+        app.processEvents()
+        target_y = max(
+            available.top() + 12,
+            available.bottom() - window.height() - 12,
+        )
+        window.move(available.left() + 12, target_y)
+        app.processEvents()
+        QTest.qWait(80)
+        stable_geometry = window.geometry()
+        QTest.qWait(80)
+        assert window.geometry() == stable_geometry
+        assert window.width() <= available.width()
+        assert window.height() <= available.height()
+        assert window.frameGeometry().bottom() < available.bottom()
+
+    saved_geometry = window.geometry()
+    window.close()
+    app.processEvents()
+
+    restored = main_window.MainWindow()
+    assert restored.geometry() == saved_geometry
+    restored.close()
     app.processEvents()
 
 
@@ -153,6 +323,9 @@ def test_spatial_pages_use_progressive_disclosure(monkeypatch, tmp_path: Path):
     monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
 
     window = main_window.MainWindow()
+    available = app.primaryScreen().availableGeometry()
+    assert window.width() <= available.width()
+    assert window.height() <= available.height()
     window.show()
     app.processEvents()
 

@@ -178,6 +178,24 @@ _ALBUM_WALL_RUNTIME_FIELDS = (
     "motion_active",
 )
 
+_ARTWORK_IMAGE_CACHE_FIELDS = (
+    "requests",
+    "hits",
+    "peek_hits",
+    "misses",
+    "negative_hits",
+    "decode_failures",
+    "deduplicated_waits",
+    "deduplicated_timeouts",
+    "evictions",
+    "decoded_images",
+    "entries",
+    "negative_entries",
+    "inflight",
+    "bytes",
+    "budget_bytes",
+)
+
 _PLAYBACK_RUNTIME_FIELDS = (
     "ticks",
     "track_commits",
@@ -451,6 +469,13 @@ def build_diagnostics(
     )
     if album_wall_runtime:
         performance["album_wall_runtime"] = album_wall_runtime
+
+    artwork_image_cache = _metric_summary(
+        supplied_ui.get("artwork_image_cache"),
+        _ARTWORK_IMAGE_CACHE_FIELDS,
+    )
+    if artwork_image_cache:
+        performance["artwork_image_cache"] = artwork_image_cache
 
     playback_runtime = _metric_summary(
         supplied_ui.get("playback_runtime"),

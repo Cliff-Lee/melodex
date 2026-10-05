@@ -5,7 +5,7 @@ import time
 from typing import Any
 
 from PySide6.QtCore import QAbstractAnimation, QEasingCurve, QRectF, Qt, QTimer, QVariantAnimation, Signal
-from PySide6.QtGui import QBrush, QColor, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap
+from PySide6.QtGui import QBrush, QColor, QImage, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import (
     QComboBox,
     QGraphicsItem,
@@ -24,9 +24,9 @@ from PySide6.QtWidgets import (
 from .album_wall_model import layout_album_positions
 
 
-_TILE_W = 176.0
-_TILE_H = 216.0
-_COVER = 164.0
+_TILE_W = 244.0
+_TILE_H = 296.0
+_COVER = 228.0
 
 
 def _norm(value: Any) -> str:
@@ -113,6 +113,32 @@ class _AlbumTile(QGraphicsObject):
         self.update()
         return True
 
+    def set_cover_image(self, image: QImage) -> bool:
+        if not isinstance(image, QImage) or image.isNull():
+            return False
+        pixmap = QPixmap.fromImage(image)
+        target = max(1, int(_COVER))
+        if pixmap.width() != target or pixmap.height() != target:
+            pixmap = pixmap.scaled(
+                target,
+                target,
+                Qt.KeepAspectRatioByExpanding,
+                Qt.SmoothTransformation,
+            )
+            left = max(0, (pixmap.width() - target) // 2)
+            top = max(0, (pixmap.height() - target) // 2)
+            pixmap = pixmap.copy(left, top, target, target)
+        self._pixmap = pixmap
+        self._cover_prepares += 1
+        self.update()
+        return True
+
+    def clear_cover(self) -> None:
+        if self._pixmap.isNull():
+            return
+        self._pixmap = QPixmap()
+        self.update()
+
     def set_selected_visual(self, value: bool) -> None:
         self._selected = bool(value)
         self.update()
@@ -144,7 +170,7 @@ class _AlbumTile(QGraphicsObject):
 
             font = painter.font()
             font.setBold(True)
-            font.setPointSizeF(34)
+            font.setPointSizeF(46)
             painter.setFont(font)
             painter.setPen(QColor(255, 255, 255, 150))
             painter.drawText(cover, Qt.AlignCenter, self._monogram)
@@ -187,13 +213,13 @@ class _AlbumTile(QGraphicsObject):
             font.setPointSizeF(max(7.8, min(11.0, 9.4 * lod)))
             font.setBold(True)
             painter.setFont(font)
-            painter.drawText(QRectF(6, 173, 164, 18), Qt.AlignLeft | Qt.AlignVCenter, title[:36])
+            painter.drawText(QRectF(8, 240, 228, 22), Qt.AlignLeft | Qt.AlignVCenter, title[:36])
             if lod >= 0.56:
                 font.setBold(False)
                 font.setPointSizeF(max(7.2, min(9.8, 8.3 * lod)))
                 painter.setFont(font)
                 painter.setPen(QColor("#9da7b8"))
-                painter.drawText(QRectF(6, 193, 164, 17), Qt.AlignLeft | Qt.AlignVCenter, artist[:36])
+                painter.drawText(QRectF(8, 264, 228, 20), Qt.AlignLeft | Qt.AlignVCenter, artist[:36])
 
     def mousePressEvent(self, event):
         self._selected_callback(self.key)
@@ -254,29 +280,26 @@ class _WallView(QGraphicsView):
         self._zoom_animation.start()
 
     def wheelEvent(self, event):
-        # Native-feeling trackpad navigation: two-finger scrolling pans the
-        # wall. Mouse wheels still zoom; Cmd/Ctrl + trackpad scroll zooms.
+        # Scrolling always moves through the wall. Zoom is deliberate and
+        # uses the familiar Cmd/Ctrl + wheel gesture.
         pixel = event.pixelDelta()
-        zoom_modifier = bool(
-            event.modifiers() & (Qt.ControlModifier | Qt.MetaModifier)
-        )
-        if not pixel.isNull() and not zoom_modifier:
-            self.horizontalScrollBar().setValue(
-                self.horizontalScrollBar().value() - pixel.x()
-            )
-            self.verticalScrollBar().setValue(
-                self.verticalScrollBar().value() - pixel.y()
-            )
+        zoom_modifier = bool(event.modifiers() & (Qt.ControlModifier | Qt.MetaModifier))
+        if zoom_modifier:
+            delta = event.angleDelta().y() or pixel.y()
+            if delta:
+                steps = max(-3.0, min(3.0, float(delta) / 120.0))
+                self.smooth_zoom(1.10 ** steps)
             event.accept()
             return
-
-        delta = event.angleDelta().y()
-        if not delta and not pixel.isNull():
-            delta = pixel.y()
-        if not delta:
-            return
-        steps = max(-3.0, min(3.0, float(delta) / 120.0))
-        self.smooth_zoom(1.10 ** steps)
+        if not pixel.isNull():
+            self.horizontalScrollBar().setValue(self.horizontalScrollBar().value() - pixel.x())
+            self.verticalScrollBar().setValue(self.verticalScrollBar().value() - pixel.y())
+        else:
+            delta = event.angleDelta().y()
+            if event.modifiers() & Qt.ShiftModifier:
+                self.horizontalScrollBar().setValue(self.horizontalScrollBar().value() - int(delta * 0.4))
+            else:
+                self.verticalScrollBar().setValue(self.verticalScrollBar().value() - int(delta * 0.4))
         event.accept()
 
     def _queue_viewport_changed(self) -> None:
@@ -331,6 +354,9 @@ class AlbumWallWidget(QWidget):
         self.current_key = ""
         self._art_requested: set[str] = set()
         self._online_requested: set[str] = set()
+        self._resident_art: dict[str, None] = {}
+        self._resident_art_limit = 192
+        self._art_generation = 0
         self._animation: QVariantAnimation | None = None
         self._start_positions: dict[str, tuple[float, float]] = {}
         self._end_positions: dict[str, tuple[float, float]] = {}
@@ -345,6 +371,7 @@ class AlbumWallWidget(QWidget):
             "artwork_apply_batches": 0,
             "artwork_items_applied": 0,
             "cover_prepares": 0,
+            "resident_cover_evictions": 0,
             "visible_art_scan_last_ms": 0.0,
             "visible_art_scan_max_ms": 0.0,
             "artwork_apply_last_ms": 0.0,
@@ -391,7 +418,7 @@ class AlbumWallWidget(QWidget):
         self.view.setBackgroundBrush(QBrush(QColor("#0f1116")))
         self.view.setRenderHint(QPainter.Antialiasing, True)
         self.view.setRenderHint(QPainter.SmoothPixmapTransform, True)
-        self.view.setMinimumHeight(430)
+        self.view.setMinimumHeight(300)
         layout.addWidget(self.view, 1)
 
         self.selection = QLabel("Select an album to see its details.")
@@ -416,6 +443,15 @@ class AlbumWallWidget(QWidget):
         self._art_timer.timeout.connect(self._request_visible_art)
 
     def set_model(self, model: dict[str, Any], current_track: dict[str, Any] | None = None) -> None:
+        old_keys = set(self.tiles)
+        old_selected = self.selected_key
+        had_view = bool(old_keys)
+        old_scale = float(self.view.transform().m11()) if had_view else 1.0
+        old_center = (
+            self.view.mapToScene(self.view.viewport().rect().center())
+            if had_view else None
+        )
+        self._art_generation += 1
         self.model = dict(model or {})
         if self._animation is not None:
             self._animation.stop()
@@ -426,6 +462,7 @@ class AlbumWallWidget(QWidget):
         self._track_to_album.clear()
         self._art_requested.clear()
         self._online_requested.clear()
+        self._resident_art.clear()
         self.selected_key = ""
         self.current_key = ""
 
@@ -450,7 +487,17 @@ class AlbumWallWidget(QWidget):
         analysed = int(self.model.get("analysed_albums") or 0)
         self._update_lens_info()
         if albums:
-            self._initial_view()
+            new_keys = set(self.tiles)
+            overlap = len(old_keys & new_keys) / max(1, len(old_keys))
+            if had_view and overlap >= 0.5 and old_center is not None:
+                self.view.resetTransform()
+                scale = max(0.58, min(2.35, old_scale))
+                self.view.scale(scale, scale)
+                self.view.centerOn(old_center)
+                if old_selected in self.tiles:
+                    self._select(old_selected)
+            else:
+                self._initial_view()
             self.status.setText(
                 f"{albums:,} albums · {analysed:,} positioned from Flow analysis · "
                 "drag / two-finger scroll to pan · wheel or Cmd/Ctrl-scroll to zoom · "
@@ -622,13 +669,42 @@ class AlbumWallWidget(QWidget):
 
     def _viewport_changed(self) -> None:
         self._runtime_metrics["viewport_changes"] += 1
+        self._art_generation += 1
 
     def _viewport_settled(self) -> None:
         self._runtime_metrics["viewport_settles"] += 1
+        self._trim_resident_artwork()
         self._request_visible_art()
 
     def _schedule_visible_art(self) -> None:
         self._art_timer.start()
+
+    def _trim_resident_artwork(self) -> None:
+        if not self._resident_art:
+            return
+        viewport=self.view.viewport().rect()
+        keep_rect=self.view.mapToScene(viewport).boundingRect().adjusted(-520,-520,520,520)
+        protected={
+            item.key
+            for item in self.scene.items(
+                keep_rect,
+                Qt.IntersectsItemBoundingRect,
+                Qt.AscendingOrder,
+            )
+            if isinstance(item,_AlbumTile)
+        }
+        evict=[key for key in list(self._resident_art) if key not in protected]
+        survivors=[key for key in self._resident_art if key not in evict]
+        overflow=max(0,len(survivors)-self._resident_art_limit)
+        if overflow:
+            evict.extend(survivors[:overflow])
+        for key in dict.fromkeys(evict):
+            tile=self.tiles.get(key)
+            if tile is not None:
+                tile.clear_cover()
+            self._resident_art.pop(key,None)
+            self._art_requested.discard(key)
+            self._runtime_metrics["resident_cover_evictions"] += 1
 
     def _request_visible_art(self) -> None:
         started = time.perf_counter()
@@ -666,7 +742,11 @@ class AlbumWallWidget(QWidget):
             track = dict(album.get("representative_track") or {})
             if track:
                 self._art_requested.add(key)
-                batch.append({"key": key, "track": track})
+                batch.append({
+                    "key": key,
+                    "generation": self._art_generation,
+                    "track": track,
+                })
             if len(batch) >= 36:
                 break
         if batch:
@@ -710,7 +790,11 @@ class AlbumWallWidget(QWidget):
             track = dict(album.get("representative_track") or {})
             if track:
                 self._online_requested.add(key)
-                batch.append({"key": key, "track": track})
+                batch.append({
+                    "key": key,
+                    "generation": self._art_generation,
+                    "track": track,
+                })
             if len(batch) >= 6:
                 break
         if not batch:
@@ -719,18 +803,34 @@ class AlbumWallWidget(QWidget):
         self.status.setText(f"Looking up {len(batch)} missing cover{'s' if len(batch) != 1 else ''}…")
         self.onlineArtworkRequested.emit(batch)
 
-    def set_artwork(self, mapping: dict[str, str]) -> None:
+    def set_artwork(self, mapping: dict[str, object]) -> None:
         started = time.perf_counter()
         loaded = 0
         rows = dict(mapping or {})
         if rows:
             self._runtime_metrics["artwork_apply_batches"] += 1
-        for key, path in rows.items():
+        for key, raw in rows.items():
             key = str(key)
+            structured = isinstance(raw, dict)
+            payload = dict(raw) if structured else {"path": str(raw or "")}
+            raw_generation = payload.get("generation")
+            generation = self._art_generation if raw_generation is None else int(raw_generation)
             self._online_requested.discard(key)
+            if generation != self._art_generation:
+                self._art_requested.discard(key)
+                continue
             tile = self.tiles.get(key)
-            if tile and path and tile.set_cover_path(str(path)):
+            image = payload.get("image")
+            path = str(payload.get("path") or "")
+            applied = False
+            if tile is not None and isinstance(image, QImage):
+                applied = tile.set_cover_image(image)
+            elif tile is not None and not structured and path:
+                applied = tile.set_cover_path(path)
+            if applied:
                 loaded += 1
+                self._resident_art.pop(key,None)
+                self._resident_art[key]=None
                 self._runtime_metrics["cover_prepares"] += 1
         if loaded:
             self._runtime_metrics["artwork_items_applied"] += loaded
@@ -754,6 +854,8 @@ class AlbumWallWidget(QWidget):
             "art_requested_count": len(self._art_requested),
             "online_requested_count": len(self._online_requested),
             "motion_active": bool(self.view.motion_active),
+            "resident_cover_count": len(self._resident_art),
+            "resident_cover_limit": int(self._resident_art_limit),
         }
 
 

@@ -14,6 +14,8 @@ from typing import Any
 
 import requests
 
+from .artwork_image_cache import shared_artwork_image_cache
+
 
 _MB_BASE = "https://musicbrainz.org/ws/2"
 _CAA_BASE = "https://coverartarchive.org"
@@ -186,7 +188,31 @@ class RichMetadataService:
         self._community_lyrics_cache_lock = threading.Lock()
         self.session = session or requests.Session()
         self.capability_broker = capability_broker
+        self.artwork_images = shared_artwork_image_cache()
         self.session.headers.update({"User-Agent": _USER_AGENT, "Accept": "application/json"})
+
+    def prepared_artwork_image(self, path: str, size: int):
+        return self.artwork_images.prepare(path, size)
+
+    def artwork_image_cache_snapshot(self) -> dict[str, Any]:
+        return self.artwork_images.snapshot()
+
+    def prepared_artwork_payload(
+        self,
+        path: str,
+        generation: int,
+        size: int,
+        secondary_size: int = 0,
+    ) -> dict[str, Any]:
+        path=str(path or "")
+        payload={
+            "path":path,
+            "generation":int(generation),
+            "image":self.prepared_artwork_image(path,size) if path else None,
+        }
+        if path and int(secondary_size)>0:
+            payload["track_image"]=self.prepared_artwork_image(path,secondary_size)
+        return payload
 
     # ---------------------------- cache / HTTP
     @staticmethod

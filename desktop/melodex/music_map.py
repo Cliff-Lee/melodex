@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from PySide6.QtCore import QAbstractAnimation, QEasingCurve, Qt, QVariantAnimation, Signal
-from PySide6.QtGui import QColor, QBrush, QPainter, QPen
+from PySide6.QtCore import QAbstractAnimation, QEasingCurve, QRectF, Qt, QVariantAnimation, Signal
+from PySide6.QtGui import QColor, QBrush, QLinearGradient, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (
     QComboBox,
-    QGraphicsEllipseItem,
+    QGraphicsObject,
     QGraphicsItem,
     QGraphicsScene,
     QGraphicsView,
@@ -86,31 +86,88 @@ class _MapView(QGraphicsView):
         event.accept()
 
 
-class _NodeItem(QGraphicsEllipseItem):
+class _NodeItem(QGraphicsObject):
+    """Visible album-sleeve card used as a point in the music landscape."""
+
     def __init__(self, ref: str, node: dict[str, Any], selected, activated):
         super().__init__()
         self.ref = ref
         self.node = node
         self._selected = selected
         self._activated = activated
+        self._bounds = QRectF(0, 0, 184, 120)
+        self._pen = QPen(QColor(255, 255, 255, 95), 1.0)
+        self._brush = QBrush(QColor(91, 145, 194))
         self.setAcceptHoverEvents(True)
         self.setFlag(QGraphicsItem.ItemIsSelectable, True)
         self.setZValue(10)
         self.setToolTip(self._tooltip())
 
+    def boundingRect(self) -> QRectF:
+        return self._bounds
+
+    def setCardSize(self, width: float, height: float) -> None:
+        self.prepareGeometryChange()
+        self._bounds = QRectF(0, 0, width, height)
+        self.update()
+
+    def setPen(self, pen: QPen) -> None:
+        self._pen = QPen(pen)
+        self.update()
+
+    def setBrush(self, brush: QBrush) -> None:
+        self._brush = QBrush(brush)
+        self.update()
+
     def _tooltip(self) -> str:
-        key_pc = int(self.node.get("key_pc", -1))
-        key = _KEY_NAMES[key_pc] if 0 <= key_pc < 12 else "?"
-        mode = str(self.node.get("key_mode") or "")
-        if mode:
-            key += f" {mode}"
         return (
             f"{self.node.get('artist') or 'Unknown artist'} — {self.node.get('title') or 'Unknown track'}\n"
-            f"BPM {float(self.node.get('bpm') or 0):.0f} · {key} · "
-            f"energy {float(self.node.get('energy') or 0):.0%}\n"
-            f"taste {float(self.node.get('taste') or 0):.0%} · "
-            f"rediscovery {float(self.node.get('rediscovery') or 0):.0%}"
+            f"{float(self.node.get('bpm') or 0):.0f} BPM · energy {float(self.node.get('energy') or 0):.0%}"
         )
+
+    def paint(self, painter: QPainter, option, widget=None):
+        r = self._bounds
+        compact = r.width() < 150
+        radius = 9 if compact else 12
+        painter.setRenderHint(QPainter.Antialiasing, True)
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor(0, 0, 0, 78))
+        painter.drawRoundedRect(r.translated(2, 3), radius, radius)
+        painter.setBrush(QColor("#1a2230"))
+        painter.drawRoundedRect(r, radius, radius)
+        art_w = min(r.height() - 16, r.width() * 0.38)
+        art = QRectF(8, 8, art_w, r.height() - 16)
+        gradient = QLinearGradient(art.topLeft(), art.bottomRight())
+        gradient.setColorAt(0, self._brush.color().lighter(135))
+        gradient.setColorAt(1, self._brush.color().darker(155))
+        painter.fillRect(art, gradient)
+        painter.setPen(QColor(255, 255, 255, 190))
+        font = painter.font()
+        font.setBold(True)
+        font.setPointSizeF(16 if not compact else 10)
+        painter.setFont(font)
+        initials = "".join(x[0] for x in str(self.node.get("artist") or "♫").split()[:2]).upper()
+        painter.drawText(art, Qt.AlignCenter, initials or "♫")
+        left = art.right() + 9
+        width = r.right() - left - 7
+        font.setPointSizeF(9.5 if not compact else 7)
+        painter.setFont(font)
+        painter.setPen(QColor("#f4f6fa"))
+        painter.drawText(QRectF(left, 10, width, r.height() * .42), Qt.AlignLeft | Qt.AlignVCenter,
+                         str(self.node.get("title") or "Unknown track"))
+        font.setBold(False)
+        font.setPointSizeF(8 if not compact else 6.5)
+        painter.setFont(font)
+        painter.setPen(QColor("#aeb8c8"))
+        painter.drawText(QRectF(left, r.height() * .50, width, r.height() * .25), Qt.AlignLeft | Qt.AlignTop,
+                         str(self.node.get("artist") or "Unknown artist"))
+        if not compact:
+            painter.setPen(QColor("#8494a8"))
+            painter.drawText(QRectF(left, r.bottom() - 24, width, 15), Qt.AlignLeft | Qt.AlignVCenter,
+                             f"{float(self.node.get('bpm') or 0):.0f} BPM · {float(self.node.get('energy') or 0):.0%} energy")
+        painter.setBrush(Qt.NoBrush)
+        painter.setPen(QPen(self._pen))
+        painter.drawRoundedRect(r.adjusted(.5, .5, -.5, -.5), radius, radius)
 
     def mousePressEvent(self, event):
         self._selected(self.ref)
@@ -121,7 +178,7 @@ class _NodeItem(QGraphicsEllipseItem):
         super().mouseDoubleClickEvent(event)
 
     def hoverEnterEvent(self, event):
-        self.setScale(1.35)
+        self.setScale(1.06)
         self.setZValue(30)
         super().hoverEnterEvent(event)
 
@@ -175,9 +232,15 @@ class MusicMapWidget(QWidget):
         self.search = QLineEdit()
         self.search.setPlaceholderText("Find artist or track on map…")
         reset = QPushButton("Fit map")
-        controls.addWidget(QLabel("View"))
+        self.connections_button = QPushButton("Connections…")
+        self.connections_button.setObjectName("quietButton")
+        self.connections_button.clicked.connect(
+            lambda: self.edge_mode.setVisible(not self.edge_mode.isVisible())
+        )
+        controls.addWidget(QLabel("Colour"))
         controls.addWidget(self.mode)
-        controls.addWidget(QLabel("Connections"))
+        self.edge_mode.hide()
+        controls.addWidget(self.connections_button)
         controls.addWidget(self.edge_mode)
         controls.addSpacing(8)
         controls.addWidget(self.search, 1)
@@ -192,8 +255,8 @@ class MusicMapWidget(QWidget):
         self.view.setResizeAnchor(QGraphicsView.AnchorViewCenter)
         self.view.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.view.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.view.setBackgroundBrush(QBrush(QColor("#10141c")))
-        self.view.setMinimumHeight(500)
+        self.view.setBackgroundBrush(QBrush(QColor("#0e141d")))
+        self.view.setMinimumHeight(340)
         layout.addWidget(self.view, 1)
 
         self.status = QLabel("Analyse your local library to build a Music Map.")
@@ -234,11 +297,18 @@ class MusicMapWidget(QWidget):
         current_track: dict[str, Any] | None = None,
         knowledge_graph: dict[str, Any] | None = None,
     ) -> None:
+        old_refs = set(self.node_items)
+        old_selected = self.selected_ref
+        old_center = (
+            self.view.mapToScene(self.view.viewport().rect().center())
+            if old_refs else None
+        )
+        old_scale = float(self.view.transform().m11()) if old_refs else 1.0
         self.model = dict(model or {})
         self.ref_map = {str(key): dict(value) for key, value in ref_map.items()}
         self.knowledge_graph = dict(knowledge_graph or {})
         self.current_identity = _track_identity(dict(current_track or {})) if current_track else ""
-        self.selected_ref = ""
+        self.selected_ref = old_selected
         self.scene.clear()
         self.node_items.clear()
         self.edge_items.clear()
@@ -262,21 +332,34 @@ class MusicMapWidget(QWidget):
             if ref not in self.positions:
                 continue
             x, y = self.positions[ref]
-            taste = max(0.0, min(1.0, float(node.get("taste") or 0.0)))
-            rediscovery = max(0.0, min(1.0, float(node.get("rediscovery") or 0.0)))
-            radius = 6.5 + 4.0 * taste + 2.5 * rediscovery
             item = _NodeItem(ref, node, self._select_ref, self._activate_ref)
-            item.setRect(-radius, -radius, radius * 2, radius * 2)
-            item.setPos(x, y)
+            if len(nodes) <= 55:
+                card_w, card_h = 190.0, 126.0
+            elif len(nodes) <= 180:
+                card_w, card_h = 142.0, 94.0
+            else:
+                card_w, card_h = 112.0, 72.0
+            item.setCardSize(card_w, card_h)
+            item.setPos(x - card_w / 2.0, y - card_h / 2.0)
             self.scene.addItem(item)
             self.node_items[ref] = item
 
         self.scene.setSceneRect(0, 0, width, height)
+        new_refs = set(self.node_items)
+        overlap = len(old_refs & new_refs) / max(1, len(old_refs))
+        if self.selected_ref not in new_refs:
+            self.selected_ref = ""
         self._redraw_edges()
         self._redraw_route()
         self._recolour()
         self.highlight_track(current_track or {})
-        self.reset_view()
+        if old_refs and overlap >= 0.5 and old_center is not None:
+            self.view.resetTransform()
+            scale = max(0.62, min(3.0, old_scale))
+            self.view.scale(scale, scale)
+            self.view.centerOn(old_center)
+        else:
+            self.reset_view()
         analysed = int(self.model.get("analysed") or 0)
         total = int(self.model.get("input_profiles") or 0)
         if analysed:

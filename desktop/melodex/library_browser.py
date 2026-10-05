@@ -133,6 +133,18 @@ class AlbumCard(QFrame):
             key=self.key,
         )
 
+    def set_cover_image(self, image: object) -> None:
+        self.has_real_cover = bool(
+            image is not None
+            and hasattr(image, "isNull")
+            and not image.isNull()
+        )
+        self.cover.set_cover_image(
+            image,
+            title=str(self.album.get("title") or ""),
+            key=self.key,
+        )
+
     def enterEvent(self, event):
         self.play_button.show()
         self.queue_button.show()
@@ -244,6 +256,20 @@ class ArtistCard(QFrame):
             self.has_artist_photo = True
         self.image.set_cover(
             path,
+            title=str(self.artist.get("name") or ""),
+            key="artist:" + self.key,
+        )
+
+    def set_image_prepared(self, image: object, *, artist_photo: bool = False) -> None:
+        ready = bool(
+            image is not None
+            and hasattr(image, "isNull")
+            and not image.isNull()
+        )
+        if artist_photo and ready:
+            self.has_artist_photo = True
+        self.image.set_cover_image(
+            image,
             title=str(self.artist.get("name") or ""),
             key="artist:" + self.key,
         )
@@ -377,6 +403,13 @@ class TrackRow(QFrame):
     def set_cover(self, path: str) -> None:
         self.cover.set_cover(
             path,
+            title=str(self.track.get("album") or self.track.get("title") or ""),
+            key=_track_key(self.track),
+        )
+
+    def set_cover_image(self, image: object) -> None:
+        self.cover.set_cover_image(
+            image,
             title=str(self.track.get("album") or self.track.get("title") or ""),
             key=_track_key(self.track),
         )
@@ -1513,10 +1546,12 @@ class LibraryBrowser(QWidget):
         self.images_button.setEnabled(False)
 
     def _search_changed(self, _text: str = "") -> None:
-        """Reset progressive windows so a new search starts small and fast."""
+        """Reset progressive windows and invalidate artwork from the old view."""
         self._album_render_limit = self._album_batch_size
         self._artist_render_limit = self._artist_batch_size
         self._tracks_built = False
+        self._bump_artwork_generation("albums")
+        self._bump_artwork_generation("artists")
         self._apply_filter()
 
     def _apply_filter(self) -> None:
@@ -2057,7 +2092,12 @@ class LibraryBrowser(QWidget):
                 if not track or not name:
                     continue
                 requested.add(key)
-                batch.append({"key":key,"artist":name,"track":track})
+                batch.append({
+                    "key":key,
+                    "generation":generation,
+                    "artist":name,
+                    "track":track,
+                })
             else:
                 track=dict(row.get("representative_track") or {})
                 if not track:
@@ -2065,6 +2105,7 @@ class LibraryBrowser(QWidget):
                 requested.add(key)
                 batch.append({
                     "key":key,
+                    "generation":generation,
                     "track":track,
                     "tracks":[
                         dict(x)
@@ -2213,8 +2254,10 @@ class LibraryBrowser(QWidget):
         if self._artist_lookup_paused or self._artist_lookup_cancel_requested:
             self._refresh_artwork_progress(kind="artists")
             return False
-        batch=self._artist_lookup_queue[:self._artwork_batch_size]
-        self._artist_lookup_queue=self._artist_lookup_queue[len(batch):]
+        raw_batch=self._artist_lookup_queue[:self._artwork_batch_size]
+        self._artist_lookup_queue=self._artist_lookup_queue[len(raw_batch):]
+        generation=self._artwork_generation("artists")
+        batch=[{**dict(row),"generation":generation} for row in raw_batch]
         self._artist_lookup_inflight=len(batch)
         self._artist_lookup_inflight_rows=[dict(row) for row in batch]
         self._artist_lookup_current=str(batch[0].get("artist") or "artist") if batch else ""
@@ -2248,8 +2291,10 @@ class LibraryBrowser(QWidget):
         if self._album_lookup_paused or self._album_lookup_cancel_requested:
             self._refresh_artwork_progress(kind="albums")
             return False
-        batch=self._album_lookup_queue[:self._artwork_batch_size]
-        self._album_lookup_queue=self._album_lookup_queue[len(batch):]
+        raw_batch=self._album_lookup_queue[:self._artwork_batch_size]
+        self._album_lookup_queue=self._album_lookup_queue[len(raw_batch):]
+        generation=self._artwork_generation("albums")
+        batch=[{**dict(row),"generation":generation} for row in raw_batch]
         self._album_lookup_inflight=len(batch)
         self._album_lookup_inflight_rows=[dict(row) for row in batch]
         if batch:
@@ -2273,35 +2318,61 @@ class LibraryBrowser(QWidget):
     def album_artwork_lookup_remaining(self) -> int:
         return len(self._album_lookup_queue) + int(self._album_lookup_inflight or 0)
 
-    def set_artwork(self, mapping: dict[str, str]) -> None:
+    def set_artwork(self, mapping: dict[str, object]) -> None:
         self._album_cache_inflight=False
-        for key, path in dict(mapping or {}).items():
-            key = str(key)
-            path = str(path or "")
-            if not path:
+        current_generation=self._artwork_generation("albums")
+        for key, raw in dict(mapping or {}).items():
+            key=str(key)
+            payload=dict(raw) if isinstance(raw,dict) else {"path":str(raw or "")}
+            raw_generation=payload.get("generation")
+            generation=current_generation if raw_generation is None else int(raw_generation)
+            if generation != current_generation:
+                self._art_requested.discard(key)
                 continue
-            self.artwork_paths[key] = path
-            card = self.cards.get(key)
+            path=str(payload.get("path") or "")
+            image=payload.get("image")
+            track_image=payload.get("track_image")
+            if path:
+                self.artwork_paths[key]=path
+            card=self.cards.get(key)
             if card is not None:
-                card.set_cover(path)
-
-            for track_key, row in list(self.track_rows.items()):
-                if str(self.track_album_key.get(track_key) or "") == key:
+                if image is not None and hasattr(image,"isNull"):
+                    card.set_cover_image(image)
+                elif path:
+                    card.set_cover(path)
+            for track_key,row in list(self.track_rows.items()):
+                if str(self.track_album_key.get(track_key) or "") != key:
+                    continue
+                if track_image is not None and hasattr(track_image,"isNull"):
+                    row.set_cover_image(track_image)
+                elif not isinstance(raw,dict) and path:
                     row.set_cover(path)
         if self.current_view()=="albums":
             self._schedule_viewport_artwork("albums")
 
-    def set_artist_images(self, mapping: dict[str, str]) -> None:
+    def set_artist_images(self, mapping: dict[str, object]) -> None:
         self._artist_cache_inflight=False
-        for key, path in dict(mapping or {}).items():
+        current_generation=self._artwork_generation("artists")
+        for key,raw in dict(mapping or {}).items():
             key=str(key)
-            path=str(path or "")
+            payload=dict(raw) if isinstance(raw,dict) else {"path":str(raw or "")}
+            raw_generation=payload.get("generation")
+            generation=current_generation if raw_generation is None else int(raw_generation)
+            if generation != current_generation:
+                self._artist_cache_requested.discard(key)
+                self._artist_art_requested.discard(key)
+                continue
+            path=str(payload.get("path") or "")
+            image=payload.get("image")
             if path:
                 self.artist_image_paths[key]=path
-            card = self.artist_cards.get(key)
-            if card is not None and path:
-                card.set_image(path, artist_photo=True)
-            elif not path:
+            card=self.artist_cards.get(key)
+            if card is not None:
+                if image is not None and hasattr(image,"isNull"):
+                    card.set_image_prepared(image,artist_photo=bool(path))
+                elif path:
+                    card.set_image(path,artist_photo=True)
+            if not path:
                 self._artist_art_requested.discard(key)
         if self.current_view()=="artists":
             self._schedule_viewport_artwork("artists")

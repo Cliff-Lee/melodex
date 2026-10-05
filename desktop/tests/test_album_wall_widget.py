@@ -265,8 +265,8 @@ def test_album_wall_prepares_cover_once_and_reuses_it_during_render(tmp_path):
     widget.set_artwork({"artist|album": str(path)})
 
     assert tile._cover_prepares == 1
-    assert tile._pixmap.width() == 164
-    assert tile._pixmap.height() == 164
+    assert tile._pixmap.width() == 228
+    assert tile._pixmap.height() == 228
 
     for _ in range(6):
         image = QImage(widget.size(), QImage.Format_ARGB32)

@@ -161,8 +161,24 @@ control; P14f's contract is specifically that continuous motion and `paint()` ar
 
 ### P14g — Shared artwork service
 
-Centralise decoded/rendered artwork caching, request deduplication, viewport priority,
-generation cancellation, memory budgeting and negative caching.
+Artwork decode/resize/crop is now a shared worker-side service backed by `QImage`.
+Album Wall, My Music album cards, track rows and artist cards request UI-sized prepared
+images from the same cache. `QPixmap` creation remains on the Qt thread, but storage
+stat/decode and smooth scaling do not.
+
+The cache is bounded by bytes (64 MiB by default), LRU-evicted, keyed by path/target
+size/mtime/file size, and keeps a short negative cache for missing or undecodable files.
+Concurrent requests for the same image are de-duplicated so one worker decodes while
+others wait for that result. A non-blocking memory peek lets rebuilt cards reuse an
+already-prepared image without touching the filesystem.
+
+Every viewport artwork batch carries a generation token. Search/view/scroll/model changes
+advance that generation; results from superseded viewports are discarded rather than
+painting stale covers. Explicit online artwork recovery still completes its metadata/cache
+work, but stale visual delivery is ignored safely.
+
+Redacted diagnostics expose only aggregate cache counts, memory use, deduplicated waits,
+failures and evictions. Paths, titles and artwork URLs are never exported.
 
 ### P14h — My Music filtering/layout
 
@@ -228,6 +244,37 @@ physical Mac, use the current packaged build and a representative large library:
 Export redacted diagnostics immediately after the run. P14 instrumentation must never
 include media paths, track/album names, URLs, credentials, or other private collection
 content.
+
+## Manual UX qualification for instant, stable browsing
+
+Use a current packaged build from the PR's desktop workflow and a local library with familiar
+albums and lyrics. A NAS is not required for these UI checks. Keep the existing Melodex
+profile and library; do not clear or re-import anything. Record the OS, build, screen
+resolution, and a short screen recording if a failure appears.
+
+1. Start playback, then resize the window smaller and larger from each available edge.
+   Confirm the whole window, including the bottom controls, stays above the taskbar or dock.
+2. Move the window near each screen edge, maximize it, restore it, and close/reopen Melodex.
+   Confirm the window remains visible and its last useful size and position return.
+3. Open Album Wall and scroll down several screens with the mouse wheel or trackpad.
+   Drag the canvas down and sideways, pause, then continue. Confirm it stays at the chosen
+   albums instead of jumping back to the top.
+4. Leave Album Wall for My Music or Home and return. Confirm familiar covers are already
+   visible as soon as the wall returns. Scroll away and back to check covers do not flash
+   blank while the known artwork is being reused.
+5. Open a track whose lyrics have loaded, move to another track, then return. Confirm the
+   lyrics appear immediately on return. Allow a first-time lookup to finish before judging
+   the revisit.
+6. Open Music Map, resize the window, pan in several directions, and use the search and
+   Connections controls. Confirm the labeled cards remain readable and the view does not
+   jump after a refresh.
+7. Keep playback running while repeating the navigation and resize steps. Check for audio
+   interruption, a frozen window, clipped controls, or a delayed response to clicks.
+
+For each step record Pass or Fail and the observed behavior. A failure report should include
+the build and OS plus the recording; redact collection names, paths and other private
+metadata from diagnostics. On macOS, include a live resize from every corner and edge,
+because native live-resize behavior is not fully represented by automated checks.
 
 ## P14a is a baseline, not a victory condition
 
