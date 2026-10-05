@@ -177,6 +177,28 @@ def test_crossfade_reconciliation_runs_before_outgoing_playback_state_gate():
     player.close()
 
 
+def test_seek_cancels_inflight_crossfade_before_repositioning():
+    player = _player()
+    player.queue = [{"track_id": "a"}, {"track_id": "b"}]
+    player.index = 0
+    player.active = 0
+    player._crossfading = True
+    player._transition_ms = 5000
+    player._crossfade_target_index = 1
+    player._crossfade_deck = 1
+
+    player.seek(12_345)
+
+    assert player._crossfading is False
+    assert player.index == 0
+    snapshot = player.diagnostics_snapshot()
+    assert snapshot["seek_requests"] == 1
+    assert snapshot["transition_aborts"] == 1
+    assert snapshot["transition_state_valid"] is True
+
+    player.close()
+
+
 def test_incoming_end_before_commit_aborts_transition_without_changing_track():
     QMediaPlayer = _media_player_type()
     player = _player()
