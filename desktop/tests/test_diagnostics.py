@@ -261,11 +261,15 @@ def test_diagnostics_filters_ui_performance_fields():
             },
             "album_wall_runtime": {
                 "viewport_changes": 381,
+                "viewport_settles": 57,
                 "visible_art_scans": 92,
+                "visible_art_candidates_last": 28,
+                "visible_art_candidates_max": 44,
                 "visible_art_batches": 41,
                 "visible_art_items_requested": 618,
                 "artwork_apply_batches": 39,
                 "artwork_items_applied": 602,
+                "cover_prepares": 602,
                 "visible_art_scan_last_ms": 2.1,
                 "visible_art_scan_max_ms": 19.7,
                 "artwork_apply_last_ms": 8.4,
@@ -273,6 +277,7 @@ def test_diagnostics_filters_ui_performance_fields():
                 "tile_count": 954,
                 "art_requested_count": 618,
                 "online_requested_count": 0,
+                "motion_active": False,
                 "private_album": "Secret Album",
                 "private_path": "/Users/example/Music/Secret.flac",
             },
@@ -419,6 +424,11 @@ def test_diagnostics_filters_ui_performance_fields():
     assert artwork["distant_candidates"] == 82
     wall_runtime = payload["performance"]["album_wall_runtime"]
     assert wall_runtime["viewport_changes"] == 381
+    assert wall_runtime["viewport_settles"] == 57
+    assert wall_runtime["visible_art_candidates_last"] == 28
+    assert wall_runtime["visible_art_candidates_max"] == 44
+    assert wall_runtime["cover_prepares"] == 602
+    assert wall_runtime["motion_active"] is False
     assert wall_runtime["artwork_apply_max_ms"] == 87.2
     assert wall_runtime["tile_count"] == 954
     playback = payload["performance"]["playback_runtime"]
