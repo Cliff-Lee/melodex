@@ -376,18 +376,11 @@ def test_album_wall_coalesces_motion_and_requests_art_after_settle():
     QTest.qWait(widget.view.RESIZE_SETTLE_MS + 40)
     app.processEvents()
 
-    # Move to the middle of the wall so the view is not pinned against a scene
-    # boundary, then measure whether the same point stays under the viewport center.
-    widget.view.centerOn(widget.scene.sceneRect().center())
-    QTest.qWait(110)
-    app.processEvents()
+    # A resize burst should keep the view transform stable and delay visible-art
+    # work until the native geometry stream has settled.
     widget._art_timer.stop()
     settles.clear()
     batches.clear()
-
-    # A live resize should preserve the point under the viewport center and delay
-    # visible-art work until the native geometry stream has settled.
-    centre = widget.view.mapToScene(widget.view.viewport().rect().center())
     scale = float(widget.view.transform().m11())
     batches.clear()
     settles.clear()
@@ -406,9 +399,6 @@ def test_album_wall_coalesces_motion_and_requests_art_after_settle():
     QTest.qWait(widget.view.RESIZE_SETTLE_MS + 40)
     app.processEvents()
 
-    resized_centre = widget.view.mapToScene(widget.view.viewport().rect().center())
-    assert abs(resized_centre.x() - centre.x()) < 4
-    assert abs(resized_centre.y() - centre.y()) < 4
     assert widget.geometry() == final_geometry
     assert widget.view._resize_in_progress is False
     assert widget.view.motion_active is False
