@@ -177,6 +177,28 @@ def test_crossfade_reconciliation_runs_before_outgoing_playback_state_gate():
     player.close()
 
 
+def test_transition_cancel_restores_the_users_volume_not_full_scale():
+    player = _player()
+    player.queue = [{"track_id": "a"}, {"track_id": "b"}]
+    player.index = 0
+    player.active = 0
+    player.set_volume(0.35)
+    player._crossfading = True
+    player._transition_ms = 5000
+    player._crossfade_target_index = 1
+    player._crossfade_deck = 1
+    player.outputs[0].setVolume(0.12)
+    player.outputs[1].setVolume(0.23)
+
+    player._cancel_transition(stop_incoming=True, count_abort=True)
+
+    assert abs(player.outputs[0].volume() - 0.35) < 0.001
+    assert abs(player.outputs[1].volume()) < 0.001
+    assert player.diagnostics_snapshot()["transition_aborts"] == 1
+
+    player.close()
+
+
 def test_seek_cancels_inflight_crossfade_before_repositioning():
     player = _player()
     player.queue = [{"track_id": "a"}, {"track_id": "b"}]
