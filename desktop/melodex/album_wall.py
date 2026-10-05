@@ -4,7 +4,7 @@ import hashlib
 import time
 from typing import Any
 
-from PySide6.QtCore import QAbstractAnimation, QEasingCurve, QRectF, Qt, QTimer, QVariantAnimation, Signal
+from PySide6.QtCore import QAbstractAnimation, QEasingCurve, QPointF, QRectF, Qt, QTimer, QVariantAnimation, Signal
 from PySide6.QtGui import QBrush, QColor, QImage, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import (
     QComboBox,
@@ -255,6 +255,10 @@ class _WallView(QGraphicsView):
         self._viewport_emit_timer.timeout.connect(self._emit_viewport_changed)
         self._motion_active = False
         self._resize_in_progress = False
+        self._resize_anchor: QPointF | None = None
+        self._resize_anchor_timer = QTimer(self)
+        self._resize_anchor_timer.setSingleShot(True)
+        self._resize_anchor_timer.timeout.connect(self._restore_resize_anchor)
         self._settle_timer = QTimer(self)
         self._settle_timer.setSingleShot(True)
         self._settle_timer.setInterval(90)
@@ -329,7 +333,10 @@ class _WallView(QGraphicsView):
         if not self._motion_active:
             return
         self._motion_active = False
+        if self._resize_in_progress:
+            self._restore_resize_anchor()
         self._resize_in_progress = False
+        self._resize_anchor = None
         self.setRenderHint(QPainter.Antialiasing, True)
         self.setRenderHint(QPainter.SmoothPixmapTransform, True)
         self.viewport().update()
@@ -344,20 +351,21 @@ class _WallView(QGraphicsView):
         self._queue_viewport_changed()
 
     def resizeEvent(self, event):
-        scene = self.scene()
-        preserve_centre = bool(scene is not None and not scene.sceneRect().isEmpty())
-        centre = (
-            self.mapToScene(self.viewport().rect().center())
-            if preserve_centre else None
-        )
+        if not self._resize_in_progress:
+            scene = self.scene()
+            if scene is not None and not scene.sceneRect().isEmpty():
+                self._resize_anchor = self.mapToScene(self.viewport().rect().center())
         self._resize_in_progress = True
         super().resizeEvent(event)
-        if centre is not None:
-            # AnchorViewCenter alone can drift during rapid native resize events.
-            # Reapply the previous scene point after Qt updates the viewport size.
-            self.centerOn(centre)
+        # Let the parent layout finish assigning the viewport size before centering.
+        if self._resize_anchor is not None:
+            self._resize_anchor_timer.start(0)
         # Keep rendering cheap and defer the visible-art scan until resizing ends.
         self._queue_viewport_changed(live_resize=True)
+
+    def _restore_resize_anchor(self) -> None:
+        if self._resize_in_progress and self._resize_anchor is not None:
+            self.centerOn(self._resize_anchor)
 
 
 class AlbumWallWidget(QWidget):
