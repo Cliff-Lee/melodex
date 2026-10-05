@@ -250,6 +250,9 @@ class _WallView(QGraphicsView):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._viewport_emit_pending = False
+        self._viewport_emit_timer = QTimer(self)
+        self._viewport_emit_timer.setSingleShot(True)
+        self._viewport_emit_timer.timeout.connect(self._emit_viewport_changed)
         self._motion_active = False
         self._resize_in_progress = False
         self._settle_timer = QTimer(self)
@@ -316,7 +319,7 @@ class _WallView(QGraphicsView):
         self._settle_timer.start()
         if not self._viewport_emit_pending:
             self._viewport_emit_pending = True
-            QTimer.singleShot(0, self._emit_viewport_changed)
+            self._viewport_emit_timer.start(0)
 
     def _emit_viewport_changed(self) -> None:
         self._viewport_emit_pending = False
@@ -341,9 +344,19 @@ class _WallView(QGraphicsView):
         self._queue_viewport_changed()
 
     def resizeEvent(self, event):
+        scene = self.scene()
+        preserve_centre = bool(scene is not None and not scene.sceneRect().isEmpty())
+        centre = (
+            self.mapToScene(self.viewport().rect().center())
+            if preserve_centre else None
+        )
+        self._resize_in_progress = True
         super().resizeEvent(event)
-        # Native window resizing can deliver a long stream of geometry events.
-        # Keep rendering cheap and defer the visible-art scan until the resize ends.
+        if centre is not None:
+            # AnchorViewCenter alone can drift during rapid native resize events.
+            # Reapply the previous scene point after Qt updates the viewport size.
+            self.centerOn(centre)
+        # Keep rendering cheap and defer the visible-art scan until resizing ends.
         self._queue_viewport_changed(live_resize=True)
 
 
