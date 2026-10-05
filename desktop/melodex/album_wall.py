@@ -678,22 +678,11 @@ class AlbumWallWidget(QWidget):
             )
             if isinstance(item,_AlbumTile)
         }
-        evict=[
-            key for key in list(self._resident_art)
-            if key not in protected
-        ]
-        remaining=max(0,len(self._resident_art)-len(evict)-self._resident_art_limit)
-        if remaining:
-            evict.extend(
-                key for key in list(self._resident_art)
-                if key in protected and key not in evict
-            )
-            evict=evict[: len(evict)-remaining+remaining] if False else evict
-        while len(self._resident_art)-len(set(evict)) > self._resident_art_limit:
-            for key in self._resident_art:
-                if key not in evict:
-                    evict.append(key)
-                    break
+        evict=[key for key in list(self._resident_art) if key not in protected]
+        survivors=[key for key in self._resident_art if key not in evict]
+        overflow=max(0,len(survivors)-self._resident_art_limit)
+        if overflow:
+            evict.extend(survivors[:overflow])
         for key in dict.fromkeys(evict):
             tile=self.tiles.get(key)
             if tile is not None:
