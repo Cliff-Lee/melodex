@@ -118,6 +118,9 @@ def test_playback_tick_never_calls_legacy_transition_callback():
         def playbackState(self):
             return QMediaPlayer.PlayingState
 
+        def isSeekable(self):
+            return True
+
     player.players = [FakePlayer(), FakePlayer()]
     player.queue = [{"track_id": "a"}, {"track_id": "b"}]
     player.index = 0
