@@ -95,6 +95,7 @@ class FlowPlayer(QObject):
     def set_queue(self, tracks: list[dict[str, Any]], start: int = 0, autoplay: bool = True) -> None:
         self._cancel_transition(stop_incoming=True, count_abort=True)
         self._stop_all_decks()
+        self._invalidate_transition_plan()
         self.queue = [dict(item) for item in tracks]
         self.index = max(0, min(len(self.queue) - 1, start)) if self.queue else -1
         self.queueChanged.emit(self.queue)
@@ -112,6 +113,7 @@ class FlowPlayer(QObject):
             return
         self.queue.extend(incoming)
         self.queueChanged.emit(self.queue)
+        self._request_transition_plan()
 
     def queue_snapshot(self) -> list[dict[str, Any]]:
         return [dict(item) for item in self.queue]
@@ -149,6 +151,8 @@ class FlowPlayer(QObject):
                 True,
                 announce_queue=position_changed,
             )
+        if index in {self.index, self.index + 1}:
+            self._request_transition_plan()
         return True
 
     def merge_queue_items(
@@ -165,6 +169,7 @@ class FlowPlayer(QObject):
             updated += 1
         if updated:
             self.queueChanged.emit(self.queue)
+            self._request_transition_plan()
         return updated
 
     def clear_queue(self) -> None:
@@ -172,6 +177,7 @@ class FlowPlayer(QObject):
         self._stop_all_decks()
         self.queue = []
         self.index = -1
+        self._invalidate_transition_plan()
         self.queueChanged.emit(self.queue)
         self.playingChanged.emit(False)
 
@@ -440,6 +446,7 @@ class FlowPlayer(QObject):
             self._cancel_transition(stop_incoming=True, count_abort=True)
         self.queue = self.queue[: self.index + 1] + incoming
         self.queueChanged.emit(self.queue)
+        self._request_transition_plan()
 
     def previous(self) -> None:
         self._runtime_metrics["manual_previous"] += 1
