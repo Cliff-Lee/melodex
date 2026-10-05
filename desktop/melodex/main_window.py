@@ -47,7 +47,6 @@ from .ux_components import (
     FeaturePresenceBar,
     set_help,
 )
-
 class _UiCallbackDispatcher(QObject):
     """Long-lived queued bridge from worker threads back to the Qt UI thread.
 
@@ -78,7 +77,6 @@ def _track_text(t: dict[str, Any]) -> str:
     title = str(t.get("title") or "Unknown track")
     source = str(t.get("provider_id") or "")
     return f"{artist} — {title}" + (f"   ·   {source}" if source else "")
-
 
 
 class MainWindow(QMainWindow):
@@ -2880,14 +2878,8 @@ class MainWindow(QMainWindow):
                     {},
                 ) or {}
             )
-        if hasattr(self, "album_wall"):
-            snapshot = getattr(self.album_wall, "diagnostics_snapshot", None)
-            if callable(snapshot):
-                ui_metrics["album_wall_runtime"] = dict(snapshot() or {})
-        if hasattr(self, "player"):
-            snapshot = getattr(self.player, "diagnostics_snapshot", None)
-            if callable(snapshot):
-                ui_metrics["playback_runtime"] = dict(snapshot() or {})
+        if hasattr(self,"album_wall"): ui_metrics["album_wall_runtime"]=self.album_wall.diagnostics_snapshot()
+        ui_metrics["playback_runtime"]=self.player.diagnostics_snapshot()
         ui_metrics["local_scan_session"] = dict(self._local_scan_session or {})
         if hasattr(self, "background_scheduler"):
             scheduler_metrics = self.background_scheduler.snapshot()
