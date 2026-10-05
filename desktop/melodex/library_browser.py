@@ -32,6 +32,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from .album_track_order import album_track_order_key
 from .album_wall_model import build_album_wall
 from .ux_components import CoverLabel, EmptyState, set_help
 
@@ -1685,9 +1686,7 @@ class LibraryBrowser(QWidget):
                     key=lambda item: (
                         _norm(item.get("artist")),
                         _norm(item.get("album")),
-                        int(item.get("disc_number") or 0),
-                        int(item.get("track_number") or 0),
-                        _norm(item.get("title")),
+                        *album_track_order_key(item),
                     ),
                 )
             self._visible_tracks = [
@@ -1900,9 +1899,7 @@ class LibraryBrowser(QWidget):
                 key=lambda item: (
                     int(item.get("year") or 0),
                     _norm(item.get("album")),
-                    int(item.get("disc_number") or 0),
-                    int(item.get("track_number") or 0),
-                    _norm(item.get("title")),
+                    *album_track_order_key(item),
                 ),
             )
             rows.append({

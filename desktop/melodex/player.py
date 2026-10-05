@@ -7,6 +7,7 @@ from typing import Any, Callable
 from PySide6.QtCore import QObject, QTimer, QUrl, Signal
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 
+from .album_track_order import album_order_diagnostics
 from .playback_gateway import PlaybackGateway
 
 
@@ -273,7 +274,7 @@ class FlowPlayer(QObject):
                 self.players[transition_deck].playbackState()
                 == QMediaPlayer.PlayingState
             )
-        return {
+        snapshot = {
             **dict(self._runtime_metrics),
             "queue_length": int(queue_length),
             "queue_index": int(self.index),
@@ -294,6 +295,9 @@ class FlowPlayer(QObject):
             "seekable": bool(player.isSeekable()),
             "last_seek_requested_ms": int(self._last_seek_requested_ms),
         }
+        if self._playback_intent == "album":
+            snapshot["album_order"] = album_order_diagnostics(self.queue)
+        return snapshot
 
     def _resolve_for_playback(self, index: int) -> dict[str, Any]:
         resolved = dict(self.resolver(dict(self.queue[index])))

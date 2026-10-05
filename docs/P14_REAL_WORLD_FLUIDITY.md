@@ -198,9 +198,13 @@ native edge/corner hit-testing.
 
 ### P14j — Album-order qualification
 
-Record only non-sensitive structural diagnostics (disc number/track number counts and
-ordering validity), and test ordinary, multi-disc, missing-number and malformed-tag
-albums.
+Use one stable disc/track key across Album Wall and My Music. Accept common `3/12` tag
+values, keep unknown numbers after known tracks, and make malformed values safe. Album
+playback diagnostics contain only track counts, numbered-tag counts, malformed-tag counts,
+duplicate positions and an ordering-valid flag; they never include media metadata.
+
+Regression cases cover ordinary single-disc records, multi-disc records, missing numbers,
+malformed values and duplicate disc/track positions.
 
 ### P14k — Visible audio settings
 

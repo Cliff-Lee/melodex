@@ -7,6 +7,8 @@ from pathlib import Path
 from collections import defaultdict
 from typing import Any
 
+from .album_track_order import album_track_order_key
+
 
 def _norm(value: Any) -> str:
     return " ".join(str(value or "").casefold().split())
@@ -150,11 +152,7 @@ def build_album_wall(
 
     albums: list[dict[str, Any]] = []
     for key, tracks in groups.items():
-        tracks.sort(key=lambda t: (
-            _number(t, "disc_number", "discnumber"),
-            _number(t, "track_number", "tracknumber"),
-            _norm(t.get("title")),
-        ))
+        tracks.sort(key=album_track_order_key)
         first = tracks[0]
         mapped = [
             identity_nodes[_identity(track)]
