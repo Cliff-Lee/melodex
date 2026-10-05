@@ -10,6 +10,14 @@ from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from .playback_gateway import PlaybackGateway
 
 
+PLAYBACK_INTENTS = frozenset({"album", "playlist", "journey", "manual_queue", "provider"})
+
+
+def _normalise_playback_intent(value: object) -> str:
+    intent = str(value or "").strip().casefold()
+    return intent if intent in PLAYBACK_INTENTS else "manual_queue"
+
+
 def _expired(value: Any, skew_seconds: int = 15) -> bool:
     text = str(value or "").strip()
     if not text:
@@ -59,6 +67,7 @@ class FlowPlayer(QObject):
         self._crossfade_target_index: int | None = None
         self._crossfade_deck: int | None = None
         self._volume = 1.0
+        self._playback_intent = "manual_queue"
         self._transition_plan_generation = 0
         self._planned_transition_target = -1
         self._planned_transition_ms = 4500
@@ -95,9 +104,17 @@ class FlowPlayer(QObject):
                 lambda status, deck=deck: self._on_media_status(deck, status)
             )
 
-    def set_queue(self, tracks: list[dict[str, Any]], start: int = 0, autoplay: bool = True) -> None:
+    def set_queue(
+        self,
+        tracks: list[dict[str, Any]],
+        start: int = 0,
+        autoplay: bool = True,
+        *,
+        intent: str = "manual_queue",
+    ) -> None:
         self._cancel_transition(stop_incoming=True, count_abort=True)
         self._stop_all_decks()
+        self._playback_intent = _normalise_playback_intent(intent)
         self.queue = [dict(item) for item in tracks]
         self.index = max(0, min(len(self.queue) - 1, start)) if self.queue else -1
         self.queueChanged.emit(self.queue)
@@ -107,12 +124,23 @@ class FlowPlayer(QObject):
             self._schedule_transition_plan()
             self.playingChanged.emit(False)
 
-    def append_queue(self, tracks: list[dict[str, Any]], autoplay: bool = False) -> None:
+    def append_queue(
+        self,
+        tracks: list[dict[str, Any]],
+        autoplay: bool = False,
+        *,
+        intent: str | None = None,
+    ) -> None:
         incoming = [dict(item) for item in tracks]
         if not incoming:
             return
         if not self.queue:
-            self.set_queue(incoming, 0, autoplay)
+            self.set_queue(
+                incoming,
+                0,
+                autoplay,
+                intent=_normalise_playback_intent(intent),
+            )
             return
         self.queue.extend(incoming)
         self.queueChanged.emit(self.queue)
@@ -186,6 +214,7 @@ class FlowPlayer(QObject):
         self._stop_all_decks()
         self.queue = []
         self.index = -1
+        self._playback_intent = "manual_queue"
         self._invalidate_transition_plan()
         self.queueChanged.emit(self.queue)
         self.playingChanged.emit(False)
@@ -213,6 +242,7 @@ class FlowPlayer(QObject):
             "index": int(self.index),
             "current_track": self.current_track(),
             "queue": [dict(item) for item in self.queue],
+            "intent": self._playback_intent,
         }
 
     def diagnostics_snapshot(self) -> dict[str, Any]:
@@ -253,6 +283,8 @@ class FlowPlayer(QObject):
             "transition_target_index": transition_target,
             "transition_deck": transition_deck,
             "transition_state_valid": bool(transition_valid),
+            "playback_intent": self._playback_intent,
+            "journey_transitions_enabled": self._playback_intent == "journey",
             "planned_transition_target": int(self._planned_transition_target),
             "planned_transition_ms": int(self._planned_transition_ms),
             "playing": bool(playing),
@@ -457,6 +489,8 @@ class FlowPlayer(QObject):
         target = self.index + 1
         self._planned_transition_target = -1
         self._planned_transition_ms = 4500
+        if self._playback_intent != "journey":
+            return
         if not (0 <= self.index < len(self.queue)) or target >= len(self.queue):
             return
         if not self.transition_for:
@@ -520,6 +554,8 @@ class FlowPlayer(QObject):
             self._runtime_metrics["transition_plan_failures"] += 1
 
     def _transition_duration(self) -> int:
+        if self._playback_intent != "journey":
+            return 0
         if self.index + 1 >= len(self.queue):
             return 0
         if self._planned_transition_target == self.index + 1:
@@ -527,6 +563,8 @@ class FlowPlayer(QObject):
         return 4500
 
     def _begin_crossfade(self) -> None:
+        if self._playback_intent != "journey":
+            return
         if self._crossfading or self.index + 1 >= len(self.queue):
             return
         next_deck = 1 - self.active
@@ -647,6 +685,8 @@ class FlowPlayer(QObject):
         if player.playbackState() != QMediaPlayer.PlayingState:
             return
         if self.index + 1 >= len(self.queue):
+            return
+        if self._playback_intent != "journey":
             return
         transition = self._transition_duration()
         remaining = duration - pos if duration > 0 else 999999999
