@@ -59,7 +59,7 @@ def album_order_diagnostics(tracks: list[dict[str, Any]]) -> dict[str, int | boo
             (
                 disc if disc is not None else 1,
                 number,
-                disc_value not in (None, ""),
+                disc is not None,
                 bad_disc,
                 bad_number,
             )
