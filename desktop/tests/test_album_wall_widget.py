@@ -372,6 +372,15 @@ def test_album_wall_coalesces_motion_and_requests_art_after_settle():
     assert runtime["visible_art_candidates_last"] < runtime["tile_count"]
     assert len(batches[-1]) <= 36
 
+    # Move to the middle of the wall so the view is not pinned against a scene
+    # boundary, then measure whether the same point stays under the viewport center.
+    widget.view.centerOn(widget.scene.sceneRect().center())
+    QTest.qWait(110)
+    app.processEvents()
+    widget._art_timer.stop()
+    settles.clear()
+    batches.clear()
+
     # A live resize should preserve the point under the viewport center and delay
     # visible-art work until the native geometry stream has settled.
     centre = widget.view.mapToScene(widget.view.viewport().rect().center())
