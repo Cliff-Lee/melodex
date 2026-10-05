@@ -2880,6 +2880,14 @@ class MainWindow(QMainWindow):
                     {},
                 ) or {}
             )
+        if hasattr(self, "album_wall"):
+            snapshot = getattr(self.album_wall, "diagnostics_snapshot", None)
+            if callable(snapshot):
+                ui_metrics["album_wall_runtime"] = dict(snapshot() or {})
+        if hasattr(self, "player"):
+            snapshot = getattr(self.player, "diagnostics_snapshot", None)
+            if callable(snapshot):
+                ui_metrics["playback_runtime"] = dict(snapshot() or {})
         ui_metrics["local_scan_session"] = dict(self._local_scan_session or {})
         if hasattr(self, "background_scheduler"):
             scheduler_metrics = self.background_scheduler.snapshot()
