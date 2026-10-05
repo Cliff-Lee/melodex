@@ -53,6 +53,19 @@ class FlowPlayer(QObject):
         self.index = -1
         self._crossfading = False
         self._transition_ms = 0
+        # P14 runtime counters are deliberately metadata-free. They exist so a
+        # beta tester can export evidence of playback/transport divergence
+        # without exposing track names, paths, URLs or provider credentials.
+        self._runtime_metrics = {
+            "ticks": 0,
+            "track_commits": 0,
+            "seek_requests": 0,
+            "manual_next": 0,
+            "manual_previous": 0,
+            "crossfade_started": 0,
+            "crossfade_completed": 0,
+        }
+        self._last_seek_requested_ms = 0
         self._timer = QTimer(self)
         self._timer.setInterval(100)
         self._timer.timeout.connect(self._tick)
@@ -155,6 +168,29 @@ class FlowPlayer(QObject):
             "queue": [dict(item) for item in self.queue],
         }
 
+    def diagnostics_snapshot(self) -> dict[str, Any]:
+        """Return playback runtime metrics without collection/user content."""
+        player = self.players[self.active]
+        queue_length = len(self.queue)
+        index_valid = (
+            (queue_length == 0 and self.index == -1)
+            or (queue_length > 0 and 0 <= self.index < queue_length)
+        )
+        return {
+            **dict(self._runtime_metrics),
+            "queue_length": int(queue_length),
+            "queue_index": int(self.index),
+            "queue_index_valid": bool(index_valid),
+            "active_deck": int(self.active),
+            "crossfading": bool(self._crossfading),
+            "transition_ms": int(self._transition_ms),
+            "playing": player.playbackState() == QMediaPlayer.PlayingState,
+            "position_ms": int(player.position()),
+            "duration_ms": int(player.duration()),
+            "seekable": bool(player.isSeekable()),
+            "last_seek_requested_ms": int(self._last_seek_requested_ms),
+        }
+
     def _resolve_for_playback(self, index: int) -> dict[str, Any]:
         resolved = dict(self.resolver(dict(self.queue[index])))
         if _expired(resolved.get("expires_at")) and self.playback_refresher:
@@ -195,6 +231,7 @@ class FlowPlayer(QObject):
             if play:
                 player.play()
                 self.playingChanged.emit(True)
+            self._runtime_metrics["track_commits"] += 1
             self.trackChanged.emit(dict(self.queue[index]))
         except Exception as exc:
             self.error.emit(str(exc))
@@ -212,6 +249,7 @@ class FlowPlayer(QObject):
                 self.playingChanged.emit(True)
 
     def next(self) -> None:
+        self._runtime_metrics["manual_next"] += 1
         if self.index + 1 < len(self.queue):
             previous = dict(self.queue[self.index]) if 0 <= self.index < len(self.queue) else {}
             played_ms = int(self.players[self.active].position())
@@ -243,6 +281,7 @@ class FlowPlayer(QObject):
         self.queueChanged.emit(self.queue)
 
     def previous(self) -> None:
+        self._runtime_metrics["manual_previous"] += 1
         player = self.players[self.active]
         if player.position() > 5000:
             player.setPosition(0)
@@ -251,7 +290,10 @@ class FlowPlayer(QObject):
             self._load_index(self.index - 1, True)
 
     def seek(self, ms: int) -> None:
-        self.players[self.active].setPosition(max(0, int(ms)))
+        target = max(0, int(ms))
+        self._runtime_metrics["seek_requests"] += 1
+        self._last_seek_requested_ms = target
+        self.players[self.active].setPosition(target)
 
     def set_volume(self, value: float) -> None:
         value = max(0.0, min(1.0, float(value)))
@@ -272,6 +314,7 @@ class FlowPlayer(QObject):
         if self._crossfading or self.index + 1 >= len(self.queue):
             return
         self._crossfading = True
+        self._runtime_metrics["crossfade_started"] += 1
         self._transition_ms = self._transition_duration()
         next_deck = 1 - self.active
         self.outputs[next_deck].setVolume(0.0)
@@ -288,6 +331,7 @@ class FlowPlayer(QObject):
             self.error.emit(str(exc))
 
     def _tick(self) -> None:
+        self._runtime_metrics["ticks"] += 1
         player = self.players[self.active]
         duration, pos = player.duration(), player.position()
         if duration > 0:
@@ -312,5 +356,7 @@ class FlowPlayer(QObject):
                 self.index += 1
                 self.outputs[self.active].setVolume(1.0)
                 self._crossfading = False
+                self._runtime_metrics["crossfade_completed"] += 1
+                self._runtime_metrics["track_commits"] += 1
                 self.trackChanged.emit(dict(self.queue[self.index]))
                 self.queueChanged.emit(self.queue)

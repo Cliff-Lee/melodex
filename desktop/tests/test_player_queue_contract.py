@@ -98,3 +98,44 @@ def test_append_queue_owns_empty_and_nonempty_cases():
     assert [row["track_id"] for row in player.queue_snapshot()] == ["a", "b"]
 
     player.close()
+
+
+def test_runtime_diagnostics_are_metadata_free_and_count_transport_actions():
+    import json
+
+    player, _loaded = _player()
+    player.set_queue(
+        [
+            {
+                "track_id": "private-a",
+                "local_path": "/Volumes/PrivateNAS/Secret Artist/a.flac",
+                "title": "Secret Song",
+            },
+            {
+                "track_id": "private-b",
+                "stream_url": "https://secret.example/token",
+                "title": "Another Secret Song",
+            },
+        ],
+        0,
+        False,
+    )
+
+    player.seek(12_345)
+    player.next()
+    player.previous()
+
+    snapshot = player.diagnostics_snapshot()
+    text = json.dumps(snapshot)
+
+    assert snapshot["queue_length"] == 2
+    assert snapshot["queue_index_valid"] is True
+    assert snapshot["seek_requests"] == 1
+    assert snapshot["manual_next"] == 1
+    assert snapshot["manual_previous"] == 1
+    assert snapshot["last_seek_requested_ms"] == 12_345
+    assert "Secret Song" not in text
+    assert "PrivateNAS" not in text
+    assert "secret.example" not in text
+
+    player.close()

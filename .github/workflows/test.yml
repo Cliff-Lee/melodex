@@ -197,10 +197,18 @@ jobs:
             --tracks 1000 12700 \
             --gui \
             --output large-library-baseline.json
+      - name: Run P14 real-world interaction baseline
+        env:
+          PYTHONPATH: desktop
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          python scripts/real_world_fluidity_probe.py             --tracks 12700             > p14-real-world-fluidity.json
       - uses: actions/upload-artifact@v4
         with:
           name: large-library-baseline
-          path: large-library-baseline.json
+          path: |
+            large-library-baseline.json
+            p14-real-world-fluidity.json
 
   fluid-soak:
     name: Fluid soak (12.7k)
