@@ -99,9 +99,19 @@ the incoming deck, queue index and transport update atomically through the same 
 
 ### P14d — Remove work from the 100 ms playback tick
 
-Transition planning must be calculated once per relevant track pair. The timer hot loop
-must perform no filesystem stat, NAS access, SQLite query, metadata lookup, network
-request or audio analysis.
+Transition planning is calculated once per relevant track pair, on the shared bounded
+`prefetch` scheduler lane. The result is published back to the player with a generation
+token; stale results from a superseded queue pair are discarded.
+
+The 100 ms timer now reads only an in-memory transition duration. It never calls the
+Flow transition planner and therefore performs no filesystem stat, NAS access, SQLite
+query, metadata lookup, network request or audio analysis. If the plan is not ready by
+the time a transition is needed, playback uses the bounded 4.5 s fallback rather than
+blocking the audio/UI path.
+
+Queue replacement, manual track changes and relevant metadata updates invalidate and
+re-prime the pair plan. Diagnostics count requests, completed/stale/failed plans and
+scheduler rejection without recording track names or paths.
 
 ### P14e — Playback intent
 
