@@ -255,6 +255,7 @@ class _WallView(QGraphicsView):
         self._viewport_emit_timer.timeout.connect(self._emit_viewport_changed)
         self._motion_active = False
         self._resize_in_progress = False
+        self._restoring_resize_anchor = False
         self._resize_anchor: QPointF | None = None
         self._resize_anchor_timer = QTimer(self)
         self._resize_anchor_timer.setSingleShot(True)
@@ -348,7 +349,8 @@ class _WallView(QGraphicsView):
 
     def scrollContentsBy(self, dx: int, dy: int):
         super().scrollContentsBy(dx, dy)
-        self._queue_viewport_changed()
+        if not self._restoring_resize_anchor:
+            self._queue_viewport_changed()
 
     def resizeEvent(self, event):
         if not self._resize_in_progress:
@@ -365,7 +367,11 @@ class _WallView(QGraphicsView):
 
     def _restore_resize_anchor(self) -> None:
         if self._resize_in_progress and self._resize_anchor is not None:
-            self.centerOn(self._resize_anchor)
+            self._restoring_resize_anchor = True
+            try:
+                self.centerOn(self._resize_anchor)
+            finally:
+                self._restoring_resize_anchor = False
 
 
 class AlbumWallWidget(QWidget):
