@@ -2324,6 +2324,7 @@ class LibraryBrowser(QWidget):
                 continue
             path=str(payload.get("path") or "")
             image=payload.get("image")
+            track_image=payload.get("track_image")
             if path:
                 self.artwork_paths[key]=path
             card=self.cards.get(key)
@@ -2335,9 +2336,9 @@ class LibraryBrowser(QWidget):
             for track_key,row in list(self.track_rows.items()):
                 if str(self.track_album_key.get(track_key) or "") != key:
                     continue
-                if image is not None and hasattr(image,"isNull"):
-                    row.set_cover_image(image)
-                elif path:
+                if track_image is not None and hasattr(track_image,"isNull"):
+                    row.set_cover_image(track_image)
+                elif not isinstance(raw,dict) and path:
                     row.set_cover(path)
         if self.current_view()=="albums":
             self._schedule_viewport_artwork("albums")
