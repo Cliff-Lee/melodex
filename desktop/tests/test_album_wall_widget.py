@@ -396,15 +396,15 @@ def test_album_wall_coalesces_motion_and_requests_art_after_settle():
         assert widget.view.motion_active is True
         assert batches == []
         assert settles == []
-        resized_centre = widget.view.mapToScene(widget.view.viewport().rect().center())
-        assert abs(resized_centre.x() - centre.x()) < 4
-        assert abs(resized_centre.y() - centre.y()) < 4
         assert abs(float(widget.view.transform().m11()) - scale) < 0.01
 
     final_geometry = widget.geometry()
     QTest.qWait(widget.view.RESIZE_SETTLE_MS + 40)
     app.processEvents()
 
+    resized_centre = widget.view.mapToScene(widget.view.viewport().rect().center())
+    assert abs(resized_centre.x() - centre.x()) < 4
+    assert abs(resized_centre.y() - centre.y()) < 4
     assert widget.geometry() == final_geometry
     assert widget.view._resize_in_progress is False
     assert widget.view.motion_active is False
