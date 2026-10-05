@@ -4,7 +4,7 @@ import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from melodex.seek_control import SeekInteraction
+from melodex.seek_interaction import SeekInteraction
 
 
 def test_seek_interaction_suppresses_stale_player_updates_until_acknowledged():
