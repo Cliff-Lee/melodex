@@ -115,7 +115,7 @@ def test_end_of_final_track_announces_not_playing():
 
 
 def test_crossfade_reconciliation_runs_before_outgoing_playback_state_gate():
-    from PySide6.QtMultimedia import QMediaPlayer
+    QMediaPlayer = _media_player_type()
 
     class FakePlayer:
         def __init__(self, duration, position, state):
