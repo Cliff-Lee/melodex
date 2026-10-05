@@ -245,7 +245,7 @@ class MusicMapWidget(QWidget):
         controls.addSpacing(8)
         controls.addWidget(self.search, 1)
         controls.addWidget(reset)
-                layout.addLayout(controls)
+        layout.addLayout(controls)
 
         self.scene = QGraphicsScene(self)
         self.view = _MapView(self.scene)
