@@ -53,6 +53,9 @@ class FlowPlayer(QObject):
         self.index = -1
         self._crossfading = False
         self._transition_ms = 0
+        self._crossfade_target_index: int | None = None
+        self._crossfade_deck: int | None = None
+        self._volume = 1.0
         # P14 runtime counters are deliberately metadata-free. They exist so a
         # beta tester can export evidence of playback/transport divergence
         # without exposing track names, paths, URLs or provider credentials.
@@ -64,21 +67,32 @@ class FlowPlayer(QObject):
             "manual_previous": 0,
             "crossfade_started": 0,
             "crossfade_completed": 0,
+            "crossfade_eof_commits": 0,
+            "natural_ends": 0,
+            "transition_aborts": 0,
+            "queue_position_commits": 0,
         }
         self._last_seek_requested_ms = 0
         self._timer = QTimer(self)
         self._timer.setInterval(100)
         self._timer.timeout.connect(self._tick)
         self._timer.start()
-        for player in self.players:
+        for deck, player in enumerate(self.players):
             player.errorOccurred.connect(lambda _error, msg: self.error.emit(str(msg)))
+            player.mediaStatusChanged.connect(
+                lambda status, deck=deck: self._on_media_status(deck, status)
+            )
 
     def set_queue(self, tracks: list[dict[str, Any]], start: int = 0, autoplay: bool = True) -> None:
+        self._cancel_transition(stop_incoming=True, count_abort=True)
+        self._stop_all_decks()
         self.queue = [dict(item) for item in tracks]
         self.index = max(0, min(len(self.queue) - 1, start)) if self.queue else -1
         self.queueChanged.emit(self.queue)
         if autoplay and self.index >= 0:
             self._load_index(self.index, play=True)
+        else:
+            self.playingChanged.emit(False)
 
     def append_queue(self, tracks: list[dict[str, Any]], autoplay: bool = False) -> None:
         incoming = [dict(item) for item in tracks]
@@ -97,9 +111,13 @@ class FlowPlayer(QObject):
         index = int(index)
         if not (0 <= index < len(self.queue)):
             return False
-        self.players[self.active].stop()
-        self._load_index(index, bool(autoplay))
-        return True
+        self._cancel_transition(stop_incoming=True, count_abort=True)
+        self._stop_all_decks()
+        return self._load_index(
+            index,
+            bool(autoplay),
+            announce_queue=True,
+        )
 
     def replace_queue_item(
         self,
@@ -111,11 +129,17 @@ class FlowPlayer(QObject):
         index = int(index)
         if not (0 <= index < len(self.queue)):
             return False
+        position_changed = index != self.index
         self.queue[index] = dict(track)
         self.queueChanged.emit(self.queue)
         if autoplay:
-            self.players[self.active].stop()
-            self._load_index(index, True)
+            self._cancel_transition(stop_incoming=True, count_abort=True)
+            self._stop_all_decks()
+            return self._load_index(
+                index,
+                True,
+                announce_queue=position_changed,
+            )
         return True
 
     def merge_queue_items(
@@ -135,18 +159,16 @@ class FlowPlayer(QObject):
         return updated
 
     def clear_queue(self) -> None:
-        for player in self.players:
-            player.stop()
+        self._cancel_transition(stop_incoming=True, count_abort=True)
+        self._stop_all_decks()
         self.queue = []
         self.index = -1
-        self._crossfading = False
         self.queueChanged.emit(self.queue)
         self.playingChanged.emit(False)
 
     def stop(self) -> None:
-        for player in self.players:
-            player.stop()
-        self._crossfading = False
+        self._cancel_transition(stop_incoming=True, count_abort=True)
+        self._stop_all_decks()
         self.playingChanged.emit(False)
 
     def close(self) -> None:
@@ -176,6 +198,25 @@ class FlowPlayer(QObject):
             (queue_length == 0 and self.index == -1)
             or (queue_length > 0 and 0 <= self.index < queue_length)
         )
+        transition_target = self._crossfade_target_index
+        transition_deck = self._crossfade_deck
+        transition_valid = (
+            not self._crossfading
+            or (
+                transition_target == self.index + 1
+                and transition_target is not None
+                and 0 <= transition_target < queue_length
+                and transition_deck is not None
+                and 0 <= transition_deck < len(self.players)
+                and transition_deck != self.active
+            )
+        )
+        playing = player.playbackState() == QMediaPlayer.PlayingState
+        if self._crossfading and transition_deck is not None:
+            playing = playing or (
+                self.players[transition_deck].playbackState()
+                == QMediaPlayer.PlayingState
+            )
         return {
             **dict(self._runtime_metrics),
             "queue_length": int(queue_length),
@@ -184,7 +225,10 @@ class FlowPlayer(QObject):
             "active_deck": int(self.active),
             "crossfading": bool(self._crossfading),
             "transition_ms": int(self._transition_ms),
-            "playing": player.playbackState() == QMediaPlayer.PlayingState,
+            "transition_target_index": transition_target,
+            "transition_deck": transition_deck,
+            "transition_state_valid": bool(transition_valid),
+            "playing": bool(playing),
             "position_ms": int(player.position()),
             "duration_ms": int(player.duration()),
             "seekable": bool(player.isSeekable()),
@@ -219,24 +263,93 @@ class FlowPlayer(QObject):
             self.gateway.validate_resource(resolved)
         return QUrl(url)
 
-    def _load_index(self, index: int, play: bool = True, deck: int | None = None) -> None:
-        if not (0 <= index < len(self.queue)):
+    def _clear_transition_state(self) -> None:
+        self._crossfading = False
+        self._transition_ms = 0
+        self._crossfade_target_index = None
+        self._crossfade_deck = None
+
+    def _cancel_transition(
+        self,
+        *,
+        stop_incoming: bool = True,
+        count_abort: bool = True,
+    ) -> None:
+        if not self._crossfading:
+            self._clear_transition_state()
             return
-        self.index = index
-        deck = self.active if deck is None else deck
+        incoming = (
+            self._crossfade_deck
+            if self._crossfade_deck is not None
+            else 1 - self.active
+        )
+        if stop_incoming and 0 <= incoming < len(self.players):
+            self.players[incoming].stop()
+        if 0 <= incoming < len(self.outputs):
+            self.outputs[incoming].setVolume(0.0)
+        self.outputs[self.active].setVolume(self._volume)
+        if count_abort:
+            self._runtime_metrics["transition_aborts"] += 1
+        self._clear_transition_state()
+
+    def _stop_all_decks(self) -> None:
+        for deck, player in enumerate(self.players):
+            player.stop()
+            if deck != self.active:
+                self.outputs[deck].setVolume(0.0)
+
+    def _commit_track(
+        self,
+        index: int,
+        deck: int,
+        *,
+        announce_queue: bool,
+    ) -> bool:
+        if not (0 <= index < len(self.queue)):
+            return False
+        if not (0 <= deck < len(self.players)):
+            return False
+        self.index = int(index)
+        self.active = int(deck)
+        if announce_queue:
+            self._runtime_metrics["queue_position_commits"] += 1
+            self.queueChanged.emit(self.queue)
+        self._runtime_metrics["track_commits"] += 1
+        self.trackChanged.emit(dict(self.queue[self.index]))
+        return True
+
+    def _load_index(
+        self,
+        index: int,
+        play: bool = True,
+        deck: int | None = None,
+        *,
+        announce_queue: bool = False,
+    ) -> bool:
+        if not (0 <= index < len(self.queue)):
+            return False
+        deck = self.active if deck is None else int(deck)
         player = self.players[deck]
         try:
             resolved = self._resolve_for_playback(index)
             player.setSource(self._media_url_for(resolved))
+            if not self._commit_track(index, deck, announce_queue=announce_queue):
+                return False
             if play:
                 player.play()
                 self.playingChanged.emit(True)
-            self._runtime_metrics["track_commits"] += 1
-            self.trackChanged.emit(dict(self.queue[index]))
+            else:
+                self.playingChanged.emit(False)
+            return True
         except Exception as exc:
+            if play:
+                self.playingChanged.emit(False)
             self.error.emit(str(exc))
+            return False
 
     def play_pause(self) -> None:
+        if self._crossfading:
+            self._cancel_transition(stop_incoming=True, count_abort=True)
         player = self.players[self.active]
         if player.playbackState() == QMediaPlayer.PlayingState:
             player.pause()
@@ -250,17 +363,18 @@ class FlowPlayer(QObject):
 
     def next(self) -> None:
         self._runtime_metrics["manual_next"] += 1
-        if self.index + 1 < len(self.queue):
+        next_index = self.index + 1
+        if next_index < len(self.queue):
             previous = dict(self.queue[self.index]) if 0 <= self.index < len(self.queue) else {}
             played_ms = int(self.players[self.active].position())
             duration_ms = int(self.players[self.active].duration())
-            for player in self.players:
-                player.stop()
-            self.outputs[self.active].setVolume(1.0)
-            self.outputs[1 - self.active].setVolume(0.0)
-            self._crossfading = False
-            self._transition_ms = 0
-            self._load_index(self.index + 1, True)
+            self._cancel_transition(stop_incoming=True, count_abort=True)
+            self._stop_all_decks()
+            self._load_index(
+                next_index,
+                True,
+                announce_queue=True,
+            )
             current = dict(self.queue[self.index]) if 0 <= self.index < len(self.queue) else {}
             self.manualAdvanced.emit(previous, current, played_ms, duration_ms)
 
@@ -271,32 +385,36 @@ class FlowPlayer(QObject):
             self.set_queue(incoming, 0, False)
             return
         if self._crossfading:
-            next_deck = 1 - self.active
-            self.players[next_deck].stop()
-            self.outputs[next_deck].setVolume(0.0)
-            self.outputs[self.active].setVolume(1.0)
-            self._crossfading = False
-            self._transition_ms = 0
+            self._cancel_transition(stop_incoming=True, count_abort=True)
         self.queue = self.queue[: self.index + 1] + incoming
         self.queueChanged.emit(self.queue)
 
     def previous(self) -> None:
         self._runtime_metrics["manual_previous"] += 1
         player = self.players[self.active]
+        if self._crossfading:
+            self._cancel_transition(stop_incoming=True, count_abort=True)
         if player.position() > 5000:
             player.setPosition(0)
         elif self.index > 0:
-            player.stop()
-            self._load_index(self.index - 1, True)
+            self._stop_all_decks()
+            self._load_index(
+                self.index - 1,
+                True,
+                announce_queue=True,
+            )
 
     def seek(self, ms: int) -> None:
         target = max(0, int(ms))
         self._runtime_metrics["seek_requests"] += 1
         self._last_seek_requested_ms = target
+        if self._crossfading:
+            self._cancel_transition(stop_incoming=True, count_abort=True)
         self.players[self.active].setPosition(target)
 
     def set_volume(self, value: float) -> None:
         value = max(0.0, min(1.0, float(value)))
+        self._volume = value
         self.outputs[self.active].setVolume(value)
 
     def _transition_duration(self) -> int:
@@ -313,12 +431,14 @@ class FlowPlayer(QObject):
     def _begin_crossfade(self) -> None:
         if self._crossfading or self.index + 1 >= len(self.queue):
             return
+        next_deck = 1 - self.active
+        next_index = self.index + 1
         self._crossfading = True
+        self._crossfade_target_index = next_index
+        self._crossfade_deck = next_deck
         self._runtime_metrics["crossfade_started"] += 1
         self._transition_ms = self._transition_duration()
-        next_deck = 1 - self.active
         self.outputs[next_deck].setVolume(0.0)
-        next_index = self.index + 1
         try:
             resolved = self._resolve_for_playback(next_index)
             url = self._media_url_for(resolved)
@@ -327,8 +447,75 @@ class FlowPlayer(QObject):
             self.players[next_deck].setSource(url)
             self.players[next_deck].play()
         except Exception as exc:
-            self._crossfading = False
+            self._cancel_transition(stop_incoming=True, count_abort=True)
             self.error.emit(str(exc))
+
+    def _complete_crossfade(self, reason: str) -> bool:
+        if not self._crossfading:
+            return False
+        target = self._crossfade_target_index
+        incoming = self._crossfade_deck
+        if (
+            target is None
+            or incoming is None
+            or not (0 <= target < len(self.queue))
+            or not (0 <= incoming < len(self.players))
+        ):
+            self._cancel_transition(stop_incoming=True, count_abort=True)
+            return False
+
+        outgoing = self.active
+        self.players[outgoing].stop()
+        self.outputs[outgoing].setVolume(0.0)
+        self.outputs[incoming].setVolume(self._volume)
+        self._clear_transition_state()
+        self._runtime_metrics["crossfade_completed"] += 1
+        if reason == "end_of_media":
+            self._runtime_metrics["crossfade_eof_commits"] += 1
+
+        committed = self._commit_track(
+            target,
+            incoming,
+            announce_queue=True,
+        )
+        if committed:
+            self.playingChanged.emit(
+                self.players[incoming].playbackState()
+                == QMediaPlayer.PlayingState
+            )
+        return committed
+
+    def _on_media_status(self, deck: int, status: QMediaPlayer.MediaStatus) -> None:
+        if status != QMediaPlayer.EndOfMedia:
+            return
+
+        deck = int(deck)
+        if deck != self.active:
+            if self._crossfading and deck == self._crossfade_deck:
+                # The incoming deck ended before it became authoritative.
+                # Keep the current track authoritative and abandon this transition.
+                self._cancel_transition(stop_incoming=False, count_abort=True)
+            return
+
+        self._runtime_metrics["natural_ends"] += 1
+        if self._crossfading:
+            self._complete_crossfade("end_of_media")
+            return
+
+        next_index = self.index + 1
+        if next_index < len(self.queue):
+            other = 1 - self.active
+            self.players[other].stop()
+            self.outputs[other].setVolume(0.0)
+            self._load_index(
+                next_index,
+                True,
+                deck=self.active,
+                announce_queue=True,
+            )
+            return
+
+        self.playingChanged.emit(False)
 
     def _tick(self) -> None:
         self._runtime_metrics["ticks"] += 1
@@ -336,27 +523,34 @@ class FlowPlayer(QObject):
         duration, pos = player.duration(), player.position()
         if duration > 0:
             self.positionChanged.emit(pos, duration)
+
+        # Crossfade reconciliation must run before checking the outgoing
+        # deck's playback state. The outgoing deck can enter EndOfMedia while
+        # the incoming deck is already audible; returning here used to leave
+        # Melodex showing the old track indefinitely.
+        if self._crossfading:
+            remaining = duration - pos if duration > 0 else 999999999
+            incoming = self._crossfade_deck
+            if duration > 0 and incoming is not None:
+                progress = 1.0 - max(
+                    0.0,
+                    min(1.0, remaining / max(1, self._transition_ms)),
+                )
+                self.outputs[self.active].setVolume(
+                    self._volume * max(0.0, 1.0 - progress)
+                )
+                self.outputs[incoming].setVolume(
+                    self._volume * min(1.0, progress)
+                )
+                if progress >= 0.98 or remaining <= 80:
+                    self._complete_crossfade("timer")
+            return
+
         if player.playbackState() != QMediaPlayer.PlayingState:
             return
         if self.index + 1 >= len(self.queue):
             return
         transition = self._transition_duration()
         remaining = duration - pos if duration > 0 else 999999999
-        if not self._crossfading and duration > 0 and remaining <= transition:
+        if duration > 0 and remaining <= transition:
             self._begin_crossfade()
-        if self._crossfading:
-            next_deck = 1 - self.active
-            progress = 1.0 - max(0.0, min(1.0, remaining / max(1, self._transition_ms)))
-            self.outputs[self.active].setVolume(max(0.0, 1.0 - progress))
-            self.outputs[next_deck].setVolume(min(1.0, progress))
-            if progress >= 0.98 or remaining <= 80:
-                self.players[self.active].stop()
-                self.outputs[self.active].setVolume(1.0)
-                self.active = next_deck
-                self.index += 1
-                self.outputs[self.active].setVolume(1.0)
-                self._crossfading = False
-                self._runtime_metrics["crossfade_completed"] += 1
-                self._runtime_metrics["track_commits"] += 1
-                self.trackChanged.emit(dict(self.queue[self.index]))
-                self.queueChanged.emit(self.queue)

@@ -18,9 +18,16 @@ def _player():
     player = FlowPlayer(lambda track: dict(track))
     loaded = []
 
-    def fake_load(index: int, play: bool = True, deck=None):
+    def fake_load(
+        index: int,
+        play: bool = True,
+        deck=None,
+        *,
+        announce_queue: bool = False,
+    ):
         player.index = index
         loaded.append((index, bool(play)))
+        return True
 
     player._load_index = fake_load
     return player, loaded
