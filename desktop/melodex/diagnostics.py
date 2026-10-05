@@ -159,11 +159,15 @@ _LIBRARY_VIEW_METRIC_FIELDS = (
 
 _ALBUM_WALL_RUNTIME_FIELDS = (
     "viewport_changes",
+    "viewport_settles",
     "visible_art_scans",
+    "visible_art_candidates_last",
+    "visible_art_candidates_max",
     "visible_art_batches",
     "visible_art_items_requested",
     "artwork_apply_batches",
     "artwork_items_applied",
+    "cover_prepares",
     "visible_art_scan_last_ms",
     "visible_art_scan_max_ms",
     "artwork_apply_last_ms",
@@ -171,6 +175,7 @@ _ALBUM_WALL_RUNTIME_FIELDS = (
     "tile_count",
     "art_requested_count",
     "online_requested_count",
+    "motion_active",
 )
 
 _PLAYBACK_RUNTIME_FIELDS = (
