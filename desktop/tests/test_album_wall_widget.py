@@ -117,6 +117,12 @@ def test_album_wall_widget_renders_switches_lenses_and_tracks_current(tmp_path):
     widget.set_artwork({"a|album a": str(path)})
     assert not widget.tiles["a|album a"]._pixmap.isNull()
 
+    runtime = widget.diagnostics_snapshot()
+    assert runtime["tile_count"] == 2
+    assert runtime["artwork_items_applied"] >= 1
+    assert runtime["artwork_apply_batches"] >= 1
+    assert runtime["artwork_apply_max_ms"] >= 0.0
+
     image = QImage(widget.size(), QImage.Format_ARGB32)
     image.fill(Qt.transparent)
     widget.render(image)
