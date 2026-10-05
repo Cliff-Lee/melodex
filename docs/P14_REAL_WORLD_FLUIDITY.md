@@ -189,9 +189,9 @@ layout membership rather than clearing/rebuilding grids during every filter chan
 
 During a live resize, Album Wall keeps motion rendering cheap and waits 180 ms after the
 latest geometry event before scanning/requesting visible artwork. Pan and zoom retain the
-shorter 90 ms settle. The view preserves its scene-center anchor and zoom; visual pages do
-not resize or move the top-level window. Offscreen regression coverage stresses repeated
-geometry changes and confirms visible-art work runs once after resize settles.
+shorter 90 ms settle. The zoom remains unchanged, and resize handling does not resize or
+move the top-level window. Offscreen regression coverage stresses repeated geometry changes
+and confirms visible-art work runs once after resize settles.
 
 The physical Mac check below remains necessary for WindowServer, taskbar/dock bounds and
 native edge/corner hit-testing.
