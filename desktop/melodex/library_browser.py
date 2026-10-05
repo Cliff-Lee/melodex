@@ -2252,8 +2252,10 @@ class LibraryBrowser(QWidget):
         if self._artist_lookup_paused or self._artist_lookup_cancel_requested:
             self._refresh_artwork_progress(kind="artists")
             return False
-        batch=self._artist_lookup_queue[:self._artwork_batch_size]
-        self._artist_lookup_queue=self._artist_lookup_queue[len(batch):]
+        raw_batch=self._artist_lookup_queue[:self._artwork_batch_size]
+        self._artist_lookup_queue=self._artist_lookup_queue[len(raw_batch):]
+        generation=self._artwork_generation("artists")
+        batch=[{**dict(row),"generation":generation} for row in raw_batch]
         self._artist_lookup_inflight=len(batch)
         self._artist_lookup_inflight_rows=[dict(row) for row in batch]
         self._artist_lookup_current=str(batch[0].get("artist") or "artist") if batch else ""
@@ -2287,8 +2289,10 @@ class LibraryBrowser(QWidget):
         if self._album_lookup_paused or self._album_lookup_cancel_requested:
             self._refresh_artwork_progress(kind="albums")
             return False
-        batch=self._album_lookup_queue[:self._artwork_batch_size]
-        self._album_lookup_queue=self._album_lookup_queue[len(batch):]
+        raw_batch=self._album_lookup_queue[:self._artwork_batch_size]
+        self._album_lookup_queue=self._album_lookup_queue[len(raw_batch):]
+        generation=self._artwork_generation("albums")
+        batch=[{**dict(row),"generation":generation} for row in raw_batch]
         self._album_lookup_inflight=len(batch)
         self._album_lookup_inflight_rows=[dict(row) for row in batch]
         if batch:
@@ -2352,6 +2356,7 @@ class LibraryBrowser(QWidget):
             generation=int(payload.get("generation") or current_generation)
             if generation != current_generation:
                 self._artist_cache_requested.discard(key)
+                self._artist_art_requested.discard(key)
                 continue
             path=str(payload.get("path") or "")
             image=payload.get("image")
