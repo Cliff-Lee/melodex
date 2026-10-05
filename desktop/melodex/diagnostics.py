@@ -190,6 +190,8 @@ _PLAYBACK_RUNTIME_FIELDS = (
     "transition_plan_stale",
     "transition_plan_failures",
     "transition_plan_submit_rejected",
+    "planned_transition_target",
+    "planned_transition_ms",
     "queue_length",
     "queue_index",
     "queue_index_valid",
