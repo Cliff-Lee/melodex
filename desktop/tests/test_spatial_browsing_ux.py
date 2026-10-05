@@ -283,7 +283,12 @@ def test_main_window_resize_stays_stable_and_restores_geometry(monkeypatch, tmp_
     )
     for width, height in sizes:
         window.resize(width, height)
-        window.move(available.x() + 12, available.y() + 12)
+        app.processEvents()
+        target_y = max(
+            available.top() + 12,
+            available.bottom() - window.height() - 12,
+        )
+        window.move(available.left() + 12, target_y)
         app.processEvents()
         QTest.qWait(80)
         stable_geometry = window.geometry()
