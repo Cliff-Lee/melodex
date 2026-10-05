@@ -39,11 +39,11 @@ Build a repeatable baseline before changing behaviour.
 The automated probe exercises:
 
 1. a synthetic 12,700-track My Music catalog;
-2. album search followed by clear-search expansion;
-3. repeated Album Wall viewport moves;
-4. visible artwork application;
-5. repeated My Music resize cycles;
-6. event-loop and interaction latency collection.
+3. album search followed by clear-search expansion;
+4. repeated Album Wall viewport moves;
+5. visible artwork application;
+6. repeated My Music resize cycles;
+7. event-loop and interaction latency collection.
 
 Run:
 
@@ -231,12 +231,12 @@ The automated probe cannot verify the two most important native-only symptoms. O
 physical Mac, use the current packaged build and a representative large library:
 
 1. start a local FLAC and keep it playing;
-2. pan Album Wall continuously for at least two minutes;
-3. jump between distant wall regions;
-4. return to My Music and scroll rapidly;
-5. search for an album and clear the search;
-6. double-click the title bar to maximize;
-7. resize from every edge/corner and move the window;
+3. pan Album Wall continuously for at least two minutes;
+4. jump between distant wall regions;
+5. return to My Music and scroll rapidly;
+6. search for an album and clear the search;
+7. double-click the title bar to maximize;
+8. resize from every edge/corner and move the window;
 8. seek forward/backward repeatedly;
 9. press Previous, then let that track finish naturally;
 10. double-click an album and let several tracks play.
@@ -252,23 +252,28 @@ albums and lyrics. A NAS is not required for these UI checks. Keep the existing 
 profile and library; do not clear or re-import anything. Record the OS, build, screen
 resolution, and a short screen recording if a failure appears.
 
-1. Start playback, then resize the window smaller and larger from each available edge.
+1. In My Music, note the current Albums scroll position, search for an album you recognize,
+   then clear the search. Confirm the result appears promptly, clearing does not freeze the
+   window, the previous scroll position returns, and its familiar cover is already visible.
+   Repeat once each in Artists and Tracks, including rapid edits and clearing.
+
+3. Start playback, then resize the window smaller and larger from each available edge.
    Confirm the whole window, including the bottom controls, stays above the taskbar or dock.
-2. Move the window near each screen edge, maximize it, restore it, and close/reopen Melodex.
+3. Move the window near each screen edge, maximize it, restore it, and close/reopen Melodex.
    Confirm the window remains visible and its last useful size and position return.
-3. Open Album Wall and scroll down several screens with the mouse wheel or trackpad.
+4. Open Album Wall and scroll down several screens with the mouse wheel or trackpad.
    Drag the canvas down and sideways, pause, then continue. Confirm it stays at the chosen
    albums instead of jumping back to the top.
-4. Leave Album Wall for My Music or Home and return. Confirm familiar covers are already
+5. Leave Album Wall for My Music or Home and return. Confirm familiar covers are already
    visible as soon as the wall returns. Scroll away and back to check covers do not flash
    blank while the known artwork is being reused.
-5. Open a track whose lyrics have loaded, move to another track, then return. Confirm the
+6. Open a track whose lyrics have loaded, move to another track, then return. Confirm the
    lyrics appear immediately on return. Allow a first-time lookup to finish before judging
    the revisit.
-6. Open Music Map, resize the window, pan in several directions, and use the search and
+7. Open Music Map, resize the window, pan in several directions, and use the search and
    Connections controls. Confirm the labeled cards remain readable and the view does not
    jump after a refresh.
-7. Keep playback running while repeating the navigation and resize steps. Check for audio
+8. Keep playback running while repeating the navigation and resize steps. Check for audio
    interruption, a frozen window, clipped controls, or a delayed response to clicks.
 
 For each step record Pass or Fail and the observed behavior. A failure report should include
