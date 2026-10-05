@@ -83,11 +83,15 @@ class FlowPlayer(QObject):
             )
 
     def set_queue(self, tracks: list[dict[str, Any]], start: int = 0, autoplay: bool = True) -> None:
+        self._cancel_transition(stop_incoming=True, count_abort=True)
+        self._stop_all_decks()
         self.queue = [dict(item) for item in tracks]
         self.index = max(0, min(len(self.queue) - 1, start)) if self.queue else -1
         self.queueChanged.emit(self.queue)
         if autoplay and self.index >= 0:
             self._load_index(self.index, play=True)
+        else:
+            self.playingChanged.emit(False)
 
     def append_queue(self, tracks: list[dict[str, Any]], autoplay: bool = False) -> None:
         incoming = [dict(item) for item in tracks]
@@ -106,9 +110,13 @@ class FlowPlayer(QObject):
         index = int(index)
         if not (0 <= index < len(self.queue)):
             return False
-        self.players[self.active].stop()
-        self._load_index(index, bool(autoplay))
-        return True
+        self._cancel_transition(stop_incoming=True, count_abort=True)
+        self._stop_all_decks()
+        return self._load_index(
+            index,
+            bool(autoplay),
+            announce_queue=True,
+        )
 
     def replace_queue_item(
         self,
@@ -123,8 +131,9 @@ class FlowPlayer(QObject):
         self.queue[index] = dict(track)
         self.queueChanged.emit(self.queue)
         if autoplay:
-            self.players[self.active].stop()
-            self._load_index(index, True)
+            self._cancel_transition(stop_incoming=True, count_abort=True)
+            self._stop_all_decks()
+            return self._load_index(index, True)
         return True
 
     def merge_queue_items(
@@ -144,18 +153,16 @@ class FlowPlayer(QObject):
         return updated
 
     def clear_queue(self) -> None:
-        for player in self.players:
-            player.stop()
+        self._cancel_transition(stop_incoming=True, count_abort=True)
+        self._stop_all_decks()
         self.queue = []
         self.index = -1
-        self._crossfading = False
         self.queueChanged.emit(self.queue)
         self.playingChanged.emit(False)
 
     def stop(self) -> None:
-        for player in self.players:
-            player.stop()
-        self._crossfading = False
+        self._cancel_transition(stop_incoming=True, count_abort=True)
+        self._stop_all_decks()
         self.playingChanged.emit(False)
 
     def close(self) -> None:
@@ -324,17 +331,18 @@ class FlowPlayer(QObject):
 
     def next(self) -> None:
         self._runtime_metrics["manual_next"] += 1
-        if self.index + 1 < len(self.queue):
+        next_index = self.index + 1
+        if next_index < len(self.queue):
             previous = dict(self.queue[self.index]) if 0 <= self.index < len(self.queue) else {}
             played_ms = int(self.players[self.active].position())
             duration_ms = int(self.players[self.active].duration())
-            for player in self.players:
-                player.stop()
-            self.outputs[self.active].setVolume(1.0)
-            self.outputs[1 - self.active].setVolume(0.0)
-            self._crossfading = False
-            self._transition_ms = 0
-            self._load_index(self.index + 1, True)
+            self._cancel_transition(stop_incoming=True, count_abort=True)
+            self._stop_all_decks()
+            self._load_index(
+                next_index,
+                True,
+                announce_queue=True,
+            )
             current = dict(self.queue[self.index]) if 0 <= self.index < len(self.queue) else {}
             self.manualAdvanced.emit(previous, current, played_ms, duration_ms)
 
@@ -345,23 +353,24 @@ class FlowPlayer(QObject):
             self.set_queue(incoming, 0, False)
             return
         if self._crossfading:
-            next_deck = 1 - self.active
-            self.players[next_deck].stop()
-            self.outputs[next_deck].setVolume(0.0)
-            self.outputs[self.active].setVolume(1.0)
-            self._crossfading = False
-            self._transition_ms = 0
+            self._cancel_transition(stop_incoming=True, count_abort=True)
         self.queue = self.queue[: self.index + 1] + incoming
         self.queueChanged.emit(self.queue)
 
     def previous(self) -> None:
         self._runtime_metrics["manual_previous"] += 1
         player = self.players[self.active]
+        if self._crossfading:
+            self._cancel_transition(stop_incoming=True, count_abort=True)
         if player.position() > 5000:
             player.setPosition(0)
         elif self.index > 0:
-            player.stop()
-            self._load_index(self.index - 1, True)
+            self._stop_all_decks()
+            self._load_index(
+                self.index - 1,
+                True,
+                announce_queue=True,
+            )
 
     def seek(self, ms: int) -> None:
         target = max(0, int(ms))
