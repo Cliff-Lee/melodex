@@ -382,11 +382,12 @@ Decision: do not implement P14l4b2e in Campaign P. Record it in the post-P perfo
 backlog and reconsider only if later profiling shows persistence-memory pressure on a real
 workload.
 
-#### P14l5 — Physical 12.7k/NAS qualification
+#### P14l5 — Final 12.7k/NAS qualification
 
-Run the resulting scanner against a representative physical 12.7k-track library and a NAS
-profile. Compare cold import, unchanged rescan and small delta; verify cancellation, root
-loss and restart behavior before P14l is considered complete.
+**P14l5a — local 12.7k timing: GREEN.** The post-P14l4 12,700-track elastic-library
+qualification completed a cold scan in 6.119 s plus 0.454 s persistence. Traced Python peak
+was 15.192 MiB, process peak RSS was 127.41 MiB, the discovery queue stayed at its 256-row
+cap and metadata in-flight stayed at its 8-job cap. All scale checks passed.
 
 ### P14m — 30-minute endurance qualification
 
