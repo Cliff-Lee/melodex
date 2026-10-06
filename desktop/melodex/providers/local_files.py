@@ -395,6 +395,8 @@ class LocalFilesProvider(MusicProvider):
         directory_manifest_misses = 0
         directory_reuse_hits = 0
         directory_reuse_tracks = 0
+        file_work_items_materialized = 0
+        directory_reuse_materializations_avoided = 0
         scandir_directories = 0
         concurrency = StorageConcurrencyController(scan_roots)
         metadata_executor = ThreadPoolExecutor(
@@ -463,6 +465,8 @@ class LocalFilesProvider(MusicProvider):
 
         def discover() -> None:
             nonlocal stat_failures
+            nonlocal file_work_items_materialized
+            nonlocal directory_reuse_materializations_avoided
             try:
                 for root in scan_roots:
                     control.checkpoint()
@@ -532,16 +536,35 @@ class LocalFilesProvider(MusicProvider):
                         directory_key = self._override_key(base)
                         previous_dir = cached_dirs.get(directory_key)
                         reuse_candidate = previous_dir is not None
-                        file_work: list[dict[str, Any]] = []
+                        file_work: list[
+                            tuple[str, int | None, int | None]
+                        ] = []
+
+                        def materialize_file_work(
+                            name: str,
+                            size: int | None,
+                            mtime_ns: int | None,
+                        ) -> dict[str, Any]:
+                            nonlocal file_work_items_materialized
+                            path = Path(base) / name
+                            file_work_items_materialized += 1
+                            return {
+                                "type": "file",
+                                "path": path,
+                                "key": self._override_key(path),
+                                "size": size,
+                                "mtime_ns": mtime_ns,
+                                "root_key": root_key,
+                            }
+
                         for name, direntry_stat, direntry_stat_elapsed in files:
                             control.checkpoint()
-                            p = Path(base) / name
-                            is_audio = p.suffix.lower() in AUDIO_EXTS
+                            is_audio = Path(name).suffix.lower() in AUDIO_EXTS
                             probe.file_seen(audio=is_audio)
                             if not is_audio:
                                 continue
 
-                            key = self._override_key(p)
+                            path: Path | None = None
                             size: int | None = None
                             mtime_ns: int | None = None
                             stat_started = time.perf_counter()
@@ -560,8 +583,9 @@ class LocalFilesProvider(MusicProvider):
                                         nonlocal legacy_retries
                                         legacy_retries += 1
 
+                                    path = Path(base) / name
                                     file_stat = _retry_oserror(
-                                        p.stat,
+                                        path.stat,
                                         on_retry=legacy_stat_retried,
                                     )
                                     if legacy_retries:
@@ -607,23 +631,27 @@ class LocalFilesProvider(MusicProvider):
                                     + "\n"
                                 ).encode("utf-8", errors="surrogatepass")
                             )
-                            work_item = {
-                                "type": "file",
-                                "path": p,
-                                "key": key,
-                                "size": size,
-                                "mtime_ns": mtime_ns,
-                                "root_key": root_key,
-                            }
                             if reuse_candidate:
-                                file_work.append(work_item)
+                                file_work.append((name, size, mtime_ns))
                                 if len(file_work) > 5000:
-                                    for buffered_item in file_work:
-                                        put_work(buffered_item)
+                                    for buffered_name, buffered_size, buffered_mtime in file_work:
+                                        put_work(
+                                            materialize_file_work(
+                                                buffered_name,
+                                                buffered_size,
+                                                buffered_mtime,
+                                            )
+                                        )
                                     file_work.clear()
                                     reuse_candidate = False
                             else:
-                                put_work(work_item)
+                                put_work(
+                                    materialize_file_work(
+                                        name,
+                                        size,
+                                        mtime_ns,
+                                    )
+                                )
 
                         manifest_value = manifest.hexdigest()
                         reusable_directory = bool(
@@ -636,6 +664,7 @@ class LocalFilesProvider(MusicProvider):
                         )
 
                         if reusable_directory:
+                            directory_reuse_materializations_avoided += audio_count
                             put_work(
                                 {
                                     "type": "directory_reuse",
@@ -649,8 +678,14 @@ class LocalFilesProvider(MusicProvider):
                             )
                         else:
                             if reuse_candidate:
-                                for work_item in file_work:
-                                    put_work(work_item)
+                                for buffered_name, buffered_size, buffered_mtime in file_work:
+                                    put_work(
+                                        materialize_file_work(
+                                            buffered_name,
+                                            buffered_size,
+                                            buffered_mtime,
+                                        )
+                                    )
                             put_work(
                                 {
                                     "type": "directory_manifest",
@@ -1021,6 +1056,12 @@ class LocalFilesProvider(MusicProvider):
                     "directory_manifest_misses": int(directory_manifest_misses),
                     "directory_reuse_hits": int(directory_reuse_hits),
                     "directory_reuse_tracks": int(directory_reuse_tracks),
+                    "file_work_items_materialized": int(
+                        file_work_items_materialized
+                    ),
+                    "directory_reuse_materializations_avoided": int(
+                        directory_reuse_materializations_avoided
+                    ),
                     "directory_manifests": len(directory_manifests),
                     "scandir_directories": int(scandir_directories),
                     "scandir_enabled": bool(scandir_directories),

@@ -49,6 +49,8 @@ def test_p10j_unchanged_directories_skip_track_materialization(
         assert second["changes"]["metadata_reads"] == 0
         assert second["changes"]["unchanged"] == 6
         assert second["metrics"]["directory_reuse_tracks"] == 6
+        assert second["metrics"]["file_work_items_materialized"] == 0
+        assert second["metrics"]["directory_reuse_materializations_avoided"] == 6
         assert second["index_records"] == []
         assert len(second["preserve_directories"]) >= 2
 
@@ -106,6 +108,8 @@ def test_p10j_changed_directory_materializes_only_that_directory(
         # Album B is preserved as one unit; Album A is materialized because its
         # manifest changed.
         assert second["metrics"]["directory_reuse_tracks"] >= 3
+        assert second["metrics"]["file_work_items_materialized"] == 3
+        assert second["metrics"]["directory_reuse_materializations_avoided"] >= 3
         assert len(second["index_records"]) == 3
 
         persisted = manager.persist_local_scan_snapshot([root], second)
