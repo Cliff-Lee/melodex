@@ -394,6 +394,12 @@ delta of 50 changed + 50 added + 10 deleted tracks completed in 2.445 s with exa
 metadata reads, 100 row writes and 10 deletions. Traced Python peak was 7.275 MiB and the
 existing delta-vs-cold scaling gate passed.
 
+**P14l5c — NAS qualification: GREEN.** The NAS fault suite passed all cases. Cached browsing
+remained stable during a slow rescan; high-latency storage adapted to two metadata workers;
+transient I/O faults recovered after bounded retries; a mid-scan disconnect marked the root
+incomplete and preserved all 40 cached tracks with zero deletions; and blocked metadata work
+could be cancelled safely.
+
 ### P14m — 30-minute endurance qualification
 
 P14m turns the short mixed-workload soak into a duration-based qualification. The same
