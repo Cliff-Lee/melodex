@@ -44,10 +44,16 @@ Initial V1 cleanup:
 Dynamic artwork-derived Now Playing accents remain dynamic. No layout or interaction
 behaviour changes are part of V1.
 
+V1 qualified across the full test, visual-performance and packaging matrix.
+
 ### V2 — Application shell and navigation
 
 Polish the existing sidebar, selected/hover state, page headers, group spacing, alignment,
 dividers and resize appearance without changing navigation architecture.
+
+V2 keeps the page structure unchanged while tightening sidebar geometry, separating the
+utility navigation visually, making hover/selected states stable rather than layout-shifting,
+and giving page titles/subtitles a quieter, more consistent rhythm.
 
 ### V3 — Main library surfaces
 

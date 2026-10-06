@@ -361,21 +361,21 @@ class MainWindow(QMainWindow):
         # contextually and through Power tools rather than owning the sidebar.
         self.sidebar = QWidget()
         self.sidebar.setObjectName("sidebar")
-        self.sidebar.setFixedWidth(210)
+        self.sidebar.setFixedWidth(206)
         side = QVBoxLayout(self.sidebar)
-        side.setContentsMargins(15, 18, 15, 14)
-        side.setSpacing(4)
+        side.setContentsMargins(14, 16, 14, 13)
+        side.setSpacing(3)
 
         brand = QHBoxLayout()
-        brand.setSpacing(10)
+        brand.setSpacing(9)
         mark = QLabel()
         mark_path = Path(__file__).resolve().parent / "assets" / "melodex-mark.png"
         pixmap = QPixmap(str(mark_path))
         if not pixmap.isNull():
             mark.setPixmap(
-                pixmap.scaled(42, 42, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                pixmap.scaled(38, 38, Qt.KeepAspectRatio, Qt.SmoothTransformation)
             )
-        mark.setFixedSize(44, 44)
+        mark.setFixedSize(40, 40)
         titles = QVBoxLayout()
         titles.setSpacing(0)
         logo = QLabel("MELODEX")
@@ -387,7 +387,7 @@ class MainWindow(QMainWindow):
         brand.addWidget(mark)
         brand.addLayout(titles, 1)
         side.addLayout(brand)
-        side.addSpacing(18)
+        side.addSpacing(14)
 
         self.nav_buttons: dict[str, QPushButton] = {}
 
@@ -410,6 +410,7 @@ class MainWindow(QMainWindow):
         side.addStretch(1)
 
         sources_nav = add_nav("Sources && plugins", "sources")
+        sources_nav.setObjectName("navUtilityButton")
         set_help(
             sources_nav,
             "Sources & plugins",
@@ -620,15 +621,8 @@ class MainWindow(QMainWindow):
                 font-size:13px;
             }
             QLabel{background:transparent}
-            QLabel#pageTitle{
-                font-size:27px;
-                font-weight:720;
-            }
-            QLabel#pageSubtitle{
-                color:#99a4b3;
-                font-size:13px;
-                margin-bottom:6px;
-            }
+            QLabel#pageTitle{font-size:26px;font-weight:720}
+            QLabel#pageSubtitle{color:#929eae;font-size:12px;margin-bottom:10px}
             QLabel#pageHint{
                 color:#758297;
                 margin-top:8px;
@@ -686,38 +680,21 @@ class MainWindow(QMainWindow):
                 padding:6px 2px 4px 2px;
                 font-size:12px;
             }
-            QWidget#sidebar{
-                background:#0a0d12;
-                border-right:1px solid #202733;
+            QWidget#sidebar{background:#0a0d12;border-right:1px solid #1e2632}
+            QLabel#brandName{font-size:19px;font-weight:760;letter-spacing:1.8px}
+            QLabel#brandTagline{color:#717d90;font-size:10px}
+            QPushButton#navButton,QPushButton#navUtilityButton{
+                background:transparent;border:1px solid transparent;border-radius:9px;
+                padding:9px 11px;text-align:left;color:#cfd6e0;
             }
-            QLabel#brandName{
-                font-size:20px;
-                font-weight:760;
-                letter-spacing:2px;
+            QPushButton#navButton:hover,QPushButton#navUtilityButton:hover{
+                background:#131a24;border-color:#202c3b;color:#f0f3f7;
             }
-            QLabel#brandTagline{
-                color:#778397;
-                font-size:10px;
+            QPushButton#navButton[active="true"],QPushButton#navUtilityButton[active="true"]{
+                background:#172438;border-color:#294563;color:#ffffff;font-weight:650;
             }
-            QPushButton#navButton{
-                background:transparent;
-                border:0;
-                border-radius:9px;
-                padding:11px 12px;
-                text-align:left;
-                color:#dfe4ec;
-            }
-            QPushButton#navButton:hover{background:#151b25}
-            QPushButton#navButton[active="true"]{
-                background:#1b2739;
-                color:#ffffff;
-                font-weight:650;
-            }
-            QCheckBox#powerToggle{
-                background:transparent;
-                color:#9ca7b8;
-                padding:10px 7px;
-            }
+            QPushButton#navUtilityButton{color:#8f9bad}
+            QCheckBox#powerToggle{background:transparent;color:#8793a5;padding:8px 9px}
             QPushButton{
                 background:#181e28;
                 border:1px solid #2a3443;
@@ -1172,8 +1149,8 @@ class MainWindow(QMainWindow):
         else:
             lay=existing
             self._clear_layout_items(lay)
-        lay.setContentsMargins(28,24,28,24)
-        lay.setSpacing(6)
+        lay.setContentsMargins(30,22,30,24)
+        lay.setSpacing(5)
         t=QLabel(title); t.setObjectName("pageTitle"); lay.addWidget(t)
         self.page_titles[page]=t
         if subtitle:
