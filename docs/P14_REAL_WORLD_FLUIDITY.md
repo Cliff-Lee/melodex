@@ -389,6 +389,11 @@ qualification completed a cold scan in 6.119 s plus 0.454 s persistence. Traced 
 was 15.192 MiB, process peak RSS was 127.41 MiB, the discovery queue stayed at its 256-row
 cap and metadata in-flight stayed at its 8-job cap. All scale checks passed.
 
+**P14l5b — small-delta timing: GREEN.** On the same 12,700-track qualification, the standard
+delta of 50 changed + 50 added + 10 deleted tracks completed in 2.445 s with exactly 100
+metadata reads, 100 row writes and 10 deletions. Traced Python peak was 7.275 MiB and the
+existing delta-vs-cold scaling gate passed.
+
 ### P14m — 30-minute endurance qualification
 
 P14m turns the short mixed-workload soak into a duration-based qualification. The same
