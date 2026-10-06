@@ -123,7 +123,7 @@ def test_p10d_deletions_are_batched_too(tmp_path: Path):
     assert result["max_batch_rows"] == 250
     assert result["max_existing_fingerprint_rows"] == 601
     assert result["max_incoming_path_rows"] == 1
-    assert result["max_removed_path_rows"] == 600
+    assert result["max_removed_path_rows"] == 250
     assert len(index.load_tracks([root])) == 1
 
 

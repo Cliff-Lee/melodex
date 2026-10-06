@@ -338,6 +338,16 @@ reused rows plus one deletion.
 
 P14l4b2b qualified independently across the full release matrix.
 
+**P14l4b2d — bounded delete candidates.** Publication no longer builds the remaining
+collection-sized `removed_paths` set. Existing rows are classified exactly as before, but
+deletion candidates now flow directly into the existing bounded delete batch and are flushed
+at `batch_size`.
+
+The atomic transaction, cancellation rollback, preserved-directory logic and incoming-path
+membership test are unchanged. The `max_removed_path_rows` diagnostic now measures peak
+live delete candidates rather than total removals, so a 600-row deletion with batch size 250
+must peak at 250 rather than 600.
+
 **P14l4b2c — publication allocation telemetry.** Before changing `incoming_paths`, the
 persistence result now reports only three aggregate row-count maxima across roots:
 `max_existing_fingerprint_rows`, `max_incoming_path_rows`, and
@@ -348,7 +358,7 @@ The existing 601-track batch tests qualify both ends of the workload: an unchang
 publication reports 601 existing + 601 incoming + 0 removed rows, while a 600-track deletion
 reports 601 existing + 1 incoming + 600 removed rows. This stage is observational only.
 
-**P14l4b2d — incoming-path decision.** Change `incoming_paths` only if these measurements,
+**P14l4b2e — incoming-path decision.** Change `incoming_paths` only if these measurements,
 including the physical P14l5 profile, demonstrate a real peak-memory reduction rather than a
 one-set-for-another trade.
 
