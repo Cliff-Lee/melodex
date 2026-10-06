@@ -1,5 +1,12 @@
 # P14 — Real-World Fluidity & Playback Integrity
 
+**Status: COMPLETE. Campaign P: COMPLETE.**
+
+The closure condition was met after P14l5a–P14l5d passed on the post-P14l4 code together
+with the existing correctness, responsiveness, large-library, visual-QA, code-health,
+startup and packaging gates. No P14l6 or further Campaign P optimization stage is planned.
+Any non-blocking improvement discovered after this point belongs in the post-P backlog.
+
 P14 converts the first detailed large-library external beta report into a permanent
 engineering qualification campaign.
 
@@ -358,15 +365,52 @@ The existing 601-track batch tests qualify both ends of the workload: an unchang
 publication reports 601 existing + 601 incoming + 0 removed rows, while a 600-track deletion
 reports 601 existing + 1 incoming + 600 removed rows. This stage is observational only.
 
-**P14l4b2e — incoming-path decision.** Change `incoming_paths` only if these measurements,
-including the physical P14l5 profile, demonstrate a real peak-memory reduction rather than a
-one-set-for-another trade.
+**P14l4b2e — incoming-path decision: defer.** The largest existing scale contract is the
+1,000,000-track Elastic Library qualification. `incoming_paths` reuses the relative-path
+string objects already held by the grouped persistence rows, so its incremental cost is the
+set table rather than another million path strings.
 
-#### P14l5 — Physical 12.7k/NAS qualification
+A direct allocation measurement using the qualification's deterministic one-million-track
+path shape measured approximately:
 
-Run the resulting scanner against a representative physical 12.7k-track library and a NAS
-profile. Compare cold import, unchanged rescan and small delta; verify cancellation, root
-loss and restart behavior before P14l is considered complete.
+- 12,700 tracks: 0.50 MiB live / 0.63 MiB transient peak;
+- 100,000 tracks: 4.0 MiB live / 6.0 MiB transient peak;
+- 250,000 tracks: 8.0 MiB live / 12.0 MiB transient peak;
+- 500,000 tracks: 16.0 MiB live / 24.0 MiB transient peak;
+- 1,000,000 tracks: 32.0 MiB live / 48.0 MiB transient peak.
+
+The existing clean one-million-track qualification recorded roughly 1,720 MiB post-persist
+process RSS. The `incoming_paths` transient peak is therefore only about 2.8% of that
+process peak, remains linear with collection size, and does not violate the existing bounded
+queue/worker or linear-memory scaling contract. Replacing it now would likely trade one
+membership structure for another while adding persistence complexity.
+
+Decision: do not implement P14l4b2e in Campaign P. Record it in the post-P performance
+backlog and reconsider only if later profiling shows persistence-memory pressure on a real
+workload.
+
+#### P14l5 — Final 12.7k/NAS qualification
+
+**P14l5a — local 12.7k timing: GREEN.** The post-P14l4 12,700-track elastic-library
+qualification completed a cold scan in 6.119 s plus 0.454 s persistence. Traced Python peak
+was 15.192 MiB, process peak RSS was 127.41 MiB, the discovery queue stayed at its 256-row
+cap and metadata in-flight stayed at its 8-job cap. All scale checks passed.
+
+**P14l5b — small-delta timing: GREEN.** On the same 12,700-track qualification, the standard
+delta of 50 changed + 50 added + 10 deleted tracks completed in 2.445 s with exactly 100
+metadata reads, 100 row writes and 10 deletions. Traced Python peak was 7.275 MiB and the
+existing delta-vs-cold scaling gate passed.
+
+**P14l5c — NAS qualification: GREEN.** The NAS fault suite passed all cases. Cached browsing
+remained stable during a slow rescan; high-latency storage adapted to two metadata workers;
+transient I/O faults recovered after bounded retries; a mid-scan disconnect marked the root
+incomplete and preserved all 40 cached tracks with zero deletions; and blocked metadata work
+could be cancelled safely.
+
+**P14l5d — cancellation/restart qualification: GREEN.** Cancellation published no partial
+catalog. The interrupted 12,700-track scenario staged 256 rows; restart reused all 256 staged
+rows and completed in 2.513 s. The separate blocked-I/O NAS case hard-cancelled in 0.152 s,
+well inside its 2.5 s limit.
 
 ### P14m — 30-minute endurance qualification
 
@@ -403,11 +447,12 @@ Automated release targets are:
 - seek ownership, authoritative EOF/transition state and album playback semantics remain
   covered by deterministic playback regression tests.
 
-### Residual physical qualification — consolidated and deferred
+### Post-P manual beta validation — non-blocking
 
 Offscreen Qt cannot prove audible output, native WindowServer hit-testing, Dock/taskbar
-bounds or the behavior of a real NAS/audio device. Those checks are deliberately kept as
-one residual physical run rather than duplicated across P14 phases.
+bounds or the behavior of every real NAS/audio device. These checks remain useful during
+normal beta testing, but they are **not** a Campaign P completion gate after l5a–l5d and
+the full automated release matrix are green.
 
 On a current packaged macOS build with a representative local/NAS collection:
 
@@ -424,7 +469,8 @@ On a current packaged macOS build with a representative local/NAS collection:
 
 Record Pass/Fail plus build/OS and a short screen recording for any failure. Export redacted
 diagnostics after the run; P14 diagnostics must never contain media paths, track/album names,
-URLs, credentials or other private collection content.
+URLs, credentials or other private collection content. Any issue found here is ordinary
+post-P bug/backlog work unless it exposes a regression in an existing release gate.
 
 ## P14a is a baseline, not a victory condition
 

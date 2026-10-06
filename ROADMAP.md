@@ -70,6 +70,13 @@ The roadmap has two parallel goals:
 - Android queue and Flow controls
 - taste sync through Bridge
 
+## Post-P performance backlog
+
+- Revisit the SQLite publication `incoming_paths` membership set only if real-world
+  profiling shows persistence-memory pressure. At the existing 1,000,000-track scale its
+  measured incremental footprint is about 32 MiB live / 48 MiB transient peak, so Campaign P
+  deliberately leaves it unchanged.
+
 ## Later
 
 - optional encrypted multi-device state sync
