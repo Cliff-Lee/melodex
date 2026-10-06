@@ -261,7 +261,7 @@ class MusicMapWidget(QWidget):
 
         self.status = QLabel("Analyse your local library to build a Music Map.")
         self.status.setWordWrap(True)
-        self.status.setStyleSheet("color:#aab0ba")
+        self.status.setObjectName("mutedText")
         layout.addWidget(self.status)
 
         self.mode.currentIndexChanged.connect(lambda *_: self._recolour())
