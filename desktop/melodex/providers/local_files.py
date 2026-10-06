@@ -322,6 +322,7 @@ class LocalFilesProvider(MusicProvider):
         control: ScanControl | None = None,
         cached_entries: dict[str, dict[str, Any]] | None = None,
         cached_directories: dict[str, dict[str, Any]] | None = None,
+        cache_keys_canonical: bool = False,
         collect_tracks: bool = True,
         checkpoint: Callable[[dict[str, Any]], None] | None = None,
     ) -> dict[str, Any]:
@@ -336,16 +337,32 @@ class LocalFilesProvider(MusicProvider):
         rows before persistence.
         """
         scan_roots = [Path(x) for x in (self.roots if roots is None else roots)]
-        cached = {
-            self._override_key(key): dict(value)
+        raw_cached = {
+            str(key): dict(value)
             for key, value in dict(cached_entries or {}).items()
             if isinstance(value, dict)
         }
-        cached_dirs = {
-            self._override_key(key): dict(value)
+        raw_cached_dirs = {
+            str(key): dict(value)
             for key, value in dict(cached_directories or {}).items()
             if isinstance(value, dict)
         }
+        cache_key_normalizations = 0
+        if cache_keys_canonical:
+            # LocalLibraryIndex guarantees canonical absolute keys. Production
+            # callers can therefore avoid normalising every indexed path again
+            # before traversal begins.
+            cached = raw_cached
+            cached_dirs = raw_cached_dirs
+        else:
+            cached = {}
+            for key, value in raw_cached.items():
+                cached[self._override_key(key)] = value
+                cache_key_normalizations += 1
+            cached_dirs = {}
+            for key, value in raw_cached_dirs.items():
+                cached_dirs[self._override_key(key)] = value
+                cache_key_normalizations += 1
         control = control or ScanControl()
         throttle = ProgressThrottle()
         tracks: list[dict[str, Any]] = []
@@ -952,7 +969,10 @@ class LocalFilesProvider(MusicProvider):
             for key, previous in cached.items():
                 if key in seen_keys:
                     continue
-                if self._override_key(os.path.dirname(key)) in preserved_directory_keys:
+                parent_key = os.path.dirname(key)
+                if not cache_keys_canonical:
+                    parent_key = self._override_key(parent_key)
+                if parent_key in preserved_directory_keys:
                     continue
                 root_path = str(previous.get("root_path") or "")
                 if (
@@ -995,6 +1015,8 @@ class LocalFilesProvider(MusicProvider):
                     "bounded_pipeline": True,
                     "collect_tracks": bool(collect_tracks),
                     "snapshot_track_copies": 2 if collect_tracks else 1,
+                    "cache_keys_canonical": bool(cache_keys_canonical),
+                    "cache_key_normalizations": int(cache_key_normalizations),
                     "directory_manifest_hits": int(directory_manifest_hits),
                     "directory_manifest_misses": int(directory_manifest_misses),
                     "directory_reuse_hits": int(directory_reuse_hits),

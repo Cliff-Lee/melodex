@@ -102,3 +102,41 @@ def test_p10j_scandir_rescan_keeps_fingerprint_reuse(monkeypatch, tmp_path: Path
     assert calls == []
     assert second["changes"]["unchanged"] == 1
     assert second["metrics"]["scandir_enabled"] is True
+
+
+def test_p14l3a_index_backed_cache_skips_recanonicalization(monkeypatch):
+    provider = LocalFilesProvider(scan_on_init=False)
+    calls: list[str] = []
+    original = provider._override_key
+
+    def counted(path):
+        calls.append(str(path))
+        return original(path)
+
+    monkeypatch.setattr(provider, "_override_key", counted)
+    entries = {"/music/one.flac": {"track": {"title": "One"}}}
+    directories = {"/music": {"manifest": "cached", "file_count": 1}}
+
+    fast = provider.scan_snapshot(
+        [],
+        cached_entries=entries,
+        cached_directories=directories,
+        cache_keys_canonical=True,
+    )
+
+    assert calls == []
+    assert fast["metrics"]["cache_keys_canonical"] is True
+    assert fast["metrics"]["cache_key_normalizations"] == 0
+
+    calls.clear()
+    defensive = provider.scan_snapshot(
+        [],
+        cached_entries=entries,
+        cached_directories=directories,
+    )
+
+    # Two calls normalise the supplied cache keys; the third is the existing
+    # defensive parent-directory check in the deletion sweep.
+    assert len(calls) == 3
+    assert defensive["metrics"]["cache_keys_canonical"] is False
+    assert defensive["metrics"]["cache_key_normalizations"] == 2
