@@ -232,6 +232,7 @@ class LocalLibraryIndex:
             return []
         ids = [_root_id(root) for root in roots]
         placeholders = ",".join("?" for _ in ids)
+        tracks: list[dict[str, Any]] = []
         with self._connect() as db:
             rows = db.execute(
                 f"""
@@ -241,15 +242,14 @@ class LocalLibraryIndex:
                 ORDER BY root_id, relative_path
                 """,
                 tuple(ids),
-            ).fetchall()
-        tracks: list[dict[str, Any]] = []
-        for row in rows:
-            try:
-                value = json.loads(str(row["metadata_json"]))
-            except Exception:
-                continue
-            if isinstance(value, dict):
-                tracks.append(value)
+            )
+            for row in rows:
+                try:
+                    value = json.loads(str(row["metadata_json"]))
+                except Exception:
+                    continue
+                if isinstance(value, dict):
+                    tracks.append(value)
         return tracks
 
     def load_scan_cache(
