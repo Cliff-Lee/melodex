@@ -76,6 +76,9 @@ def test_p10d_unchanged_rows_do_not_create_write_batches(tmp_path: Path):
     assert second["tracks_reused"] == 601
     assert second["write_batches"] == 0
     assert second["max_batch_rows"] == 0
+    assert second["max_existing_fingerprint_rows"] == 601
+    assert second["max_incoming_path_rows"] == 601
+    assert second["max_removed_path_rows"] == 0
 
 
 def test_p10d_cancellation_after_batch_rolls_back_entire_transaction(
