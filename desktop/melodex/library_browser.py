@@ -445,7 +445,10 @@ class LibraryBrowser(QWidget):
         self.artist_rows: list[dict[str, Any]] = []
         self.artist_cards: dict[str, ArtistCard] = {}
         self._artist_card_cache: OrderedDict[str, ArtistCard] = OrderedDict()
-        self._card_cache_limit = 2
+        # Keep one rendered batch hot so search/clear and view-return paths
+        # reuse existing widgets instead of rebuilding ~120 cards on the GUI
+        # thread. Each cache remains independently bounded.
+        self._card_cache_limit = 128
         self._album_search_text: dict[str, str] = {}
         self._artist_search_text: dict[str, str] = {}
         self._track_search_text: dict[str, str] = {}
@@ -1788,7 +1791,7 @@ class LibraryBrowser(QWidget):
             else 0
         )
         self.album_container.setMinimumHeight(minimum_height)
-        self.album_container.adjustSize()
+        self.album_container.updateGeometry()
         if self.last_catalog_metrics:
             self.last_catalog_metrics["rendered_album_count"] = len(self.cards)
 
@@ -1850,7 +1853,7 @@ class LibraryBrowser(QWidget):
             else 0
         )
         self.artist_container.setMinimumHeight(minimum_height)
-        self.artist_container.adjustSize()
+        self.artist_container.updateGeometry()
         if self.last_catalog_metrics:
             self.last_catalog_metrics["rendered_artist_count"] = len(self.artist_cards)
 
