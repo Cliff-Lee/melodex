@@ -30,7 +30,7 @@ def _signature(image):
     return tuple(points)
 
 
-def test_profile_pulse_is_the_primary_living_scene_and_is_music_reactive():
+def test_profile_pulse_fills_plane_with_concentric_music_reactive_contours():
     QColor, QImage, QApplication = _qt()
     from melodex.living_canvas import LivingCanvasView
     from melodex.visualization_profile import build_visual_profile
@@ -61,9 +61,23 @@ def test_profile_pulse_is_the_primary_living_scene_and_is_music_reactive():
     scene._phase = 0.0
     scene._refresh_visual_state()
 
+    contour_points = []
+    smooth_path = scene._smooth_closed_path
+
+    def capture_contour(points):
+        contour_points.append(tuple((point.x(), point.y()) for point in points))
+        return smooth_path(points)
+
+    scene._smooth_closed_path = capture_contour
+
     first = QImage(scene.size(), QImage.Format_ARGB32)
     first.fill(QColor("#000000"))
     scene.render(first)
+    assert len(contour_points) == 7
+    all_points = [point for contour in contour_points for point in contour]
+    area = scene._area()
+    assert max(x for x, _y in all_points) - min(x for x, _y in all_points) >= area.width() * 0.75
+    assert max(y for _x, y in all_points) - min(y for _x, y in all_points) >= area.height() * 0.75
 
     scene.set_position_fraction(0.78)
     scene._phase = 2.1
@@ -79,46 +93,23 @@ def test_profile_pulse_is_the_primary_living_scene_and_is_music_reactive():
     app.processEvents()
 
 
-def test_sonic_weather_is_an_animated_atmospheric_field():
+def test_removed_visualizers_are_not_selectable():
     QColor, QImage, QApplication = _qt()
-    from melodex.visualization_profile import build_visual_profile
-    from melodex.visualization_scene import LivingScene
-
+    from melodex.living_canvas import LivingCanvasView
     app = QApplication.instance() or QApplication([])
-    scene = LivingScene()
-    scene.resize(860, 500)
-    scene.set_profile(build_visual_profile(
-        {"artist": "Example", "title": "Weather", "duration": 220},
-        {
-            "bpm": 132,
-            "energy": 0.86,
-            "spectral_centroid": 1200,
-            "onset_density": 0.20,
-            "energy_curve": [0.65, 0.88, 0.72, 0.93],
-        },
-    ))
-    scene.set_mode("weather")
-    assert scene.animated_mode
-
-    scene._phase = 0.0
-    scene._refresh_visual_state()
-    first = QImage(scene.size(), QImage.Format_ARGB32)
-    first.fill(QColor("#000000"))
-    scene.render(first)
-
-    scene._phase = 3.4
-    scene._refresh_visual_state()
-    second = QImage(scene.size(), QImage.Format_ARGB32)
-    second.fill(QColor("#000000"))
-    scene.render(second)
-
-    assert _signature(first) != _signature(second)
-
-    scene.deleteLater()
+    view = LivingCanvasView()
+    modes = [
+        view.mode_combo.itemData(i)
+        for i in range(view.mode_combo.count())
+        if isinstance(view.mode_combo.itemData(i), str)
+    ]
+    assert "weather" not in modes
+    assert "minimal" not in modes
+    view.deleteLater()
     app.processEvents()
 
 
-def test_profile_pulse_and_weather_respect_battery_static_budget():
+def test_profile_pulse_respects_battery_static_budget():
     QColor, QImage, QApplication = _qt()
     from melodex.visualization_profile import build_visual_profile
     from melodex.visualization_scene import LivingScene
@@ -134,13 +125,12 @@ def test_profile_pulse_and_weather_respect_battery_static_budget():
     scene.set_playing(True)
     scene.set_quality("battery")
 
-    for mode in ("living", "weather"):
-        scene.set_mode(mode)
-        assert not scene._timer.isActive()
-        image = QImage(scene.size(), QImage.Format_ARGB32)
-        image.fill(QColor("#000000"))
-        scene.render(image)
-        assert _signature(image)
+    scene.set_mode("living")
+    assert not scene._timer.isActive()
+    image = QImage(scene.size(), QImage.Format_ARGB32)
+    image.fill(QColor("#000000"))
+    scene.render(image)
+    assert _signature(image)
 
     scene.deleteLater()
     app.processEvents()

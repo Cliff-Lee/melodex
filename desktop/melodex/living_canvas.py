@@ -198,8 +198,6 @@ class LivingCanvasView(QWidget):
             (
                 ("Profile Pulse", "living"),
                 ("Lyric Flow", "lyrics"),
-                ("Sonic Weather", "weather"),
-                ("Minimal", "minimal"),
             ),
         ),
         (
@@ -214,8 +212,6 @@ class LivingCanvasView(QWidget):
     _BUILTIN_MODES = (
         ("Profile Pulse", "living"),
         ("Lyric Flow", "lyrics"),
-        ("Sonic Weather", "weather"),
-        ("Minimal", "minimal"),
         ("Constellation", "constellation"),
         ("Memory Atlas", "memory"),
         ("Musical Journey", "journey"),

@@ -688,7 +688,6 @@ class MainWindow(QMainWindow):
             QLabel#nowPlayingArtistPhoto{
                 background:#15181d;border:1px solid #303640;border-radius:14px;color:#808894;
             }
-            QLabel#nowPlayingCredit{color:#8f96a1;font-size:10px}
             QLabel#nowPlayingArtSource{color:#777f8a;font-size:11px}
             QFrame#nativeLyricsToolbar{background:#0f1822;border:1px solid #26394e;border-radius:10px}
             QLabel#lyricsToolbarLabel{color:#8191a5;font-size:10px;font-weight:700}
@@ -3321,6 +3320,7 @@ class MainWindow(QMainWindow):
     def _album_wall_artwork_requested(self,requests):
         rows=[dict(x) for x in list(requests or []) if isinstance(x,dict)]
         if not rows:return
+        prefetch=all(bool(row.get("prefetch")) for row in rows)
         def load():
             result={}
             for row in rows:
@@ -3330,8 +3330,14 @@ class MainWindow(QMainWindow):
                     result[key]=self.metadata.prepared_artwork_payload(
                         path,int(row.get("generation") or 0),228
                     )
+                    result[key]["prefetch"]=bool(row.get("prefetch"))
             return result
-        self._run_async(load,self.album_wall.set_artwork, priority="visible", task_name="album-wall-cached-artwork")
+        self._run_async(
+            load,
+            self.album_wall.set_artwork,
+            priority="prefetch" if prefetch else "visible",
+            task_name="album-wall-art-prefetch" if prefetch else "album-wall-cached-artwork",
+        )
 
     def _album_wall_online_artwork_requested(self,requests):
         rows=[dict(x) for x in list(requests or []) if isinstance(x,dict)]

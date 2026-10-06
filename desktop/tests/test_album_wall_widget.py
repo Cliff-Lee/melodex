@@ -191,6 +191,7 @@ def test_album_wall_artwork_loading_does_not_recurse_without_navigation():
     widget._request_visible_art()
     assert batches
     assert len(batches[-1]) <= 36
+    assert any(row.get("prefetch") for batch in batches for row in batch)
 
     before = len(batches)
     widget.set_artwork({})
@@ -278,6 +279,16 @@ def test_album_wall_prepares_cover_once_and_reuses_it_during_render(tmp_path):
     # resize/crop belongs to artwork arrival, never the paint hot path.
     assert tile._cover_prepares == 1
     assert widget.diagnostics_snapshot()["cover_prepares"] == 1
+    widget._viewport_settled()
+    assert not tile._pixmap.isNull()
+    assert widget.diagnostics_snapshot()["resident_cover_evictions"] == 0
+
+    cached_cover_key = tile._pixmap.cacheKey()
+    widget.set_model(model)
+    app.processEvents()
+    restored_tile = widget.tiles["artist|album"]
+    assert not restored_tile._pixmap.isNull()
+    assert restored_tile._pixmap.cacheKey() == cached_cover_key
 
     widget.close()
     widget.deleteLater()
@@ -403,7 +414,8 @@ def test_album_wall_coalesces_motion_and_requests_art_after_settle():
     assert widget.view._resize_in_progress is False
     assert widget.view.motion_active is False
     assert len(settles) == 1
-    assert len(batches) == 1
+    assert 1 <= len(batches) <= 2
+    assert all(len(batch) <= 36 for batch in batches)
 
     widget.close()
     widget.deleteLater()

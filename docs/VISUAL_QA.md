@@ -27,12 +27,10 @@ The capture set includes:
 - synced Lyric Flow
 - untimed Lyric Flow
 - Constellation with a pinned recognition card
-- Sonic Weather
 - Memory Atlas with a pinned session card
 - Musical Journey
 - legacy/internal Album World compatibility renderer
-- Minimal
-- reduced-Auto Sonic Weather
+- reduced-Auto Profile Pulse
 - Lyric Flow empty state
 
 CI uploads these PNGs as a `visual-qa-captures` artifact.

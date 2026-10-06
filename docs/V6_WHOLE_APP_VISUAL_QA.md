@@ -12,7 +12,9 @@ lyrics, reduced rendering, and the internal legacy renderer.
 The app-route captures use the empty library/player state. The visualization
 captures include populated fixtures where needed. These are rendering checks
 for clipping, overlap, missing controls, illegible text, and visibly broken
-rendering; they do not claim every interaction state was captured.
+rendering; they do not claim every interaction state was captured. The linked
+matrix is the original V6 baseline and predates the final feedback follow-up
+below.
 
 ## Capture matrix
 
@@ -36,14 +38,30 @@ claiming lyrics were untimed, which exercised an invalid combination and
 created a clipped screenshot; the app's untimed renderer was not changed.
 
 No further clipping, overlap, missing controls, illegible text, or visibly
-broken rendering was found in the reviewed matrix. No aesthetic changes,
-spacing refinements, new animation work, or new UI components were made for V6.
+broken rendering was found in the original reviewed matrix. No aesthetic
+changes, spacing refinements, new animation work, or new UI components were
+made during that V6 baseline pass.
+
+## Final feedback follow-up
+
+The final scoped follow-up responds to these concrete product requests:
+
+- Reduce Album Wall clutter while keeping already-loaded covers immediately
+  available through pans and data refreshes.
+- Confirm album activation keeps disc and track order.
+- Expand Profile Pulse contours to use more of the scene plane.
+- Remove Sonic Weather and Minimal from the visualizer choices.
+- Present Music Map as an album-cover map with hover details, zoom controls,
+  and a less dense overview for large collections.
+- Put Now Playing photo attribution on hover instead of over the photo.
+
+The follow-up capture matrix and automated regression/package gates still need
+to run against the resulting code before this final pass can close. The original
+matrix images above do not validate these later changes.
 
 ## Automated closure gates
 
-Manual visual review and all required gates passed on the closure PR head:
-full desktop and provider regression suites, Fluid release gates, visual QA
-captures and performance probes, large-library/P14 checks, code-health
-ratchets, macOS Intel/ARM and Windows desktop builds, and Linux package build
-plus Debian/Ubuntu smoke tests. Campaign V is complete when this closure PR
-merges with these checks green.
+The original V6 closure gates passed on PR #240. The Campaign V feedback
+follow-up is a separate release candidate; its changed screens are being
+recaptured at all three window sizes and its regression/package gates must pass
+before this follow-up closes.

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import json
+import math
 import os
 import sys
 from pathlib import Path
@@ -19,6 +21,9 @@ from PySide6.QtWidgets import QApplication  # noqa: E402
 
 from melodex.living_canvas import LivingCanvasView  # noqa: E402
 from melodex.lyrics_state import LyricFrame  # noqa: E402
+from melodex.album_wall import AlbumWallWidget  # noqa: E402
+from melodex.music_map import MusicMapWidget  # noqa: E402
+from melodex.rich_now_playing import RichNowPlayingWidget  # noqa: E402
 from melodex.visualization_models import (  # noqa: E402
     MemoryMark,
     VisualNeighbour,
@@ -45,6 +50,21 @@ ANALYSIS = {
     ],
 }
 PALETTE = ("#75b8ff", "#4f7fdc", "#8d79d8", "#d574a9", "#6aa8c7", "#bed7ff")
+
+
+def _application_stylesheet() -> str:
+    source = (DESKTOP / "melodex" / "main_window.py").read_text(encoding="utf-8")
+    module = ast.parse(source)
+    for node in ast.walk(module):
+        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+            continue
+        if node.func.attr != "setStyleSheet" or not node.args:
+            continue
+        value = node.args[0]
+        if isinstance(value, ast.Constant) and isinstance(value.value, str):
+            if "QMainWindow,QWidget" in value.value:
+                return value.value
+    raise RuntimeError("Could not find the app stylesheet for visual QA captures")
 
 
 def _album_art(path: Path) -> None:
@@ -157,8 +177,51 @@ def _memory() -> tuple[MemoryMark, ...]:
     return tuple(marks)
 
 
+def _album_fixture(count: int = 18) -> tuple[dict[str, object], dict[str, object]]:
+    albums = []
+    first_track = None
+    for index in range(count):
+        track = {
+            "provider_id": "local",
+            "track_id": f"/fixture/track-{index}.flac",
+            "local_path": f"/fixture/track-{index}.flac",
+            "artist": f"Artist {index + 1:02d}",
+            "album": f"Album {index + 1:02d}",
+            "title": f"Track {index + 1:02d}",
+            "disc_number": 1,
+            "track_number": 1,
+        }
+        if first_track is None:
+            first_track = track
+        albums.append({
+            "key": f"fixture-{index}",
+            "artist": track["artist"],
+            "title": track["album"],
+            "year": 1998 + index % 25,
+            "genres": ["Electronic" if index % 2 == 0 else "Ambient"],
+            "track_count": 1,
+            "tracks": [track],
+            "representative_track": track,
+            "analysed_tracks": 1,
+            "sound_x": ((index % 6) / 3.0) - 1.0,
+            "sound_y": ((index // 6) / 1.5) - 1.0,
+            "fallback_x": ((index % 6) / 3.0) - 1.0,
+            "fallback_y": ((index // 6) / 1.5) - 1.0,
+            "familiarity": (index % 9) / 9.0,
+            "rediscovery": 0.0,
+            "plays": index * 3,
+            "time_x": 0.0,
+            "time_y": 0.0,
+            "familiarity_x": 0.0,
+            "familiarity_y": 0.0,
+            "cover_path": "",
+        })
+    return {"albums": albums, "album_count": count, "analysed_albums": count}, first_track or {}
+
+
 def capture(out: Path, width: int = 1440, height: int = 900) -> dict[str, object]:
     app = QApplication.instance() or QApplication([])
+    app.setStyleSheet(_application_stylesheet())
     out.mkdir(parents=True, exist_ok=True)
 
     art_path = out / "_fixture_art.png"
@@ -168,6 +231,76 @@ def capture(out: Path, width: int = 1440, height: int = 900) -> dict[str, object
 
     def record(name: str, description: str) -> None:
         manifest["captures"].append({"file": name, "description": description})
+
+    now_playing = RichNowPlayingWidget(object())
+    now_playing.resize(width, height)
+    now_playing.set_track({
+        **TRACK,
+        "provider_id": "local",
+        "local_path": "/fixture/glass-horizons.flac",
+    })
+    now_playing._set_art(str(art_path))
+    now_playing._set_artist_photo(str(art_path))
+    now_playing._set_artist_photo_credit({
+        "path": str(art_path),
+        "attribution": "Fixture Photographer",
+        "source": "Fixture Archive",
+        "license_name": "CC BY 4.0",
+        "license_url": "https://creativecommons.org/licenses/by/4.0/",
+    })
+    _save_widget(now_playing, out / "14-now-playing.png", width, height)
+    record("14-now-playing.png", "Now Playing with album art, artist photo, and attribution available on hover.")
+    now_playing.deleteLater()
+
+    album_model, current_track = _album_fixture()
+    album_wall = AlbumWallWidget()
+    album_wall.resize(width, height)
+    album_wall.set_model(album_model, current_track)
+    album_wall.set_artwork({key: str(art_path) for key in album_wall.tiles})
+    _save_widget(album_wall, out / "12-album-wall.png", width, height)
+    record("12-album-wall.png", "Album Wall with populated covers, quiet labels, controls, and current album.")
+    album_wall.deleteLater()
+
+    music_map = MusicMapWidget()
+    map_nodes = []
+    ref_map = {}
+    cluster_centres = ((-0.52, 0.42), (0.48, 0.38), (0.02, -0.54))
+    for index in range(18):
+        ref = f"track-{index}"
+        track = {
+            "track_id": ref,
+            "artist": f"Artist {index + 1:02d}",
+            "album": f"Album {index + 1:02d}",
+            "title": f"Track {index + 1:02d}",
+        }
+        cluster = index // 6
+        point = index % 6
+        angle = point * 1.047 + cluster * 0.31
+        radius = 0.16 + 0.045 * (point % 3)
+        centre_x, centre_y = cluster_centres[cluster]
+        map_nodes.append({
+            "ref": ref,
+            **track,
+            "x": centre_x + math.cos(angle) * radius,
+            "y": centre_y + math.sin(angle) * radius,
+            "energy": 0.35 + (index % 6) * 0.1,
+            "taste": 0.25 + (index % 5) * 0.12,
+            "rediscovery": 0.1 + (index % 4) * 0.18,
+        })
+        ref_map[ref] = track
+    music_map.resize(width, height)
+    music_map.set_map({"nodes": map_nodes, "edges": [], "analysed": len(map_nodes), "input_profiles": len(map_nodes)}, ref_map)
+    music_map.set_artwork({
+        ref: {"generation": music_map._art_generation, "image": QImage(str(art_path))}
+        for ref in ref_map
+    })
+    first_item = music_map.node_items.get("track-0")
+    if first_item is not None:
+        first_item._hovered = True
+        first_item._resize_on_hover(True)
+    _save_widget(music_map, out / "13-music-map.png", width, height)
+    record("13-music-map.png", "Music Map with album covers, one expanded hover detail card, and zoom controls.")
+    music_map.deleteLater()
 
     overview = LivingCanvasView()
     overview.set_track(TRACK, ANALYSIS)
@@ -234,12 +367,6 @@ def capture(out: Path, width: int = 1440, height: int = 900) -> dict[str, object
     record("04-constellation.png", "Dense Constellation with pinned recognition card.")
     constellation.deleteLater()
 
-    weather = _scene(width, height)
-    weather.set_mode("weather")
-    _save_widget(weather, out / "05-sonic-weather.png", width, height)
-    record("05-sonic-weather.png", "Sonic Weather energetic atmospheric field.")
-    weather.deleteLater()
-
     memory = _scene(width, height)
     memory.set_mode("memory")
     memory.set_memory(_memory(), "sessions")
@@ -263,21 +390,15 @@ def capture(out: Path, width: int = 1440, height: int = 900) -> dict[str, object
     )
     album.deleteLater()
 
-    minimal = _scene(width, height)
-    minimal.set_mode("minimal")
-    _save_widget(minimal, out / "09-minimal.png", width, height)
-    record("09-minimal.png", "Minimal watch scene.")
-    minimal.deleteLater()
-
     reduced = _scene(width, height)
-    reduced.set_mode("weather")
+    reduced.set_mode("living")
     reduced.set_quality("auto")
     reduced._effective_quality = "eco"
     reduced._performance.effective = "eco"
     reduced._phase = 2.35
     reduced._refresh_visual_state()
-    _save_widget(reduced, out / "10-auto-reduced-weather.png", width, height)
-    record("10-auto-reduced-weather.png", "Sonic Weather with Auto reduced rendering budget.")
+    _save_widget(reduced, out / "10-auto-reduced-profile-pulse.png", width, height)
+    record("10-auto-reduced-profile-pulse.png", "Profile Pulse with Auto reduced rendering budget.")
     reduced.deleteLater()
 
     empty = _scene(width, height)

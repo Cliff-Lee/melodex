@@ -1,9 +1,9 @@
 # Next release — draft notes
 
-**Melodex v0.7.15 release candidate.**
+**Melodex v0.7.16 release candidate.**
 
-Current target version: **0.7.15**.
+Current target version: **0.7.16**.
 
-This patch release closes Campaign V's whole-app visual QA with two concrete rendering fixes: Now Playing artwork stays clear of the lyrics controls at shorter desktop window sizes, and Previous/Next controls render reliably across system fonts.
+This release completes the Campaign V feedback follow-up: a less cluttered Album Wall with warm cover reuse and album-order playback, denser Profile Pulse contours, removal of Sonic Weather and Minimal, album-cover Music Map nodes with hover details and zoom controls, and photo credits shown on hover. Changed screens are being captured at 1024×768, 1280×800, and 1440×900; release gates must pass before publication.
 
-See `docs/releases/v0.7.15.md` for the release notes.
+See `docs/releases/v0.7.16.md` for the release notes.
