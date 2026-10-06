@@ -348,9 +348,19 @@ The existing 601-track batch tests qualify both ends of the workload: an unchang
 publication reports 601 existing + 601 incoming + 0 removed rows, while a 600-track deletion
 reports 601 existing + 1 incoming + 600 removed rows. This stage is observational only.
 
-**P14l4b2d — incoming-path decision.** Change `incoming_paths` only if these measurements,
-including the physical P14l5 profile, demonstrate a real peak-memory reduction rather than a
-one-set-for-another trade.
+P14l4b2c qualified independently across the full release matrix.
+
+**P14l4b2d1 — cold-import incoming-set bypass.** Telemetry makes one case unambiguous:
+when the existing fingerprint dictionary is empty, the deletion-classification loop has no
+rows and `incoming_paths` cannot affect any decision. Cold publication therefore skips
+materializing that set entirely.
+
+The 601-track cold-import qualification now requires 0 existing + 0 incoming + 0 removed
+rows while still writing all 601 tracks in the same three bounded batches.
+
+**P14l4b2d2 — non-empty existing decision.** Reserved until physical P14l5 measurements show
+whether changing `incoming_paths` when an existing catalog is present would reduce peak
+memory rather than merely exchange one set for another.
 
 #### P14l5 — Physical 12.7k/NAS qualification
 
