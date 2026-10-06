@@ -343,3 +343,53 @@ def test_p14m_maximize_navigation_restore_preserves_normal_geometry(monkeypatch,
 
     window.close()
     app.processEvents()
+
+
+
+def test_p14m_main_window_contains_stale_saved_geometry(monkeypatch, tmp_path):
+    try:
+        from PySide6.QtCore import QSettings, QRect
+        from PySide6.QtWidgets import QApplication, QMainWindow
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    settings = QSettings("Melodex", "Melodex")
+    settings.clear()
+
+    screen = QApplication.primaryScreen()
+    if screen is None:
+        import pytest
+
+        pytest.skip("No screen geometry available from Qt platform backend")
+    available = screen.availableGeometry()
+
+    seed = QMainWindow()
+    seed.setGeometry(
+        QRect(
+            available.x() + available.width() + 500,
+            available.y() + available.height() + 500,
+            available.width() + 600,
+            available.height() + 400,
+        )
+    )
+    settings.setValue("window/geometry", seed.saveGeometry())
+    seed.deleteLater()
+    app.processEvents()
+
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+
+    window = main_window.MainWindow()
+    restored = window.geometry()
+
+    assert restored.width() <= available.width()
+    assert restored.height() <= available.height()
+    assert available.contains(restored)
+
+    window.close()
+    app.processEvents()
+    settings.clear()
