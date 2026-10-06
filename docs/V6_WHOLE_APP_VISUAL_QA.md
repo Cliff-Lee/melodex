@@ -41,5 +41,9 @@ spacing refinements, new animation work, or new UI components were made for V6.
 
 ## Automated closure gates
 
-Manual visual review is complete. Campaign V remains open until the closure
-PR's regression, visual, cross-platform, and package checks finish green.
+Manual visual review and all required gates passed on the closure PR head:
+full desktop and provider regression suites, Fluid release gates, visual QA
+captures and performance probes, large-library/P14 checks, code-health
+ratchets, macOS Intel/ARM and Windows desktop builds, and Linux package build
+plus Debian/Ubuntu smoke tests. Campaign V is complete when this closure PR
+merges with these checks green.
