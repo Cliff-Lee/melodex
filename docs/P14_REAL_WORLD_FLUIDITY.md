@@ -452,6 +452,20 @@ Windows and Linux; macOS remains clear of the menu bar/Dock, Windows remains abo
 taskbar at the 737×518 small-window qualification size, and Linux remains inside the X11
 1440×900 work area. No continuous clamp or window-manager override is needed.
 
+**P14m8b3 — practical vertical resizeability: GREEN.** A second reproduced geometry defect
+showed that a normal window could technically fit inside `availableGeometry` while consuming
+its entire usable height, leaving the lower resize edge impractical to reach. Fresh/default
+geometry already used a centered 90%-height policy; the vulnerable path was legacy or invalid
+restored normal geometry. Recovery now leaves a one-time 24 px work-area inset, while geometry
+saved by current Melodex is marked trusted so a user who deliberately chooses full-height
+normal geometry is preserved. This is restore-time only: there is no live resize clamp or
+maximum-height rule.
+
+Native qualification confirms the application-generated normal window leaves vertical margin
+and can then shrink vertically on every target: macOS ARM/Intel 620→520, Linux 620→520 and
+Windows 518→445 on its 1024×720 work area. Major page navigation, Music Map transitions and
+maximize/restore do not raise the top-level geometry or block subsequent vertical resizing.
+
 P14m is complete only when the geometry regression and existing correctness,
 responsiveness, large-library, visual-QA, startup and packaging gates are green. Physical
 Dock/taskbar/panel checks remain a short final sanity pass; exotic window-manager behavior is
