@@ -181,3 +181,47 @@ def test_p14m_feature_page_minimum_cannot_escape_viewport_stack():
 
     stack.deleteLater()
     app.processEvents()
+
+
+
+def test_p14m_restored_geometry_is_contained_in_available_work_area():
+    try:
+        from PySide6.QtCore import QRect
+        from melodex.window_geometry import contained_window_geometry
+    except ImportError as exc:
+        import pytest
+
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    work_area = QRect(0, 0, 1440, 860)
+
+    too_large = contained_window_geometry(
+        QRect(100, 50, 1900, 1100),
+        [work_area],
+    )
+    assert too_large == QRect(0, 0, 1440, 860)
+
+    off_screen = contained_window_geometry(
+        QRect(2200, 900, 900, 620),
+        [work_area],
+    )
+    assert off_screen == QRect(540, 240, 900, 620)
+
+    valid = QRect(120, 90, 1100, 700)
+    assert contained_window_geometry(valid, [work_area]) == valid
+
+
+def test_p14m_restore_selects_best_current_monitor_work_area():
+    try:
+        from PySide6.QtCore import QRect
+        from melodex.window_geometry import contained_window_geometry
+    except ImportError as exc:
+        import pytest
+
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    left = QRect(0, 0, 1280, 720)
+    right = QRect(1280, 40, 1920, 1040)
+    saved = QRect(1500, 100, 1000, 760)
+
+    assert contained_window_geometry(saved, [left, right]) == saved
