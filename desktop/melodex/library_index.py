@@ -914,9 +914,14 @@ class LocalLibraryIndex:
                         len(existing),
                     )
                     rows = grouped.get(root_id, [])
-                    incoming_paths = {
-                        relative_path for relative_path, _, _, _ in rows
-                    }
+                    incoming_paths = (
+                        {
+                            relative_path
+                            for relative_path, _, _, _ in rows
+                        }
+                        if existing
+                        else set()
+                    )
                     max_incoming_path_rows = max(
                         max_incoming_path_rows,
                         len(incoming_paths),
