@@ -256,7 +256,6 @@ class MusicMapWidget(QWidget):
         self.view.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.view.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.view.setBackgroundBrush(QBrush(QColor("#0e141d")))
-        self.view.setMinimumHeight(340)
         layout.addWidget(self.view, 1)
 
         self.status = QLabel("Analyse your local library to build a Music Map.")
