@@ -76,6 +76,9 @@ def test_p10d_unchanged_rows_do_not_create_write_batches(tmp_path: Path):
     assert second["tracks_reused"] == 601
     assert second["write_batches"] == 0
     assert second["max_batch_rows"] == 0
+    assert second["max_existing_fingerprint_rows"] == 601
+    assert second["max_incoming_path_rows"] == 601
+    assert second["max_removed_path_rows"] == 0
 
 
 def test_p10d_cancellation_after_batch_rolls_back_entire_transaction(
@@ -118,6 +121,9 @@ def test_p10d_deletions_are_batched_too(tmp_path: Path):
     assert result["tracks_deleted"] == 600
     assert result["delete_batches"] == 3
     assert result["max_batch_rows"] == 250
+    assert result["max_existing_fingerprint_rows"] == 601
+    assert result["max_incoming_path_rows"] == 1
+    assert result["max_removed_path_rows"] == 600
     assert len(index.load_tracks([root])) == 1
 
 

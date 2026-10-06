@@ -847,6 +847,9 @@ class LocalLibraryIndex:
         delete_batches = 0
         max_batch_rows = 0
         tracks_persisted_total = 0
+        max_existing_fingerprint_rows = 0
+        max_incoming_path_rows = 0
+        max_removed_path_rows = 0
 
         with self._connect() as db:
             db.execute("BEGIN IMMEDIATE")
@@ -906,10 +909,18 @@ class LocalLibraryIndex:
                             int(row["mtime_ns"]) if row["mtime_ns"] is not None else None,
                         )
 
+                    max_existing_fingerprint_rows = max(
+                        max_existing_fingerprint_rows,
+                        len(existing),
+                    )
                     rows = grouped.get(root_id, [])
                     incoming_paths = {
                         relative_path for relative_path, _, _, _ in rows
                     }
+                    max_incoming_path_rows = max(
+                        max_incoming_path_rows,
+                        len(incoming_paths),
+                    )
                     preserved = preserve_dirs.get(root_id, set())
                     preserved_existing_count = 0
                     removed_paths: set[str] = set()
@@ -919,6 +930,10 @@ class LocalLibraryIndex:
                         elif relative_path not in incoming_paths:
                             removed_paths.add(relative_path)
                     tracks_reused += preserved_existing_count
+                    max_removed_path_rows = max(
+                        max_removed_path_rows,
+                        len(removed_paths),
+                    )
                     if removed_paths:
                         delete_batch: list[tuple[str, str]] = []
                         for relative_path in removed_paths:
@@ -1136,6 +1151,11 @@ class LocalLibraryIndex:
             "write_batches": write_batches,
             "delete_batches": delete_batches,
             "max_batch_rows": max_batch_rows,
+            "max_existing_fingerprint_rows": int(
+                max_existing_fingerprint_rows
+            ),
+            "max_incoming_path_rows": int(max_incoming_path_rows),
+            "max_removed_path_rows": int(max_removed_path_rows),
             "directory_manifests_persisted": sum(
                 len(rows) for rows in directory_rows.values()
             ),

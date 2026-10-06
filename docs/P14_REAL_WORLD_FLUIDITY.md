@@ -336,8 +336,21 @@ The `incoming_paths` and `removed_paths` sets remain unchanged in this slice. A 
 qualification persists three rows, preserves two by directory, and requires exactly two
 reused rows plus one deletion.
 
-**P14l4b2c — incoming-path allocation.** Reserved for the next independently qualified
-micro-campaign if measurement still justifies further publication-side work.
+P14l4b2b qualified independently across the full release matrix.
+
+**P14l4b2c — publication allocation telemetry.** Before changing `incoming_paths`, the
+persistence result now reports only three aggregate row-count maxima across roots:
+`max_existing_fingerprint_rows`, `max_incoming_path_rows`, and
+`max_removed_path_rows`. These reveal the shape of the remaining collection-sized
+containers without exporting paths or metadata.
+
+The existing 601-track batch tests qualify both ends of the workload: an unchanged
+publication reports 601 existing + 601 incoming + 0 removed rows, while a 600-track deletion
+reports 601 existing + 1 incoming + 600 removed rows. This stage is observational only.
+
+**P14l4b2d — incoming-path decision.** Change `incoming_paths` only if these measurements,
+including the physical P14l5 profile, demonstrate a real peak-memory reduction rather than a
+one-set-for-another trade.
 
 #### P14l5 — Physical 12.7k/NAS qualification
 
