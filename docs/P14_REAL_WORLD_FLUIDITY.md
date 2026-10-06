@@ -466,16 +466,23 @@ and can then shrink vertically on every target: macOS ARM/Intel 620→520, Linux
 Windows 518→445 on its 1024×720 work area. Major page navigation, Music Map transitions and
 maximize/restore do not raise the top-level geometry or block subsequent vertical resizing.
 
-**P14m8c — final merged-state geometry matrix.** This docs-only checkpoint branches from
-the fully merged post-P14m8b3 `main` state. Its CI matrix therefore re-qualifies the final
-production/test code without introducing another geometry implementation change. P14m8c is
-green only if the complete correctness, responsiveness, visual, startup, large-library,
-native desktop geometry and Linux package/smoke matrix all pass from this checkpoint.
+**P14m8c — final merged-state geometry matrix: GREEN.** The final checkpoint branched
+from the fully merged post-P14m8b3 `main` state and changed no production or test code.
+The complete correctness, responsiveness, visual, startup, large-library, native desktop
+geometry and Linux package/smoke matrix passed. Native artifacts again reported every
+geometry assertion true on macOS ARM, macOS Intel, Windows x64 and Linux/X11: feature-stack
+minimum 0×0, page navigation stable, Music Map build/hydration/tools stable, practical
+vertical shrinking preserved, maximize/restore exact, and final geometry inside the current
+usable work area.
 
-P14m is complete only when the geometry regression and existing correctness,
-responsiveness, large-library, visual-QA, startup and packaging gates are green. Physical
-Dock/taskbar/panel checks remain a short final sanity pass; exotic window-manager behavior is
-out of scope and must not create P14m9.
+Windows again qualified the constrained case at a 1024×720 work area: the application-generated
+normal window was 962×648, the normal test window shrank from 737×518 to 737×445, and
+maximize/restore returned exactly to 737×518. macOS ARM/Intel and Linux shrank 900×620 to
+900×520 and restored exactly.
+
+**P14m: COMPLETE.** The reproduced Music Map enlargement and full-height normal-window
+resizeability defects are fixed and protected by automated/native regression coverage. No
+P14m9 is planned; exotic window-manager certification remains out of scope.
 
 ### P14 endurance qualification — completed
 
