@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QEvent, QSettings, Qt, QTimer, Signal, Slot, QObject
+from PySide6.QtCore import QEvent, QSettings, QSize, Qt, QTimer, Signal, Slot, QObject
 from PySide6.QtGui import QAction, QColor, QDesktopServices, QKeySequence, QPixmap, QShortcut
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QListWidget,
@@ -47,6 +47,13 @@ from .ux_components import (
     FeaturePresenceBar,
     set_help,
 )
+class _ViewportStack(QStackedWidget):
+    """Page container that never exports feature-page minima to MainWindow."""
+
+    def minimumSizeHint(self) -> QSize:
+        return QSize(0, 0)
+
+
 class _UiCallbackDispatcher(QObject):
     """Long-lived queued bridge from worker threads back to the Qt UI thread.
 
@@ -429,7 +436,7 @@ class MainWindow(QMainWindow):
         side.addWidget(self.power_toggle)
         body_l.addWidget(self.sidebar)
 
-        self.stack = QStackedWidget()
+        self.stack = _ViewportStack()
         body_l.addWidget(self.stack, 1)
         self.pages: dict[str, QWidget] = {}
 
