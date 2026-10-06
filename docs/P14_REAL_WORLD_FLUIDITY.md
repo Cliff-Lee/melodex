@@ -287,10 +287,24 @@ loop to one normalization per distinct cached root.
 
 Diagnostics report only the aggregate number of cached-root normalizations.
 
+P14l3c qualified independently across the full release matrix.
+
 #### P14l4 — Persistence and catalog hydration
 
-Optimize SQLite publication and the final post-commit catalog load without weakening the
-single-transaction publication contract or increasing collection-scale memory duplication.
+P14l4 is split so read-side hydration and write-side publication remain independently
+qualified.
+
+**P14l4a — streaming final hydration.** The final post-commit catalog query keeps the same
+SQLite ordering and JSON parsing semantics, but consumes the cursor row-by-row instead of
+calling `fetchall()` before building the track list. The final catalog is necessarily
+collection-sized; the temporary second collection-sized SQLite row list is not.
+
+A regression uses a cursor whose `fetchall()` raises, proving hydration stays streaming
+while malformed metadata rows retain the existing skip behavior. This stage changes no
+database schema, publication transaction, scan semantics or catalog ordering.
+
+**P14l4b — publication read-side allocation.** Reserved for the existing-index comparison
+inside `replace_scan()`, after P14l4a qualifies independently.
 
 #### P14l5 — Physical 12.7k/NAS qualification
 
