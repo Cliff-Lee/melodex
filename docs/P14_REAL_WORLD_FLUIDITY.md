@@ -466,6 +466,12 @@ and can then shrink vertically on every target: macOS ARM/Intel 620→520, Linux
 Windows 518→445 on its 1024×720 work area. Major page navigation, Music Map transitions and
 maximize/restore do not raise the top-level geometry or block subsequent vertical resizing.
 
+**P14m8c — final merged-state geometry matrix.** This docs-only checkpoint branches from
+the fully merged post-P14m8b3 `main` state. Its CI matrix therefore re-qualifies the final
+production/test code without introducing another geometry implementation change. P14m8c is
+green only if the complete correctness, responsiveness, visual, startup, large-library,
+native desktop geometry and Linux package/smoke matrix all pass from this checkpoint.
+
 P14m is complete only when the geometry regression and existing correctness,
 responsiveness, large-library, visual-QA, startup and packaging gates are green. Physical
 Dock/taskbar/panel checks remain a short final sanity pass; exotic window-manager behavior is
