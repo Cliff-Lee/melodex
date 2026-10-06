@@ -234,6 +234,14 @@ def test_p14m_restore_selects_best_current_monitor_work_area():
 
     assert contained_window_geometry(saved, [left, right]) == saved
 
+    adjacent_left = QRect(0, 0, 1280, 900)
+    adjacent_right = QRect(1280, 0, 1920, 900)
+    spanning = QRect(1000, 120, 700, 620)
+    assert contained_window_geometry(
+        spanning,
+        [adjacent_left, adjacent_right],
+    ) == spanning
+
 
 
 def test_p14m_major_page_transitions_preserve_user_geometry(monkeypatch, tmp_path):
