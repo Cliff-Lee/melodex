@@ -158,3 +158,26 @@ def test_p14m_dynamic_map_and_tools_do_not_own_outer_geometry(monkeypatch, tmp_p
 
     window.close()
     app.processEvents()
+
+
+
+def test_p14m_feature_page_minimum_cannot_escape_viewport_stack():
+    try:
+        from PySide6.QtCore import QSize
+        from PySide6.QtWidgets import QApplication, QWidget
+        from melodex.main_window import _ViewportStack
+    except ImportError as exc:
+        import pytest
+
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    stack = _ViewportStack()
+    oversized_page = QWidget()
+    oversized_page.setMinimumSize(1800, 1200)
+    stack.addWidget(oversized_page)
+
+    assert stack.minimumSizeHint() == QSize(0, 0)
+
+    stack.deleteLater()
+    app.processEvents()
