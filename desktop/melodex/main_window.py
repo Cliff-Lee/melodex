@@ -655,6 +655,84 @@ class MainWindow(QMainWindow):
                 color:#7f8b9b;
                 margin-top:6px;
             }
+            QLabel#nowPlayingHeroTitle{
+                font-size:34px;
+                font-weight:750;
+            }
+            QLabel#nowPlayingHeroArtist{
+                font-size:21px;
+                color:#c8ccd2;
+            }
+            QLabel#nowPlayingHeroAlbum{
+                font-size:15px;
+                color:#aab0ba;
+            }
+            QLabel#nowPlayingFacts{
+                color:#8f96a1;
+            }
+            QLabel#nowPlayingProgress{
+                color:#7eb4ff;
+                font-size:12px;
+            }
+            QLabel#nowPlayingHeroArt{
+                background:#181b20;
+                border:1px solid #303640;
+                border-radius:18px;
+                font-size:90px;
+                color:#596270;
+            }
+            QLabel#nowPlayingArtistPhoto{
+                background:#15181d;
+                border:1px solid #303640;
+                border-radius:16px;
+                color:#808894;
+            }
+            QLabel#nowPlayingCredit{
+                color:#8f96a1;
+                font-size:10px;
+            }
+            QLabel#nowPlayingArtSource{
+                color:#777f8a;
+                font-size:11px;
+            }
+            QFrame#nativeLyricsToolbar{
+                background:#0f1822;
+                border:1px solid #26394e;
+                border-radius:10px;
+            }
+            QLabel#lyricsToolbarLabel{
+                color:#8191a5;
+                font-size:10px;
+                font-weight:700;
+            }
+            QLabel#lyricsStateBadge{
+                background:#182a3d;
+                border:1px solid #31516f;
+                border-radius:8px;
+                padding:3px 7px;
+                color:#b9d5f1;
+                font-size:9px;
+                font-weight:700;
+            }
+            QLabel#lyricsSourceText{
+                color:#7f90a5;
+                font-size:10px;
+                padding:0 3px;
+            }
+            QTextBrowser#nativeLyricsView{
+                background:#101923;
+                color:#edf3fa;
+                border:1px solid #30465e;
+                border-radius:11px;
+                padding:20px;
+                selection-background-color:#315f8f;
+                selection-color:#ffffff;
+            }
+            QLabel#wallSelection{
+                color:#e7ebf2;
+                font-size:13px;
+                padding:4px 2px;
+            }
             QLabel#searchStatus{
                 color:#98a4b4;
                 padding:6px 2px 4px 2px;
@@ -701,6 +779,15 @@ class MainWindow(QMainWindow):
             QPushButton:hover{
                 background:#222b38;
                 border-color:#3a4a60;
+            }
+            QPushButton:pressed{
+                background:#101720;
+                border-color:#49617d;
+            }
+            QPushButton:disabled{
+                background:#121720;
+                border-color:#202936;
+                color:#657083;
             }
             QPushButton#primaryButton{
                 background:#1875e8;
@@ -773,7 +860,7 @@ class MainWindow(QMainWindow):
                 padding:8px;
                 selection-background-color:#274f7a;
             }
-            QLineEdit:focus,QComboBox:focus,QTextEdit:focus,QListWidget:focus{
+            QLineEdit:focus,QComboBox:focus,QTextEdit:focus,QPlainTextEdit:focus,QListWidget:focus{
                 border-color:#3c78b8;
             }
             QListWidget::item{
