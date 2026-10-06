@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import json
+import math
 import os
 import sys
 from pathlib import Path
@@ -48,6 +50,21 @@ ANALYSIS = {
     ],
 }
 PALETTE = ("#75b8ff", "#4f7fdc", "#8d79d8", "#d574a9", "#6aa8c7", "#bed7ff")
+
+
+def _application_stylesheet() -> str:
+    source = (DESKTOP / "melodex" / "main_window.py").read_text(encoding="utf-8")
+    module = ast.parse(source)
+    for node in ast.walk(module):
+        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+            continue
+        if node.func.attr != "setStyleSheet" or not node.args:
+            continue
+        value = node.args[0]
+        if isinstance(value, ast.Constant) and isinstance(value.value, str):
+            if "QMainWindow,QWidget" in value.value:
+                return value.value
+    raise RuntimeError("Could not find the app stylesheet for visual QA captures")
 
 
 def _album_art(path: Path) -> None:
@@ -204,6 +221,7 @@ def _album_fixture(count: int = 18) -> tuple[dict[str, object], dict[str, object
 
 def capture(out: Path, width: int = 1440, height: int = 900) -> dict[str, object]:
     app = QApplication.instance() or QApplication([])
+    app.setStyleSheet(_application_stylesheet())
     out.mkdir(parents=True, exist_ok=True)
 
     art_path = out / "_fixture_art.png"
@@ -246,6 +264,7 @@ def capture(out: Path, width: int = 1440, height: int = 900) -> dict[str, object
     music_map = MusicMapWidget()
     map_nodes = []
     ref_map = {}
+    cluster_centres = ((-0.52, 0.42), (0.48, 0.38), (0.02, -0.54))
     for index in range(18):
         ref = f"track-{index}"
         track = {
@@ -254,11 +273,16 @@ def capture(out: Path, width: int = 1440, height: int = 900) -> dict[str, object
             "album": f"Album {index + 1:02d}",
             "title": f"Track {index + 1:02d}",
         }
+        cluster = index // 6
+        point = index % 6
+        angle = point * 1.047 + cluster * 0.31
+        radius = 0.16 + 0.045 * (point % 3)
+        centre_x, centre_y = cluster_centres[cluster]
         map_nodes.append({
             "ref": ref,
             **track,
-            "x": ((index % 6) / 2.5) - 1.0,
-            "y": 0.8 - (index // 6) * 0.8,
+            "x": centre_x + math.cos(angle) * radius,
+            "y": centre_y + math.sin(angle) * radius,
             "energy": 0.35 + (index % 6) * 0.1,
             "taste": 0.25 + (index % 5) * 0.12,
             "rediscovery": 0.1 + (index % 4) * 0.18,
