@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QRect
+from PySide6.QtGui import QRegion
 
 
 def contained_window_geometry(
@@ -14,6 +15,12 @@ def contained_window_geometry(
     current = QRect(geometry)
     screens = [QRect(rect) for rect in available_geometries if rect.isValid()]
     if not current.isValid() or not screens:
+        return current
+
+    available_region = QRegion()
+    for rect in screens:
+        available_region = available_region.united(QRegion(rect))
+    if available_region.contains(current):
         return current
 
     def overlap_area(available: QRect) -> int:
