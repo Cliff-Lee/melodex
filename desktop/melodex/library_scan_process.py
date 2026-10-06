@@ -172,6 +172,7 @@ def run_library_scan_child() -> int:
             control=control,
             cached_entries=cached,
             cached_directories=cached_directories,
+            cache_keys_canonical=True,
             collect_tracks=False,
             checkpoint=checkpoint,
         )
