@@ -314,8 +314,19 @@ decisions need random access; only the duplicate SQLite row container is removed
 A regression wraps the real SQLite connection and makes `fetchall()` fail specifically for
 this query while requiring an unchanged eight-track publication to reuse all eight rows.
 
-**P14l4b2 — delete-comparison temporary sets.** Reserved for the next independently
-qualified micro-campaign.
+P14l4b1 qualified independently across the full release matrix.
+
+**P14l4b2a — dictionary-key delete view.** The delete comparison no longer first copies the
+entire existing-track dictionary into `set(existing)`. It performs the same set difference
+starting from the dictionary's set-like `keys()` view instead. The resulting
+`removed_paths` set, `incoming_paths` set and `preserved_existing_paths` set are unchanged
+in this slice.
+
+The existing batched-deletion qualification remains the behavioral guard: 600 removals must
+still be emitted in three bounded batches with the same final catalog.
+
+**P14l4b2b — preserved-path set removal.** Reserved for the next independently qualified
+micro-campaign.
 
 #### P14l5 — Physical 12.7k/NAS qualification
 
