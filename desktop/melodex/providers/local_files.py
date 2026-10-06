@@ -381,7 +381,10 @@ class LocalFilesProvider(MusicProvider):
         scandir_directories = 0
         concurrency = StorageConcurrencyController(scan_roots)
         metadata_executor = ThreadPoolExecutor(
-            max_workers=4,
+            # P14l lets fast local storage use the full existing eight-job
+            # in-flight budget. The adaptive controller still starts at two
+            # workers and keeps likely network storage conservative.
+            max_workers=8,
             thread_name_prefix="melodex-metadata",
         )
         pending_metadata: deque[dict[str, Any]] = deque()

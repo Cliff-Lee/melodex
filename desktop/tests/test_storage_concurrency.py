@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 import time
 from pathlib import Path
 
@@ -32,7 +33,7 @@ def test_storage_controller_starts_conservative_and_scales_fast_local():
         controller.observe_stat(0.0005)
 
     decision = controller.decision()
-    assert decision.metadata_workers == 4
+    assert decision.metadata_workers == 8
     assert decision.profile == "low-latency"
     assert decision.in_flight_limit == 8
 
@@ -56,6 +57,14 @@ def test_storage_controller_network_hint_caps_default_concurrency():
     assert decision.network_hint is True
     assert decision.metadata_workers == 2
     assert decision.profile == "network-conservative"
+
+    for _ in range(32):
+        controller.observe_stat(0.0005)
+
+    fast = controller.decision()
+    assert fast.metadata_workers == 4
+    assert fast.profile == "network-fast"
+    assert fast.in_flight_limit == 8
 
 
 def test_p10g_parallel_metadata_preserves_discovery_order(
@@ -134,3 +143,41 @@ def test_p10g_unchanged_rescan_does_not_spawn_metadata_work(
 
     assert second["changes"]["metadata_reads"] == 0
     assert second["metrics"]["metadata_max_in_flight"] == 0
+
+
+def test_p14l_fast_local_cold_import_can_use_full_bounded_metadata_budget(
+    monkeypatch,
+    tmp_path: Path,
+):
+    root = tmp_path / "music"
+    root.mkdir()
+    paths = [root / f"{index:02d}.flac" for index in range(32)]
+    for path in paths:
+        path.write_bytes(b"x")
+
+    active = 0
+    peak = 0
+    lock = threading.Lock()
+
+    def metadata(path: Path):
+        nonlocal active, peak
+        with lock:
+            active += 1
+            peak = max(peak, active)
+        try:
+            time.sleep(0.03)
+            return _track(path)
+        finally:
+            with lock:
+                active -= 1
+
+    monkeypatch.setattr(LocalFilesProvider, "_metadata", staticmethod(metadata))
+
+    provider = LocalFilesProvider(scan_on_init=False)
+    snapshot = provider.scan_snapshot([root])
+    metrics = snapshot["metrics"]
+
+    assert int(metrics["metadata_worker_limit"]) == 8
+    assert int(metrics["metadata_in_flight_limit"]) == 8
+    assert 5 <= int(metrics["metadata_max_in_flight"]) <= 8
+    assert 5 <= peak <= 8

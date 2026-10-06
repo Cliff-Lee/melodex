@@ -98,6 +98,12 @@ def main() -> int:
     print(f"Tracks:                  {count:,}")
     print(f"First scan:              {first_seconds:.3f} s")
     print(f"First metadata reads:    {first_reads:,}")
+    print(
+        "First storage profile:   "
+        f"{first['metrics'].get('storage_profile')} "
+        f"({int(first['metrics'].get('metadata_worker_limit') or 0)} workers, "
+        f"{int(first['metrics'].get('metadata_max_in_flight') or 0)} max in flight)"
+    )
     print(f"Unchanged rescan:        {second_seconds:.3f} s")
     print(f"Rescan metadata reads:   {second_reads:,}")
     print(f"Metadata reused:         {int(second['changes']['unchanged']):,}")
