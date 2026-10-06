@@ -33,6 +33,7 @@ def run_probe(screenshot_dir: Path | None = None) -> dict[str, object]:
         window = main_window.MainWindow()
         screen = QApplication.primaryScreen()
         available = screen.availableGeometry() if screen is not None else None
+        application_generated = window.geometry()
         target_width = min(900, max(640, int(available.width() * 0.72))) if available else 900
         target_height = min(620, max(480, int(available.height() * 0.72))) if available else 620
         window.resize(target_width, target_height)
@@ -45,8 +46,20 @@ def run_probe(screenshot_dir: Path | None = None) -> dict[str, object]:
         app.processEvents()
 
         baseline = window.geometry()
-        snapshots: dict[str, dict[str, int]] = {"baseline": _rect(baseline)}
+        snapshots: dict[str, dict[str, int]] = {
+            "application_generated": _rect(application_generated),
+            "baseline": _rect(baseline),
+        }
         checks: dict[str, bool] = {}
+        if available is not None:
+            required_bottom_gap = max(8, int(available.height() * 0.03))
+            checks["application_generated_vertical_margin"] = (
+                application_generated.height() < available.height()
+                and available.bottom() - application_generated.bottom()
+                >= required_bottom_gap
+            )
+        else:
+            checks["application_generated_vertical_margin"] = True
 
         def save_screen(name: str) -> None:
             if screenshot_dir is None or screen is None:
@@ -61,6 +74,19 @@ def run_probe(screenshot_dir: Path | None = None) -> dict[str, object]:
             save_screen(name)
 
         save_screen("baseline")
+
+        shrink_target = max(420, baseline.height() - 100)
+        window.resize(baseline.width(), shrink_target)
+        app.processEvents()
+        vertical_shrink = window.geometry()
+        snapshots["vertical_shrink"] = _rect(vertical_shrink)
+        checks["vertical_shrink"] = vertical_shrink.height() <= baseline.height() - 60
+        checks["vertical_minimum_allows_shrink"] = (
+            window.minimumSizeHint().height() <= vertical_shrink.height()
+        )
+        save_screen("vertical_shrink")
+        window.setGeometry(baseline)
+        app.processEvents()
 
         window.open_page("music_map")
         QTest.qWait(window._page_refresh_delay_ms + 60)
