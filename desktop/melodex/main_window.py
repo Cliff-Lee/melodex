@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 )
 
 from .paths import app_data_dir
+from .window_geometry import contained_window_geometry
 from .provider_manager import ProviderManager
 from .flow import FlowEngine
 from .user_state import UserState
@@ -155,7 +156,18 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Melodex")
         self._window_settings = QSettings("Melodex", "Melodex")
         saved_geometry = self._window_settings.value("window/geometry")
-        if not saved_geometry or not self.restoreGeometry(saved_geometry):
+        restored_geometry = bool(
+            saved_geometry and self.restoreGeometry(saved_geometry)
+        )
+        if restored_geometry and not self.isMaximized() and not self.isFullScreen():
+            available = [
+                screen.availableGeometry()
+                for screen in QApplication.screens()
+            ]
+            contained = contained_window_geometry(self.geometry(), available)
+            if contained != self.geometry():
+                self.setGeometry(contained)
+        elif not restored_geometry:
             screen = QApplication.primaryScreen()
             available = screen.availableGeometry() if screen else None
             if available is not None:
