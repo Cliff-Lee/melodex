@@ -1,6 +1,6 @@
 # P14 — Real-World Fluidity & Playback Integrity
 
-**Status: P14m COMPLETE; post-geometry P14l5 requalification in progress. Campaign P closure pending.**
+**Status: P14m COMPLETE; final post-geometry P14l5b–P14l5d closure qualification running. Campaign P closure pending.**
 
 P14m fixed and qualified the reproduced top-level window geometry defects. The final Campaign P
 closure now depends only on rerunning the bounded P14l5a–P14l5d qualification on the post-P14m
