@@ -400,6 +400,11 @@ transient I/O faults recovered after bounded retries; a mid-scan disconnect mark
 incomplete and preserved all 40 cached tracks with zero deletions; and blocked metadata work
 could be cancelled safely.
 
+**P14l5d — cancellation/restart qualification: GREEN.** Cancellation published no partial
+catalog. The interrupted 12,700-track scenario staged 256 rows; restart reused all 256 staged
+rows and completed in 2.513 s. The separate blocked-I/O NAS case hard-cancelled in 0.152 s,
+well inside its 2.5 s limit.
+
 ### P14m — 30-minute endurance qualification
 
 P14m turns the short mixed-workload soak into a duration-based qualification. The same
