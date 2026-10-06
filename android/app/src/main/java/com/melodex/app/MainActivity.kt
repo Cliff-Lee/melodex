@@ -598,7 +598,7 @@ private fun Artwork(track: Track, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun EmptyState(message: String, actionLabel: String?) {
+private fun ColumnScope.EmptyState(message: String, actionLabel: String?) {
     Column(
         Modifier.fillMaxWidth().weight(1f).padding(28.dp),
         verticalArrangement = Arrangement.Center,
