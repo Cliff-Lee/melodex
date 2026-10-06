@@ -422,3 +422,37 @@ def test_sync_roots_if_needed_skips_unchanged_root_writes(tmp_path: Path):
     other = tmp_path / "other"
     assert index.sync_roots_if_needed([other]) is True
     assert index.sync_roots_if_needed([other]) is False
+
+
+def test_p14l4a_load_tracks_streams_cursor_without_fetchall(monkeypatch, tmp_path: Path):
+    root = tmp_path / "music"
+    index = LocalLibraryIndex(tmp_path / "library-index.sqlite3")
+
+    class StreamingCursor:
+        def __iter__(self):
+            return iter(
+                [
+                    {"metadata_json": json.dumps({"title": "One"})},
+                    {"metadata_json": "{not-json"},
+                    {"metadata_json": json.dumps({"title": "Two"})},
+                ]
+            )
+
+        def fetchall(self):
+            raise AssertionError("load_tracks must stream instead of fetchall")
+
+    class StreamingConnection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def execute(self, _query, _params):
+            return StreamingCursor()
+
+    monkeypatch.setattr(index, "_connect", lambda: StreamingConnection())
+
+    tracks = index.load_tracks([root])
+
+    assert [track["title"] for track in tracks] == ["One", "Two"]
