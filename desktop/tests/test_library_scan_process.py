@@ -51,6 +51,20 @@ def test_library_scan_process_round_trip_persists_index(tmp_path: Path):
     assert "index_tracks" not in result
     assert result["metrics"]["collect_tracks"] is False
     assert result["metrics"]["snapshot_track_copies"] == 1
+    phase_seconds = result["metrics"]["phase_seconds"]
+    assert set(phase_seconds) == {
+        "bootstrap_cache",
+        "scan",
+        "persistence",
+        "hydration",
+    }
+    assert all(
+        isinstance(value, (int, float)) and value >= 0
+        for value in phase_seconds.values()
+    )
+    assert result["metrics"]["child_total_seconds"] >= sum(
+        phase_seconds.values()
+    )
     assert result["persistence"]["tracks_written"] == 2
     assert (data_dir / "library-index.sqlite3").is_file()
     assert "discovering" in phases
