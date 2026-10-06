@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QFileDialog,
     QFrame,
+    QGridLayout,
     QHBoxLayout,
     QInputDialog,
     QLabel,
@@ -19,6 +20,7 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QStackedWidget,
     QTabWidget,
     QTextEdit,
@@ -211,7 +213,7 @@ class JourneyWorkspace(QObject):
         )
 
     def _show_designer_tools(self) -> None:
-        self.music_map_power_panel.show()
+        self.music_map_power_scroll.show()
         self.music_map_journey_panel.show()
         self.music_path_steps.show()
 
@@ -311,7 +313,9 @@ class JourneyWorkspace(QObject):
         power.setContentsMargins(13,11,13,11)
         power.setSpacing(8)
     
-        top=QHBoxLayout()
+        top=QGridLayout()
+        top.setHorizontalSpacing(7)
+        top.setVerticalSpacing(6)
         power_title=QLabel("Route planner")
         power_title.setStyleSheet("font-size:15px;font-weight:700")
         start_here=QPushButton("Start listening here")
@@ -322,14 +326,16 @@ class JourneyWorkspace(QObject):
         close_tools=QPushButton("Hide route tools")
         close_tools.setObjectName("quietButton")
         close_tools.clicked.connect(self._toggle_music_map_tools)
-        top.addWidget(power_title)
-        top.addStretch(1)
-        top.addWidget(start_here)
-        top.addWidget(journey_options)
-        top.addWidget(close_tools)
+        top.addWidget(power_title,0,0)
+        top.addWidget(close_tools,0,2)
+        top.addWidget(start_here,1,0)
+        top.addWidget(journey_options,1,1)
+        top.setColumnStretch(1,1)
         power.addLayout(top)
     
-        path_row=QHBoxLayout()
+        path_grid=QGridLayout()
+        path_grid.setHorizontalSpacing(7)
+        path_grid.setVerticalSpacing(6)
         self.music_path_mode=QComboBox()
         self.music_path_mode.addItem("Balanced", "balanced")
         self.music_path_mode.addItem("Sonic", "sonic")
@@ -355,16 +361,17 @@ class JourneyWorkspace(QObject):
         clear_path.clicked.connect(self._music_path_clear)
         self.music_path_label=QLabel("Start —  →  Destination —")
         self.music_path_label.setStyleSheet("color:#aab0ba")
-        path_row.addWidget(QLabel("Route"))
-        path_row.addWidget(self.music_path_mode)
-        path_row.addWidget(set_start)
-        path_row.addWidget(set_end)
-        path_row.addWidget(find_path)
-        path_row.addWidget(play_path)
-        path_row.addWidget(queue_path)
-        path_row.addWidget(clear_path)
-        path_row.addWidget(self.music_path_label,1)
-        power.addLayout(path_row)
+        path_grid.addWidget(QLabel("Route"),0,0)
+        path_grid.addWidget(self.music_path_mode,0,1)
+        path_grid.addWidget(set_start,0,2)
+        path_grid.addWidget(set_end,0,3)
+        path_grid.addWidget(find_path,1,0)
+        path_grid.addWidget(play_path,1,1)
+        path_grid.addWidget(queue_path,1,2)
+        path_grid.addWidget(clear_path,1,3)
+        path_grid.addWidget(self.music_path_label,2,0,1,4)
+        path_grid.setColumnStretch(3,1)
+        power.addLayout(path_grid)
     
         self.music_map_journey_panel=QFrame()
         self.music_map_journey_panel.setObjectName("subtlePanel")
@@ -372,7 +379,9 @@ class JourneyWorkspace(QObject):
         journey_box.setContentsMargins(10,8,10,8)
         journey_box.setSpacing(7)
     
-        journey_edit=QHBoxLayout()
+        journey_edit=QGridLayout()
+        journey_edit.setHorizontalSpacing(7)
+        journey_edit.setVerticalSpacing(6)
         self.music_journey_preset=QComboBox()
         self.music_journey_preset.addItem(
             "Calm → Darker → Forgotten → Energetic",
@@ -403,14 +412,15 @@ class JourneyWorkspace(QObject):
         remove_stage.clicked.connect(self._music_journey_remove_stage)
         clear_stages=QPushButton("Clear shape")
         clear_stages.clicked.connect(self._music_journey_clear_stages)
-        journey_edit.addWidget(QLabel("Shape journey"))
-        journey_edit.addWidget(self.music_journey_preset,1)
-        journey_edit.addWidget(load_preset)
-        journey_edit.addWidget(self.music_journey_constraint)
-        journey_edit.addWidget(add_constraint)
-        journey_edit.addWidget(add_track)
-        journey_edit.addWidget(remove_stage)
-        journey_edit.addWidget(clear_stages)
+        journey_edit.addWidget(QLabel("Shape journey"),0,0)
+        journey_edit.addWidget(self.music_journey_preset,0,1,1,2)
+        journey_edit.addWidget(load_preset,0,3)
+        journey_edit.addWidget(self.music_journey_constraint,1,0)
+        journey_edit.addWidget(add_constraint,1,1)
+        journey_edit.addWidget(add_track,1,2)
+        journey_edit.addWidget(remove_stage,2,1)
+        journey_edit.addWidget(clear_stages,2,2)
+        journey_edit.setColumnStretch(2,1)
         journey_box.addLayout(journey_edit)
     
         journey_actions=QHBoxLayout()
@@ -435,7 +445,9 @@ class JourneyWorkspace(QObject):
         )
         journey_box.addWidget(self.music_journey_stages)
     
-        live_row=QHBoxLayout()
+        live_grid=QGridLayout()
+        live_grid.setHorizontalSpacing(7)
+        live_grid.setVerticalSpacing(6)
         self.music_live_steering=QComboBox()
         self.music_live_steering.addItem("No extra steer", "")
         for key,label in (
@@ -465,22 +477,31 @@ class JourneyWorkspace(QObject):
         stop_live.clicked.connect(self._journey_live_stop)
         self.music_live_label=QLabel("Live journey inactive")
         self.music_live_label.setStyleSheet("color:#aab0ba")
-        live_row.addWidget(QLabel("While listening"))
-        live_row.addWidget(play_live)
-        live_row.addWidget(self.music_live_steering)
-        live_row.addWidget(apply_steer)
-        live_row.addWidget(avoid_artist)
-        live_row.addWidget(skip_replan)
-        live_row.addWidget(replan)
-        live_row.addWidget(restore)
-        live_row.addWidget(stop_live)
-        live_row.addWidget(self.music_live_label,1)
-        journey_box.addLayout(live_row)
+        live_grid.addWidget(QLabel("While listening"),0,0)
+        live_grid.addWidget(play_live,0,1)
+        live_grid.addWidget(self.music_live_steering,0,2)
+        live_grid.addWidget(apply_steer,0,3)
+        live_grid.addWidget(avoid_artist,1,0)
+        live_grid.addWidget(skip_replan,1,1)
+        live_grid.addWidget(replan,1,2)
+        live_grid.addWidget(restore,2,0)
+        live_grid.addWidget(stop_live,2,1)
+        live_grid.addWidget(self.music_live_label,2,2,1,2)
+        live_grid.setColumnStretch(2,1)
+        journey_box.addLayout(live_grid)
         self.music_map_journey_panel.hide()
         power.addWidget(self.music_map_journey_panel)
     
-        self.music_map_power_panel.hide()
-        l.addWidget(self.music_map_power_panel)
+        self.music_map_power_scroll=QScrollArea()
+        self.music_map_power_scroll.setWidgetResizable(True)
+        self.music_map_power_scroll.setFrameShape(QFrame.NoFrame)
+        self.music_map_power_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.music_map_power_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.music_map_power_scroll.setMinimumHeight(108)
+        self.music_map_power_scroll.setMaximumHeight(220)
+        self.music_map_power_scroll.setWidget(self.music_map_power_panel)
+        self.music_map_power_scroll.hide()
+        l.addWidget(self.music_map_power_scroll)
     
         self.music_map=MusicMapWidget(self.music_map_page)
         self.music_map.trackSelected.connect(self._music_map_selection_changed)
@@ -500,8 +521,8 @@ class JourneyWorkspace(QObject):
     
     
     def _toggle_music_map_tools(self) -> None:
-        visible=not self.music_map_power_panel.isVisible()
-        self.music_map_power_panel.setVisible(visible)
+        visible=not self.music_map_power_scroll.isVisible()
+        self.music_map_power_scroll.setVisible(visible)
         self.music_path_steps.setVisible(visible)
         if not visible and hasattr(self,"music_map_journey_panel"):
             self.music_map_journey_panel.hide()
@@ -513,8 +534,8 @@ class JourneyWorkspace(QObject):
     
     
     def _toggle_music_journey_options(self) -> None:
-        if not self.music_map_power_panel.isVisible():
-            self.music_map_power_panel.show()
+        if not self.music_map_power_scroll.isVisible():
+            self.music_map_power_scroll.show()
             self.music_path_steps.show()
         visible=not self.music_map_journey_panel.isVisible()
         self.music_map_journey_panel.setVisible(visible)
