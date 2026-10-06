@@ -56,6 +56,7 @@ def run_soak(
     *,
     track_count: int = 12_700,
     cycles: int = 80,
+    duration_seconds: float = 0.0,
     pause_ms: int = 5,
     memory_growth_limit_mib: float = 64.0,
     p99_gap_limit_ms: float = 250.0,
@@ -78,6 +79,7 @@ def run_soak(
 
     track_count = max(100, int(track_count))
     cycles = max(1, int(cycles))
+    duration_seconds = max(0.0, float(duration_seconds))
     pause_ms = max(0, int(pause_ms))
 
     app = QApplication.instance() or QApplication([])
@@ -139,6 +141,13 @@ def run_soak(
         "Track 07",
         "",
     )
+    resize_sizes = (
+        (1200, 800),
+        (980, 680),
+        (1360, 820),
+        (1040, 720),
+        (1280, 760),
+    )
 
     max_pending = 0
     max_active = 0
@@ -147,8 +156,10 @@ def run_soak(
     max_artist_cards = len(browser.artist_cards)
     max_track_rows = baseline_track_rows
     cycle_durations_ms: list[float] = []
+    resize_mismatches = 0
 
     def exercise_ui(cycle: int, *, record_action: bool) -> None:
+        nonlocal resize_mismatches
         view = views[cycle % len(views)]
         if record_action:
             monitor.mark_action(f"soak:view:{view}")
@@ -169,11 +180,31 @@ def run_soak(
             monitor.mark_action("soak:filter")
         browser.search.setText(query)
         _pump_events(app)
+        if query and cycle % 3 == 0:
+            if record_action:
+                monitor.mark_action("soak:filter-clear")
+            browser.search.clear()
+            _pump_events(app)
+
+        width, height = resize_sizes[cycle % len(resize_sizes)]
+        if record_action:
+            monitor.mark_action("soak:resize")
+        browser.resize(width, height)
+        _pump_events(app)
+        if browser.width() != width or browser.height() != height:
+            resize_mismatches += 1
 
     started = time.perf_counter()
+    latency_started = started
 
-    # Phase 1: latency/scheduler soak without tracemalloc overhead.
-    for cycle in range(cycles):
+    # Phase 1: latency/scheduler soak without tracemalloc overhead. P14m may
+    # request a real wall-clock duration; ordinary CI keeps the bounded cycle
+    # count so pull requests remain fast.
+    cycle = 0
+    while cycle < cycles or (
+        duration_seconds > 0.0
+        and time.perf_counter() - latency_started < duration_seconds
+    ):
         cycle_started = time.perf_counter()
         exercise_ui(cycle, record_action=True)
 
@@ -226,6 +257,10 @@ def run_soak(
         cycle_durations_ms.append(
             (time.perf_counter() - cycle_started) * 1000.0
         )
+        cycle += 1
+
+    latency_cycles = cycle
+    latency_duration_seconds = time.perf_counter() - latency_started
 
     browser.search.clear()
     browser.set_view("albums")
@@ -246,10 +281,10 @@ def run_soak(
     gc.collect()
     baseline_memory, _ = tracemalloc.get_traced_memory()
     max_python_mib = baseline_memory / (1024 * 1024)
-    memory_cycles = max(8, min(24, int(math.ceil(cycles / 4))))
+    memory_cycles = max(8, min(24, int(math.ceil(latency_cycles / 4))))
 
     for offset in range(memory_cycles):
-        exercise_ui(cycles + offset, record_action=False)
+        exercise_ui(latency_cycles + offset, record_action=False)
         QTest.qWait(1)
         _pump_events(app)
         current_memory, peak_memory = tracemalloc.get_traced_memory()
@@ -304,15 +339,25 @@ def run_soak(
         "widgets_stable": final_widget_count <= baseline_widget_count + 24,
         "retained_python_memory_bounded": memory_growth_mib
         <= float(memory_growth_limit_mib),
+        "resize_geometry_stable": resize_mismatches == 0,
+        "minimum_duration_completed": (
+            duration_seconds <= 0.0
+            or latency_duration_seconds >= duration_seconds
+        ),
     }
 
     sorted_cycles = sorted(cycle_durations_ms)
     p95_index = max(0, math.ceil(len(sorted_cycles) * 0.95) - 1)
     result = {
-        "schema": 1,
+        "schema": 2,
+        "campaign": "P14m-endurance",
         "track_count": track_count,
-        "cycles": cycles,
+        "cycles": latency_cycles,
+        "cycles_requested": cycles,
+        "cycles_completed": latency_cycles,
         "memory_cycles": memory_cycles,
+        "target_duration_seconds": round(duration_seconds, 3),
+        "latency_duration_seconds": round(latency_duration_seconds, 3),
         "duration_seconds": round(time.perf_counter() - started, 3),
         "passed": all(checks.values()),
         "checks": checks,
@@ -321,6 +366,10 @@ def run_soak(
             **final_scheduler,
             "max_pending_observed": max_pending,
             "max_active_observed": max_active,
+        },
+        "window": {
+            "resize_mismatches": int(resize_mismatches),
+            "sizes_exercised": len(resize_sizes),
         },
         "widgets": {
             "baseline": baseline_widget_count,
@@ -366,6 +415,12 @@ def main() -> int:
     )
     parser.add_argument("--tracks", type=int, default=12_700)
     parser.add_argument("--cycles", type=int, default=80)
+    parser.add_argument(
+        "--duration-minutes",
+        type=float,
+        default=0.0,
+        help="Keep the latency phase running for at least this many minutes.",
+    )
     parser.add_argument("--pause-ms", type=int, default=5)
     parser.add_argument("--memory-growth-limit-mib", type=float, default=64.0)
     parser.add_argument("--p99-gap-limit-ms", type=float, default=250.0)
@@ -377,6 +432,7 @@ def main() -> int:
     result = run_soak(
         track_count=args.tracks,
         cycles=args.cycles,
+        duration_seconds=max(0.0, float(args.duration_minutes)) * 60.0,
         pause_ms=args.pause_ms,
         memory_growth_limit_mib=args.memory_growth_limit_mib,
         p99_gap_limit_ms=args.p99_gap_limit_ms,
