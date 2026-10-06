@@ -28,7 +28,7 @@ class StorageConcurrencyController:
         roots: list[Path],
         *,
         min_workers: int = 2,
-        max_workers: int = 4,
+        max_workers: int = 8,
         sample_window: int = 64,
     ) -> None:
         self.min_workers = max(1, int(min_workers))
@@ -64,13 +64,14 @@ class StorageConcurrencyController:
     def decision(self) -> StorageConcurrencyDecision:
         avg = self.average_stat_ms
 
-        # Conservative defaults: do not flood a likely NAS before measurements
-        # arrive, and never exceed the small fixed executor cap.
+        # Start conservatively, then spend more of the existing bounded
+        # in-flight budget only when filesystem evidence says the storage is
+        # fast. A likely NAS never scales as aggressively as local storage.
         if self.network_hint:
             workers = 2
             profile = "network-conservative"
             if len(self._samples_ms) >= 16 and avg < 1.5:
-                workers = 3
+                workers = 4
                 profile = "network-fast"
         elif len(self._samples_ms) < 16:
             workers = 2
@@ -79,16 +80,19 @@ class StorageConcurrencyController:
             workers = 2
             profile = "high-latency"
         elif avg >= 2.0:
-            workers = 3
+            workers = 4
             profile = "medium-latency"
         else:
-            workers = 4
+            workers = 8
             profile = "low-latency"
 
         workers = min(self.max_workers, max(self.min_workers, workers))
         return StorageConcurrencyDecision(
             metadata_workers=workers,
-            in_flight_limit=max(workers, workers * 2),
+            # P10/P14 keep the permanent hard cap at eight outstanding
+            # metadata jobs. More workers improve cold-import throughput on
+            # fast storage without allowing an unbounded read-ahead queue.
+            in_flight_limit=min(8, max(workers, workers * 2)),
             profile=profile,
             average_stat_ms=round(avg, 3),
             network_hint=self.network_hint,
