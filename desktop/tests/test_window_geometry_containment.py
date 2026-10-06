@@ -401,3 +401,200 @@ def test_p14m_main_window_contains_stale_saved_geometry(monkeypatch, tmp_path):
     window.close()
     app.processEvents()
     settings.clear()
+
+
+
+def test_p14m_legacy_full_height_recovery_insets_but_trusted_geometry_is_preserved():
+    try:
+        from PySide6.QtCore import QRect
+        from melodex.window_geometry import contained_window_geometry
+    except ImportError as exc:
+        import pytest
+
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    work_area = QRect(0, 0, 1440, 860)
+    full_height = QRect(120, 0, 1100, 860)
+
+    recovered = contained_window_geometry(
+        full_height,
+        [work_area],
+        edge_inset=24,
+        recover_legacy_full_height=True,
+    )
+    assert recovered.top() >= work_area.top() + 24
+    assert recovered.bottom() <= work_area.bottom() - 24
+    assert recovered.height() <= work_area.height() - 48
+
+    trusted = contained_window_geometry(
+        full_height,
+        [work_area],
+        edge_inset=24,
+        recover_legacy_full_height=False,
+    )
+    assert trusted == full_height
+
+
+def test_p14m_invalid_recovery_leaves_resize_inset():
+    try:
+        from PySide6.QtCore import QRect
+        from melodex.window_geometry import contained_window_geometry
+    except ImportError as exc:
+        import pytest
+
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    work_area = QRect(0, 0, 1440, 860)
+    stale = QRect(-200, -100, 1900, 1100)
+    recovered = contained_window_geometry(
+        stale,
+        [work_area],
+        edge_inset=24,
+    )
+
+    assert recovered.left() >= work_area.left() + 24
+    assert recovered.top() >= work_area.top() + 24
+    assert recovered.right() <= work_area.right() - 24
+    assert recovered.bottom() <= work_area.bottom() - 24
+
+
+def test_p14m_fresh_normal_window_has_vertical_resize_margin(monkeypatch, tmp_path):
+    try:
+        from PySide6.QtCore import QSettings
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    settings = QSettings("Melodex", "Melodex")
+    settings.clear()
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+
+    window = main_window.MainWindow()
+    window.show()
+    app.processEvents()
+
+    screen = QApplication.primaryScreen()
+    assert screen is not None
+    available = screen.availableGeometry()
+    geometry = window.geometry()
+    bottom_gap = available.bottom() - geometry.bottom()
+
+    assert geometry.height() < available.height()
+    assert bottom_gap >= max(8, int(available.height() * 0.03))
+
+    window.close()
+    app.processEvents()
+    settings.clear()
+
+
+def test_p14m_normal_window_can_shrink_vertically_across_pages(monkeypatch, tmp_path):
+    try:
+        from PySide6.QtCore import QSettings
+        from PySide6.QtTest import QTest
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    settings = QSettings("Melodex", "Melodex")
+    settings.clear()
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+
+    window = main_window.MainWindow()
+    window.resize(900, 620)
+    window.show()
+    app.processEvents()
+
+    before = window.height()
+    window.resize(window.width(), 520)
+    app.processEvents()
+    shrunk = window.height()
+
+    assert shrunk <= 530
+    assert shrunk <= before - 80
+    baseline_min = window.minimumSizeHint().height()
+
+    for page in (
+        "library",
+        "music_map",
+        "now_playing",
+        "album_wall",
+        "library",
+        "journeys",
+        "playlists",
+        "sources",
+        "explore",
+        "home",
+    ):
+        window.open_page(page)
+        QTest.qWait(window._page_refresh_delay_ms + 10)
+        app.processEvents()
+        assert window.height() == shrunk, (
+            f"page {page!r} changed vertically resized normal geometry"
+        )
+        assert window.minimumSizeHint().height() <= baseline_min, (
+            f"page {page!r} raised MainWindow minimum height"
+        )
+
+    window.close()
+    app.processEvents()
+    settings.clear()
+
+
+def test_p14m_legacy_saved_full_height_normal_geometry_is_recovered(monkeypatch, tmp_path):
+    try:
+        from PySide6.QtCore import QSettings, QRect
+        from PySide6.QtWidgets import QApplication, QMainWindow
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    settings = QSettings("Melodex", "Melodex")
+    settings.clear()
+    screen = QApplication.primaryScreen()
+    if screen is None:
+        import pytest
+
+        pytest.skip("No screen geometry available from Qt platform backend")
+    available = screen.availableGeometry()
+
+    seed = QMainWindow()
+    seed.setGeometry(
+        QRect(
+            available.x() + max(0, available.width() // 12),
+            available.y(),
+            max(500, int(available.width() * 0.75)),
+            available.height(),
+        )
+    )
+    settings.setValue("window/geometry", seed.saveGeometry())
+    assert not settings.contains("window/normal_geometry_trusted")
+    seed.deleteLater()
+    app.processEvents()
+
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+
+    window = main_window.MainWindow()
+    recovered = window.geometry()
+
+    assert recovered.height() <= available.height() - 40
+    assert recovered.top() >= available.top() + 20
+    assert recovered.bottom() <= available.bottom() - 20
+
+    window.close()
+    app.processEvents()
+    assert settings.value("window/normal_geometry_trusted", False, type=bool)
+    settings.clear()
