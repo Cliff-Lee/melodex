@@ -738,7 +738,7 @@ class LibraryBrowser(QWidget):
             "Choose Get artist photos to look up missing images; album covers are not used as artist portraits."
         )
         self.artist_photo_note.setWordWrap(True)
-        self.artist_photo_note.setStyleSheet("color:#8f9bad")
+        self.artist_photo_note.setObjectName("mutedText")
         artist_page_layout.addWidget(self.artist_photo_note)
 
         self.artist_scroll = QScrollArea()

@@ -99,22 +99,22 @@ class RichNowPlayingWidget(QWidget):
         outer = QVBoxLayout(self); outer.setContentsMargins(0, 8, 0, 0); outer.setSpacing(16)
         hero = QHBoxLayout(); hero.setSpacing(24); outer.addLayout(hero)
         self.art = QLabel("♫"); self.art.setAlignment(Qt.AlignCenter); self.art.setFixedSize(350, 350)
-        self.art.setStyleSheet("background:#181b20;border:1px solid #303640;border-radius:18px;font-size:90px;color:#596270")
+        self.art.setObjectName("nowPlayingHeroArt")
         hero.addWidget(self.art, 0, Qt.AlignTop)
         right = QVBoxLayout(); right.setSpacing(8); hero.addLayout(right, 1)
-        self.title = QLabel("Nothing playing"); self.title.setWordWrap(True); self.title.setStyleSheet("font-size:34px;font-weight:750")
-        self.artist = QLabel(""); self.artist.setWordWrap(True); self.artist.setStyleSheet("font-size:21px;color:#c8ccd2")
-        self.album = QLabel(""); self.album.setWordWrap(True); self.album.setStyleSheet("font-size:15px;color:#aab0ba")
-        self.facts = QLabel(""); self.facts.setWordWrap(True); self.facts.setStyleSheet("color:#8f96a1")
-        self.progress = QLabel(""); self.progress.setWordWrap(True); self.progress.setStyleSheet("color:#7eb4ff;font-size:12px")
+        self.title = QLabel("Nothing playing"); self.title.setWordWrap(True); self.title.setObjectName("nowPlayingHeroTitle")
+        self.artist = QLabel(""); self.artist.setWordWrap(True); self.artist.setObjectName("nowPlayingHeroArtist")
+        self.album = QLabel(""); self.album.setWordWrap(True); self.album.setObjectName("nowPlayingHeroAlbum")
+        self.facts = QLabel(""); self.facts.setWordWrap(True); self.facts.setObjectName("nowPlayingFacts")
+        self.progress = QLabel(""); self.progress.setWordWrap(True); self.progress.setObjectName("nowPlayingProgress")
         self.links = QLabel(""); self.links.setOpenExternalLinks(True); self.links.setWordWrap(True)
         self.artist_photo_thumb = QLabel(""); self.artist_photo_thumb.setAlignment(Qt.AlignCenter); self.artist_photo_thumb.setFixedSize(160, 160)
-        self.artist_photo_thumb.setStyleSheet("background:#15181d;border:1px solid #303640;border-radius:16px;color:#808894")
+        self.artist_photo_thumb.setObjectName("nowPlayingArtistPhoto")
         self.artist_photo_credit = QLabel(""); self.artist_photo_credit.setOpenExternalLinks(True); self.artist_photo_credit.setWordWrap(True)
-        self.artist_photo_credit.setMaximumWidth(330); self.artist_photo_credit.setStyleSheet("color:#8f96a1;font-size:10px")
+        self.artist_photo_credit.setMaximumWidth(330); self.artist_photo_credit.setObjectName("nowPlayingCredit")
         right.addWidget(self.title); right.addWidget(self.artist); right.addWidget(self.album); right.addWidget(self.facts)
         right.addWidget(self.progress); right.addWidget(self.links); right.addWidget(self.artist_photo_thumb, 0, Qt.AlignLeft); right.addWidget(self.artist_photo_credit); right.addStretch(1)
-        self.art_source = QLabel(""); self.art_source.setWordWrap(True); self.art_source.setStyleSheet("color:#777f8a;font-size:11px"); right.addWidget(self.art_source)
+        self.art_source = QLabel(""); self.art_source.setWordWrap(True); self.art_source.setObjectName("nowPlayingArtSource"); right.addWidget(self.art_source)
 
         self.tabs = QTabWidget(); outer.addWidget(self.tabs, 1)
 
@@ -125,13 +125,6 @@ class RichNowPlayingWidget(QWidget):
 
         self.lyrics_toolbar=QFrame()
         self.lyrics_toolbar.setObjectName("nativeLyricsToolbar")
-        self.lyrics_toolbar.setStyleSheet(
-            "QFrame#nativeLyricsToolbar{background:#0f1822;border:1px solid #26394e;"
-            "border-radius:10px;}"
-            "QLabel#lyricsToolbarLabel{color:#8191a5;font-size:10px;font-weight:700;}"
-            "QLabel#lyricsStateBadge{background:#182a3d;border:1px solid #31516f;"
-            "border-radius:8px;padding:3px 7px;color:#b9d5f1;font-size:9px;font-weight:700;}"
-        )
         toolbar=QHBoxLayout(self.lyrics_toolbar)
         toolbar.setContentsMargins(11,8,11,8)
         toolbar.setSpacing(7)
@@ -251,7 +244,7 @@ class RichNowPlayingWidget(QWidget):
         self.lyrics_source=QLabel("")
         self.lyrics_source.setOpenExternalLinks(True)
         self.lyrics_source.setWordWrap(True)
-        self.lyrics_source.setStyleSheet("color:#7f90a5;font-size:10px;padding:0 3px")
+        self.lyrics_source.setObjectName("lyricsSourceText")
         lyrics_layout.addWidget(self.lyrics_source)
 
         self.lyrics = QTextBrowser()
@@ -259,11 +252,6 @@ class RichNowPlayingWidget(QWidget):
         self.lyrics.setOpenExternalLinks(False)
         self.lyrics.setOpenLinks(False)
         self.lyrics.anchorClicked.connect(self._lyrics_anchor_clicked)
-        self.lyrics.setStyleSheet(
-            "QTextBrowser#nativeLyricsView{background:#101923;color:#edf3fa;"
-            "border:1px solid #30465e;border-radius:11px;padding:20px;"
-            "selection-background-color:#315f8f;selection-color:#ffffff;}"
-        )
         # QTextDocument does not consistently resolve CSS `inherit` for links;
         # set a document default as well as explicit per-line colours below.
         self.lyrics.document().setDefaultStyleSheet(
@@ -1205,8 +1193,8 @@ class RichNowPlayingWidget(QWidget):
         self.accentChanged.emit(QColor(accent))
         self.paletteChanged.emit(self._palette_colors)
         dark = QColor(accent); dark = dark.darker(420)
-        self.title.setStyleSheet(f"font-size:34px;font-weight:750;color:{accent.name()}")
-        self.art.setStyleSheet(f"background:#181b20;border:2px solid {accent.name()};border-radius:18px")
+        self.title.setStyleSheet(f"color:{accent.name()}")
+        self.art.setStyleSheet(f"border-color:{accent.name()};border-width:2px")
         self.setStyleSheet(f"RichNowPlayingWidget{{background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 {dark.name()},stop:0.48 #101114,stop:1 #101114);border-radius:14px}}")
 
     def _artist_html(self, artist: dict[str, Any], photo: dict[str, Any] | None = None) -> str:
