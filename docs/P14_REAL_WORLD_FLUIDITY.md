@@ -221,23 +221,47 @@ semantics, including explicit normalization-off reporting.
 
 ### P14l — Scan optimization
 
-Interaction stability is green, so cold-import throughput can now use more of the
-already-bounded metadata pipeline without weakening NAS safety.
+P14l is split into narrow, independently qualified stages so a speed improvement cannot
+hide a correctness or NAS-safety regression.
 
-P14l keeps the permanent maximum at eight outstanding metadata jobs. Scans still start
-with two workers. Fast local storage may scale to eight metadata workers once stat
+#### P14l1 — Bounded metadata concurrency
+
+Cold imports keep the permanent maximum at eight outstanding metadata jobs. Scans still
+start with two workers. Fast local storage may scale to eight metadata workers once stat
 samples establish low latency; medium-latency local storage uses four. A likely network
 or NAS path remains at two workers until enough fast samples arrive, and even then caps
 at four workers. High-latency storage stays at two.
 
-This changes cold-import throughput only. Unchanged rescans still perform zero metadata
-reads, small-delta rescans still schedule work only for changed/new files, discovery
-remains bounded at 256 rows, and incomplete/unavailable NAS roots retain the existing
-atomic publication and deletion-safety rules.
+Unchanged rescans still perform zero metadata reads, small-delta rescans still schedule
+work only for changed/new files, discovery remains bounded at 256 rows, and incomplete
+or unavailable NAS roots retain the existing atomic publication and deletion-safety rules.
 
-The incremental scan profiler now prints the effective storage profile, worker limit and
-peak metadata work in flight so physical-library measurements can distinguish traversal,
-metadata and persistence limits.
+#### P14l2 — End-to-end scan phase timing
+
+The isolated production scan child reports four non-overlapping numeric timings:
+`bootstrap_cache`, `scan`, `persistence`, and `hydration`, plus total child elapsed
+time. These timings contain no media names or paths.
+
+This stage is observational only: it changes no traversal, metadata, SQLite or hydration
+policy. P14l3/P14l4 may optimize a phase only after these measurements identify it as
+material.
+
+#### P14l3 — Unchanged and small-delta traversal
+
+Reduce filesystem enumeration/stat overhead while preserving per-file correctness,
+directory-manifest safety, incomplete-root protection and zero metadata reads for unchanged
+files.
+
+#### P14l4 — Persistence and catalog hydration
+
+Optimize SQLite publication and the final post-commit catalog load without weakening the
+single-transaction publication contract or increasing collection-scale memory duplication.
+
+#### P14l5 — Physical 12.7k/NAS qualification
+
+Run the resulting scanner against a representative physical 12.7k-track library and a NAS
+profile. Compare cold import, unchanged rescan and small delta; verify cancellation, root
+loss and restart behavior before P14l is considered complete.
 
 ### P14m — 30-minute endurance qualification
 
