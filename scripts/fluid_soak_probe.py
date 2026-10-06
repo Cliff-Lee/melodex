@@ -125,6 +125,14 @@ def run_soak(
     _pump_events(app)
 
     baseline_widget_count = len(browser.findChildren(QWidget))
+    baseline_cache_widget_count = sum(
+        1 + len(card.findChildren(QWidget))
+        for cache in (browser._album_card_cache, browser._artist_card_cache)
+        for card in cache.values()
+    )
+    baseline_non_cache_widget_count = max(
+        0, baseline_widget_count - baseline_cache_widget_count
+    )
     baseline_track_rows = len(browser.track_rows)
 
     monitor = UiResponsivenessMonitor(
@@ -170,14 +178,28 @@ def run_soak(
     cycle_durations_ms: list[float] = []
     resize_mismatches = 0
     wall_pan_count = 0
+    operation_durations_ms: dict[str, list[float]] = {
+        "view": [],
+        "filter": [],
+        "filter_clear": [],
+        "resize": [],
+        "album_wall_pan": [],
+    }
+
+    def timed(operation: str, action: Any) -> None:
+        op_started = time.perf_counter()
+        action()
+        _pump_events(app)
+        operation_durations_ms[operation].append(
+            (time.perf_counter() - op_started) * 1000.0
+        )
 
     def exercise_ui(cycle: int, *, record_action: bool) -> None:
         nonlocal resize_mismatches, wall_pan_count
         view = views[cycle % len(views)]
         if record_action:
             monitor.mark_action(f"soak:view:{view}")
-        browser.set_view(view)
-        _pump_events(app)
+        timed("view", lambda current=view: browser.set_view(current))
 
         fraction = ((cycle * 37) % 101) / 100.0
         if view == "albums":
@@ -191,19 +213,16 @@ def run_soak(
         query = queries[cycle % len(queries)]
         if record_action:
             monitor.mark_action("soak:filter")
-        browser.search.setText(query)
-        _pump_events(app)
+        timed("filter", lambda current=query: browser.search.setText(current))
         if query and cycle % 3 == 0:
             if record_action:
                 monitor.mark_action("soak:filter-clear")
-            browser.search.clear()
-            _pump_events(app)
+            timed("filter_clear", browser.search.clear)
 
         width, height = resize_sizes[cycle % len(resize_sizes)]
         if record_action:
             monitor.mark_action("soak:resize")
-        browser.resize(width, height)
-        _pump_events(app)
+        timed("resize", lambda w=width, h=height: browser.resize(w, h))
         if browser.width() != width or browser.height() != height:
             resize_mismatches += 1
 
@@ -211,9 +230,13 @@ def run_soak(
             if record_action:
                 monitor.mark_action("soak:album-wall-pan")
             tile = wall_tiles[(cycle * 53) % len(wall_tiles)]
-            wall.view.centerOn(tile)
-            wall.resize(width, height)
-            _pump_events(app)
+            timed(
+                "album_wall_pan",
+                lambda target=tile, w=width, h=height: (
+                    wall.view.centerOn(target),
+                    wall.resize(w, h),
+                ),
+            )
             wall_pan_count += 1
 
     started = time.perf_counter()
@@ -334,6 +357,14 @@ def run_soak(
     tracemalloc.stop()
 
     final_widget_count = len(browser.findChildren(QWidget))
+    final_cache_widget_count = sum(
+        1 + len(card.findChildren(QWidget))
+        for cache in (browser._album_card_cache, browser._artist_card_cache)
+        for card in cache.values()
+    )
+    final_non_cache_widget_count = max(
+        0, final_widget_count - final_cache_widget_count
+    )
 
     viewport_rows = max(
         1,
@@ -364,7 +395,10 @@ def run_soak(
         "album_card_cache_bounded": max_album_cache <= int(browser._card_cache_limit),
         "artist_card_cache_bounded": max_artist_cache <= int(browser._card_cache_limit),
         "track_rows_bounded": max_track_rows <= int(track_row_limit),
-        "widgets_stable": final_widget_count <= baseline_widget_count + 24,
+        "widgets_stable": (
+            final_non_cache_widget_count
+            <= baseline_non_cache_widget_count + 24
+        ),
         "retained_python_memory_bounded": memory_growth_mib
         <= float(memory_growth_limit_mib),
         "resize_geometry_stable": resize_mismatches == 0,
@@ -378,6 +412,17 @@ def run_soak(
 
     sorted_cycles = sorted(cycle_durations_ms)
     p95_index = max(0, math.ceil(len(sorted_cycles) * 0.95) - 1)
+
+    def operation_summary(values: list[float]) -> dict[str, float | int]:
+        ordered = sorted(values)
+        index = max(0, math.ceil(len(ordered) * 0.95) - 1)
+        return {
+            "count": len(values),
+            "mean": round(sum(values) / max(1, len(values)), 3),
+            "p95": round(ordered[index] if ordered else 0.0, 3),
+            "max": round(max(values, default=0.0), 3),
+        }
+
     result = {
         "schema": 2,
         "campaign": "P14m-endurance",
@@ -397,6 +442,10 @@ def run_soak(
             "max_pending_observed": max_pending,
             "max_active_observed": max_active,
         },
+        "operations_ms": {
+            name: operation_summary(values)
+            for name, values in operation_durations_ms.items()
+        },
         "window": {
             "resize_mismatches": int(resize_mismatches),
             "sizes_exercised": len(resize_sizes),
@@ -409,6 +458,10 @@ def run_soak(
         "widgets": {
             "baseline": baseline_widget_count,
             "final": final_widget_count,
+            "baseline_cache_widgets": baseline_cache_widget_count,
+            "final_cache_widgets": final_cache_widget_count,
+            "baseline_non_cache_widgets": baseline_non_cache_widget_count,
+            "final_non_cache_widgets": final_non_cache_widget_count,
             "max_observed": max_widgets,
             "max_album_cards": max_album_cards,
             "max_artist_cards": max_artist_cards,
