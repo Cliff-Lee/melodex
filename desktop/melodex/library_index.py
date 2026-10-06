@@ -918,7 +918,7 @@ class LocalLibraryIndex:
                     }
                     tracks_reused += len(preserved_existing_paths)
                     removed_paths = (
-                        set(existing)
+                        existing.keys()
                         - incoming_paths
                         - preserved_existing_paths
                     )
