@@ -1,11 +1,10 @@
 # P14 — Real-World Fluidity & Playback Integrity
 
-**Status: REOPENED FOR P14m GEOMETRY CORRECTNESS. Campaign P closure pending.**
+**Status: P14m COMPLETE; post-geometry P14l5 requalification in progress. Campaign P closure pending.**
 
-P14l5a–P14l5d and the previous release matrix were green, but a reproduced top-level window
-geometry defect invalidated final closure: entering Music Map can make a native window exceed
-the usable work area and the oversized geometry can persist after navigation. Campaign P is
-reopened only for this bounded correctness fix. Non-blocking optimization remains post-P.
+P14m fixed and qualified the reproduced top-level window geometry defects. The final Campaign P
+closure now depends only on rerunning the bounded P14l5a–P14l5d qualification on the post-P14m
+production code. Non-blocking optimization remains post-P.
 
 P14 converts the first detailed large-library external beta report into a permanent
 engineering qualification campaign.
@@ -391,10 +390,13 @@ workload.
 
 #### P14l5 — Final 12.7k/NAS qualification
 
-**P14l5a — local 12.7k timing: GREEN.** The post-P14l4 12,700-track elastic-library
-qualification completed a cold scan in 6.119 s plus 0.454 s persistence. Traced Python peak
-was 15.192 MiB, process peak RSS was 127.41 MiB, the discovery queue stayed at its 256-row
-cap and metadata in-flight stayed at its 8-job cap. All scale checks passed.
+**P14l5a — local 12.7k timing: GREEN (post-P14m rerun).** The final P14m8c
+12,700-track elastic-library artifact passed on the post-geometry production/test code.
+Cold scan time was 3.150 s with 0.314 s persistence; traced Python peak was 15.192 MiB,
+process peak RSS was 126.863 MiB and the database was 8.234 MiB. The run performed exactly
+12,700 metadata reads, held the discovery queue at 256/256, held metadata in-flight at 8,
+and persisted in 51 write batches. Every bounded-queue, bounded-concurrency, linear-memory
+and timing scale gate passed.
 
 **P14l5b — small-delta timing: GREEN.** On the same 12,700-track qualification, the standard
 delta of 50 changed + 50 added + 10 deleted tracks completed in 2.445 s with exactly 100
