@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 import time
 from pathlib import Path
 
@@ -156,7 +157,7 @@ def test_p14l_fast_local_cold_import_can_use_full_bounded_metadata_budget(
 
     active = 0
     peak = 0
-    lock = __import__("threading").Lock()
+    lock = threading.Lock()
 
     def metadata(path: Path):
         nonlocal active, peak
