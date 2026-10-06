@@ -1,25 +1,23 @@
 # Install Melodex on Android
 
-## Important: how the Android version works
+Melodex for Android works in two ways:
 
-The current Android app is a **Melodex Provider Bridge client**. It does not yet act as a full standalone desktop-style Melodex installation.
+- **Play music on this phone** — browse and play audio files already stored on the device. This works without a Melodex desktop or an internet connection.
+- **Connect to another Melodex** — search and play sources shared by Melodex on a computer, NAS, or home server.
 
-That means the easiest setup is:
-
-**music/provider → Melodex on Mac/Windows/NAS → Provider Bridge → Android app**
-
-Your phone searches and plays music that your computer's Melodex installation exposes to it.
+The first screen offers both paths. Choose **Play something** and allow music access to start with files on the phone. Choose **Connect to another Melodex** only when you want to use a library on another device.
 
 ## What you need
 
-Before starting, have:
+For local playback, you need an Android phone with music files on it.
 
-- an Android phone/tablet;
-- Melodex installed on a Mac, Windows PC, NAS, or home server;
-- at least one working music source configured on that computer, usually **Local Files**;
-- both devices on the same trusted Wi-Fi/LAN for the easiest setup.
+For a Bridge connection, also have:
 
-## 1. Install Melodex on the computer first
+- Melodex running on a Mac, Windows PC, NAS, or home server, with at least one working music source;
+- both devices on the same trusted Wi-Fi/LAN;
+- the computer's LAN address and the Bridge token shown by Melodex.
+
+## Optional: prepare a computer or NAS source
 
 Follow one of these guides:
 
@@ -32,7 +30,7 @@ Then open desktop Melodex and add some music:
 
 Confirm that the music plays on the computer before trying Android.
 
-## 2. Download the Android APK
+## Download the Android APK
 
 On the Android device open:
 
@@ -44,7 +42,7 @@ Download:
 
 Do **not** download `Melodex-Android.aab`. An `.aab` is an app-store publishing bundle, not the file normal users install directly.
 
-## 3. Allow installation of the APK
+## Allow installation of the APK
 
 Android may say that your browser or file manager is not allowed to install unknown apps.
 
@@ -61,7 +59,7 @@ After installation you may disable **Allow from this source** again if you prefe
 
 Only install APKs downloaded from the official Melodex GitHub release page.
 
-## 4. Start the Provider Bridge on the computer
+## Connect to another Melodex (optional)
 
 On the Mac/Windows computer:
 
@@ -78,7 +76,7 @@ On the Mac/Windows computer:
 
 The token is a password for this Bridge session. Do not post it publicly.
 
-## 5. Find the computer's local IP address
+### Find the computer's local IP address
 
 You need the computer's LAN address so the phone knows where to connect.
 
@@ -116,13 +114,13 @@ or
 
 Do not use `127.0.0.1` or `localhost` on the phone — those refer to the phone itself.
 
-## 6. Connect Android to the Bridge
+### Connect Android to the Bridge
 
 Open Melodex on Android.
 
-You will see fields for **Bridge URL** and **Bridge token**.
+On the **Connect** tab, enter the **Melodex address** and **Bridge token**. The address must include the port, for example `http://192.168.1.42:8766`. The token is kept only in the current app session; reconnect and enter the current token after restarting the Bridge.
 
-### Bridge URL
+### Melodex address
 
 Enter:
 
@@ -138,13 +136,11 @@ Paste/type the bearer token shown by desktop Melodex.
 
 Then tap **Connect**.
 
-A successful connection should show:
+A successful connection checks the token and shows the available source count. If the Bridge restarts, its token can change; enter the new token and reconnect.
 
-**Connected.**
+### Search and play
 
-## 7. Search and play
-
-1. Type a song, artist, or other search term into **Search your connected music**.
+1. Type a song, artist, or album into **Search connected music**.
 2. Tap **Search**.
 3. Tap a result to start playback.
 4. Use **Play / Pause** and **Restart** at the bottom of the screen.
