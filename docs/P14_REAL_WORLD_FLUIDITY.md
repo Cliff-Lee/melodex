@@ -325,8 +325,19 @@ in this slice.
 The existing batched-deletion qualification remains the behavioral guard: 600 removals must
 still be emitted in three bounded batches with the same final catalog.
 
-**P14l4b2b — preserved-path set removal.** Reserved for the next independently qualified
-micro-campaign.
+P14l4b2a qualified independently across the full release matrix.
+
+**P14l4b2b — one-pass preserved/delete classification.** Publication no longer builds a
+collection-sized `preserved_existing_paths` set. One pass over the existing fingerprint
+dictionary increments a preserved-row counter when the row's directory is preserved and,
+otherwise, adds the path to `removed_paths` only when it is absent from `incoming_paths`.
+
+The `incoming_paths` and `removed_paths` sets remain unchanged in this slice. A focused
+qualification persists three rows, preserves two by directory, and requires exactly two
+reused rows plus one deletion.
+
+**P14l4b2c — incoming-path allocation.** Reserved for the next independently qualified
+micro-campaign if measurement still justifies further publication-side work.
 
 #### P14l5 — Physical 12.7k/NAS qualification
 
