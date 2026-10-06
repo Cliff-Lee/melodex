@@ -445,10 +445,10 @@ class LibraryBrowser(QWidget):
         self.artist_rows: list[dict[str, Any]] = []
         self.artist_cards: dict[str, ArtistCard] = {}
         self._artist_card_cache: OrderedDict[str, ArtistCard] = OrderedDict()
-        # Keep one rendered batch hot so search/clear and view-return paths
-        # reuse existing widgets instead of rebuilding ~120 cards on the GUI
-        # thread. Each cache remains independently bounded.
-        self._card_cache_limit = 128
+        # Keep the pre-search batch plus one replacement batch hot so
+        # search/clear and view-return paths reuse widgets instead of rebuilding
+        # ~120 cards on the GUI thread. Each cache remains independently bounded.
+        self._card_cache_limit = 256
         self._album_search_text: dict[str, str] = {}
         self._artist_search_text: dict[str, str] = {}
         self._track_search_text: dict[str, str] = {}
