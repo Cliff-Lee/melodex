@@ -96,9 +96,9 @@ class RichNowPlayingWidget(QWidget):
         self._build()
 
     def _build(self) -> None:
-        outer = QVBoxLayout(self); outer.setContentsMargins(0, 8, 0, 0); outer.setSpacing(16)
-        hero = QHBoxLayout(); hero.setSpacing(24); outer.addLayout(hero)
-        self.art = QLabel("♫"); self.art.setAlignment(Qt.AlignCenter); self.art.setFixedSize(350, 350)
+        outer = QVBoxLayout(self); outer.setContentsMargins(0, 6, 0, 0); outer.setSpacing(14)
+        hero = QHBoxLayout(); hero.setSpacing(20); outer.addLayout(hero)
+        self.art = QLabel("♫"); self.art.setAlignment(Qt.AlignCenter); self.art.setFixedSize(320, 320)
         self.art.setObjectName("nowPlayingHeroArt")
         hero.addWidget(self.art, 0, Qt.AlignTop)
         right = QVBoxLayout(); right.setSpacing(8); hero.addLayout(right, 1)
@@ -108,7 +108,7 @@ class RichNowPlayingWidget(QWidget):
         self.facts = QLabel(""); self.facts.setWordWrap(True); self.facts.setObjectName("nowPlayingFacts")
         self.progress = QLabel(""); self.progress.setWordWrap(True); self.progress.setObjectName("nowPlayingProgress")
         self.links = QLabel(""); self.links.setOpenExternalLinks(True); self.links.setWordWrap(True)
-        self.artist_photo_thumb = QLabel(""); self.artist_photo_thumb.setAlignment(Qt.AlignCenter); self.artist_photo_thumb.setFixedSize(160, 160)
+        self.artist_photo_thumb = QLabel(""); self.artist_photo_thumb.setAlignment(Qt.AlignCenter); self.artist_photo_thumb.setFixedSize(140, 140)
         self.artist_photo_thumb.setObjectName("nowPlayingArtistPhoto")
         self.artist_photo_credit = QLabel(""); self.artist_photo_credit.setOpenExternalLinks(True); self.artist_photo_credit.setWordWrap(True)
         self.artist_photo_credit.setMaximumWidth(330); self.artist_photo_credit.setObjectName("nowPlayingCredit")
@@ -126,8 +126,8 @@ class RichNowPlayingWidget(QWidget):
         self.lyrics_toolbar=QFrame()
         self.lyrics_toolbar.setObjectName("nativeLyricsToolbar")
         toolbar=QHBoxLayout(self.lyrics_toolbar)
-        toolbar.setContentsMargins(11,8,11,8)
-        toolbar.setSpacing(7)
+        toolbar.setContentsMargins(10,7,10,7)
+        toolbar.setSpacing(6)
 
         source_label=QLabel("SOURCE")
         source_label.setObjectName("lyricsToolbarLabel")
@@ -158,16 +158,18 @@ class RichNowPlayingWidget(QWidget):
         toolbar.addStretch(1)
 
         self.online_lyrics_button=QPushButton("Refresh lyrics")
-        self.online_lyrics_button.setObjectName("primaryButton")
+        self.online_lyrics_button.setObjectName("quietButton")
         self.online_lyrics_button.clicked.connect(self._refresh_lyrics_native)
         toolbar.addWidget(self.online_lyrics_button)
 
         self.fullscreen_lyrics_button=QPushButton("Full screen")
+        self.fullscreen_lyrics_button.setObjectName("secondaryButton")
         self.fullscreen_lyrics_button.setEnabled(False)
         self.fullscreen_lyrics_button.clicked.connect(self._show_fullscreen_lyrics)
         toolbar.addWidget(self.fullscreen_lyrics_button)
 
         self.translate_lyrics_button=QPushButton("Translate")
+        self.translate_lyrics_button.setObjectName("quietButton")
         self.translate_lyrics_button.setEnabled(False)
         self.translate_lyrics_button.clicked.connect(self._request_lyrics_translation)
         toolbar.addWidget(self.translate_lyrics_button)
@@ -1374,10 +1376,10 @@ class RichNowPlayingWidget(QWidget):
         *,
         full_screen: bool = False,
     ) -> str:
-        base=34 if full_screen else 24
-        active=48 if full_screen else 32
-        line_height=1.76 if full_screen else 1.62
-        margin=15 if full_screen else 8
+        base=33 if full_screen else 23
+        active=47 if full_screen else 31
+        line_height=1.72 if full_screen else 1.58
+        margin=14 if full_screen else 8
         parts=[
             f"<div style='font-size:{base}px;line-height:{line_height};"
             "max-width:980px;margin:0 auto'>"
@@ -1392,11 +1394,11 @@ class RichNowPlayingWidget(QWidget):
                     f"margin:{margin}px 0"
                 )
             elif current>=0 and abs(i-current)<=2:
-                link_color="#d9e3ee"
-                style="color:#d9e3ee;margin:8px 0"
+                link_color="#c7d3e0"
+                style="color:#c7d3e0;margin:8px 0"
             else:
-                link_color="#aab8c8"
-                style="color:#aab8c8;margin:7px 0"
+                link_color="#7f8da0"
+                style="color:#7f8da0;margin:7px 0"
             parts.append(
                 f"<a name='line-{i}'></a>"
                 f"<div style='{style}'>"

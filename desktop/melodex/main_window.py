@@ -649,17 +649,17 @@ class MainWindow(QMainWindow):
                 color:#7f8b9b;
                 margin-top:6px;
             }
-            QLabel#nowPlayingHeroTitle{font-size:34px;font-weight:750}
-            QLabel#nowPlayingHeroArtist{font-size:21px;color:#c8ccd2}
-            QLabel#nowPlayingHeroAlbum{font-size:15px;color:#aab0ba}
+            QLabel#nowPlayingHeroTitle{font-size:30px;font-weight:750}
+            QLabel#nowPlayingHeroArtist{font-size:18px;color:#c8ccd2}
+            QLabel#nowPlayingHeroAlbum{font-size:14px;color:#aab0ba}
             QLabel#nowPlayingFacts{color:#8f96a1}
             QLabel#nowPlayingProgress{color:#7eb4ff;font-size:12px}
             QLabel#nowPlayingHeroArt{
-                background:#181b20;border:1px solid #303640;border-radius:18px;
-                font-size:90px;color:#596270;
+                background:#181b20;border:1px solid #303640;border-radius:16px;
+                font-size:80px;color:#596270;
             }
             QLabel#nowPlayingArtistPhoto{
-                background:#15181d;border:1px solid #303640;border-radius:16px;color:#808894;
+                background:#15181d;border:1px solid #303640;border-radius:14px;color:#808894;
             }
             QLabel#nowPlayingCredit{color:#8f96a1;font-size:10px}
             QLabel#nowPlayingArtSource{color:#777f8a;font-size:11px}
@@ -749,16 +749,24 @@ class MainWindow(QMainWindow):
                 font-weight:650;
             }
             QPushButton#transportButton{
-                min-width:38px;
-                min-height:38px;
-                max-width:38px;
-                border-radius:11px;
+                min-width:36px;min-height:36px;max-width:36px;border-radius:10px;
+                background:#121821;border-color:#273342;
             }
-            QPushButton#transportButtonWide{
-                min-height:38px;
-                border-radius:11px;
+            QPushButton#transportPrimaryButton{
+                min-width:42px;min-height:42px;max-width:42px;border-radius:12px;
+                background:#1875e8;border-color:#2b84ef;color:white;font-size:15px;
             }
-            QPushButton#playerAction{min-height:36px}
+            QPushButton#transportButtonWide{min-height:36px;border-radius:10px}
+            QPushButton#playerAction{
+                min-height:32px;background:transparent;border-color:#27313e;color:#b8c2cf;
+            }
+            QPushButton#playerAction:hover{background:#171e28;border-color:#38495f;color:#eef2f7}
+            QLabel#audioProcessingState{color:#748094;font-size:10px}
+            QSlider#seekSlider::groove:horizontal{height:4px;background:#27313e;border-radius:2px}
+            QSlider#seekSlider::sub-page:horizontal{background:#4f8fd8;border-radius:2px}
+            QSlider#seekSlider::handle:horizontal{
+                background:#e5edf7;width:12px;margin:-4px 0;border-radius:6px;
+            }
             QPushButton#nowPlayingTitle{
                 background:transparent;
                 border:0;

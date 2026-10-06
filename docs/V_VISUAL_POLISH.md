@@ -69,10 +69,18 @@ search-status/empty-state language. Existing cache-first artwork behavior is unc
 known covers remain immediate. Sources is deliberately left structurally unchanged because
 its current cards already use the shared application visual system.
 
+V3 qualified across the full test, large-library, visual-performance and packaging matrix.
+
 ### V4 — Now Playing and Lyrics
 
 Cosmetic pass only: hierarchy, transport/progress presentation, spacing, metadata balance,
 lyrics typography/contrast/current-line hierarchy and integration.
+
+V4 reduces the Now Playing hero from 350 px to 320 px artwork and tones title/artist scale
+down slightly so metadata and lyrics breathe. The transport bar gains one clear primary
+play/pause control, quieter secondary actions and a purpose-styled seek track. Lyrics tools
+lose unnecessary primary-button emphasis; the current line remains dominant while distant
+lines recede further. Timing, seeking and lyric-source behavior are unchanged.
 
 ### V5 — Album Wall and Music Map
 
