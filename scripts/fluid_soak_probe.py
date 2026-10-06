@@ -186,20 +186,25 @@ def run_soak(
         "album_wall_pan": [],
     }
 
-    def timed(operation: str, action: Any) -> None:
+    def timed(operation: str, action: Any, *, record: bool) -> None:
         op_started = time.perf_counter()
         action()
         _pump_events(app)
-        operation_durations_ms[operation].append(
-            (time.perf_counter() - op_started) * 1000.0
-        )
+        if record:
+            operation_durations_ms[operation].append(
+                (time.perf_counter() - op_started) * 1000.0
+            )
 
     def exercise_ui(cycle: int, *, record_action: bool) -> None:
         nonlocal resize_mismatches, wall_pan_count
         view = views[cycle % len(views)]
         if record_action:
             monitor.mark_action(f"soak:view:{view}")
-        timed("view", lambda current=view: browser.set_view(current))
+        timed(
+            "view",
+            lambda current=view: browser.set_view(current),
+            record=record_action,
+        )
 
         fraction = ((cycle * 37) % 101) / 100.0
         if view == "albums":
@@ -213,16 +218,24 @@ def run_soak(
         query = queries[cycle % len(queries)]
         if record_action:
             monitor.mark_action("soak:filter")
-        timed("filter", lambda current=query: browser.search.setText(current))
+        timed(
+            "filter",
+            lambda current=query: browser.search.setText(current),
+            record=record_action,
+        )
         if query and cycle % 3 == 0:
             if record_action:
                 monitor.mark_action("soak:filter-clear")
-            timed("filter_clear", browser.search.clear)
+            timed("filter_clear", browser.search.clear, record=record_action)
 
         width, height = resize_sizes[cycle % len(resize_sizes)]
         if record_action:
             monitor.mark_action("soak:resize")
-        timed("resize", lambda w=width, h=height: browser.resize(w, h))
+        timed(
+            "resize",
+            lambda w=width, h=height: browser.resize(w, h),
+            record=record_action,
+        )
         if browser.width() != width or browser.height() != height:
             resize_mismatches += 1
 
@@ -236,6 +249,7 @@ def run_soak(
                     wall.view.centerOn(target),
                     wall.resize(w, h),
                 ),
+                record=record_action,
             )
             wall_pan_count += 1
 
