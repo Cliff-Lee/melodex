@@ -160,7 +160,7 @@ jobs:
             libxcb-xfixes0 libxcb-xinerama0 libxcb-xinput0 libxcb-xkb1 \
             libxkbcommon0 libxkbcommon-x11-0 libx11-6 libxext6 libxrender1
       - name: Install visual capture dependencies
-        run: python -m pip install PySide6
+        run: python -m pip install PySide6 requests
       - name: Render canonical visual QA set
         env:
           PYTHONPATH: desktop

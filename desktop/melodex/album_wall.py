@@ -888,6 +888,7 @@ class AlbumWallWidget(QWidget):
             generation = self._art_generation if raw_generation is None else int(raw_generation)
             self._online_requested.discard(key)
             if generation != self._art_generation:
+                self._art_requested.discard(key)
                 continue
             tile = self.tiles.get(key)
             image = payload.get("image")
