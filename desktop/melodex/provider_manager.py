@@ -407,6 +407,7 @@ class ProviderManager:
             cached_directories=self.library_index.load_directory_manifests(
                 scan_roots
             ),
+            cache_keys_canonical=True,
         )
 
     def apply_local_scan_snapshot(self, snapshot: dict[str, Any]) -> int:
