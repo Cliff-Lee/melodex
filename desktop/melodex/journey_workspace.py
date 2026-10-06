@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QStackedWidget,
     QTabWidget,
     QTextEdit,
@@ -212,7 +213,7 @@ class JourneyWorkspace(QObject):
         )
 
     def _show_designer_tools(self) -> None:
-        self.music_map_power_panel.show()
+        self.music_map_power_scroll.show()
         self.music_map_journey_panel.show()
         self.music_path_steps.show()
 
@@ -489,8 +490,16 @@ class JourneyWorkspace(QObject):
         self.music_map_journey_panel.hide()
         power.addWidget(self.music_map_journey_panel)
     
-        self.music_map_power_panel.hide()
-        l.addWidget(self.music_map_power_panel)
+        self.music_map_power_scroll=QScrollArea()
+        self.music_map_power_scroll.setWidgetResizable(True)
+        self.music_map_power_scroll.setFrameShape(QFrame.NoFrame)
+        self.music_map_power_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.music_map_power_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.music_map_power_scroll.setMinimumHeight(108)
+        self.music_map_power_scroll.setMaximumHeight(220)
+        self.music_map_power_scroll.setWidget(self.music_map_power_panel)
+        self.music_map_power_scroll.hide()
+        l.addWidget(self.music_map_power_scroll)
     
         self.music_map=MusicMapWidget(self.music_map_page)
         self.music_map.trackSelected.connect(self._music_map_selection_changed)
@@ -510,8 +519,8 @@ class JourneyWorkspace(QObject):
     
     
     def _toggle_music_map_tools(self) -> None:
-        visible=not self.music_map_power_panel.isVisible()
-        self.music_map_power_panel.setVisible(visible)
+        visible=not self.music_map_power_scroll.isVisible()
+        self.music_map_power_scroll.setVisible(visible)
         self.music_path_steps.setVisible(visible)
         if not visible and hasattr(self,"music_map_journey_panel"):
             self.music_map_journey_panel.hide()
@@ -523,8 +532,8 @@ class JourneyWorkspace(QObject):
     
     
     def _toggle_music_journey_options(self) -> None:
-        if not self.music_map_power_panel.isVisible():
-            self.music_map_power_panel.show()
+        if not self.music_map_power_scroll.isVisible():
+            self.music_map_power_scroll.show()
             self.music_path_steps.show()
         visible=not self.music_map_journey_panel.isVisible()
         self.music_map_journey_panel.setVisible(visible)
