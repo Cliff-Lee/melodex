@@ -4,7 +4,8 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
-from PySide6.QtCore import QObject, Qt, QTimer, Signal
+from PySide6.QtCore import QObject, QPoint, QSize, Qt, QTimer, Signal
+from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap, QPolygon
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
@@ -252,14 +253,23 @@ class PlaybackFeature(QObject):
         layout.setContentsMargins(18, 8, 18, 8)
         layout.setSpacing(8)
 
-        previous = QPushButton("⏮")
+        previous = QPushButton()
         previous.setObjectName("transportButton")
+        previous.setIcon(self._transport_icon("previous", "#c7ced9"))
+        previous.setIconSize(QSize(18, 18))
+        previous.setAccessibleName("Previous")
         previous.clicked.connect(self.previousRequested.emit)
-        self.play_button = QPushButton("▶")
+        self.play_button = QPushButton()
         self.play_button.setObjectName("transportPrimaryButton")
+        self.play_button.setIcon(self._transport_icon("play", "#ffffff"))
+        self.play_button.setIconSize(QSize(18, 18))
+        self.play_button.setAccessibleName("Play")
         self.play_button.clicked.connect(self.playPauseRequested.emit)
-        next_button = QPushButton("⏭")
+        next_button = QPushButton()
         next_button.setObjectName("transportButton")
+        next_button.setIcon(self._transport_icon("next", "#c7ced9"))
+        next_button.setIconSize(QSize(18, 18))
+        next_button.setAccessibleName("Next")
         next_button.clicked.connect(self.nextRequested.emit)
         set_help(previous, "Previous", "Restart the current track or return to the previous track.")
         set_help(self.play_button, "Play / pause", "Pause or continue the current music.")
@@ -347,6 +357,31 @@ class PlaybackFeature(QObject):
         layout.addWidget(self.player_power_actions)
         return bar
 
+    @staticmethod
+    def _transport_icon(name: str, color: str) -> QIcon:
+        """Draw small transport marks so they do not depend on font glyphs."""
+        pixmap = QPixmap(24, 24)
+        pixmap.fill(Qt.transparent)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.Antialiasing, True)
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor(color))
+        if name == "play":
+            painter.drawPolygon(QPolygon([QPoint(6, 3), QPoint(20, 12), QPoint(6, 21)]))
+        elif name == "pause":
+            painter.drawRoundedRect(5, 4, 5, 16, 1, 1)
+            painter.drawRoundedRect(14, 4, 5, 16, 1, 1)
+        elif name == "previous":
+            painter.drawRect(3, 4, 2, 16)
+            painter.drawPolygon(QPolygon([QPoint(12, 4), QPoint(5, 12), QPoint(12, 20)]))
+            painter.drawPolygon(QPolygon([QPoint(21, 4), QPoint(14, 12), QPoint(21, 20)]))
+        elif name == "next":
+            painter.drawRect(19, 4, 2, 16)
+            painter.drawPolygon(QPolygon([QPoint(12, 4), QPoint(19, 12), QPoint(12, 20)]))
+            painter.drawPolygon(QPolygon([QPoint(3, 4), QPoint(10, 12), QPoint(3, 20)]))
+        painter.end()
+        return QIcon(pixmap)
+
     def set_open_now_playing_handler(self, callback: Callable[[], None]) -> None:
         self.now_title.clicked.connect(callback)
 
@@ -412,7 +447,9 @@ class PlaybackFeature(QObject):
 
     def on_playing_changed(self, playing: bool) -> None:
         self._playing = bool(playing)
-        self.play_button.setText("❚❚" if self._playing else "▶")
+        state = "pause" if self._playing else "play"
+        self.play_button.setIcon(self._transport_icon(state, "#ffffff"))
+        self.play_button.setAccessibleName("Pause" if self._playing else "Play")
         if self.now_playing_built and hasattr(self, "living_canvas"):
             self.living_canvas.set_playing(self._playing)
 

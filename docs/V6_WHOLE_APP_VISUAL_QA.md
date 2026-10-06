@@ -1,43 +1,45 @@
 # V6 — Whole-app visual QA
 
-## Scope
+## Review scope
 
-Review Home, My Music, Explore, Album Wall, Now Playing, Lyrics, Flow, and the
-visualization surfaces at **1280×800**, **1440×900**, and **1024×768**. Include
-empty, populated, loading, error, hover, keyboard-focus, selected, playing, and
-reduced-motion states where they apply.
+Reviewed the primary screens at **1024×768**, **1280×800**, and **1440×900**:
+Home, My Music, Explore, Journeys, Playlists, Now Playing, Visuals, Album Wall,
+and Music Map. Also reviewed the twelve deterministic visualization captures
+at each size, covering Profile Pulse, synced and untimed Lyric Flow,
+Constellation, Sonic Weather, Memory Atlas, Musical Journey, Minimal, empty
+lyrics, reduced rendering, and the internal legacy renderer.
 
-Record a screenshot and pass/fail result for each route/size/state. Log concrete
-defects with the route, size, state, and visible symptom. Fix only presentation
-defects in Campaign V; reopen interaction or architecture work only for a
-reproduced correctness issue.
+The app-route captures use the empty library/player state. The visualization
+captures include populated fixtures where needed. These are rendering checks
+for clipping, overlap, missing controls, illegible text, and visibly broken
+rendering; they do not claim every interaction state was captured.
 
-## Evidence reviewed to start V6
+## Capture matrix
 
-The main-branch `visual-qa-captures` artifact from 2026-10-06 contains twelve
-1440×900 captures. They cover the Visuals shell, Profile Pulse, synced and
-unsynced Lyric Flow, Constellation, Sonic Weather, Memory Atlas, Musical
-Journey, Minimal, reduced-rendering weather, an empty lyric state, and the
-internal legacy Album World renderer.
+| Window size | App routes | Visualization scenes | Review |
+| --- | --- | --- | --- |
+| 1024×768 | [Contact sheet](campaign-v-v6/main-1024x768.jpg) | [Contact sheet](campaign-v-v6/visuals-1024x768.jpg) | Pass after fixes |
+| 1280×800 | [Contact sheet](campaign-v-v6/main-1280x800.jpg) | [Contact sheet](campaign-v-v6/visuals-1280x800.jpg) | Pass after fixes |
+| 1440×900 | [Contact sheet](campaign-v-v6/main-1440x900.jpg) | [Contact sheet](campaign-v-v6/visuals-1440x900.jpg) | Pass after fixes |
 
-This artifact is useful visualizer evidence, but it does **not** cover Home,
-My Music, Explore, Album Wall, the regular Now Playing page, or the full size
-and interaction-state matrix. Its green CI check therefore does not close V6.
+## Defects fixed
 
-### Initial observations
+1. At 1024×768, the Now Playing cover art overlapped the lyrics tabs. The hero
+   art now scales down to the available short viewport; absent artist-photo
+   and credit controls are hidden so they do not reserve overlapping space.
+2. Previous and Next transport controls rendered as missing-font boxes on
+   Linux. Transport controls now use drawn icons and retain accessible names.
 
-- The Visuals shell has a clear dominant canvas and compact controls at 1440×900.
-- In synced Lyric Flow, the active line reads clearly, while adjacent lyric
-  lines are very faint. Check their contrast at the smaller window sizes and
-  against the product's focus/current-line hierarchy.
-- Constellation's pinned recognition card is legible in its captured state.
-- The legacy Album World capture is marked internal and absent from the public
-  selector; keep it out of the user-facing route checklist unless it becomes
-  reachable in the app.
+The untimed Lyric Flow capture fixture was also corrected to use the canonical
+`full_text` frame field. The prior fixture supplied a current line while
+claiming lyrics were untimed, which exercised an invalid combination and
+created a clipped screenshot; the app's untimed renderer was not changed.
 
-## V6 status
+No further clipping, overlap, missing controls, illegible text, or visibly
+broken rendering was found in the reviewed matrix. No aesthetic changes,
+spacing refinements, new animation work, or new UI components were made for V6.
 
-**In progress.** Existing automated capture and performance gates pass, but a
-whole-app visual review still needs the route/size/state coverage above. Do not
-claim V6 complete until the missing core screens and responsive states have
-reviewable captures and defects are resolved or explicitly accepted.
+## Automated closure gates
+
+Manual visual review is complete. Campaign V remains open until the closure
+PR's regression, visual, cross-platform, and package checks finish green.
