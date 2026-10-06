@@ -1,11 +1,11 @@
 # P14 — Real-World Fluidity & Playback Integrity
 
-**Status: COMPLETE. Campaign P: COMPLETE.**
+**Status: REOPENED FOR P14m GEOMETRY CORRECTNESS. Campaign P closure pending.**
 
-The closure condition was met after P14l5a–P14l5d passed on the post-P14l4 code together
-with the existing correctness, responsiveness, large-library, visual-QA, code-health,
-startup and packaging gates. No P14l6 or further Campaign P optimization stage is planned.
-Any non-blocking improvement discovered after this point belongs in the post-P backlog.
+P14l5a–P14l5d and the previous release matrix were green, but a reproduced top-level window
+geometry defect invalidated final closure: entering Music Map can make a native window exceed
+the usable work area and the oversized geometry can persist after navigation. Campaign P is
+reopened only for this bounded correctness fix. Non-blocking optimization remains post-P.
 
 P14 converts the first detailed large-library external beta report into a permanent
 engineering qualification campaign.
@@ -412,7 +412,35 @@ catalog. The interrupted 12,700-track scenario staged 256 rows; restart reused a
 rows and completed in 2.513 s. The separate blocked-I/O NAS case hard-cancelled in 0.152 s,
 well inside its 2.5 s limit.
 
-### P14m — 30-minute endurance qualification
+### P14m — Window Geometry Containment
+
+**Core invariant:** the user/window manager owns top-level window geometry. Feature pages
+adapt to the viewport and must never enlarge `MainWindow` through navigation, hydration or
+layout minimum propagation.
+
+P14m1 identified the ownership mechanism rather than adding a page-name resize hack. Qt's
+stock `QStackedWidget` exports child-page minimum-size requirements; a lazily built page can
+therefore raise the containing window's effective minimum under a native window manager.
+Music Map also carried a hard 340 px canvas minimum. No feature code was found calling
+top-level `resize()` or `adjustSize()`.
+
+P14m2 introduces a viewport-owned page stack whose minimum-size hint is independent of
+feature-page minima and removes Music Map's hard canvas minimum. Large map scene coordinates
+remain scene coordinates only; the graphics view pans/zooms inside whatever viewport it is
+given.
+
+P14m3–P14m7 qualify major page transitions, Albums/Artists/Tracks, Lyrics, dynamic map
+hydration, expanded route/journey tools, small normal windows, maximize/restore, stale
+restored geometry and native macOS/Windows geometry behavior. Restored normal geometry is
+contained once at startup against current `availableGeometry`; there is no continuous clamp,
+recentering loop or resize-event intervention.
+
+P14m is complete only when the geometry regression and existing correctness,
+responsiveness, large-library, visual-QA, startup and packaging gates are green. Physical
+Dock/taskbar/panel checks remain a short final sanity pass; exotic window-manager behavior is
+out of scope and must not create P14m9.
+
+### P14 endurance qualification — completed
 
 P14m turns the short mixed-workload soak into a duration-based qualification. The same
 12,700-track process remains alive while Melodex repeatedly navigates Albums/Artists/Tracks,

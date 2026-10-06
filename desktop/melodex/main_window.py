@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QEvent, QSettings, Qt, QTimer, Signal, Slot, QObject
+from PySide6.QtCore import QEvent, QSettings, QSize, Qt, QTimer, Signal, Slot, QObject
 from PySide6.QtGui import QAction, QColor, QDesktopServices, QKeySequence, QPixmap, QShortcut
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QListWidget,
@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 )
 
 from .paths import app_data_dir
+from .window_geometry import contained_window_geometry
 from .provider_manager import ProviderManager
 from .flow import FlowEngine
 from .user_state import UserState
@@ -47,6 +48,13 @@ from .ux_components import (
     FeaturePresenceBar,
     set_help,
 )
+class _ViewportStack(QStackedWidget):
+    """Page container that never exports feature-page minima to MainWindow."""
+
+    def minimumSizeHint(self) -> QSize:
+        return QSize(0, 0)
+
+
 class _UiCallbackDispatcher(QObject):
     """Long-lived queued bridge from worker threads back to the Qt UI thread.
 
@@ -148,7 +156,18 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Melodex")
         self._window_settings = QSettings("Melodex", "Melodex")
         saved_geometry = self._window_settings.value("window/geometry")
-        if not saved_geometry or not self.restoreGeometry(saved_geometry):
+        restored_geometry = bool(
+            saved_geometry and self.restoreGeometry(saved_geometry)
+        )
+        if restored_geometry and not self.isMaximized() and not self.isFullScreen():
+            available = [
+                screen.availableGeometry()
+                for screen in QApplication.screens()
+            ]
+            contained = contained_window_geometry(self.geometry(), available)
+            if contained != self.geometry():
+                self.setGeometry(contained)
+        elif not restored_geometry:
             screen = QApplication.primaryScreen()
             available = screen.availableGeometry() if screen else None
             if available is not None:
@@ -429,7 +448,7 @@ class MainWindow(QMainWindow):
         side.addWidget(self.power_toggle)
         body_l.addWidget(self.sidebar)
 
-        self.stack = QStackedWidget()
+        self.stack = _ViewportStack()
         body_l.addWidget(self.stack, 1)
         self.pages: dict[str, QWidget] = {}
 

@@ -431,7 +431,6 @@ class AlbumWallWidget(QWidget):
         self.view.setBackgroundBrush(QBrush(QColor("#0f1116")))
         self.view.setRenderHint(QPainter.Antialiasing, True)
         self.view.setRenderHint(QPainter.SmoothPixmapTransform, True)
-        self.view.setMinimumHeight(300)
         layout.addWidget(self.view, 1)
 
         self.selection = QLabel("Select an album to see its details.")

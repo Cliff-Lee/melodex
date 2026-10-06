@@ -17,6 +17,7 @@ on:
       - 'VERSION'
       - 'scripts/version_check.py'
       - 'scripts/packaged_startup_probe.py'
+      - 'scripts/window_geometry_probe.py'
       - '.github/workflows/desktop.yml'
   push:
     branches: [main]
@@ -81,6 +82,33 @@ jobs:
           }
           choco install innosetup -y --no-progress
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
+      - name: Run native macOS window geometry contract
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          PYTHONPATH: desktop
+        run: |
+          desktop/.venv-build/bin/python scripts/window_geometry_probe.py \
+            --output "desktop/dist/window-geometry-${{ matrix.name }}.json" \
+            --screenshot-dir "desktop/dist/window-geometry-${{ matrix.name }}-screens"
+      - name: Run native Windows window geometry contract
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          PYTHONPATH: desktop
+        run: |
+          desktop\.venv-build\Scripts\python.exe scripts\window_geometry_probe.py `
+            --output "desktop/dist/window-geometry-${{ matrix.name }}.json" `
+            --screenshot-dir "desktop/dist/window-geometry-${{ matrix.name }}-screens"
+      - name: Upload native window geometry measurement
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Window-geometry-${{ matrix.name }}
+          path: |
+            desktop/dist/window-geometry-${{ matrix.name }}.json
+            desktop/dist/window-geometry-${{ matrix.name }}-screens/*.png
+          if-no-files-found: warn
       - name: Measure packaged macOS startup
         if: runner.os == 'macOS'
         shell: bash
