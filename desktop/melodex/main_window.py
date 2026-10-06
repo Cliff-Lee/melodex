@@ -832,17 +832,10 @@ class MainWindow(QMainWindow):
                 font-size:12px;
             }
             QLabel#cardAction{color:#72aefb;font-weight:650}
-            QFrame#albumCard{
-                background:transparent;
-                border:1px solid transparent;
-                border-radius:12px;
-            }
-            QFrame#albumCard:hover{
-                background:#151c26;
-                border-color:#29384a;
-            }
-            QLabel#albumCardTitle{font-weight:700;font-size:12px}
-            QLabel#albumCardMeta{color:#8995a7;font-size:11px}
+            QFrame#albumCard{background:transparent;border:1px solid transparent;border-radius:14px}
+            QFrame#albumCard:hover{background:#141b25;border-color:#304156}
+            QLabel#albumCardTitle{font-weight:700;font-size:13px}
+            QLabel#albumCardMeta{color:#8e9aab;font-size:11px}
             QListView#visualTrackList{
                 background:transparent;
                 border:0;
@@ -856,15 +849,8 @@ class MainWindow(QMainWindow):
             QListView#visualTrackList::item:selected{
                 background:transparent;
             }
-            QFrame#trackRow{
-                background:#121923;
-                border:1px solid #222e3d;
-                border-radius:10px;
-            }
-            QFrame#trackRow:hover{
-                background:#161f2b;
-                border-color:#33465e;
-            }
+            QFrame#trackRow{background:#111821;border:1px solid #222e3d;border-radius:11px}
+            QFrame#trackRow:hover{background:#16202c;border-color:#354a63}
             QLabel#trackTitle{font-size:14px;font-weight:700}
             QLabel#trackMeta{color:#8f9bad;font-size:12px}
             QLabel#warningPill{
@@ -875,16 +861,8 @@ class MainWindow(QMainWindow):
                 padding:4px 7px;
                 font-size:10px;
             }
-            QLabel#coverArt{
-                background:#111722;
-                border:1px solid #253040;
-                border-radius:8px;
-            }
-            QFrame#emptyState{
-                background:#121821;
-                border:1px dashed #313d4e;
-                border-radius:12px;
-            }
+            QLabel#coverArt{background:#101722;border:1px solid #273546;border-radius:10px}
+            QFrame#emptyState{background:#111821;border:1px solid #283545;border-radius:12px}
             QLabel#emptyTitle{font-size:20px;font-weight:720}
             QLabel#emptyBody{color:#97a2b2;font-size:13px}
             QFrame#homeHero{
@@ -1461,9 +1439,7 @@ class MainWindow(QMainWindow):
 
         self.search_status=QLabel("Ready to search")
         self.search_status.setWordWrap(True)
-        self.search_status.setStyleSheet(
-            "color:#9aa7b7;padding:6px 2px 4px 2px;font-size:13px"
-        )
+        self.search_status.setObjectName("searchStatus")
         l.addWidget(self.search_status)
 
         self.results=QListWidget()
