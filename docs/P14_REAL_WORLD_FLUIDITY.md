@@ -435,6 +435,23 @@ restored geometry and native macOS/Windows geometry behavior. Restored normal ge
 contained once at startup against current `availableGeometry`; there is no continuous clamp,
 recentering loop or resize-event intervention.
 
+**P14m8a — native geometry probe review: GREEN.** The merged geometry contract held on
+macOS ARM, macOS Intel, Windows x64 and Linux/X11. Music Map build/hydration/tool expansion
+and navigation retained the user-selected normal geometry on every target; the feature stack
+reported a 0×0 minimum-size hint and every final window remained inside the platform work
+area.
+
+**P14m8b1 — small-window Music Map tools: GREEN.** The Windows 1024×720 runner exposed
+crushed optional route/journey controls once top-level growth was correctly prevented.
+Those controls now reflow and use an internally scrollable tool region rather than enlarging
+MainWindow. The full functional, desktop, Linux and package-smoke matrix is green.
+
+**P14m8b2 — native state/work-area review: GREEN.** No code change was required. Native
+artifacts confirm exact normal-geometry restoration after maximize on both macOS targets,
+Windows and Linux; macOS remains clear of the menu bar/Dock, Windows remains above the
+taskbar at the 737×518 small-window qualification size, and Linux remains inside the X11
+1440×900 work area. No continuous clamp or window-manager override is needed.
+
 P14m is complete only when the geometry regression and existing correctness,
 responsiveness, large-library, visual-QA, startup and packaging gates are green. Physical
 Dock/taskbar/panel checks remain a short final sanity pass; exotic window-manager behavior is
