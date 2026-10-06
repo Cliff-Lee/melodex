@@ -309,14 +309,23 @@ def test_large_library_progressively_renders_widgets():
 
 def test_redesigned_main_window_builds_with_goal_navigation(monkeypatch, tmp_path):
     try:
+        from PySide6.QtCore import QObject
+        from PySide6.QtMultimedia import QMediaPlayer
         from PySide6.QtTest import QTest
         from PySide6.QtWidgets import QApplication, QLabel
         import melodex.main_window as main_window
+        import melodex.player as player_module
     except ImportError as exc:
         import pytest
         pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
 
     app = QApplication.instance() or QApplication([])
+    class NullAudioOutput(QObject):
+        def setVolume(self, *_args):
+            pass
+
+    monkeypatch.setattr(player_module, "QAudioOutput", NullAudioOutput)
+    monkeypatch.setattr(QMediaPlayer, "setAudioOutput", lambda _self, _output: None)
     monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
     monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
 
@@ -378,9 +387,21 @@ def test_redesigned_main_window_builds_with_goal_navigation(monkeypatch, tmp_pat
     )
 
     window.playback_feature.on_playing_changed(True)
-    assert window.playback_feature.play_button.text() == "❚❚"
+    assert window.playback_feature.play_button.text() == ""
+    assert window.playback_feature.play_button.accessibleName() == "Pause"
+    assert not window.playback_feature.play_button.icon().isNull()
     window.playback_feature.on_playing_changed(False)
-    assert window.playback_feature.play_button.text() == "▶"
+    assert window.playback_feature.play_button.accessibleName() == "Play"
+    assert not window.playback_feature.play_button.icon().isNull()
+
+    window.resize(1024, 768)
+    window.open_page("now_playing")
+    QTest.qWait(window._page_refresh_delay_ms + 20)
+    app.processEvents()
+    rich_now = window.playback_feature.rich_now
+    assert rich_now.art.height() < 320
+    assert rich_now.tabs.geometry().top() >= rich_now.art.geometry().bottom()
+    assert rich_now.artist_photo_thumb.isHidden()
 
     window.open_page("sources")
     app.processEvents()

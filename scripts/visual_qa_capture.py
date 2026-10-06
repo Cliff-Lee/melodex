@@ -212,12 +212,13 @@ def capture(out: Path, width: int = 1440, height: int = 900) -> dict[str, object
     unsynced.set_artwork(str(art_path))
     unsynced.set_lyrics(
         LyricFrame(
-            "First unsynced line",
-            "The words should still feel deliberate",
-            "Even without timing metadata",
+            "",
+            "",
+            "",
             False,
             "Embedded lyrics",
-            6,
+            -1,
+            "First unsynced line\nThe words should still feel deliberate\nEven without timing metadata",
         )
     )
     _save_widget(unsynced, out / "03-lyric-flow-unsynced.png", width, height)

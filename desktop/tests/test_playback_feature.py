@@ -380,7 +380,9 @@ def test_position_completion_and_power_visibility_stay_inside_feature(tmp_path):
 
     assert state.completed == [42]
     assert feature.current_history_id() == 0
-    assert feature.play_button.text() == "❚❚"
+    assert feature.play_button.text() == ""
+    assert feature.play_button.accessibleName() == "Pause"
+    assert not feature.play_button.icon().isNull()
     assert feature.player_power_actions.isHidden() is False
 
     feature.deleteLater()

@@ -79,6 +79,7 @@ class RichNowPlayingWidget(QWidget):
         self._palette_colors = self._fallback_palette(self._accent_color)
         self.track: dict[str, Any] = {}
         self.bundle: dict[str, Any] = {}
+        self._artwork_original = QPixmap()
         self._lyric_index = -2
         self._lyrics_document = LyricsDocument.empty()
         self._local_lyrics: dict[str, Any] = {}
@@ -112,6 +113,8 @@ class RichNowPlayingWidget(QWidget):
         self.artist_photo_thumb.setObjectName("nowPlayingArtistPhoto")
         self.artist_photo_credit = QLabel(""); self.artist_photo_credit.setOpenExternalLinks(True); self.artist_photo_credit.setWordWrap(True)
         self.artist_photo_credit.setMaximumWidth(330); self.artist_photo_credit.setObjectName("nowPlayingCredit")
+        self.artist_photo_thumb.hide()
+        self.artist_photo_credit.hide()
         right.addWidget(self.title); right.addWidget(self.artist); right.addWidget(self.album); right.addWidget(self.facts)
         right.addWidget(self.progress); right.addWidget(self.links); right.addWidget(self.artist_photo_thumb, 0, Qt.AlignLeft); right.addWidget(self.artist_photo_credit); right.addStretch(1)
         self.art_source = QLabel(""); self.art_source.setWordWrap(True); self.art_source.setObjectName("nowPlayingArtSource"); right.addWidget(self.art_source)
@@ -340,7 +343,7 @@ class RichNowPlayingWidget(QWidget):
         duration_text = f"{int(duration)//60}:{int(duration)%60:02d}" if duration > 0 else ""
         self.facts.setText(" · ".join(x for x in (provider, duration_text) if x))
         self.progress.setText("Identifying track and checking capability extensions…")
-        self.links.clear(); self.art_source.clear(); self.artist_photo_credit.clear(); self._set_art(""); self._set_artist_photo(""); self._empty_tabs()
+        self.links.clear(); self.art_source.clear(); self.artist_photo_credit.clear(); self.artist_photo_credit.hide(); self._set_art(""); self._set_artist_photo(""); self._empty_tabs()
         self._restore_related_cache(request_track)
         cached_lyrics = self._lyrics_session_cache.get(track_key(request_track))
         if cached_lyrics and self._lyrics_has_content(cached_lyrics):
@@ -581,6 +584,23 @@ class RichNowPlayingWidget(QWidget):
             self._emit_knowledge()
         self._refresh_info()
         self._update_progress()
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        if not hasattr(self, "art"):
+            return
+
+        # Keep the hero from overflowing its row when the lyrics panel and
+        # persistent player share a short desktop viewport.
+        target = max(180, min(320, self.height() - 280))
+        if self.art.width() == target and self.art.height() == target:
+            return
+        current = self._artwork_original
+        self.art.setFixedSize(target, target)
+        if current is not None and not current.isNull():
+            self.art.setPixmap(
+                current.scaled(target, target, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            )
 
     def _emit_knowledge(self) -> None:
         if not self.track:
@@ -1098,6 +1118,7 @@ class RichNowPlayingWidget(QWidget):
     def _set_artist_photo_credit(self, photo: dict[str, Any]) -> None:
         if not photo or not photo.get("path"):
             self.artist_photo_credit.clear()
+            self.artist_photo_credit.hide()
             return
         attribution = _escape(photo.get("attribution") or "Wikimedia Commons")
         description_url = _escape(photo.get("description_url") or "")
@@ -1107,6 +1128,7 @@ class RichNowPlayingWidget(QWidget):
         licence = f'<a href="{license_url}">{license_name}</a>' if license_url and license_name else license_name
         suffix = f" · {licence}" if licence and licence.casefold() not in attribution.casefold() else ""
         self.artist_photo_credit.setText(f"Photo: {attribution} · {source}{suffix}")
+        self.artist_photo_credit.show()
 
     def _set_artist_photo(self, path: str) -> None:
         if path and Path(path).exists():
@@ -1114,9 +1136,11 @@ class RichNowPlayingWidget(QWidget):
             if not pix.isNull():
                 self.artist_photo_thumb.setText("")
                 self.artist_photo_thumb.setPixmap(pix.scaled(self.artist_photo_thumb.size(), Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation))
+                self.artist_photo_thumb.show()
                 return
         self.artist_photo_thumb.setPixmap(QPixmap())
-        self.artist_photo_thumb.setText("artist photo")
+        self.artist_photo_thumb.clear()
+        self.artist_photo_thumb.hide()
 
     @property
     def accent_color(self) -> QColor:
@@ -1137,11 +1161,13 @@ class RichNowPlayingWidget(QWidget):
         if path and Path(path).exists():
             pix = QPixmap(path)
             if not pix.isNull():
+                self._artwork_original = pix
                 self.art.setText("")
                 self.art.setPixmap(pix.scaled(self.art.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
                 self._apply_accent(QImage(path))
                 self.artworkChanged.emit(str(path))
                 return
+        self._artwork_original = QPixmap()
         self.art.setPixmap(QPixmap()); self.art.setText("♫")
         self.artworkChanged.emit("")
         self._accent_color = QColor("#7eb4ff")
