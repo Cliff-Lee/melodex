@@ -303,8 +303,19 @@ A regression uses a cursor whose `fetchall()` raises, proving hydration stays st
 while malformed metadata rows retain the existing skip behavior. This stage changes no
 database schema, publication transaction, scan semantics or catalog ordering.
 
-**P14l4b — publication read-side allocation.** Reserved for the existing-index comparison
-inside `replace_scan()`, after P14l4a qualifies independently.
+P14l4a qualified independently across the full release matrix.
+
+**P14l4b1 — streaming existing fingerprints.** The publication transaction's
+`SELECT relative_path, size, mtime_ns` comparison now consumes its SQLite cursor directly
+rather than creating a temporary `fetchall()` row list before building the required
+fingerprint dictionary. The dictionary remains collection-sized because later reuse/delete
+decisions need random access; only the duplicate SQLite row container is removed.
+
+A regression wraps the real SQLite connection and makes `fetchall()` fail specifically for
+this query while requiring an unchanged eight-track publication to reuse all eight rows.
+
+**P14l4b2 — delete-comparison temporary sets.** Reserved for the next independently
+qualified micro-campaign.
 
 #### P14l5 — Physical 12.7k/NAS qualification
 

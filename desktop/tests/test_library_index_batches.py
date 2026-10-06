@@ -119,3 +119,78 @@ def test_p10d_deletions_are_batched_too(tmp_path: Path):
     assert result["delete_batches"] == 3
     assert result["max_batch_rows"] == 250
     assert len(index.load_tracks([root])) == 1
+
+
+def test_p14l4b1_existing_fingerprint_query_does_not_fetchall(
+    monkeypatch,
+    tmp_path: Path,
+):
+    root = tmp_path / "music"
+    index = LocalLibraryIndex(tmp_path / "library-index.sqlite3")
+    snapshot = _snapshot(root, 8)
+    index.replace_scan([root], snapshot)
+
+    original_connect = index._connect
+    observed = {"streamed": 0}
+
+    class CursorProxy:
+        def __init__(self, cursor, *, guarded: bool):
+            self._cursor = cursor
+            self._guarded = guarded
+
+        def __iter__(self):
+            if self._guarded:
+                observed["streamed"] += 1
+            return iter(self._cursor)
+
+        def fetchall(self):
+            if self._guarded:
+                raise AssertionError(
+                    "existing fingerprint comparison must stream rows"
+                )
+            return self._cursor.fetchall()
+
+        def __getattr__(self, name):
+            return getattr(self._cursor, name)
+
+    class ConnectionProxy:
+        def __init__(self, connection):
+            self._connection = connection
+
+        def __enter__(self):
+            self._connection.__enter__()
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return self._connection.__exit__(exc_type, exc, tb)
+
+        def execute(self, query, params=()):
+            cursor = self._connection.execute(query, params)
+            normalized = " ".join(str(query).split())
+            guarded = (
+                "SELECT relative_path, size, mtime_ns FROM tracks"
+                in normalized
+            )
+            return CursorProxy(cursor, guarded=guarded)
+
+        def executemany(self, query, params):
+            return self._connection.executemany(query, params)
+
+        def rollback(self):
+            return self._connection.rollback()
+
+        def __getattr__(self, name):
+            return getattr(self._connection, name)
+
+    monkeypatch.setattr(
+        index,
+        "_connect",
+        lambda: ConnectionProxy(original_connect()),
+    )
+
+    result = index.replace_scan([root], snapshot)
+
+    assert observed["streamed"] == 1
+    assert result["tracks_written"] == 0
+    assert result["tracks_reused"] == 8
+    assert result["tracks_deleted"] == 0

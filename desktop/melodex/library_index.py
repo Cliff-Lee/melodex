@@ -895,14 +895,16 @@ class LocalLibraryIndex:
                         WHERE root_id = ?
                         """,
                         (root_id,),
-                    ).fetchall()
-                    existing = {
-                        str(row["relative_path"]): (
+                    )
+                    existing: dict[
+                        str,
+                        tuple[int | None, int | None],
+                    ] = {}
+                    for row in existing_rows:
+                        existing[str(row["relative_path"])] = (
                             int(row["size"]) if row["size"] is not None else None,
                             int(row["mtime_ns"]) if row["mtime_ns"] is not None else None,
                         )
-                        for row in existing_rows
-                    }
 
                     rows = grouped.get(root_id, [])
                     incoming_paths = {
