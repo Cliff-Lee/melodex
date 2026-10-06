@@ -164,6 +164,8 @@ def run_soak(
     max_widgets = baseline_widget_count
     max_album_cards = len(browser.cards)
     max_artist_cards = len(browser.artist_cards)
+    max_album_cache = len(browser._album_card_cache)
+    max_artist_cache = len(browser._artist_card_cache)
     max_track_rows = baseline_track_rows
     cycle_durations_ms: list[float] = []
     resize_mismatches = 0
@@ -273,6 +275,8 @@ def run_soak(
         max_widgets = max(max_widgets, len(browser.findChildren(QWidget)))
         max_album_cards = max(max_album_cards, len(browser.cards))
         max_artist_cards = max(max_artist_cards, len(browser.artist_cards))
+        max_album_cache = max(max_album_cache, len(browser._album_card_cache))
+        max_artist_cache = max(max_artist_cache, len(browser._artist_card_cache))
         max_track_rows = max(max_track_rows, len(browser.track_rows))
         cycle_durations_ms.append(
             (time.perf_counter() - cycle_started) * 1000.0
@@ -316,6 +320,8 @@ def run_soak(
         max_widgets = max(max_widgets, len(browser.findChildren(QWidget)))
         max_album_cards = max(max_album_cards, len(browser.cards))
         max_artist_cards = max(max_artist_cards, len(browser.artist_cards))
+        max_album_cache = max(max_album_cache, len(browser._album_card_cache))
+        max_artist_cache = max(max_artist_cache, len(browser._artist_card_cache))
         max_track_rows = max(max_track_rows, len(browser.track_rows))
 
     browser.search.clear()
@@ -355,6 +361,8 @@ def run_soak(
         "worker_pool_bounded": max_active <= 4,
         "album_cards_bounded": max_album_cards <= int(browser._album_batch_size),
         "artist_cards_bounded": max_artist_cards <= int(browser._artist_batch_size),
+        "album_card_cache_bounded": max_album_cache <= int(browser._card_cache_limit),
+        "artist_card_cache_bounded": max_artist_cache <= int(browser._card_cache_limit),
         "track_rows_bounded": max_track_rows <= int(track_row_limit),
         "widgets_stable": final_widget_count <= baseline_widget_count + 24,
         "retained_python_memory_bounded": memory_growth_mib
@@ -404,6 +412,9 @@ def run_soak(
             "max_observed": max_widgets,
             "max_album_cards": max_album_cards,
             "max_artist_cards": max_artist_cards,
+            "max_album_card_cache": max_album_cache,
+            "max_artist_card_cache": max_artist_cache,
+            "card_cache_limit": int(browser._card_cache_limit),
             "max_track_rows": max_track_rows,
             "track_row_limit": track_row_limit,
         },
