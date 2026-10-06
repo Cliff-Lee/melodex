@@ -95,6 +95,9 @@ elides long track/artist labels, removes always-visible BPM/energy debug copy fr
 softens non-selected borders and sonic edges, and keeps route/current/selected emphasis strong.
 No Chiasm navigation, graph-layout redesign or rendering architecture change is included.
 
+V5 qualified across the full test, visual-performance, large-library/soak, native desktop and
+Linux packaging/smoke matrix.
+
 ### V6 — Whole-app visual QA
 
 Inspect major user-facing screens at realistic window sizes for clipping, wrapping,
