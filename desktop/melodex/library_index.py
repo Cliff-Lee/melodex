@@ -911,17 +911,14 @@ class LocalLibraryIndex:
                         relative_path for relative_path, _, _, _ in rows
                     }
                     preserved = preserve_dirs.get(root_id, set())
-                    preserved_existing_paths = {
-                        relative_path
-                        for relative_path in existing
-                        if os.path.dirname(relative_path) in preserved
-                    }
-                    tracks_reused += len(preserved_existing_paths)
-                    removed_paths = (
-                        existing.keys()
-                        - incoming_paths
-                        - preserved_existing_paths
-                    )
+                    preserved_existing_count = 0
+                    removed_paths: set[str] = set()
+                    for relative_path in existing:
+                        if os.path.dirname(relative_path) in preserved:
+                            preserved_existing_count += 1
+                        elif relative_path not in incoming_paths:
+                            removed_paths.add(relative_path)
+                    tracks_reused += preserved_existing_count
                     if removed_paths:
                         delete_batch: list[tuple[str, str]] = []
                         for relative_path in removed_paths:
