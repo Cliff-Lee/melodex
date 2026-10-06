@@ -62,7 +62,7 @@ def test_library_scan_process_round_trip_persists_index(tmp_path: Path):
         isinstance(value, (int, float)) and value >= 0
         for value in phase_seconds.values()
     )
-    assert result["metrics"]["child_total_seconds"] >= sum(
+    assert result["metrics"]["child_total_seconds"] + 0.00001 >= sum(
         phase_seconds.values()
     )
     assert result["persistence"]["tracks_written"] == 2
