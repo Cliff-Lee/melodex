@@ -89,7 +89,8 @@ jobs:
           PYTHONPATH: desktop
         run: |
           desktop/.venv-build/bin/python scripts/window_geometry_probe.py \
-            --output "desktop/dist/window-geometry-${{ matrix.name }}.json"
+            --output "desktop/dist/window-geometry-${{ matrix.name }}.json" \
+            --screenshot-dir "desktop/dist/window-geometry-${{ matrix.name }}-screens"
       - name: Run native Windows window geometry contract
         if: runner.os == 'Windows'
         shell: pwsh
@@ -97,13 +98,16 @@ jobs:
           PYTHONPATH: desktop
         run: |
           desktop\.venv-build\Scripts\python.exe scripts\window_geometry_probe.py `
-            --output "desktop/dist/window-geometry-${{ matrix.name }}.json"
+            --output "desktop/dist/window-geometry-${{ matrix.name }}.json" `
+            --screenshot-dir "desktop/dist/window-geometry-${{ matrix.name }}-screens"
       - name: Upload native window geometry measurement
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: Window-geometry-${{ matrix.name }}
-          path: desktop/dist/window-geometry-${{ matrix.name }}.json
+          path: |
+            desktop/dist/window-geometry-${{ matrix.name }}.json
+            desktop/dist/window-geometry-${{ matrix.name }}-screens/*.png
           if-no-files-found: warn
       - name: Measure packaged macOS startup
         if: runner.os == 'macOS'
