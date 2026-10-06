@@ -14,7 +14,7 @@ The dots keep the same sonic positions while the **Connections** selector change
 
 ## 1. The sonic landscape
 
-A mapped dot represents a local track with cached Flow analysis.
+A mapped point represents a local track with cached Flow analysis. Album-cover art is used for each point when available locally. Hovering a point expands it into a track card with title, artist, album, and analysis details.
 
 Its position is derived locally from:
 
@@ -169,6 +169,7 @@ Normal browsing shows only:
 - **Queue selected**
 - **Plan a route…**
 - the compact **View / Connections / Search / Fit map** row
+- visible **Zoom in** and **Zoom out** controls
 - the map itself.
 
 **Map options…** reveals analysis, refresh and bounded metadata-enrichment actions.
@@ -179,7 +180,7 @@ Normal browsing shows only:
 
 Global **Power tools** does not force any of these spatial panels open.
 
-Navigation mirrors Album Wall: drag to pan, two-finger trackpad scrolling pans, mouse-wheel or Cmd/Ctrl-scroll zooms smoothly, and **Fit map** restores a useful overview. The initial fit is slightly closer than a whole-scene thumbnail so nodes remain visually legible.
+Navigation mirrors Album Wall: drag to pan, two-finger trackpad scrolling pans, mouse-wheel or Cmd/Ctrl-scroll zooms smoothly, the **+ / −** controls zoom explicitly, and **Fit map** restores a useful overview. Dense collections use smaller album-cover points at overview scale; zooming into a region reveals individual covers and nearby sonic neighborhoods without drawing a wall of connection lines.
 
 ## 8. Privacy
 

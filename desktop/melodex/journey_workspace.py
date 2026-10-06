@@ -506,6 +506,7 @@ class JourneyWorkspace(QObject):
         self.music_map=MusicMapWidget(self.music_map_page)
         self.music_map.trackSelected.connect(self._music_map_selection_changed)
         self.music_map.trackActivated.connect(self._play_music_map_track)
+        self.music_map.artworkRequested.connect(self._music_map_artwork_requested)
         l.addWidget(self.music_map,1)
     
         self.music_path_steps=QListWidget()
@@ -736,6 +737,36 @@ class JourneyWorkspace(QObject):
             return
         self._status("Building Music Map from cached Flow analysis…")
         self._run_async(self._build_music_map_payload,self._apply_music_map_payload, priority="visible", task_name="music-map-model", replace_key="page:music-map-model")
+
+    def _music_map_artwork_requested(self, requests: object) -> None:
+        rows = [dict(row) for row in list(requests or []) if isinstance(row, dict)]
+        if not rows:
+            return
+        prefetch = all(bool(row.get("prefetch")) for row in rows)
+
+        def load():
+            metadata = self._metadata_getter()
+            result = {}
+            for row in rows:
+                ref = str(row.get("ref") or "")
+                track = dict(row.get("track") or {})
+                if not ref or not track:
+                    continue
+                path = str(metadata.local_artwork(track).get("path") or "")
+                result[ref] = metadata.prepared_artwork_payload(
+                    path,
+                    int(row.get("generation") or 0),
+                    128,
+                )
+                result[ref]["prefetch"] = bool(row.get("prefetch"))
+            return result
+
+        self._run_async(
+            load,
+            self.music_map.set_artwork,
+            priority="prefetch" if prefetch else "visible",
+            task_name="music-map-cover-prefetch" if prefetch else "music-map-visible-covers",
+        )
     
     
     def _apply_music_map_payload(self,payload):
@@ -1625,4 +1656,3 @@ class JourneyWorkspace(QObject):
             self._status("Select a Music Map track first",3000)
             return
         self.sessionFromTrackRequested.emit(dict(track))
-

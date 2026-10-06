@@ -2,7 +2,7 @@
 
 Album Wall is a visual, local-first way to browse a Melodex collection as a place rather than a scrolling list.
 
-Open **Album Wall** from Explore. Each album appears once as a cover tile. The wall opens near a readable sleeve size rather than shrinking the whole collection into one overview. Drag with the mouse or use two-finger trackpad scrolling to pan around the collection; double-click a cover to play the album in track order.
+Open **Album Wall** from Explore. Each album appears once as a cover tile. The wall opens near a readable sleeve size rather than shrinking the whole collection into one overview. Drag with the mouse or use two-finger trackpad scrolling to pan around the collection; double-click a cover to play the album in disc and track order. At the normal browsing scale the wall keeps to covers, revealing album names on hover, selection, or closer zoom to keep dense collections readable.
 
 For local libraries, a release folder is the primary album boundary, so separate editions of the same artist/title remain separate tiles. Common multi-disc folders such as `CD1` and `Disc 2` are folded back into their parent album.
 
@@ -37,7 +37,7 @@ Visible albums request artwork lazily, in small batches. The initial implementat
 
 If none exists, Melodex renders a deterministic generated record-cover placeholder. Panning to another part of the wall hydrates that area on demand.
 
-The wall currently displays at most 1,200 albums at once. Very large libraries preserve important analysed/familiar/rediscovery records plus a deterministic breadth sample.
+The wall currently displays at most 1,200 albums at once. Very large libraries preserve important analysed/familiar/rediscovery records plus a deterministic breadth sample. Covers already loaded stay resident while the model refreshes or the viewport moves; remaining local covers are prepared in low-priority background batches. Labels stay out of the way at the normal scale and appear on hover, selection, or close zoom.
 
 ## Interaction
 

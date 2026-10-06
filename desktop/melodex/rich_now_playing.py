@@ -111,12 +111,9 @@ class RichNowPlayingWidget(QWidget):
         self.links = QLabel(""); self.links.setOpenExternalLinks(True); self.links.setWordWrap(True)
         self.artist_photo_thumb = QLabel(""); self.artist_photo_thumb.setAlignment(Qt.AlignCenter); self.artist_photo_thumb.setFixedSize(140, 140)
         self.artist_photo_thumb.setObjectName("nowPlayingArtistPhoto")
-        self.artist_photo_credit = QLabel(""); self.artist_photo_credit.setOpenExternalLinks(True); self.artist_photo_credit.setWordWrap(True)
-        self.artist_photo_credit.setMaximumWidth(330); self.artist_photo_credit.setObjectName("nowPlayingCredit")
         self.artist_photo_thumb.hide()
-        self.artist_photo_credit.hide()
         right.addWidget(self.title); right.addWidget(self.artist); right.addWidget(self.album); right.addWidget(self.facts)
-        right.addWidget(self.progress); right.addWidget(self.links); right.addWidget(self.artist_photo_thumb, 0, Qt.AlignLeft); right.addWidget(self.artist_photo_credit); right.addStretch(1)
+        right.addWidget(self.progress); right.addWidget(self.links); right.addWidget(self.artist_photo_thumb, 0, Qt.AlignLeft); right.addStretch(1)
         self.art_source = QLabel(""); self.art_source.setWordWrap(True); self.art_source.setObjectName("nowPlayingArtSource"); right.addWidget(self.art_source)
 
         self.tabs = QTabWidget(); outer.addWidget(self.tabs, 1)
@@ -343,7 +340,7 @@ class RichNowPlayingWidget(QWidget):
         duration_text = f"{int(duration)//60}:{int(duration)%60:02d}" if duration > 0 else ""
         self.facts.setText(" · ".join(x for x in (provider, duration_text) if x))
         self.progress.setText("Identifying track and checking capability extensions…")
-        self.links.clear(); self.art_source.clear(); self.artist_photo_credit.clear(); self.artist_photo_credit.hide(); self._set_art(""); self._set_artist_photo(""); self._empty_tabs()
+        self.links.clear(); self.art_source.clear(); self.artist_photo_thumb.setToolTip(""); self.artist_photo_thumb.setAccessibleDescription(""); self._set_art(""); self._set_artist_photo(""); self._empty_tabs()
         self._restore_related_cache(request_track)
         cached_lyrics = self._lyrics_session_cache.get(track_key(request_track))
         if cached_lyrics and self._lyrics_has_content(cached_lyrics):
@@ -1113,22 +1110,29 @@ class RichNowPlayingWidget(QWidget):
         artwork = self.bundle.get("artwork") if isinstance(self.bundle.get("artwork"), dict) else {}
         photo = self.bundle.get("artist_photo") if isinstance(self.bundle.get("artist_photo"), dict) else {}
         self.info.setHtml(self._info_html(identity, artwork, photo, self.bundle.get("errors") or []))
+        self.info.setToolTip(self._photo_credit_text(photo))
 
     # ---------------------------- visuals / HTML
+    @staticmethod
+    def _photo_credit_text(photo: dict[str, Any]) -> str:
+        if not photo:
+            return ""
+        attribution = str(photo.get("attribution") or photo.get("source") or "Wikimedia Commons").strip()
+        source_url = str(photo.get("description_url") or "").strip()
+        license_name = str(photo.get("license_name") or "").strip()
+        license_url = str(photo.get("license_url") or "").strip()
+        source = source_url or "Wikimedia Commons"
+        license_text = f" · {license_name} ({license_url})" if license_name and license_url else (f" · {license_name}" if license_name else "")
+        return f"Photo: {attribution} · {source}{license_text}"
+
     def _set_artist_photo_credit(self, photo: dict[str, Any]) -> None:
         if not photo or not photo.get("path"):
-            self.artist_photo_credit.clear()
-            self.artist_photo_credit.hide()
+            self.artist_photo_thumb.setToolTip("")
+            self.artist_photo_thumb.setAccessibleDescription("")
             return
-        attribution = _escape(photo.get("attribution") or "Wikimedia Commons")
-        description_url = _escape(photo.get("description_url") or "")
-        license_name = _escape(photo.get("license_name") or "")
-        license_url = _escape(photo.get("license_url") or "")
-        source = f'<a href="{description_url}">Commons file</a>' if description_url else "Wikimedia Commons"
-        licence = f'<a href="{license_url}">{license_name}</a>' if license_url and license_name else license_name
-        suffix = f" · {licence}" if licence and licence.casefold() not in attribution.casefold() else ""
-        self.artist_photo_credit.setText(f"Photo: {attribution} · {source}{suffix}")
-        self.artist_photo_credit.show()
+        full_credit = self._photo_credit_text(photo)
+        self.artist_photo_thumb.setToolTip(full_credit)
+        self.artist_photo_thumb.setAccessibleDescription(full_credit)
 
     def _set_artist_photo(self, path: str) -> None:
         if path and Path(path).exists():
@@ -1249,18 +1253,7 @@ class RichNowPlayingWidget(QWidget):
         photo = photo or {}
         if photo.get("path"):
             uri = Path(str(photo.get("path"))).resolve().as_uri()
-            caption = _escape(photo.get("attribution") or photo.get("source") or "")
-            description_url = _escape(photo.get("description_url") or "")
-            license_name = _escape(photo.get("license_name") or "")
-            license_url = _escape(photo.get("license_url") or "")
-            parts.append(f'<p><img src="{uri}" width="220"></p>')
-            credit_bits = [caption] if caption else []
-            if description_url:
-                credit_bits.append(f'<a href="{description_url}">Wikimedia Commons file</a>')
-            if license_name:
-                credit_bits.append(f'<a href="{license_url}">{license_name}</a>' if license_url else license_name)
-            if credit_bits:
-                parts.append("<p style='color:#9097a2'>Photo: " + " · ".join(credit_bits) + "</p>")
+            parts.append(f'<p style="margin:0 0 2px 0"><img src="{uri}" width="220"></p>')
         members = [x for x in list(artist.get("members") or []) if isinstance(x, dict)]
         if members:
             parts.append("<h3>Members / membership</h3><ul>" + "".join(f"<li>{_escape(x.get('name'))} — {_escape(x.get('type'))}{' (former)' if x.get('ended') else ''}</li>" for x in members) + "</ul>")

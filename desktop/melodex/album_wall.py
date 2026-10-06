@@ -28,6 +28,7 @@ from .album_wall_model import layout_album_positions
 _TILE_W = 244.0
 _TILE_H = 296.0
 _COVER = 228.0
+_TILE_GAP = 24.0
 
 
 def _norm(value: Any) -> str:
@@ -69,6 +70,7 @@ class _AlbumTile(QGraphicsObject):
         ) or "?"
         self._selected = False
         self._current = False
+        self._hovered = False
         self.setAcceptHoverEvents(True)
         self.setFlag(QGraphicsItem.ItemIsSelectable, True)
         self.setToolTip(self._tooltip())
@@ -140,6 +142,13 @@ class _AlbumTile(QGraphicsObject):
         self._pixmap = QPixmap()
         self.update()
 
+    def set_cover_pixmap(self, pixmap: QPixmap) -> bool:
+        if not isinstance(pixmap, QPixmap) or pixmap.isNull():
+            return False
+        self._pixmap = QPixmap(pixmap)
+        self.update()
+        return True
+
     def set_selected_visual(self, value: bool) -> None:
         self._selected = bool(value)
         self.update()
@@ -206,7 +215,10 @@ class _AlbumTile(QGraphicsObject):
             painter.setBrush(QColor("#9aa4b8"))
             painter.drawEllipse(QRectF(cover.right() - 12, cover.bottom() - 12, 6, 6))
 
-        if lod >= 0.38:
+        # At the normal browsing scale the covers carry the wall. Labels appear
+        # when zoomed in or when a sleeve is the current focus.
+        show_title = lod >= 1.12 or self._hovered or self._selected
+        if show_title:
             title = str(self.album.get("title") or "Unknown album")
             artist = str(self.album.get("artist") or "Unknown artist")
             painter.setPen(QColor("#f4f6fa"))
@@ -221,7 +233,7 @@ class _AlbumTile(QGraphicsObject):
                 int(title_rect.width()),
             )
             painter.drawText(title_rect, Qt.AlignLeft | Qt.AlignVCenter, title_text)
-            if lod >= 0.56:
+            if lod >= 1.28 or self._hovered or self._selected:
                 font.setBold(False)
                 font.setPointSizeF(max(7.2, min(9.8, 8.3 * lod)))
                 painter.setFont(font)
@@ -247,11 +259,13 @@ class _AlbumTile(QGraphicsObject):
         super().mouseDoubleClickEvent(event)
 
     def hoverEnterEvent(self, event):
+        self._hovered = True
         self.setZValue(20)
         self.setScale(1.03)
         super().hoverEnterEvent(event)
 
     def hoverLeaveEvent(self, event):
+        self._hovered = False
         self.setZValue(0)
         self.setScale(1.0)
         super().hoverLeaveEvent(event)
@@ -392,8 +406,9 @@ class AlbumWallWidget(QWidget):
         self.current_key = ""
         self._art_requested: set[str] = set()
         self._online_requested: set[str] = set()
-        self._resident_art: dict[str, None] = {}
-        self._resident_art_limit = 192
+        self._resident_art: dict[str, QPixmap] = {}
+        self._resident_art_limit = 1200
+        self._art_prefetch_queue: list[str] = []
         self._art_generation = 0
         self._animation: QVariantAnimation | None = None
         self._start_positions: dict[str, tuple[float, float]] = {}
@@ -502,7 +517,7 @@ class AlbumWallWidget(QWidget):
         self._track_to_album.clear()
         self._art_requested.clear()
         self._online_requested.clear()
-        self._resident_art.clear()
+        self._art_prefetch_queue.clear()
         self.selected_key = ""
         self.current_key = ""
 
@@ -520,6 +535,16 @@ class AlbumWallWidget(QWidget):
             tile = _AlbumTile(album, self._select, self._activate)
             self.tiles[key] = tile
             self.scene.addItem(tile)
+        self._resident_art = {
+            key: pixmap for key, pixmap in self._resident_art.items()
+            if key in self.tiles and not pixmap.isNull()
+        }
+        for key, pixmap in self._resident_art.items():
+            self.tiles[key].set_cover_pixmap(pixmap)
+        self._art_requested = set(self._resident_art)
+        self._art_prefetch_queue = [
+            key for key in self.tiles if key not in self._art_requested
+        ]
 
         self._place(immediate=True)
         self.highlight_track(current_track or {})
@@ -576,7 +601,15 @@ class AlbumWallWidget(QWidget):
 
     def _place(self, immediate: bool = False) -> None:
         lens = str(self.lens.currentData() or "sound")
-        positions = layout_album_positions(self.model, lens)
+        # Keep the layout pitch at least as large as each tile's full painted
+        # bounds. The smaller model defaults are useful for abstract maps, but
+        # caused Album Wall sleeves and labels to overlap substantially.
+        positions = layout_album_positions(
+            self.model,
+            lens,
+            tile_width=_TILE_W + _TILE_GAP,
+            tile_height=_TILE_H + _TILE_GAP,
+        )
         if immediate or len(self.tiles) > 850:
             for key, tile in self.tiles.items():
                 x, y = positions.get(key, (0.0, 0.0))
@@ -708,42 +741,13 @@ class AlbumWallWidget(QWidget):
 
     def _viewport_changed(self) -> None:
         self._runtime_metrics["viewport_changes"] += 1
-        self._art_generation += 1
 
     def _viewport_settled(self) -> None:
         self._runtime_metrics["viewport_settles"] += 1
-        self._trim_resident_artwork()
         self._request_visible_art()
 
     def _schedule_visible_art(self) -> None:
         self._art_timer.start()
-
-    def _trim_resident_artwork(self) -> None:
-        if not self._resident_art:
-            return
-        viewport=self.view.viewport().rect()
-        keep_rect=self.view.mapToScene(viewport).boundingRect().adjusted(-520,-520,520,520)
-        protected={
-            item.key
-            for item in self.scene.items(
-                keep_rect,
-                Qt.IntersectsItemBoundingRect,
-                Qt.AscendingOrder,
-            )
-            if isinstance(item,_AlbumTile)
-        }
-        evict=[key for key in list(self._resident_art) if key not in protected]
-        survivors=[key for key in self._resident_art if key not in evict]
-        overflow=max(0,len(survivors)-self._resident_art_limit)
-        if overflow:
-            evict.extend(survivors[:overflow])
-        for key in dict.fromkeys(evict):
-            tile=self.tiles.get(key)
-            if tile is not None:
-                tile.clear_cover()
-            self._resident_art.pop(key,None)
-            self._art_requested.discard(key)
-            self._runtime_metrics["resident_cover_evictions"] += 1
 
     def _request_visible_art(self) -> None:
         started = time.perf_counter()
@@ -792,12 +796,36 @@ class AlbumWallWidget(QWidget):
             self._runtime_metrics["visible_art_batches"] += 1
             self._runtime_metrics["visible_art_items_requested"] += len(batch)
             self.artworkRequested.emit(batch)
+        self._request_art_prefetch()
         elapsed_ms = (time.perf_counter() - started) * 1000.0
         self._runtime_metrics["visible_art_scan_last_ms"] = round(elapsed_ms, 3)
         self._runtime_metrics["visible_art_scan_max_ms"] = round(
             max(float(self._runtime_metrics["visible_art_scan_max_ms"]), elapsed_ms),
             3,
         )
+
+    def _request_art_prefetch(self) -> None:
+        """Warm the rest of the bounded wall so later pans reveal prepared covers."""
+        batch = []
+        while self._art_prefetch_queue and len(batch) < 36:
+            key = self._art_prefetch_queue.pop(0)
+            if key in self._art_requested or key not in self.tiles:
+                continue
+            album = self.albums.get(key) or {}
+            track = dict(album.get("representative_track") or {})
+            if not track:
+                continue
+            self._art_requested.add(key)
+            batch.append({
+                "key": key,
+                "generation": self._art_generation,
+                "track": track,
+                "prefetch": True,
+            })
+        if batch:
+            self._runtime_metrics["visible_art_batches"] += 1
+            self._runtime_metrics["visible_art_items_requested"] += len(batch)
+            self.artworkRequested.emit(batch)
 
     def request_missing_covers(self) -> None:
         """Explicitly request online cover recovery for the visible wall."""
@@ -848,6 +876,10 @@ class AlbumWallWidget(QWidget):
         rows = dict(mapping or {})
         if rows:
             self._runtime_metrics["artwork_apply_batches"] += 1
+        quiet_batch = bool(rows) and all(
+            isinstance(raw, dict) and bool(raw.get("prefetch"))
+            for raw in rows.values()
+        )
         for key, raw in rows.items():
             key = str(key)
             structured = isinstance(raw, dict)
@@ -856,7 +888,6 @@ class AlbumWallWidget(QWidget):
             generation = self._art_generation if raw_generation is None else int(raw_generation)
             self._online_requested.discard(key)
             if generation != self._art_generation:
-                self._art_requested.discard(key)
                 continue
             tile = self.tiles.get(key)
             image = payload.get("image")
@@ -868,8 +899,7 @@ class AlbumWallWidget(QWidget):
                 applied = tile.set_cover_path(path)
             if applied:
                 loaded += 1
-                self._resident_art.pop(key,None)
-                self._resident_art[key]=None
+                self._resident_art[key] = QPixmap(tile._pixmap)
                 self._runtime_metrics["cover_prepares"] += 1
         if loaded:
             self._runtime_metrics["artwork_items_applied"] += loaded
@@ -879,11 +909,13 @@ class AlbumWallWidget(QWidget):
             max(float(self._runtime_metrics["artwork_apply_max_ms"]), elapsed_ms),
             3,
         )
-        if rows:
+        if rows and not quiet_batch:
             if loaded:
                 self.status.setText(f"Loaded {loaded} album cover{'s' if loaded != 1 else ''}.")
             elif any(str(key) in self.tiles for key in rows):
                 self.status.setText("No additional covers were found for that batch.")
+        if rows and self._art_prefetch_queue:
+            QTimer.singleShot(0, self._request_art_prefetch)
 
     def diagnostics_snapshot(self) -> dict[str, Any]:
         """Return aggregate Album Wall runtime timings without collection metadata."""
@@ -894,7 +926,7 @@ class AlbumWallWidget(QWidget):
             "online_requested_count": len(self._online_requested),
             "motion_active": bool(self.view.motion_active),
             "resident_cover_count": len(self._resident_art),
-            "resident_cover_limit": int(self._resident_art_limit),
+            "resident_cover_limit": min(int(self._resident_art_limit), len(self.tiles)),
         }
 
 

@@ -53,6 +53,18 @@ def test_album_wall_groups_tracks_and_uses_music_map_centroid():
     assert -1.0 <= second["fallback_y"] <= 1.0
 
 
+def test_album_wall_tracks_play_in_disc_then_track_order():
+    catalog = [
+        {**_track("/album/disc2-track1.mp3", "Example", "Set", "Disc 2 track 1", 1), "disc_number": 2},
+        {**_track("/album/disc1-track2.mp3", "Example", "Set", "Disc 1 track 2", 2), "disc_number": 1},
+        {**_track("/album/disc1-track1.mp3", "Example", "Set", "Disc 1 track 1", 1), "disc_number": 1},
+    ]
+    album = build_album_wall(catalog)["albums"][0]
+    assert [track["title"] for track in album["tracks"]] == [
+        "Disc 1 track 1", "Disc 1 track 2", "Disc 2 track 1",
+    ]
+
+
 def test_unanalysed_album_positions_are_stable():
     catalog = [
         _track("/a/01.mp3", "Example", "First", "One", 1),
@@ -72,9 +84,18 @@ def test_album_wall_layout_has_no_tile_collisions_across_lenses():
     ]
     wall = build_album_wall(catalog)
     for lens in ("sound", "familiarity", "time", "shelves"):
-        positions = layout_album_positions(wall, lens)
+        positions = layout_album_positions(
+            wall,
+            lens,
+            tile_width=268.0,  # 244 px tile plus 24 px breathing room
+            tile_height=320.0,  # 296 px tile plus 24 px breathing room
+        )
         assert len(positions) == 140
         assert len(set(positions.values())) == 140
+        points = list(positions.values())
+        for index, (x, y) in enumerate(points):
+            for other_x, other_y in points[index + 1:]:
+                assert abs(x - other_x) >= 268.0 or abs(y - other_y) >= 320.0
 
 
 def test_album_wall_groups_mixed_artists_by_local_album_folder():

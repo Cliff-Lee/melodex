@@ -525,6 +525,10 @@ class LivingScene(QWidget):
         center = rect.center()
         state = self._visual_state
         base = min(rect.width(), rect.height()) * 0.46
+        # Shape the radial contours to the available plane instead of keeping
+        # a small circular badge in the middle of a widescreen canvas.
+        plane_radius_x = rect.width() * 0.42
+        plane_radius_y = rect.height() * 0.43
         points = self._detail_count(72)
         seed_phase = (profile.seed % 10007) / 10007.0 * math.tau
 
@@ -550,12 +554,12 @@ class LivingScene(QWidget):
             9 + int(16 * state.brightness),
         )
 
-        layer_count = 3 if self._requested_quality == "eco" or self._effective_quality == "eco" else 5
+        layer_count = 4 if self._requested_quality == "eco" or self._effective_quality == "eco" else 7
         if self._requested_quality == "high":
-            layer_count = 6
+            layer_count = 9
         for layer in range(layer_count):
             layer_fraction = layer / max(1, layer_count - 1)
-            layer_radius = base * (0.39 + 0.105 * layer)
+            layer_radius = 0.27 + 0.67 * layer_fraction
             phase_offset = seed_phase * (0.55 + 0.22 * layer) + self._phase * (0.025 + 0.012 * layer)
             ring_points: list[QPointF] = []
             for index in range(points):
@@ -585,8 +589,8 @@ class LivingScene(QWidget):
                 y_scale = 0.91 + 0.035 * math.sin(seed_phase + layer)
                 ring_points.append(
                     QPointF(
-                        center.x() + math.cos(angle) * radius,
-                        center.y() + math.sin(angle) * radius * y_scale,
+                        center.x() + math.cos(angle) * plane_radius_x * radius,
+                        center.y() + math.sin(angle) * plane_radius_y * radius * y_scale,
                     )
                 )
             path = self._smooth_closed_path(ring_points)
@@ -625,9 +629,10 @@ class LivingScene(QWidget):
         mote_count = self._particle_count(20)
         for index, (sx, sy, size, phase) in enumerate(self._stars[:mote_count]):
             angle = sx * math.tau + self._phase * (0.010 + profile.rhythm * 0.018)
-            orbit = base * (0.78 + 0.44 * sy)
-            x = center.x() + math.cos(angle) * orbit
-            y = center.y() + math.sin(angle) * orbit * 0.88
+            orbit_x = plane_radius_x * (0.84 + 0.30 * sy)
+            orbit_y = plane_radius_y * (0.82 + 0.30 * sy)
+            x = center.x() + math.cos(angle) * orbit_x
+            y = center.y() + math.sin(angle) * orbit_y
             twinkle = 0.5 + 0.5 * math.sin(self._phase * 0.55 + phase + index)
             mote = QColor(self._color(index + 1))
             mote.setAlpha(70 + int(110 * twinkle))
@@ -1336,7 +1341,7 @@ class LivingScene(QWidget):
         budget = self._quality_budget()
         # Six mist cells are enough for depth even in High. Keeping this
         # bounded leaves comfortable headroom inside the 30 fps High budget.
-        mist_count = max(4, min(budget.max_glows, 6))
+        mist_count = max(5, min(budget.max_glows, 8))
         for index in range(mist_count):
             sx, sy, size, phase = self._stars[index % len(self._stars)]
             drift_x = math.sin(self._phase * (0.018 + index * 0.002) + phase) * rect.width() * 0.045
@@ -1347,9 +1352,9 @@ class LivingScene(QWidget):
             radius_y = rect.height() * (0.10 + 0.035 * ((index + 1) % 4) + 0.025 * state.density)
             color = QColor(self._color(index + (1 if state.warmth > 0.55 else 0)))
             core = QColor(color)
-            core.setAlpha(14 + int(18 * state.density) + int(8 * state.glow))
+            core.setAlpha(30 + int(28 * state.density) + int(14 * state.glow))
             middle = QColor(color)
-            middle.setAlpha(max(5, core.alpha() // 3))
+            middle.setAlpha(max(10, core.alpha() // 2))
             fade = QColor(color)
             fade.setAlpha(0)
 
@@ -1399,48 +1404,6 @@ class LivingScene(QWidget):
                 painter.setBrush(particle)
                 painter.drawEllipse(QPointF(x, y), 0.8 + size * 0.30, 0.8 + size * 0.30)
 
-        # Thin pressure fronts imply movement through the field without turning
-        # into waveform bands.
-        front_count = 2 if budget.name in {"eco", "auto-eco", "battery"} else 3
-        for front in range(front_count):
-            y = rect.top() + rect.height() * (0.25 + front * 0.23)
-            path = QPainterPath(QPointF(rect.left() - 20, y))
-            control = math.sin(self._phase * 0.028 + front * 1.8) * rect.height() * 0.08
-            path.cubicTo(
-                QPointF(rect.left() + rect.width() * 0.30, y + control),
-                QPointF(rect.left() + rect.width() * 0.70, y - control * 0.68),
-                QPointF(rect.right() + 20, y + control * 0.20),
-            )
-            front_color = QColor(self._color(front))
-            front_color.setAlpha(11 + int(19 * state.glow))
-            painter.setBrush(Qt.NoBrush)
-            painter.setPen(QPen(front_color, 0.9, Qt.SolidLine, Qt.RoundCap))
-            painter.drawPath(path)
-
-        # Wide, slow aurora ribbons give the scene a clear focal composition.
-        # Four fixed paths and simple pens avoid per-frame blur work.
-        for ribbon in range(4):
-            phase = self._phase * (0.035 + 0.008 * state.drift) + ribbon * 1.42
-            y = rect.top() + rect.height() * (0.27 + ribbon * 0.115)
-            amplitude = rect.height() * (0.075 + 0.035 * state.energy)
-            path = QPainterPath(QPointF(rect.left() - 12, y))
-            path.cubicTo(
-                QPointF(rect.left() + rect.width() * 0.27, y + math.sin(phase) * amplitude),
-                QPointF(rect.left() + rect.width() * 0.68, y - math.cos(phase * 0.82) * amplitude),
-                QPointF(rect.right() + 12, y + math.sin(phase * 0.61) * amplitude * 0.55),
-            )
-            ribbon_color = QColor(self._color(ribbon + (1 if state.warmth > 0.55 else 0)))
-            painter.setBrush(Qt.NoBrush)
-            ribbon_color.setAlpha(13 + int(15 * state.glow))
-            painter.setPen(QPen(ribbon_color, 22.0 + 12.0 * state.density, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
-            painter.drawPath(path)
-            ribbon_color.setAlpha(25 + int(25 * state.glow))
-            painter.setPen(QPen(ribbon_color, 7.0 + 4.0 * state.energy, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
-            painter.drawPath(path)
-            ribbon_color.setAlpha(74 + int(56 * state.glow))
-            painter.setPen(QPen(ribbon_color, 1.1 + state.rhythm * 0.6, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
-            painter.drawPath(path)
-
         painter.save()
         painter.setFont(QFont("sans-serif", 15, QFont.DemiBold))
         painter.setPen(QColor(239, 245, 252, 225))
@@ -1460,15 +1423,8 @@ class LivingScene(QWidget):
             painter,
             QRectF(rect.left(), rect.top() + 2, rect.width(), 18),
             "SONIC WEATHER",
-            QColor(166, 182, 201, 125),
+            QColor(190, 207, 226, 190),
         )
-        if not weather.based_on_flow:
-            self._draw_caption(
-                painter,
-                QRectF(rect.left(), rect.bottom() - 18, rect.width(), 16),
-                "IDENTITY-BASED ESTIMATE   ·   NO CACHED FLOW ANALYSIS",
-                QColor(132, 145, 161, 135),
-            )
 
     def _memory_color(self, mark: MemoryMark) -> QColor:
         """Use one restrained palette with colour reinforcing time of day."""

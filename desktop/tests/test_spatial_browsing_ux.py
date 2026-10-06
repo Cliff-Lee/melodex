@@ -133,12 +133,16 @@ def test_music_map_defaults_to_selection_focused_relationships():
 
     assert widget.edge_mode.currentData() == "focused"
     assert widget.edge_mode.isHidden()
+    assert widget.zoom_in_button.accessibleName() == "Zoom into Music Map"
+    assert widget.zoom_out_button.accessibleName() == "Zoom out of Music Map"
+    assert widget.zoom_in_button.toolTip().startswith("Zoom in")
+    assert widget.zoom_out_button.toolTip().startswith("Zoom out")
     assert len(widget.edge_items) == 0
     widget.connections_button.click()
     app.processEvents()
     assert widget.edge_mode.isVisible()
-    assert widget.node_items["a"].boundingRect().width() == 190.0
-    assert widget.node_items["a"].boundingRect().height() == 126.0
+    assert widget.node_items["a"].boundingRect().width() == 86.0
+    assert widget.node_items["a"].boundingRect().height() == 86.0
     assert widget.view.minimumHeight() >= 340
 
     widget.view.centerOn(500, 400)
@@ -161,6 +165,78 @@ def test_music_map_defaults_to_selection_focused_relationships():
     widget.edge_mode.setCurrentIndex(all_links)
     app.processEvents()
     assert len(widget.edge_items) == 2
+
+    widget.close()
+    app.processEvents()
+
+
+def test_dense_music_maps_use_small_cover_points_for_overview():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    try:
+        from PySide6.QtWidgets import QApplication
+        from melodex.music_map import MusicMapWidget
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    widget = MusicMapWidget()
+    nodes = [
+        {"ref": str(i), "artist": f"Artist {i}", "album": f"Album {i}", "title": f"Track {i}", "x": (i % 40) / 20 - 1, "y": (i % 30) / 15 - 1}
+        for i in range(600)
+    ]
+    refs = {str(i): {"track_id": str(i), "artist": f"Artist {i}", "album": f"Album {i}", "title": f"Track {i}"} for i in range(600)}
+    widget.set_map({"nodes": nodes, "edges": [], "analysed": 600}, refs)
+    assert widget.node_items["0"].boundingRect().width() == 28.0
+    assert widget.node_items["0"].boundingRect().height() == 28.0
+    widget.close()
+    app.processEvents()
+
+
+def test_music_map_album_art_nodes_expand_into_hover_detail_cards():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    try:
+        from PySide6.QtGui import QColor, QImage
+        from PySide6.QtWidgets import QApplication
+        from melodex.music_map import MusicMapWidget
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    widget = MusicMapWidget()
+    nodes = [{
+        "ref": "a",
+        "artist": "Artist A",
+        "album": "Album A",
+        "title": "Track A",
+        "x": 0.0,
+        "y": 0.0,
+        "bpm": 120,
+        "energy": 0.75,
+        "taste": 0.4,
+    }]
+    refs = {"a": {"track_id": "a", "artist": "Artist A", "album": "Album A", "title": "Track A"}}
+    requested = []
+    widget.artworkRequested.connect(requested.append)
+    widget.set_map({"nodes": nodes, "edges": [], "analysed": 1}, refs)
+    assert requested and requested[0][0]["track"]["album"] == "Album A"
+
+    image = QImage(64, 64, QImage.Format_ARGB32)
+    image.fill(QColor("#cc4477"))
+    assert widget.set_artwork({
+        "a": {"generation": widget._art_generation, "image": image},
+    }) is None
+    item = widget.node_items["a"]
+    assert not item._artwork.isNull()
+    center = item.mapToScene(item.boundingRect().center())
+    item._hovered = True
+    item._resize_on_hover(True)
+    assert item.boundingRect().width() == 296.0
+    assert item.boundingRect().height() == 148.0
+    expanded_center = item.mapToScene(item.boundingRect().center())
+    assert abs(center.x() - expanded_center.x()) < 0.01
+    assert abs(center.y() - expanded_center.y()) < 0.01
 
     widget.close()
     app.processEvents()

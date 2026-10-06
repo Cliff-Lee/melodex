@@ -133,6 +133,16 @@ jobs:
   visual-qa-captures:
     name: Visual QA captures
     runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - width: 1024
+            height: 768
+          - width: 1280
+            height: 800
+          - width: 1440
+            height: 900
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -157,14 +167,14 @@ jobs:
           QT_QPA_PLATFORM: offscreen
         run: |
           python scripts/visual_qa_capture.py \
-            --width 1440 \
-            --height 900 \
-            --output visual-qa
+            --width ${{ matrix.width }} \
+            --height ${{ matrix.height }} \
+            --output visual-qa-${{ matrix.width }}x${{ matrix.height }}
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: visual-qa-captures
-          path: visual-qa
+          name: visual-qa-captures-${{ matrix.width }}x${{ matrix.height }}
+          path: visual-qa-${{ matrix.width }}x${{ matrix.height }}
 
 
   large-library-baseline:
@@ -342,4 +352,3 @@ jobs:
         with:
           name: nas-fault-qualification
           path: nas-fault-qualification.json
-
