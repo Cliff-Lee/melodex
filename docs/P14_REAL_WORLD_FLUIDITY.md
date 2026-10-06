@@ -261,8 +261,21 @@ The scan reports only aggregate `cache_keys_canonical` and
 fingerprint, directory-manifest, metadata-read, deletion, cancellation or NAS-root safety
 rule.
 
-Later P14l3 slices may reduce per-file work inside manifest-proven unchanged directories,
-but only after P14l3a qualifies independently.
+P14l3a qualified independently across the full release matrix.
+
+**P14l3b — deferred directory materialization.** A directory with a persisted manifest
+still stats every audio file and recomputes the same sorted name/size/mtime fingerprint.
+While that proof is being built, the producer now buffers only the minimal
+`(name, size, mtime)` tuple. Full paths, canonical track keys and queue work dictionaries
+are created only if the directory manifest misses.
+
+A matching unchanged directory therefore performs the filesystem correctness proof but
+creates zero per-track work items. Changed directories fall back to ordinary file-level
+reuse/metadata decisions, and the existing 5,000-file direct-directory cap still forces
+streaming materialization before an oversized buffer can grow without bound.
+
+Aggregate diagnostics report full file-work items materialized and materializations avoided.
+No media names or paths are exported.
 
 #### P14l4 — Persistence and catalog hydration
 
