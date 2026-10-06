@@ -16,7 +16,7 @@ def _rect(rect) -> dict[str, int]:
     }
 
 
-def run_probe() -> dict[str, object]:
+def run_probe(screenshot_dir: Path | None = None) -> dict[str, object]:
     from PySide6.QtCore import QSettings
     from PySide6.QtTest import QTest
     from PySide6.QtWidgets import QApplication
@@ -48,10 +48,19 @@ def run_probe() -> dict[str, object]:
         snapshots: dict[str, dict[str, int]] = {"baseline": _rect(baseline)}
         checks: dict[str, bool] = {}
 
+        def save_screen(name: str) -> None:
+            if screenshot_dir is None or screen is None:
+                return
+            screenshot_dir.mkdir(parents=True, exist_ok=True)
+            screen.grabWindow(0).save(str(screenshot_dir / f"{name}.png"))
+
         def capture(name: str) -> None:
             geometry = window.geometry()
             snapshots[name] = _rect(geometry)
             checks[name] = geometry.size() == baseline.size()
+            save_screen(name)
+
+        save_screen("baseline")
 
         window.open_page("music_map")
         QTest.qWait(window._page_refresh_delay_ms + 60)
@@ -117,6 +126,7 @@ def run_probe() -> dict[str, object]:
                 and abs(normal_after_restore.height() - normal_before_maximize.height()) <= 4
             )
             snapshots["normal_after_restore"] = _rect(normal_after_restore)
+            save_screen("normal_after_restore")
         else:
             checks["maximize_restore"] = True
 
@@ -154,9 +164,10 @@ def run_probe() -> dict[str, object]:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--screenshot-dir", type=Path)
     args = parser.parse_args()
 
-    result = run_probe()
+    result = run_probe(args.screenshot_dir)
     encoded = json.dumps(result, indent=2, sort_keys=True)
     print(encoded)
     if args.output is not None:
