@@ -923,53 +923,19 @@ class LocalLibraryIndex:
                     )
                     preserved = preserve_dirs.get(root_id, set())
                     preserved_existing_count = 0
-                    removed_paths: set[str] = set()
+                    delete_batch: list[tuple[str, str]] = []
                     for relative_path in existing:
                         if os.path.dirname(relative_path) in preserved:
                             preserved_existing_count += 1
-                        elif relative_path not in incoming_paths:
-                            removed_paths.add(relative_path)
-                    tracks_reused += preserved_existing_count
-                    max_removed_path_rows = max(
-                        max_removed_path_rows,
-                        len(removed_paths),
-                    )
-                    if removed_paths:
-                        delete_batch: list[tuple[str, str]] = []
-                        for relative_path in removed_paths:
-                            delete_batch.append((root_id, relative_path))
-                            if len(delete_batch) >= batch_size:
-                                db.executemany(
-                                    """
-                                    DELETE FROM tracks
-                                    WHERE root_id = ? AND relative_path = ?
-                                    """,
-                                    delete_batch,
-                                )
-                                tracks_deleted += len(delete_batch)
-                                delete_batches += 1
-                                max_batch_rows = max(
-                                    max_batch_rows,
-                                    len(delete_batch),
-                                )
-                                delete_batch.clear()
-                                if cancelled is not None and cancelled():
-                                    db.rollback()
-                                    return {
-                                        "cancelled": True,
-                                        "roots_persisted": 0,
-                                        "tracks_persisted": 0,
-                                        "tracks_written": 0,
-                                        "tracks_reused": 0,
-                                        "tracks_deleted": 0,
-                                        "roots_unavailable": 0,
-                                        "roots_incomplete": 0,
-                                        "batch_size": batch_size,
-                                        "write_batches": 0,
-                                        "delete_batches": 0,
-                                        "max_batch_rows": 0,
-                                    }
-                        if delete_batch:
+                            continue
+                        if relative_path in incoming_paths:
+                            continue
+                        delete_batch.append((root_id, relative_path))
+                        max_removed_path_rows = max(
+                            max_removed_path_rows,
+                            len(delete_batch),
+                        )
+                        if len(delete_batch) >= batch_size:
                             db.executemany(
                                 """
                                 DELETE FROM tracks
@@ -983,6 +949,38 @@ class LocalLibraryIndex:
                                 max_batch_rows,
                                 len(delete_batch),
                             )
+                            delete_batch.clear()
+                            if cancelled is not None and cancelled():
+                                db.rollback()
+                                return {
+                                    "cancelled": True,
+                                    "roots_persisted": 0,
+                                    "tracks_persisted": 0,
+                                    "tracks_written": 0,
+                                    "tracks_reused": 0,
+                                    "tracks_deleted": 0,
+                                    "roots_unavailable": 0,
+                                    "roots_incomplete": 0,
+                                    "batch_size": batch_size,
+                                    "write_batches": 0,
+                                    "delete_batches": 0,
+                                    "max_batch_rows": 0,
+                                }
+                    tracks_reused += preserved_existing_count
+                    if delete_batch:
+                        db.executemany(
+                            """
+                            DELETE FROM tracks
+                            WHERE root_id = ? AND relative_path = ?
+                            """,
+                            delete_batch,
+                        )
+                        tracks_deleted += len(delete_batch)
+                        delete_batches += 1
+                        max_batch_rows = max(
+                            max_batch_rows,
+                            len(delete_batch),
+                        )
 
                     write_batch: list[
                         tuple[str, str, str, int | None, int | None]
