@@ -73,6 +73,8 @@ def run_soak(
     from PySide6.QtTest import QTest
     from PySide6.QtWidgets import QApplication, QWidget
 
+    from melodex.album_wall import AlbumWallWidget
+    from melodex.album_wall_model import build_album_wall
     from melodex.background_scheduler import BackgroundScheduler
     from melodex.library_browser import LibraryBrowser
     from melodex.responsiveness import UiResponsivenessMonitor
@@ -90,6 +92,14 @@ def run_soak(
 
     browser.set_catalog(catalog, revision=track_count)
     _pump_events(app)
+
+    wall = AlbumWallWidget()
+    wall.resize(1200, 800)
+    wall.set_model(build_album_wall(catalog, max_albums=1200))
+    wall.show()
+    _pump_events(app)
+    wall_tiles = list(wall.tiles.values())
+    baseline_wall_tiles = len(wall_tiles)
 
     # Warm every presentation plus representative filter/clear transitions
     # before taking stability baselines. This excludes legitimate one-time Qt
@@ -157,9 +167,10 @@ def run_soak(
     max_track_rows = baseline_track_rows
     cycle_durations_ms: list[float] = []
     resize_mismatches = 0
+    wall_pan_count = 0
 
     def exercise_ui(cycle: int, *, record_action: bool) -> None:
-        nonlocal resize_mismatches
+        nonlocal resize_mismatches, wall_pan_count
         view = views[cycle % len(views)]
         if record_action:
             monitor.mark_action(f"soak:view:{view}")
@@ -193,6 +204,15 @@ def run_soak(
         _pump_events(app)
         if browser.width() != width or browser.height() != height:
             resize_mismatches += 1
+
+        if wall_tiles:
+            if record_action:
+                monitor.mark_action("soak:album-wall-pan")
+            tile = wall_tiles[(cycle * 53) % len(wall_tiles)]
+            wall.view.centerOn(tile)
+            wall.resize(width, height)
+            _pump_events(app)
+            wall_pan_count += 1
 
     started = time.perf_counter()
     latency_started = started
@@ -340,6 +360,8 @@ def run_soak(
         "retained_python_memory_bounded": memory_growth_mib
         <= float(memory_growth_limit_mib),
         "resize_geometry_stable": resize_mismatches == 0,
+        "album_wall_tiles_stable": len(wall.tiles) == baseline_wall_tiles,
+        "album_wall_exercised": wall_pan_count >= latency_cycles,
         "minimum_duration_completed": (
             duration_seconds <= 0.0
             or latency_duration_seconds >= duration_seconds
@@ -371,6 +393,11 @@ def run_soak(
             "resize_mismatches": int(resize_mismatches),
             "sizes_exercised": len(resize_sizes),
         },
+        "album_wall": {
+            "tiles": int(len(wall.tiles)),
+            "baseline_tiles": int(baseline_wall_tiles),
+            "pan_iterations": int(wall_pan_count),
+        },
         "widgets": {
             "baseline": baseline_widget_count,
             "final": final_widget_count,
@@ -399,6 +426,7 @@ def run_soak(
         },
     }
 
+    wall.deleteLater()
     browser.deleteLater()
     _pump_events(app)
     del catalog
