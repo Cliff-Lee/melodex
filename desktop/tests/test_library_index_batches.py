@@ -194,3 +194,64 @@ def test_p14l4b1_existing_fingerprint_query_does_not_fetchall(
     assert result["tracks_written"] == 0
     assert result["tracks_reused"] == 8
     assert result["tracks_deleted"] == 0
+
+
+def test_p14l4b2b_preserved_directory_reuses_rows_without_preserved_set(
+    tmp_path: Path,
+):
+    root = tmp_path / "music"
+    album = root / "Album"
+    other = root / "Other"
+    index = LocalLibraryIndex(tmp_path / "library-index.sqlite3")
+
+    tracks = [
+        _track(album / "one.flac", 1),
+        _track(album / "two.flac", 2),
+        _track(other / "three.flac", 3),
+    ]
+    initial = {
+        "tracks": tracks,
+        "index_tracks": tracks,
+        "index_records": [
+            {
+                "track": track,
+                "size": index + 1,
+                "mtime_ns": 1_000 + index,
+            }
+            for index, track in enumerate(tracks)
+        ],
+        "root_states": [
+            {"path": str(root), "available": True, "complete": True}
+        ],
+        "metrics": {"tracks_indexed": 3},
+        "cancelled": False,
+    }
+    index.replace_scan([root], initial)
+
+    preserved_only = {
+        "tracks": [],
+        "index_tracks": [],
+        "index_records": [],
+        "preserve_directories": [
+            {
+                "path": str(album),
+                "root_path": str(root),
+                "file_count": 2,
+            }
+        ],
+        "root_states": [
+            {"path": str(root), "available": True, "complete": True}
+        ],
+        "metrics": {"tracks_indexed": 2},
+        "cancelled": False,
+    }
+
+    result = index.replace_scan([root], preserved_only)
+
+    assert result["tracks_written"] == 0
+    assert result["tracks_reused"] == 2
+    assert result["tracks_deleted"] == 1
+    assert {row["title"] for row in index.load_tracks([root])} == {
+        "Track 1",
+        "Track 2",
+    }
