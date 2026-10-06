@@ -20,6 +20,7 @@ required_files = [
     ".github/workflows/desktop.yml",
     ".github/workflows/linux.yml",
     ".github/workflows/android.yml",
+    ".github/workflows/p14-endurance.yml",
     "desktop/build_linux.sh",
     "desktop/build_macos.sh",
     "desktop/build_windows.ps1",
@@ -83,6 +84,20 @@ if "Fluid Melodex release gates" not in test_workflow:
     errors.append("test.yml is missing the dedicated Fluid Melodex release-gate job")
 if "python scripts/fluid_ci_gate.py" not in test_workflow:
     errors.append("test.yml does not execute scripts/fluid_ci_gate.py")
+
+endurance_workflow = (
+    ROOT / ".github" / "workflows" / "p14-endurance.yml"
+).read_text("utf-8")
+for required in (
+    "--duration-minutes",
+    "--p99-gap-limit-ms",
+    "scripts/real_world_fluidity_probe.py",
+    "desktop/tests/test_seek_control.py",
+):
+    if required not in endurance_workflow:
+        errors.append(
+            f"p14-endurance.yml is missing required endurance hook: {required}"
+        )
 
 release_workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text("utf-8")
 if release_workflow.count("python scripts/fluid_ci_gate.py") < 2:

@@ -1,0 +1,85 @@
+name: P14 Endurance Qualification
+
+on:
+  workflow_dispatch:
+    inputs:
+      duration_minutes:
+        description: Endurance duration in minutes
+        required: true
+        default: "30"
+        type: string
+      tracks:
+        description: Synthetic library size
+        required: true
+        default: "12700"
+        type: string
+      p99_gap_limit_ms:
+        description: Strict rolling p99 event-loop budget in milliseconds
+        required: true
+        default: "100"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  endurance:
+    name: P14m 30-minute endurance
+    runs-on: ubuntu-22.04
+    timeout-minutes: 50
+    env:
+      PYTHONPATH: desktop
+      QT_QPA_PLATFORM: offscreen
+      P14_TRACKS: ${{ inputs.tracks }}
+      P14_DURATION_MINUTES: ${{ inputs.duration_minutes }}
+      P14_P99_MS: ${{ inputs.p99_gap_limit_ms }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Qt runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libasound2 libdbus-1-3 libegl1 libfontconfig1 libfreetype6 \
+            libgl1 libglib2.0-0 libpulse0 libwayland-client0 \
+            libwayland-cursor0 libwayland-egl1 libxcb-cursor0 libxcb-icccm4 \
+            libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 \
+            libxcb-shape0 libxcb-shm0 libxcb-sync1 libxcb-util1 \
+            libxcb-xfixes0 libxcb-xinerama0 libxcb-xinput0 libxcb-xkb1 \
+            libxkbcommon0 libxkbcommon-x11-0 libx11-6 libxext6 libxrender1
+      - name: Install endurance dependencies
+        run: python -m pip install pytest numpy mutagen requests PySide6
+      - name: Verify playback integrity contracts
+        run: |
+          pytest -q \
+            desktop/tests/test_seek_control.py \
+            desktop/tests/test_playback_state.py \
+            desktop/tests/test_player_playback_intent.py \
+            desktop/tests/test_player_transition_state.py \
+            desktop/tests/test_playback_feature.py \
+            desktop/tests/test_playback_gateway.py
+      - name: Run strict Album Wall and resize qualification
+        run: |
+          python scripts/real_world_fluidity_probe.py \
+            --tracks "$P14_TRACKS" \
+            --p99-gap-limit-ms "$P14_P99_MS" \
+            --enforce \
+            > p14-real-world-fluidity.json
+      - name: Run duration endurance workload
+        run: |
+          python scripts/fluid_soak_probe.py \
+            --tracks "$P14_TRACKS" \
+            --cycles 80 \
+            --duration-minutes "$P14_DURATION_MINUTES" \
+            --p99-gap-limit-ms "$P14_P99_MS" \
+            --assert-contract \
+            --output p14-endurance.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: p14-endurance-qualification
+          path: |
+            p14-endurance.json
+            p14-real-world-fluidity.json

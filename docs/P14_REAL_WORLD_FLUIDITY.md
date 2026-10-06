@@ -265,77 +265,61 @@ loss and restart behavior before P14l is considered complete.
 
 ### P14m — 30-minute endurance qualification
 
-Run continuous playback while panning, searching, clearing search, resizing, navigating,
-seeking, changing tracks and allowing natural ends.
+P14m turns the short mixed-workload soak into a duration-based qualification. The same
+12,700-track process remains alive while Melodex repeatedly navigates Albums/Artists/Tracks,
+scrolls distant regions, applies and clears searches, resizes through several geometries,
+and submits competing foreground/prefetch/background work. Retained-memory measurement
+then runs after the latency phase so `tracemalloc` cannot distort the responsiveness gate.
 
-Release target:
+The manual `P14 Endurance Qualification` workflow defaults to 30 minutes and a strict
+100 ms rolling p99 event-loop budget. It also runs the P14 seek/playback-state/intent/
+transition regression contracts and the Album Wall real-world probe. Pull-request CI keeps
+the shorter 80-cycle soak with the existing 250 ms shared-runner ceiling.
 
-- zero beach balls;
-- zero unintended audio glitches;
-- zero playback/UI state divergence;
-- no foreground stall above 500 ms;
-- rolling p99 event-loop gap below 100 ms;
-- bounded artwork/background queues;
-- stable memory;
-- reliable seeking;
-- album playback preserves album semantics;
-- window size and position remain under user control.
+Run the full local endurance gate with:
 
-## Manual Mac qualification
+```bash
+python scripts/fluid_soak_probe.py \
+  --tracks 12700 \
+  --duration-minutes 30 \
+  --p99-gap-limit-ms 100 \
+  --assert-contract \
+  --output p14-endurance.json
+```
 
-The automated probe cannot verify the two most important native-only symptoms. On a
-physical Mac, use the current packaged build and a representative large library:
+Automated release targets are:
 
-1. start a local FLAC and keep it playing;
-3. pan Album Wall continuously for at least two minutes;
-4. jump between distant wall regions;
-5. return to My Music and scroll rapidly;
-6. search for an album and clear the search;
-7. double-click the title bar to maximize;
-8. resize from every edge/corner and move the window;
-8. seek forward/backward repeatedly;
-9. press Previous, then let that track finish naturally;
-10. double-click an album and let several tracks play.
+- no foreground stall above 500 ms and no 1 s blocker;
+- rolling p99 event-loop gap below 100 ms in the strict endurance run;
+- bounded background queue/worker counts;
+- bounded album/artist/track presentation objects;
+- stable retained Python memory;
+- repeated search-clear and resize geometry remain stable;
+- seek ownership, authoritative EOF/transition state and album playback semantics remain
+  covered by deterministic playback regression tests.
 
-Export redacted diagnostics immediately after the run. P14 instrumentation must never
-include media paths, track/album names, URLs, credentials, or other private collection
-content.
+### Residual physical qualification — consolidated and deferred
 
-## Manual UX qualification for instant, stable browsing
+Offscreen Qt cannot prove audible output, native WindowServer hit-testing, Dock/taskbar
+bounds or the behavior of a real NAS/audio device. Those checks are deliberately kept as
+one residual physical run rather than duplicated across P14 phases.
 
-Use a current packaged build from the PR's desktop workflow and a local library with familiar
-albums and lyrics. A NAS is not required for these UI checks. Keep the existing Melodex
-profile and library; do not clear or re-import anything. Record the OS, build, screen
-resolution, and a short screen recording if a failure appears.
+On a current packaged macOS build with a representative local/NAS collection:
 
-1. In My Music, note the current Albums scroll position, search for an album you recognize,
-   then clear the search. Confirm the result appears promptly, clearing does not freeze the
-   window, the previous scroll position returns, and its familiar cover is already visible.
-   Repeat once each in Artists and Tracks, including rapid edits and clearing.
+1. play a local FLAC continuously while panning Album Wall, navigating My Music, rapidly
+   searching/clearing, and leaving/returning to views whose covers and lyrics are cached;
+2. maximize/restore, move the window near every screen edge, and live-resize from every
+   edge/corner; confirm the bottom controls remain visible and the window never snaps back;
+3. seek forward/backward repeatedly, use Previous/Next, allow a track to end naturally,
+   and let several tracks of one album play in order with album crossfade off;
+4. revisit cached artwork and lyrics, then exercise Music Map pan/search/Connections and
+   confirm no view jumps or blank-cache flashes;
+5. keep playback running throughout and fail the run for any beach ball, audible glitch,
+   playback/UI divergence, clipped window, stale transport state or delayed input response.
 
-2. Start playback, then resize the window smaller and larger from each available edge.
-   Confirm the whole window, including the bottom controls, stays above the taskbar or dock.
-3. Move the window near each screen edge, maximize it, restore it, and close/reopen Melodex.
-   Confirm the window remains visible and its last useful size and position return.
-4. Open Album Wall and scroll down several screens with the mouse wheel or trackpad.
-   Drag the canvas down and sideways, pause, then continue. Confirm it stays at the chosen
-   albums instead of jumping back to the top.
-5. Leave Album Wall for My Music or Home and return. Confirm familiar covers are already
-   visible as soon as the wall returns. Scroll away and back to check covers do not flash
-   blank while the known artwork is being reused.
-6. Open a track whose lyrics have loaded, move to another track, then return. Confirm the
-   lyrics appear immediately on return. Allow a first-time lookup to finish before judging
-   the revisit.
-7. Open Music Map, resize the window, pan in several directions, and use the search and
-   Connections controls. Confirm the labeled cards remain readable and the view does not
-   jump after a refresh.
-8. Keep playback running while repeating the navigation and resize steps. Check for audio
-   interruption, a frozen window, clipped controls, or a delayed response to clicks.
-
-For each step record Pass or Fail and the observed behavior. A failure report should include
-the build and OS plus the recording; redact collection names, paths and other private
-metadata from diagnostics. On macOS, include a live resize from every corner and edge,
-because native live-resize behavior is not fully represented by automated checks.
+Record Pass/Fail plus build/OS and a short screen recording for any failure. Export redacted
+diagnostics after the run; P14 diagnostics must never contain media paths, track/album names,
+URLs, credentials or other private collection content.
 
 ## P14a is a baseline, not a victory condition
 

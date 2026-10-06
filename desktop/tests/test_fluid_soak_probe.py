@@ -22,6 +22,7 @@ def test_small_fluid_soak_contract() -> None:
     result = run_soak(
         track_count=1_000,
         cycles=8,
+        duration_seconds=0.02,
         pause_ms=1,
         memory_growth_limit_mib=32.0,
         p99_gap_limit_ms=500.0,
@@ -29,8 +30,15 @@ def test_small_fluid_soak_contract() -> None:
     )
 
     assert result["passed"], result
+    assert result["cycles_completed"] >= 8
+    assert result["latency_duration_seconds"] >= 0.02
+    assert result["window"]["resize_mismatches"] == 0
+    assert result["album_wall"]["pan_iterations"] >= result["cycles_completed"]
+    assert result["album_wall"]["tiles"] == result["album_wall"]["baseline_tiles"]
     assert result["scheduler"]["max_active_observed"] <= 4
     assert result["widgets"]["max_album_cards"] <= 120
     assert result["widgets"]["max_artist_cards"] <= 120
+    assert result["widgets"]["max_album_card_cache"] <= result["widgets"]["card_cache_limit"]
+    assert result["widgets"]["max_artist_card_cache"] <= result["widgets"]["card_cache_limit"]
     assert result["widgets"]["max_track_rows"] <= result["widgets"]["track_row_limit"]
     assert result["memory"]["retained_growth_mib"] <= 32.0
