@@ -191,7 +191,7 @@ def run_soak(
         action()
         _pump_events(app)
         if record:
-            operation_durations_ms[operation].append(
+            operation_durations_ms.setdefault(operation, []).append(
                 (time.perf_counter() - op_started) * 1000.0
             )
 
@@ -216,10 +216,13 @@ def run_soak(
         _pump_events(app)
 
         query = queries[cycle % len(queries)]
+        filter_operation = (
+            f"filter_{view}_{'empty' if not query else 'query'}"
+        )
         if record_action:
-            monitor.mark_action("soak:filter")
+            monitor.mark_action("soak:" + filter_operation)
         timed(
-            "filter",
+            filter_operation,
             lambda current=query: browser.search.setText(current),
             record=record_action,
         )
