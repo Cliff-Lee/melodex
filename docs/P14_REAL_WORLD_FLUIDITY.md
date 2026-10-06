@@ -248,9 +248,21 @@ material.
 
 #### P14l3 — Unchanged and small-delta traversal
 
-Reduce filesystem enumeration/stat overhead while preserving per-file correctness,
-directory-manifest safety, incomplete-root protection and zero metadata reads for unchanged
-files.
+P14l3 is itself split into small traversal changes.
+
+**P14l3a — canonical cache fast path.** `LocalLibraryIndex.load_scan_cache()` and
+`load_directory_manifests()` explicitly return canonical absolute-path keys. Index-backed
+production scans now preserve those keys instead of normalising every cached track and
+directory a second time before traversal. Defensive/non-index callers retain the old
+normalisation behavior by default.
+
+The scan reports only aggregate `cache_keys_canonical` and
+`cache_key_normalizations` diagnostics. No paths are exported. This stage changes no
+fingerprint, directory-manifest, metadata-read, deletion, cancellation or NAS-root safety
+rule.
+
+Later P14l3 slices may reduce per-file work inside manifest-proven unchanged directories,
+but only after P14l3a qualifies independently.
 
 #### P14l4 — Persistence and catalog hydration
 
