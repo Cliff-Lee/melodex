@@ -1,9 +1,9 @@
 # Next release — draft notes
 
-**Melodex v0.7.14 release candidate.**
+**Melodex v0.7.15 release candidate.**
 
-Current target version: **0.7.14**.
+Current target version: **0.7.15**.
 
-This release focuses on responsive playback and smoother album browsing: explicit playback intent, backend-acknowledged seeking, authoritative end-of-track transitions, and lower-cost Album Wall motion.
+This patch release closes Campaign V's whole-app visual QA with two concrete rendering fixes: Now Playing artwork stays clear of the lyrics controls at shorter desktop window sizes, and Previous/Next controls render reliably across system fonts.
 
-See `docs/releases/v0.7.14.md` for the release notes.
+See `docs/releases/v0.7.15.md` for the release notes.
