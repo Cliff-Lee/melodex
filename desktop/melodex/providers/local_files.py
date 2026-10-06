@@ -969,7 +969,10 @@ class LocalFilesProvider(MusicProvider):
             for key, previous in cached.items():
                 if key in seen_keys:
                     continue
-                if self._override_key(os.path.dirname(key)) in preserved_directory_keys:
+                parent_key = os.path.dirname(key)
+                if not cache_keys_canonical:
+                    parent_key = self._override_key(parent_key)
+                if parent_key in preserved_directory_keys:
                     continue
                 root_path = str(previous.get("root_path") or "")
                 if (
