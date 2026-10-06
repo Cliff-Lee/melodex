@@ -225,3 +225,113 @@ def test_p14m_restore_selects_best_current_monitor_work_area():
     saved = QRect(1500, 100, 1000, 760)
 
     assert contained_window_geometry(saved, [left, right]) == saved
+
+
+
+def test_p14m_major_page_transitions_preserve_user_geometry(monkeypatch, tmp_path):
+    try:
+        from PySide6.QtCore import QSettings
+        from PySide6.QtTest import QTest
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    QSettings("Melodex", "Melodex").clear()
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+
+    window = main_window.MainWindow()
+    window.resize(860, 560)
+    window.show()
+    app.processEvents()
+    baseline = (window.width(), window.height())
+
+    for page in ("library", "now_playing", "album_wall", "music_map"):
+        window.navigation.ensure_lazy_page_built(page)
+    app.processEvents()
+
+    window.library_browser.set_view("albums")
+    window.library_browser.set_view("artists")
+    window.library_browser.set_view("tracks")
+    window.library_browser.search.setText("geometry check")
+    window.library_browser.search.clear()
+
+    window.playback_feature.rich_now.tabs.setCurrentWidget(
+        window.playback_feature.rich_now.lyrics_page
+    )
+    app.processEvents()
+
+    for page in (
+        "library",
+        "music_map",
+        "now_playing",
+        "album_wall",
+        "library",
+        "journeys",
+        "playlists",
+        "sources",
+        "explore",
+        "home",
+    ):
+        window.open_page(page)
+        QTest.qWait(window._page_refresh_delay_ms + 10)
+        app.processEvents()
+        assert (window.width(), window.height()) == baseline, (
+            f"page {page!r} changed user geometry: "
+            f"baseline={baseline}, actual={(window.width(), window.height())}, "
+            f"window_min={(window.minimumSizeHint().width(), window.minimumSizeHint().height())}, "
+            f"stack_min={(window.stack.minimumSizeHint().width(), window.stack.minimumSizeHint().height())}"
+        )
+
+    window.close()
+    app.processEvents()
+
+
+def test_p14m_maximize_navigation_restore_preserves_normal_geometry(monkeypatch, tmp_path):
+    try:
+        import pytest
+        from PySide6.QtCore import QSettings
+        from PySide6.QtTest import QTest
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    QSettings("Melodex", "Melodex").clear()
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+
+    window = main_window.MainWindow()
+    window.resize(880, 600)
+    window.show()
+    app.processEvents()
+    baseline = (window.width(), window.height())
+
+    window.showMaximized()
+    app.processEvents()
+    if not window.isMaximized():
+        window.close()
+        pytest.skip("Qt platform backend does not expose maximized state")
+
+    window.open_page("music_map")
+    QTest.qWait(window._page_refresh_delay_ms + 40)
+    app.processEvents()
+    window.showNormal()
+    app.processEvents()
+
+    assert (window.width(), window.height()) == baseline
+
+    window.open_page("library")
+    QTest.qWait(window._page_refresh_delay_ms + 20)
+    app.processEvents()
+    assert (window.width(), window.height()) == baseline
+
+    window.close()
+    app.processEvents()
