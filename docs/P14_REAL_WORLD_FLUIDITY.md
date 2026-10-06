@@ -1,6 +1,6 @@
 # P14 — Real-World Fluidity & Playback Integrity
 
-**Status: P14m COMPLETE; final post-geometry P14l5b–P14l5d closure qualification running. Campaign P closure pending.**
+**Status: COMPLETE. P14: COMPLETE. Campaign P: COMPLETE.**
 
 P14m fixed and qualified the reproduced top-level window geometry defects. The final Campaign P
 closure now depends only on rerunning the bounded P14l5a–P14l5d qualification on the post-P14m
@@ -398,21 +398,34 @@ process peak RSS was 126.863 MiB and the database was 8.234 MiB. The run perform
 and persisted in 51 write batches. Every bounded-queue, bounded-concurrency, linear-memory
 and timing scale gate passed.
 
-**P14l5b — small-delta timing: GREEN.** On the same 12,700-track qualification, the standard
-delta of 50 changed + 50 added + 10 deleted tracks completed in 2.445 s with exactly 100
-metadata reads, 100 row writes and 10 deletions. Traced Python peak was 7.275 MiB and the
-existing delta-vs-cold scaling gate passed.
+**P14l5b — small-delta timing: GREEN (final post-P14m rerun).** On the unchanged
+final-closure branch, the standard 12,700-track delta of 50 changed + 50 added + 10 removed
+tracks completed in 2.481 s with exactly 100 metadata reads, 100 row writes and 10 deletions.
+Traced Python peak was 7.275 MiB and the delta-vs-cold scaling gate passed.
 
-**P14l5c — NAS qualification: GREEN.** The NAS fault suite passed all cases. Cached browsing
-remained stable during a slow rescan; high-latency storage adapted to two metadata workers;
-transient I/O faults recovered after bounded retries; a mid-scan disconnect marked the root
-incomplete and preserved all 40 cached tracks with zero deletions; and blocked metadata work
-could be cancelled safely.
+**P14l5c — NAS qualification: GREEN (final post-P14m rerun).** Every deterministic NAS
+case passed on the same unchanged closure branch. Cached browsing stayed stable across 25 reads
+with a 0.0006 s maximum cached-read time; 12.105 ms average stat latency selected two metadata
+workers and a four-item in-flight limit; 10 transient I/O retries recovered successfully; a
+mid-scan disconnect preserved all 40 cached tracks with zero deletions; and blocked metadata
+work hard-cancelled cleanly in 0.152 s against the 2.5 s limit.
 
-**P14l5d — cancellation/restart qualification: GREEN.** Cancellation published no partial
-catalog. The interrupted 12,700-track scenario staged 256 rows; restart reused all 256 staged
-rows and completed in 2.513 s. The separate blocked-I/O NAS case hard-cancelled in 0.152 s,
-well inside its 2.5 s limit.
+**P14l5d — cancellation/restart qualification: GREEN (final post-P14m rerun).**
+Cancellation published no partial catalog and completed in 0.536 s with 256 staged rows.
+Restart reused all 256 staged rows, completed in 2.591 s and required 206 metadata reads;
+the resume-reuse and no-partial-publication gates both passed. The independent blocked-I/O NAS
+case again hard-cancelled in 0.152 s, well inside its 2.5 s limit.
+
+### Final P14 / Campaign P closure
+
+**P14: COMPLETE. Campaign P: COMPLETE.** P14l5a–P14l5d have now all been re-qualified after
+the P14m geometry fixes on unchanged production/test code. The final l5b/l5c/l5d qualification
+ran together on one closure branch and passed every delta, NAS, cancellation and restart gate.
+The earlier P14m8c final geometry matrix remains green across Windows, macOS ARM/Intel, Linux,
+Debian and Ubuntu packaging/smoke targets.
+
+Campaign P stops here. Further performance tuning is explicitly post-P work unless a new
+reproduced correctness defect independently warrants reopening it.
 
 ### P14m — Window Geometry Containment
 
