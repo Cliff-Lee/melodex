@@ -128,12 +128,15 @@ def test_p14l3a_index_backed_cache_skips_recanonicalization(monkeypatch):
     assert fast["metrics"]["cache_keys_canonical"] is True
     assert fast["metrics"]["cache_key_normalizations"] == 0
 
+    calls.clear()
     defensive = provider.scan_snapshot(
         [],
         cached_entries=entries,
         cached_directories=directories,
     )
 
-    assert len(calls) == 2
+    # Two calls normalise the supplied cache keys; the third is the existing
+    # defensive parent-directory check in the deletion sweep.
+    assert len(calls) == 3
     assert defensive["metrics"]["cache_keys_canonical"] is False
     assert defensive["metrics"]["cache_key_normalizations"] == 2
