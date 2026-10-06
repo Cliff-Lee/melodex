@@ -1,11 +1,14 @@
 # P14 — Real-World Fluidity & Playback Integrity
 
-**Status: REOPENED FOR P14m GEOMETRY CORRECTNESS. Campaign P closure pending.**
+**Status: COMPLETE. Campaign P: COMPLETE.**
 
-P14l5a–P14l5d and the previous release matrix were green, but a reproduced top-level window
-geometry defect invalidated final closure: entering Music Map can make a native window exceed
-the usable work area and the oversized geometry can persist after navigation. Campaign P is
-reopened only for this bounded correctness fix. Non-blocking optimization remains post-P.
+Campaign P was briefly reopened for P14m after a reproduced native-window geometry defect
+invalidated the earlier closure. P14m is now qualified across Cocoa, Windows and Linux/xcb,
+and the post-fix P14l5a–P14l5d sequence plus the existing correctness, responsiveness,
+large-library, visual-QA, code-health, startup and packaging gates are all green.
+
+No P14m9 or further Campaign P engineering stage is planned. Non-blocking improvements
+remain post-P backlog work.
 
 P14 converts the first detailed large-library external beta report into a permanent
 engineering qualification campaign.
@@ -391,28 +394,31 @@ workload.
 
 #### P14l5 — Final 12.7k/NAS qualification
 
-**P14l5a — local 12.7k timing: GREEN.** The post-P14l4 12,700-track elastic-library
-qualification completed a cold scan in 6.119 s plus 0.454 s persistence. Traced Python peak
-was 15.192 MiB, process peak RSS was 127.41 MiB, the discovery queue stayed at its 256-row
-cap and metadata in-flight stayed at its 8-job cap. All scale checks passed.
+P14l5 was rerun after the P14m geometry fix rather than relying on the earlier Campaign P
+closure evidence.
 
-**P14l5b — small-delta timing: GREEN.** On the same 12,700-track qualification, the standard
-delta of 50 changed + 50 added + 10 deleted tracks completed in 2.445 s with exactly 100
-metadata reads, 100 row writes and 10 deletions. Traced Python peak was 7.275 MiB and the
-existing delta-vs-cold scaling gate passed.
+**P14l5a — local 12.7k timing: GREEN.** The final-head 12,700-track qualification completed
+the cold scan in 6.759 s plus 0.457 s persistence. Traced Python peak was 15.192 MiB,
+process peak RSS was 126.359 MiB, the discovery queue stayed at its 256-row cap and metadata
+in-flight stayed at its 8-job cap. The unchanged rescan completed in 2.671 s with zero
+metadata reads and zero row rewrites.
 
-**P14l5c — NAS qualification: GREEN.** The NAS fault suite passed all cases. Cached browsing
-remained stable during a slow rescan; high-latency storage adapted to two metadata workers;
-transient I/O faults recovered after bounded retries; a mid-scan disconnect marked the root
-incomplete and preserved all 40 cached tracks with zero deletions; and blocked metadata work
-could be cancelled safely.
+**P14l5b — small-delta timing: GREEN.** The standard delta of 50 changed + 50 added +
+10 deleted tracks completed in 2.723 s with exactly 100 metadata reads, 100 row writes and
+10 deletions. Traced Python peak was 7.275 MiB and the delta-vs-cold scaling gate passed.
+
+**P14l5c — NAS qualification: GREEN.** The final-head NAS fault suite passed all cases.
+Cached browsing remained stable during a slow rescan; high-latency storage adapted to two
+metadata workers; transient I/O faults recovered after bounded retries; a mid-scan
+disconnect marked the root incomplete and preserved all 40 cached tracks with zero
+deletions; and blocked metadata work could be cancelled safely.
 
 **P14l5d — cancellation/restart qualification: GREEN.** Cancellation published no partial
-catalog. The interrupted 12,700-track scenario staged 256 rows; restart reused all 256 staged
-rows and completed in 2.513 s. The separate blocked-I/O NAS case hard-cancelled in 0.152 s,
+catalog. The interrupted scenario staged 256 rows and the restart resumed all 256 staged
+rows, completing in 2.842 s. The separate blocked-I/O NAS case hard-cancelled in 0.152 s,
 well inside its 2.5 s limit.
 
-### P14m — Window Geometry Containment
+### P14m — Window Geometry Containment — COMPLETE
 
 **Core invariant:** the user/window manager owns top-level window geometry. Feature pages
 adapt to the viewport and must never enlarge `MainWindow` through navigation, hydration or
@@ -424,25 +430,42 @@ therefore raise the containing window's effective minimum under a native window 
 Music Map also carried a hard 340 px canvas minimum. No feature code was found calling
 top-level `resize()` or `adjustSize()`.
 
-P14m2 introduces a viewport-owned page stack whose minimum-size hint is independent of
-feature-page minima and removes Music Map's hard canvas minimum. Large map scene coordinates
-remain scene coordinates only; the graphics view pans/zooms inside whatever viewport it is
-given.
+P14m2 makes the main feature stack viewport-owned: its minimum-size hint no longer exports
+feature-page minima to the top-level window. Music Map's hard 340 px canvas minimum and the
+related Album Wall 300 px canvas minimum were removed. Large scene/content dimensions remain
+internal; pages pan, zoom, scroll, compress or clip inside the available viewport.
 
-P14m3–P14m7 qualify major page transitions, Albums/Artists/Tracks, Lyrics, dynamic map
-hydration, expanded route/journey tools, small normal windows, maximize/restore, stale
-restored geometry and native macOS/Windows geometry behavior. Restored normal geometry is
-contained once at startup against current `availableGeometry`; there is no continuous clamp,
-recentering loop or resize-event intervention.
+P14m3–P14m7 qualify major page transitions, Albums/Artists/Tracks, Search, Lyrics, dynamic
+map hydration, expanded route/journey tools, small normal windows, maximize/restore and stale
+restored geometry. Restored normal geometry is contained once at startup against the union of
+current screen `availableGeometry` work areas. Valid geometry spanning connected monitors is
+left untouched; there is no continuous clamp, recentering loop or resize-event intervention.
 
-P14m is complete only when the geometry regression and existing correctness,
-responsiveness, large-library, visual-QA, startup and packaging gates are green. Physical
-Dock/taskbar/panel checks remain a short final sanity pass; exotic window-manager behavior is
-out of scope and must not create P14m9.
+Native qualification was green:
+
+- **macOS Cocoa ARM and Intel:** available work area 1920×970 (origin y=25); a 900×620
+  window remained exactly 900×620 at the same normal position through Music Map build,
+  hydration, page changes and maximize→restore.
+- **Windows:** available work area 1024×720; a 737×518 window remained exactly 737×518
+  through Music Map build, 60-node hydration, expanded route/journey tools, page changes and
+  maximize→restore, remaining above the taskbar.
+- **Linux/xcb:** a 1440×900 Xvfb work area retained the same 900×620 normal geometry through
+  the same sequence and maximize→restore.
+- In all native probes the main feature stack minimum-size hint was 0×0 and every
+  work-area-containment check passed.
+
+Whole-screen hosted-runner captures were inspected for the obvious Dock/taskbar/off-screen
+failure class. They showed no Melodex-owned containment failure. This is a targeted native
+sanity pass, not certification of every physical monitor/window-manager combination; later
+real-device observations are ordinary post-P beta validation unless they reproduce an
+existing release-gate regression.
+
+The full final-head Tests, desktop packaging and Linux package/install-smoke workflows are
+green. **P14m stops here: there is no P14m9.**
 
 ### P14 endurance qualification — completed
 
-P14m turns the short mixed-workload soak into a duration-based qualification. The same
+The endurance qualification turns the short mixed-workload soak into a duration-based qualification. The same
 12,700-track process remains alive while Melodex repeatedly navigates Albums/Artists/Tracks,
 scrolls distant regions, applies and clears searches, resizes through several geometries,
 and submits competing foreground/prefetch/background work. Retained-memory measurement
