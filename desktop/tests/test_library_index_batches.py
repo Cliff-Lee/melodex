@@ -60,6 +60,9 @@ def test_p10d_index_writes_are_bounded_to_configured_batch_size(tmp_path: Path):
     assert result["delete_batches"] == 0
     assert result["batch_size"] == 250
     assert result["max_batch_rows"] == 250
+    assert result["max_existing_fingerprint_rows"] == 0
+    assert result["max_incoming_path_rows"] == 0
+    assert result["max_removed_path_rows"] == 0
     assert len(index.load_tracks([root])) == 601
 
 
