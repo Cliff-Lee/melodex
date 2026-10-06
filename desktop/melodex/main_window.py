@@ -156,6 +156,9 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Melodex")
         self._window_settings = QSettings("Melodex", "Melodex")
         saved_geometry = self._window_settings.value("window/geometry")
+        trusted_normal_geometry = self._window_settings.contains(
+            "window/normal_geometry_trusted"
+        )
         restored_geometry = bool(
             saved_geometry and self.restoreGeometry(saved_geometry)
         )
@@ -164,7 +167,12 @@ class MainWindow(QMainWindow):
                 screen.availableGeometry()
                 for screen in QApplication.screens()
             ]
-            contained = contained_window_geometry(self.geometry(), available)
+            contained = contained_window_geometry(
+                self.geometry(),
+                available,
+                edge_inset=24,
+                recover_legacy_full_height=not trusted_normal_geometry,
+            )
             if contained != self.geometry():
                 self.setGeometry(contained)
         elif not restored_geometry:
@@ -3694,6 +3702,7 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self,event):
         self._window_settings.setValue("window/geometry", self.saveGeometry())
+        self._window_settings.setValue("window/normal_geometry_trusted", True)
         # Set the plain-Python gate before any Qt-owned children are torn down.
         if hasattr(self, "_async_closing_event"):
             self._async_closing_event.set()
