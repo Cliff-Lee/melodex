@@ -55,11 +55,19 @@ V2 keeps the page structure unchanged while tightening sidebar geometry, separat
 utility navigation visually, making hover/selected states stable rather than layout-shifting,
 and giving page titles/subtitles a quieter, more consistent rhythm.
 
+V2 qualified across the full test, visual-performance and packaging matrix.
+
 ### V3 — Main library surfaces
 
 Polish Albums, Artists, Tracks, Search, Playlists and Sources where visually necessary.
 Prioritize artwork prominence, card/row proportions, spacing, hierarchy, truncation,
 loading/empty states and invisible cached-artwork hydration.
+
+V3 increases album/artist artwork from 160 px to 180 px, gives cards calmer gutters and
+proportions, tightens track-row density, normalizes top-control spacing and uses the shared
+search-status/empty-state language. Existing cache-first artwork behavior is unchanged, so
+known covers remain immediate. Sources is deliberately left structurally unchanged because
+its current cards already use the shared application visual system.
 
 ### V4 — Now Playing and Lyrics
 

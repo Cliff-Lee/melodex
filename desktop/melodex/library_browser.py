@@ -63,15 +63,15 @@ class AlbumCard(QFrame):
         self.key = str(album.get("key") or "")
         self.setObjectName("albumCard")
         self.setCursor(Qt.PointingHandCursor)
-        self.setFixedSize(176, 286)
+        self.setFixedSize(196, 306)
         self.setMouseTracking(True)
         self.has_real_cover = False
 
         outer = QVBoxLayout(self)
-        outer.setContentsMargins(7, 7, 7, 9)
-        outer.setSpacing(5)
+        outer.setContentsMargins(8, 8, 8, 10)
+        outer.setSpacing(6)
 
-        self.cover = CoverLabel(160)
+        self.cover = CoverLabel(180)
         self.cover.set_cover("", title=str(album.get("title") or ""), key=self.key)
         outer.addWidget(self.cover, 0, Qt.AlignHCenter)
 
@@ -181,14 +181,14 @@ class ArtistCard(QFrame):
         self.has_artist_photo = False
         self.setObjectName("albumCard")
         self.setCursor(Qt.PointingHandCursor)
-        self.setFixedSize(176, 272)
+        self.setFixedSize(196, 292)
         self.setMouseTracking(True)
 
         outer = QVBoxLayout(self)
-        outer.setContentsMargins(7, 7, 7, 9)
-        outer.setSpacing(5)
+        outer.setContentsMargins(8, 8, 8, 10)
+        outer.setSpacing(6)
 
-        self.image = CoverLabel(160)
+        self.image = CoverLabel(180)
         self.image.set_cover(
             "",
             title=str(artist.get("name") or "Artist"),
@@ -329,7 +329,7 @@ class TrackListModel(QAbstractListModel):
             album = str(track.get("album") or "")
             return "\n".join(part for part in (title, artist, album) if part)
         if role == int(Qt.SizeHintRole):
-            return QSize(100, 82)
+            return QSize(100, 78)
         return None
 
     def track_at(self, row: int) -> dict[str, Any]:
@@ -347,13 +347,13 @@ class TrackRow(QFrame):
         super().__init__(parent)
         self.track = dict(track)
         self.setObjectName("trackRow")
-        self.setMinimumHeight(76)
+        self.setMinimumHeight(72)
 
         outer = QHBoxLayout(self)
-        outer.setContentsMargins(8, 7, 10, 7)
-        outer.setSpacing(12)
+        outer.setContentsMargins(8, 6, 10, 6)
+        outer.setSpacing(11)
 
-        self.cover = CoverLabel(58)
+        self.cover = CoverLabel(54)
         self.cover.set_cover(
             "",
             title=str(track.get("album") or track.get("title") or ""),
@@ -518,11 +518,13 @@ class LibraryBrowser(QWidget):
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
-        outer.setSpacing(12)
+        outer.setSpacing(14)
 
         self.library_top_controls = QWidget()
+        self.library_top_controls.setObjectName("libraryTopControls")
         top = QHBoxLayout(self.library_top_controls)
         top.setContentsMargins(0, 0, 0, 0)
+        top.setSpacing(8)
         self.search = QLineEdit()
         self.search.setPlaceholderText("Search your music…")
         self.search.setClearButtonEnabled(True)
@@ -540,14 +542,17 @@ class LibraryBrowser(QWidget):
             button.setObjectName("segmentButton")
             button.clicked.connect(lambda _checked=False, name=key: self.set_view(name))
             self.view_group.addButton(button, index)
+            button.setMinimumWidth(72)
             self.view_buttons[key] = button
             top.addWidget(button)
         self.view_buttons["albums"].setChecked(True)
         outer.addWidget(self.library_top_controls)
 
         self.library_action_controls = QWidget()
+        self.library_action_controls.setObjectName("libraryActionControls")
         actions = QHBoxLayout(self.library_action_controls)
         actions.setContentsMargins(0, 0, 0, 0)
+        actions.setSpacing(6)
         add = QPushButton("+ Add music")
         add.setObjectName("secondaryButton")
         add.clicked.connect(self.addFolderRequested)
@@ -717,8 +722,8 @@ class LibraryBrowser(QWidget):
         self.album_container = QWidget()
         self.album_grid = QGridLayout(self.album_container)
         self.album_grid.setContentsMargins(0, 0, 0, 0)
-        self.album_grid.setHorizontalSpacing(14)
-        self.album_grid.setVerticalSpacing(16)
+        self.album_grid.setHorizontalSpacing(16)
+        self.album_grid.setVerticalSpacing(18)
         self.album_grid.setAlignment(Qt.AlignTop | Qt.AlignLeft)
         self.album_scroll.setWidget(self.album_container)
         album_page_layout.addWidget(self.album_scroll, 1)
@@ -751,8 +756,8 @@ class LibraryBrowser(QWidget):
         self.artist_container = QWidget()
         self.artist_grid = QGridLayout(self.artist_container)
         self.artist_grid.setContentsMargins(0, 0, 0, 0)
-        self.artist_grid.setHorizontalSpacing(14)
-        self.artist_grid.setVerticalSpacing(16)
+        self.artist_grid.setHorizontalSpacing(16)
+        self.artist_grid.setVerticalSpacing(18)
         self.artist_grid.setAlignment(Qt.AlignTop | Qt.AlignLeft)
         self.artist_scroll.setWidget(self.artist_container)
         artist_page_layout.addWidget(self.artist_scroll, 1)
@@ -768,7 +773,7 @@ class LibraryBrowser(QWidget):
         self.track_list = QListView()
         self.track_list.setObjectName("visualTrackList")
         self.track_list.setModel(self.track_model)
-        self.track_list.setSpacing(4)
+        self.track_list.setSpacing(3)
         self.track_list.setUniformItemSizes(True)
         self.track_list.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
         self.track_list.doubleClicked.connect(self._track_index_activated)
@@ -1745,7 +1750,7 @@ class LibraryBrowser(QWidget):
 
     def _layout_album_cards(self) -> None:
         width = max(400, self.album_scroll.viewport().width())
-        columns = max(2, min(8, width // 190))
+        columns = max(2, min(8, width // 212))
         self._album_columns = columns
         rendered = self._visible_albums[: self._album_render_limit]
         positions = self._grid_positions(self.album_grid)
@@ -1786,7 +1791,7 @@ class LibraryBrowser(QWidget):
         row_count=(len(rendered)+columns-1)//columns if rendered else 0
         spacing=max(0,int(self.album_grid.verticalSpacing()))
         minimum_height=(
-            row_count*286 + max(0,row_count-1)*spacing
+            row_count*306 + max(0,row_count-1)*spacing
             if row_count
             else 0
         )
@@ -1806,7 +1811,7 @@ class LibraryBrowser(QWidget):
 
     def _layout_artist_cards(self) -> None:
         width = max(400, self.artist_scroll.viewport().width())
-        columns = max(2, min(8, width // 190))
+        columns = max(2, min(8, width // 212))
         self._artist_columns = columns
         rendered = self._visible_artists[: self._artist_render_limit]
         positions = self._grid_positions(self.artist_grid)
@@ -1848,7 +1853,7 @@ class LibraryBrowser(QWidget):
         row_count=(len(rendered)+columns-1)//columns if rendered else 0
         spacing=max(0,int(self.artist_grid.verticalSpacing()))
         minimum_height=(
-            row_count*272 + max(0,row_count-1)*spacing
+            row_count*292 + max(0,row_count-1)*spacing
             if row_count
             else 0
         )
