@@ -140,3 +140,23 @@ def test_p14l3a_index_backed_cache_skips_recanonicalization(monkeypatch):
     assert len(calls) == 3
     assert defensive["metrics"]["cache_keys_canonical"] is False
     assert defensive["metrics"]["cache_key_normalizations"] == 2
+
+
+def test_p14l3c_deletion_sweep_normalizes_each_cached_root_once():
+    provider = LocalFilesProvider(scan_on_init=False)
+    entries = {
+        f"/music/{index:02d}.flac": {
+            "track": {"title": str(index)},
+            "root_path": "/music",
+        }
+        for index in range(8)
+    }
+
+    snapshot = provider.scan_snapshot(
+        [],
+        cached_entries=entries,
+        cache_keys_canonical=True,
+    )
+
+    assert snapshot["changes"]["removed"] == 0
+    assert snapshot["metrics"]["cached_root_normalizations"] == 1
