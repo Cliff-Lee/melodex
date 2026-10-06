@@ -338,7 +338,7 @@ reused rows plus one deletion.
 
 P14l4b2b qualified independently across the full release matrix.
 
-**P14l4b2c — bounded delete candidates.** Publication no longer builds the remaining
+**P14l4b2d — bounded delete candidates.** Publication no longer builds the remaining
 collection-sized `removed_paths` set. Existing rows are classified exactly as before, but
 deletion candidates now flow directly into the existing bounded delete batch and are flushed
 at `batch_size`.
@@ -358,7 +358,7 @@ The existing 601-track batch tests qualify both ends of the workload: an unchang
 publication reports 601 existing + 601 incoming + 0 removed rows, while a 600-track deletion
 reports 601 existing + 1 incoming + 600 removed rows. This stage is observational only.
 
-**P14l4b2d — incoming-path decision.** Change `incoming_paths` only if these measurements,
+**P14l4b2e — incoming-path decision.** Change `incoming_paths` only if these measurements,
 including the physical P14l5 profile, demonstrate a real peak-memory reduction rather than a
 one-set-for-another trade.
 
