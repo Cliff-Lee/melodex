@@ -1,88 +1,52 @@
 # Melodex Roadmap
 
-The roadmap has two parallel goals:
+Melodex is in public beta. The roadmap is intentionally short: it describes product direction rather than internal engineering campaigns.
 
-1. make Melodex an excellent local-first music player;
-2. make Melodex a useful open music platform that other developers can extend.
+## Now
 
-## Current foundation
+The current priority is to make the desktop player dependable and pleasant for everyday use.
 
-- macOS and Windows desktop builds
-- Android Bridge client
-- Local Files and external providers
-- MPP provider installation
-- universal multi-source resolver
-- resolver inspection and per-song match memory
-- Flow
-- Play for Me
-- taste memory
-- Moments
-- optional LLM control
-- local authenticated control bridge
-- MCP control server
-- OpenAI-compatible LLM client
+- reliability with small, large and network-hosted music libraries;
+- responsive browsing, search, artwork and lyrics;
+- consistent window behaviour across macOS, Windows and Linux;
+- visual polish without changing the existing interaction model;
+- playback correctness, queue behaviour and clear audio-state feedback;
+- packaging and release checks on all supported desktop platforms;
+- external beta testing with real collections and awkward metadata.
 
-## Ecosystem — current work
+## Next
 
-- developer documentation portal
-- provider tutorials
-- experimental capability contracts: identity, metadata, artwork and lyrics
-- provenance/merge model
-- plugin registry design
-- legal/open reference providers
-- OpenAPI contract for the local control API
-- OpenAI function-tool schemas
-- example community plugins
-- desktop Capability Broker for identity, metadata, artwork and lyrics
-- `.mdxplugin` install/enable/disable/remove flow
-- `melodex-extension` init/validate/doctor/pack tooling
-- registry-backed Plugin Directory in the desktop app
-- SHA-256 verified remote package installation
-- canonical registry with installable legal/open reference packages
-- `melodex-registry` validate/verify tooling
-- installation provenance (manual vs registry, package hash/version/time)
-- Plugin Directory update awareness
-- 5-minute developer quickstart + explicit status/stability/trust documentation
-- CI documentation-link integrity checks
-- scrubbed third-party process environments
-- declared plugin configuration broker with secret-store support
-- playback-gateway host allowlist checks for provider HTTP(S) resources
-- canonical first-contribution/community onboarding path
-- append-only registry review history tied to package versions/hashes
-- redacted desktop diagnostics export for support
+Once the desktop beta is stable enough that ordinary testing stops uncovering basic behavioural defects:
 
-## Next — trust and platform
-
-- richer authentication flows beyond declared configuration (for example browser/OAuth hand-off);
-- richer user-configurable preferred capability-provider UI;
-- provider health and diagnostics UI;
-- stronger permission-policy enforcement where practical;
-- signed provider/plugin packages;
-- verified-publisher keyring / revocation;
-- generated API-client examples.
-
-## Next — player
-
-- improved local-library indexing
-- artwork cache
-- more reliable phrase/beat-grid analysis
-- transition preview UI
-- Android queue and Flow controls
-- taste sync through Bridge
-
-## Post-P performance backlog
-
-- Revisit the SQLite publication `incoming_paths` membership set only if real-world
-  profiling shows persistence-memory pressure. At the existing 1,000,000-track scale its
-  measured incremental footprint is about 32 MiB live / 48 MiB transient peak, so Campaign P
-  deliberately leaves it unchanged.
+- make the Android app useful as a standalone local player while keeping Bridge connectivity optional;
+- improve metadata and artwork recovery;
+- strengthen playlist import/export and sharing;
+- continue improving connected music-source reliability and extension tooling;
+- make diagnostics and bug reporting easier for non-developers;
+- expand installer/store availability where practical.
 
 ## Later
 
-- optional encrypted multi-device state sync
-- iOS client through Provider Bridge
-- desktop stem-assisted transitions where hardware permits
-- audio-analysis extension capabilities
-- playlist import/export ecosystem
-- scrobbling capability
-- presence/now-playing capability
+Longer-term possibilities include:
+
+- optional encrypted multi-device state sync;
+- iOS support;
+- richer Android queue, Flow and taste-memory support;
+- scrobbling and presence integrations;
+- additional audio-analysis capabilities;
+- optional advanced transition/stem-assisted features where hardware permits.
+
+## What is already in place
+
+Melodex already has:
+
+- packaged desktop builds for macOS, Windows and Linux;
+- local-library and NAS-oriented indexing;
+- Flow listening sessions, rediscovery and taste memory;
+- playlists, lyrics, listening history and visualisations;
+- optional connected music sources;
+- a provider/extension SDK and local control API;
+- optional AI control rather than an AI requirement;
+- automated responsiveness, large-library, packaging and release qualification.
+
+Detailed implementation history remains available in the closed pull requests and repository documentation. The roadmap deliberately does not duplicate that history.
