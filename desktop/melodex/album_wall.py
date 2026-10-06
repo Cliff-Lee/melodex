@@ -401,7 +401,7 @@ class AlbumWallWidget(QWidget):
         self.lens.addItem("Time", "time")
         self.lens.addItem("A–Z shelves", "shelves")
         self.lens_info = QLabel("")
-        self.lens_info.setStyleSheet("color:#8f99aa")
+        self.lens_info.setObjectName("mutedText")
         self.search = QLineEdit()
         self.search.setPlaceholderText("Find artist or album…")
         self.search.setMaximumWidth(360)
@@ -435,11 +435,11 @@ class AlbumWallWidget(QWidget):
         layout.addWidget(self.view, 1)
 
         self.selection = QLabel("Select an album to see its details.")
-        self.selection.setStyleSheet("color:#e7ebf2;font-size:13px;padding:4px 2px")
+        self.selection.setObjectName("wallSelection")
         layout.addWidget(self.selection)
 
         self.status = QLabel("Add local music to build your Album Wall.")
-        self.status.setStyleSheet("color:#8f99aa")
+        self.status.setObjectName("mutedText")
         layout.addWidget(self.status)
 
         self.lens.currentIndexChanged.connect(self._relayout)
