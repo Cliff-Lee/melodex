@@ -221,9 +221,23 @@ semantics, including explicit normalization-off reporting.
 
 ### P14l — Scan optimization
 
-Only after interaction stability is green, revisit the approximately 13-minute first
-scan. Preserve correctness and NAS safety while targeting much faster unchanged and
-small-delta rescans.
+Interaction stability is green, so cold-import throughput can now use more of the
+already-bounded metadata pipeline without weakening NAS safety.
+
+P14l keeps the permanent maximum at eight outstanding metadata jobs. Scans still start
+with two workers. Fast local storage may scale to eight metadata workers once stat
+samples establish low latency; medium-latency local storage uses four. A likely network
+or NAS path remains at two workers until enough fast samples arrive, and even then caps
+at four workers. High-latency storage stays at two.
+
+This changes cold-import throughput only. Unchanged rescans still perform zero metadata
+reads, small-delta rescans still schedule work only for changed/new files, discovery
+remains bounded at 256 rows, and incomplete/unavailable NAS roots retain the existing
+atomic publication and deletion-safety rules.
+
+The incremental scan profiler now prints the effective storage profile, worker limit and
+peak metadata work in flight so physical-library measurements can distinguish traversal,
+metadata and persistence limits.
 
 ### P14m — 30-minute endurance qualification
 
