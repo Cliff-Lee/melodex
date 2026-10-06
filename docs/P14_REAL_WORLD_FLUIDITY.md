@@ -358,9 +358,29 @@ The existing 601-track batch tests qualify both ends of the workload: an unchang
 publication reports 601 existing + 601 incoming + 0 removed rows, while a 600-track deletion
 reports 601 existing + 1 incoming + 600 removed rows. This stage is observational only.
 
-**P14l4b2e — incoming-path decision.** Change `incoming_paths` only if these measurements,
-including the physical P14l5 profile, demonstrate a real peak-memory reduction rather than a
-one-set-for-another trade.
+**P14l4b2e — incoming-path decision: defer.** The largest existing scale contract is the
+1,000,000-track Elastic Library qualification. `incoming_paths` reuses the relative-path
+string objects already held by the grouped persistence rows, so its incremental cost is the
+set table rather than another million path strings.
+
+A direct allocation measurement using the qualification's deterministic one-million-track
+path shape measured approximately:
+
+- 12,700 tracks: 0.50 MiB live / 0.63 MiB transient peak;
+- 100,000 tracks: 4.0 MiB live / 6.0 MiB transient peak;
+- 250,000 tracks: 8.0 MiB live / 12.0 MiB transient peak;
+- 500,000 tracks: 16.0 MiB live / 24.0 MiB transient peak;
+- 1,000,000 tracks: 32.0 MiB live / 48.0 MiB transient peak.
+
+The existing clean one-million-track qualification recorded roughly 1,720 MiB post-persist
+process RSS. The `incoming_paths` transient peak is therefore only about 2.8% of that
+process peak, remains linear with collection size, and does not violate the existing bounded
+queue/worker or linear-memory scaling contract. Replacing it now would likely trade one
+membership structure for another while adding persistence complexity.
+
+Decision: do not implement P14l4b2e in Campaign P. Record it in the post-P performance
+backlog and reconsider only if later profiling shows persistence-memory pressure on a real
+workload.
 
 #### P14l5 — Physical 12.7k/NAS qualification
 
