@@ -382,6 +382,8 @@ class LocalFilesProvider(MusicProvider):
         changed = 0
         removed = 0
         stat_failures = 0
+        cached_root_normalizations = 0
+        cached_root_keys: dict[str, str] = {}
 
         queue_capacity = 256
         work_queue: queue.Queue[dict[str, Any]] = queue.Queue(
@@ -1010,11 +1012,14 @@ class LocalFilesProvider(MusicProvider):
                 if parent_key in preserved_directory_keys:
                     continue
                 root_path = str(previous.get("root_path") or "")
-                if (
-                    root_path
-                    and self._override_key(root_path) in available_root_keys
-                ):
-                    removed += 1
+                if root_path:
+                    canonical_root = cached_root_keys.get(root_path)
+                    if canonical_root is None:
+                        canonical_root = self._override_key(root_path)
+                        cached_root_keys[root_path] = canonical_root
+                        cached_root_normalizations += 1
+                    if canonical_root in available_root_keys:
+                        removed += 1
 
             emit(
                 "metadata",
@@ -1052,6 +1057,9 @@ class LocalFilesProvider(MusicProvider):
                     "snapshot_track_copies": 2 if collect_tracks else 1,
                     "cache_keys_canonical": bool(cache_keys_canonical),
                     "cache_key_normalizations": int(cache_key_normalizations),
+                    "cached_root_normalizations": int(
+                        cached_root_normalizations
+                    ),
                     "directory_manifest_hits": int(directory_manifest_hits),
                     "directory_manifest_misses": int(directory_manifest_misses),
                     "directory_reuse_hits": int(directory_reuse_hits),

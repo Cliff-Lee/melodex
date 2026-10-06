@@ -277,6 +277,16 @@ streaming materialization before an oversized buffer can grow without bound.
 Aggregate diagnostics report full file-work items materialized and materializations avoided.
 No media names or paths are exported.
 
+P14l3b qualified independently across the full release matrix.
+
+**P14l3c — cached-root normalization memo.** The deletion-safety sweep still checks every
+cached track that was not observed in the completed scan, but repeated tracks from the same
+indexed root now share one lexical root normalization. This preserves the exact root
+availability/deletion decision while reducing another collection-sized path-normalization
+loop to one normalization per distinct cached root.
+
+Diagnostics report only the aggregate number of cached-root normalizations.
+
 #### P14l4 — Persistence and catalog hydration
 
 Optimize SQLite publication and the final post-commit catalog load without weakening the
