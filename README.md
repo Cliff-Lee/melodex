@@ -25,6 +25,8 @@ It works with music files you already have. Melodex leaves those files where the
 
 **Melodex may suit you if** you own music that has become hard to browse, keep returning to the same favourites, or want more say in where a listening session goes.
 
+> **Project status:** public beta. The desktop app is the main supported experience; macOS has had the most hands-on testing so far, with packaged Windows and Linux builds also available. Android currently works as a Bridge client. Feedback from real music libraries is especially useful.
+
 ## What listening with Melodex feels like
 
 - **Press Play something.** Start a session from your collection without first choosing every track.
