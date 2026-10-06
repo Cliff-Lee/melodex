@@ -101,7 +101,28 @@ def run_library_scan_child() -> int:
         daemon=True,
     ).start()
 
+    child_started = time.perf_counter()
+    phase_seconds = {
+        "bootstrap_cache": 0.0,
+        "scan": 0.0,
+        "persistence": 0.0,
+        "hydration": 0.0,
+    }
+
+    def attach_phase_metrics(payload: dict[str, Any]) -> None:
+        metrics = dict(payload.get("metrics") or {})
+        metrics["phase_seconds"] = {
+            key: round(max(0.0, float(value)), 6)
+            for key, value in phase_seconds.items()
+        }
+        metrics["child_total_seconds"] = round(
+            max(0.0, time.perf_counter() - child_started),
+            6,
+        )
+        payload["metrics"] = metrics
+
     try:
+        bootstrap_started = time.perf_counter()
         index = LocalLibraryIndex(data_dir / "library-index.sqlite3")
         # Reconcile configured roots inside the disposable worker so a stale
         # worker from an earlier root set cannot leave orphaned cached roots
@@ -119,6 +140,9 @@ def run_library_scan_child() -> int:
         cached_directories = index.load_directory_manifests(roots)
         generation_id = index.begin_scan_generation(roots)
         checkpoint_batch: list[dict[str, Any]] = []
+        phase_seconds["bootstrap_cache"] = (
+            time.perf_counter() - bootstrap_started
+        )
 
         def flush_checkpoints() -> None:
             if not checkpoint_batch:
@@ -141,6 +165,7 @@ def run_library_scan_child() -> int:
                 {"type": "progress", "payload": dict(payload or {})},
             )
 
+        scan_started = time.perf_counter()
         snapshot = provider.scan_snapshot(
             roots,
             progress=progress,
@@ -150,6 +175,7 @@ def run_library_scan_child() -> int:
             collect_tracks=False,
             checkpoint=checkpoint,
         )
+        phase_seconds["scan"] = time.perf_counter() - scan_started
         metrics = dict(snapshot.get("metrics") or {})
         metrics["process_isolated"] = True
         snapshot["metrics"] = metrics
@@ -166,6 +192,7 @@ def run_library_scan_child() -> int:
             snapshot.setdefault("metrics", {})["resume_staged"] = len(
                 resume_cache
             )
+            attach_phase_metrics(snapshot)
             _write_message(
                 sys.stdout,
                 {"type": "result", "payload": snapshot},
@@ -181,10 +208,14 @@ def run_library_scan_child() -> int:
             }
         )
         flush_checkpoints()
+        persistence_started = time.perf_counter()
         persistence = index.replace_scan(
             roots,
             snapshot,
             cancelled=lambda: control.cancelled,
+        )
+        phase_seconds["persistence"] = (
+            time.perf_counter() - persistence_started
         )
         if bool(persistence.get("cancelled")):
             index.finish_scan_generation(
@@ -198,6 +229,7 @@ def run_library_scan_child() -> int:
                 "root_states": list(snapshot.get("root_states") or []),
                 "cancelled": True,
             }
+            attach_phase_metrics(result)
             _write_message(
                 sys.stdout,
                 {"type": "result", "payload": result},
@@ -221,7 +253,12 @@ def run_library_scan_child() -> int:
         snapshot.pop("index_records", None)
         snapshot.pop("directory_manifests", None)
         snapshot.pop("preserve_directories", None)
+        hydration_started = time.perf_counter()
         result["tracks"] = provider.prepare_cached_tracks(index.load_tracks(roots))
+        phase_seconds["hydration"] = (
+            time.perf_counter() - hydration_started
+        )
+        attach_phase_metrics(result)
         _write_message(
             sys.stdout,
             {"type": "result", "payload": result},
