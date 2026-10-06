@@ -88,6 +88,16 @@ Polish Album Wall without changing its interaction model. Simplify Music Map unt
 longer reads as a graph/debug surface. Remove visual information rather than inventing
 spatial concepts.
 
+V5 keeps the existing pan/zoom, selection, routing and layout models intact. Album Wall gains
+a softer frameless depth field, calmer sleeve hover/borders, properly elided album/artist text
+and quieter secondary controls/instructions. Music Map uses the same restrained depth language,
+elides long track/artist labels, removes always-visible BPM/energy debug copy from cards,
+softens non-selected borders and sonic edges, and keeps route/current/selected emphasis strong.
+No Chiasm navigation, graph-layout redesign or rendering architecture change is included.
+
+V5 qualified across the full test, visual-performance, large-library/soak, native desktop and
+Linux packaging/smoke matrix.
+
 ### V6 — Whole-app visual QA
 
 Inspect major user-facing screens at realistic window sizes for clipping, wrapping,

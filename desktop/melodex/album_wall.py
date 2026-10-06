@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QGraphicsObject,
     QGraphicsScene,
     QGraphicsView,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -153,8 +154,8 @@ class _AlbumTile(QGraphicsObject):
         # A quiet shadow makes the wall feel like physical sleeves rather than
         # debug nodes, without using expensive QGraphicsDropShadowEffect items.
         painter.setPen(Qt.NoPen)
-        painter.setBrush(QColor(0, 0, 0, 85))
-        painter.drawRoundedRect(cover.translated(4, 5), 8, 8)
+        painter.setBrush(QColor(0, 0, 0, 68))
+        painter.drawRoundedRect(cover.translated(3, 4), 8, 8)
 
         clip = QPainterPath()
         clip.addRoundedRect(cover, 7, 7)
@@ -197,7 +198,7 @@ class _AlbumTile(QGraphicsObject):
             painter.setPen(QPen(QColor("#f2f5f8"), 3))
             painter.drawRoundedRect(cover.adjusted(-2, -2, 2, 2), 8, 8)
         else:
-            painter.setPen(QPen(QColor(255, 255, 255, 32), 1))
+            painter.setPen(QPen(QColor(255, 255, 255, 24), 1))
             painter.drawRoundedRect(cover, 7, 7)
 
         if int(self.album.get("analysed_tracks") or 0) == 0:
@@ -213,13 +214,29 @@ class _AlbumTile(QGraphicsObject):
             font.setPointSizeF(max(7.8, min(11.0, 9.4 * lod)))
             font.setBold(True)
             painter.setFont(font)
-            painter.drawText(QRectF(8, 240, 228, 22), Qt.AlignLeft | Qt.AlignVCenter, title[:36])
+            title_rect = QRectF(8, 240, 228, 22)
+            title_text = painter.fontMetrics().elidedText(
+                title,
+                Qt.ElideRight,
+                int(title_rect.width()),
+            )
+            painter.drawText(title_rect, Qt.AlignLeft | Qt.AlignVCenter, title_text)
             if lod >= 0.56:
                 font.setBold(False)
                 font.setPointSizeF(max(7.2, min(9.8, 8.3 * lod)))
                 painter.setFont(font)
                 painter.setPen(QColor("#9da7b8"))
-                painter.drawText(QRectF(8, 264, 228, 20), Qt.AlignLeft | Qt.AlignVCenter, artist[:36])
+                artist_rect = QRectF(8, 264, 228, 20)
+                artist_text = painter.fontMetrics().elidedText(
+                    artist,
+                    Qt.ElideRight,
+                    int(artist_rect.width()),
+                )
+                painter.drawText(
+                    artist_rect,
+                    Qt.AlignLeft | Qt.AlignVCenter,
+                    artist_text,
+                )
 
     def mousePressEvent(self, event):
         self._selected_callback(self.key)
@@ -231,7 +248,7 @@ class _AlbumTile(QGraphicsObject):
 
     def hoverEnterEvent(self, event):
         self.setZValue(20)
-        self.setScale(1.06)
+        self.setScale(1.03)
         super().hoverEnterEvent(event)
 
     def hoverLeaveEvent(self, event):
@@ -264,6 +281,14 @@ class _WallView(QGraphicsView):
         self._zoom_animation.setEasingCurve(QEasingCurve.OutCubic)
         self._zoom_animation.valueChanged.connect(self._apply_zoom_value)
         self.setOptimizationFlag(QGraphicsView.DontAdjustForAntialiasing, True)
+        self.setFrameShape(QFrame.NoFrame)
+
+    def drawBackground(self, painter: QPainter, rect: QRectF) -> None:
+        gradient = QLinearGradient(rect.topLeft(), rect.bottomRight())
+        gradient.setColorAt(0.0, QColor("#11151d"))
+        gradient.setColorAt(0.55, QColor("#0e1219"))
+        gradient.setColorAt(1.0, QColor("#0b0e14"))
+        painter.fillRect(rect, gradient)
 
     def _apply_zoom_value(self, value) -> None:
         target = float(value)
@@ -406,9 +431,13 @@ class AlbumWallWidget(QWidget):
         self.search.setPlaceholderText("Find artist or album…")
         self.search.setMaximumWidth(360)
         find = QPushButton("Find")
+        find.setObjectName("quietButton")
         now = QPushButton("Now playing")
+        now.setObjectName("secondaryButton")
         actual = QPushButton("Actual size")
+        actual.setObjectName("quietButton")
         overview = QPushButton("Overview")
+        overview.setObjectName("quietButton")
         controls.addWidget(QLabel("Arrange"))
         controls.addWidget(self.lens)
         controls.addWidget(self.lens_info)
@@ -428,7 +457,6 @@ class AlbumWallWidget(QWidget):
         self.view.setResizeAnchor(QGraphicsView.AnchorViewCenter)
         self.view.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.view.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.view.setBackgroundBrush(QBrush(QColor("#0f1116")))
         self.view.setRenderHint(QPainter.Antialiasing, True)
         self.view.setRenderHint(QPainter.SmoothPixmapTransform, True)
         layout.addWidget(self.view, 1)
@@ -511,9 +539,8 @@ class AlbumWallWidget(QWidget):
             else:
                 self._initial_view()
             self.status.setText(
-                f"{albums:,} albums · {analysed:,} positioned from Flow analysis · "
-                "drag / two-finger scroll to pan · wheel or Cmd/Ctrl-scroll to zoom · "
-                "double-click an album to play"
+                f"{albums:,} albums · {analysed:,} positioned by sound · "
+                "drag to pan · Cmd/Ctrl-scroll to zoom · double-click to play"
             )
             self._schedule_visible_art()
         else:

@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QGraphicsItem,
     QGraphicsScene,
     QGraphicsView,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -42,6 +43,14 @@ class _MapView(QGraphicsView):
         self._zoom_animation.setDuration(135)
         self._zoom_animation.setEasingCurve(QEasingCurve.OutCubic)
         self._zoom_animation.valueChanged.connect(self._apply_zoom_value)
+        self.setFrameShape(QFrame.NoFrame)
+
+    def drawBackground(self, painter: QPainter, rect: QRectF) -> None:
+        gradient = QLinearGradient(rect.topLeft(), rect.bottomRight())
+        gradient.setColorAt(0.0, QColor("#111923"))
+        gradient.setColorAt(0.52, QColor("#0d141d"))
+        gradient.setColorAt(1.0, QColor("#091018"))
+        painter.fillRect(rect, gradient)
 
     def _apply_zoom_value(self, value) -> None:
         target = float(value)
@@ -131,9 +140,9 @@ class _NodeItem(QGraphicsObject):
         radius = 9 if compact else 12
         painter.setRenderHint(QPainter.Antialiasing, True)
         painter.setPen(Qt.NoPen)
-        painter.setBrush(QColor(0, 0, 0, 78))
+        painter.setBrush(QColor(0, 0, 0, 54))
         painter.drawRoundedRect(r.translated(2, 3), radius, radius)
-        painter.setBrush(QColor("#1a2230"))
+        painter.setBrush(QColor(19, 27, 38, 232))
         painter.drawRoundedRect(r, radius, radius)
         art_w = min(r.height() - 16, r.width() * 0.38)
         art = QRectF(8, 8, art_w, r.height() - 16)
@@ -153,18 +162,32 @@ class _NodeItem(QGraphicsObject):
         font.setPointSizeF(9.5 if not compact else 7)
         painter.setFont(font)
         painter.setPen(QColor("#f4f6fa"))
-        painter.drawText(QRectF(left, 10, width, r.height() * .42), Qt.AlignLeft | Qt.AlignVCenter,
-                         str(self.node.get("title") or "Unknown track"))
+        title_rect = QRectF(left, 10, width, r.height() * .42)
+        title = painter.fontMetrics().elidedText(
+            str(self.node.get("title") or "Unknown track"),
+            Qt.ElideRight,
+            max(1, int(title_rect.width())),
+        )
+        painter.drawText(
+            title_rect,
+            Qt.AlignLeft | Qt.AlignVCenter,
+            title,
+        )
         font.setBold(False)
         font.setPointSizeF(8 if not compact else 6.5)
         painter.setFont(font)
-        painter.setPen(QColor("#aeb8c8"))
-        painter.drawText(QRectF(left, r.height() * .50, width, r.height() * .25), Qt.AlignLeft | Qt.AlignTop,
-                         str(self.node.get("artist") or "Unknown artist"))
-        if not compact:
-            painter.setPen(QColor("#8494a8"))
-            painter.drawText(QRectF(left, r.bottom() - 24, width, 15), Qt.AlignLeft | Qt.AlignVCenter,
-                             f"{float(self.node.get('bpm') or 0):.0f} BPM · {float(self.node.get('energy') or 0):.0%} energy")
+        painter.setPen(QColor("#9da9ba"))
+        artist_rect = QRectF(left, r.height() * .50, width, r.height() * .25)
+        artist = painter.fontMetrics().elidedText(
+            str(self.node.get("artist") or "Unknown artist"),
+            Qt.ElideRight,
+            max(1, int(artist_rect.width())),
+        )
+        painter.drawText(
+            artist_rect,
+            Qt.AlignLeft | Qt.AlignTop,
+            artist,
+        )
         painter.setBrush(Qt.NoBrush)
         painter.setPen(QPen(self._pen))
         painter.drawRoundedRect(r.adjusted(.5, .5, -.5, -.5), radius, radius)
@@ -178,7 +201,7 @@ class _NodeItem(QGraphicsObject):
         super().mouseDoubleClickEvent(event)
 
     def hoverEnterEvent(self, event):
-        self.setScale(1.06)
+        self.setScale(1.035)
         self.setZValue(30)
         super().hoverEnterEvent(event)
 
@@ -232,6 +255,7 @@ class MusicMapWidget(QWidget):
         self.search = QLineEdit()
         self.search.setPlaceholderText("Find artist or track on map…")
         reset = QPushButton("Fit map")
+        reset.setObjectName("quietButton")
         self.connections_button = QPushButton("Connections…")
         self.connections_button.setObjectName("quietButton")
         self.connections_button.clicked.connect(
@@ -255,7 +279,6 @@ class MusicMapWidget(QWidget):
         self.view.setResizeAnchor(QGraphicsView.AnchorViewCenter)
         self.view.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.view.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.view.setBackgroundBrush(QBrush(QColor("#0e141d")))
         layout.addWidget(self.view, 1)
 
         self.status = QLabel("Analyse your local library to build a Music Map.")
@@ -364,9 +387,8 @@ class MusicMapWidget(QWidget):
         if analysed:
             known = int(self.knowledge_graph.get("known_tracks") or 0)
             self.status.setText(
-                f"{analysed:,} analysed tracks mapped from {total:,} local profiles · "
-                f"{known:,} tracks have cached knowledge. "
-                "Select a track to reveal its closest relationships; pan and zoom to explore."
+                f"{analysed:,} tracks mapped · {known:,} with cached knowledge · "
+                "select a track for relationships · drag to pan · Cmd/Ctrl-scroll to zoom"
             )
         else:
             self.status.setText("No cached Flow analysis yet. Use Analyse my library, then refresh the map.")
@@ -421,12 +443,12 @@ class MusicMapWidget(QWidget):
                 bx, by = self.positions[b]
                 similarity = max(0.0, min(1.0, float(edge.get("similarity") or 0.0)))
                 if mode == "focused":
-                    colour = QColor(126, 166, 205, int(95 + 120 * similarity))
-                    width = 1.0 + 2.0 * similarity
+                    colour = QColor(126, 166, 205, int(72 + 92 * similarity))
+                    width = 0.9 + 1.7 * similarity
                     z_value = 4
                 else:
-                    colour = QColor(118, 131, 153, int(22 + 52 * similarity))
-                    width = 0.28 + 0.72 * similarity
+                    colour = QColor(118, 131, 153, int(10 + 30 * similarity))
+                    width = 0.22 + 0.52 * similarity
                     z_value = 1
                 pen = QPen(colour)
                 pen.setWidthF(width)
@@ -591,8 +613,8 @@ class MusicMapWidget(QWidget):
                 pen = QPen(QColor("#f5d76e"))
                 pen.setWidthF(2.5)
             else:
-                pen = QPen(QColor(255, 255, 255, 105))
-                pen.setWidthF(0.8)
+                pen = QPen(QColor(255, 255, 255, 42))
+                pen.setWidthF(0.7)
             item.setPen(pen)
             item.setBrush(QBrush(colour))
 
