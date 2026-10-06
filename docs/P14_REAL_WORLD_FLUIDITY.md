@@ -1,5 +1,12 @@
 # P14 — Real-World Fluidity & Playback Integrity
 
+**Status: COMPLETE. Campaign P: COMPLETE.**
+
+The closure condition was met after P14l5a–P14l5d passed on the post-P14l4 code together
+with the existing correctness, responsiveness, large-library, visual-QA, code-health,
+startup and packaging gates. No P14l6 or further Campaign P optimization stage is planned.
+Any non-blocking improvement discovered after this point belongs in the post-P backlog.
+
 P14 converts the first detailed large-library external beta report into a permanent
 engineering qualification campaign.
 
@@ -440,11 +447,12 @@ Automated release targets are:
 - seek ownership, authoritative EOF/transition state and album playback semantics remain
   covered by deterministic playback regression tests.
 
-### Residual physical qualification — consolidated and deferred
+### Post-P manual beta validation — non-blocking
 
 Offscreen Qt cannot prove audible output, native WindowServer hit-testing, Dock/taskbar
-bounds or the behavior of a real NAS/audio device. Those checks are deliberately kept as
-one residual physical run rather than duplicated across P14 phases.
+bounds or the behavior of every real NAS/audio device. These checks remain useful during
+normal beta testing, but they are **not** a Campaign P completion gate after l5a–l5d and
+the full automated release matrix are green.
 
 On a current packaged macOS build with a representative local/NAS collection:
 
@@ -461,7 +469,8 @@ On a current packaged macOS build with a representative local/NAS collection:
 
 Record Pass/Fail plus build/OS and a short screen recording for any failure. Export redacted
 diagnostics after the run; P14 diagnostics must never contain media paths, track/album names,
-URLs, credentials or other private collection content.
+URLs, credentials or other private collection content. Any issue found here is ordinary
+post-P bug/backlog work unless it exposes a regression in an existing release gate.
 
 ## P14a is a baseline, not a victory condition
 
