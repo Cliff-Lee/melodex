@@ -110,6 +110,10 @@ def test_p14m_dynamic_map_and_tools_do_not_own_outer_geometry(monkeypatch, tmp_p
     window.show()
     app.processEvents()
     baseline = (window.width(), window.height())
+    assert baseline == (760, 520), (
+        "A hidden/inactive page already owns the top-level minimum before Music Map: "
+        f"requested=(760, 520), actual={baseline}, snapshot={_geometry_snapshot(window)}"
+    )
 
     window.open_page("music_map")
     QTest.qWait(window._page_refresh_delay_ms + 40)
