@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 51547)
-Total output lines: 4705
-
 from __future__ import annotations
 
 import json
@@ -951,7 +948,2883 @@ class MainWindow(QMainWindow):
             }
             QPushButton:hover{
                 background:#222b38;
-                border-color:#…31547 tokens truncated… != self._search_sequence
+                border-color:#3a4a60;
+            }
+            QPushButton:pressed{
+                background:#101720;
+                border-color:#49617d;
+            }
+            QPushButton:disabled{
+                background:#121720;
+                border-color:#202936;
+                color:#657083;
+            }
+            QPushButton#primaryButton{
+                background:#1875e8;
+                border-color:#2582f2;
+                color:white;
+                font-weight:700;
+                padding:11px 17px;
+            }
+            QPushButton#secondaryButton{
+                background:#151b24;
+                border-color:#283443;
+                color:#d7dde7;
+                font-weight:600;
+            }
+            QPushButton#quietButton{
+                background:transparent;
+                border-color:#28313e;
+                color:#c7ced9;
+            }
+            QPushButton#miniButton{
+                padding:6px 8px;
+                font-size:11px;
+            }
+            QPushButton#segmentButton{
+                background:transparent;
+                border-color:#28313e;
+                color:#aab3c1;
+                padding:8px 12px;
+            }
+            QPushButton#segmentButton:checked{
+                background:#1c2d46;
+                border-color:#31527a;
+                color:white;
+                font-weight:650;
+            }
+            QPushButton#transportButton{
+                min-width:36px;min-height:36px;max-width:36px;border-radius:10px;
+                background:#121821;border-color:#273342;
+            }
+            QPushButton#transportPrimaryButton{
+                min-width:42px;min-height:42px;max-width:42px;border-radius:12px;
+                background:#1875e8;border-color:#2b84ef;color:white;font-size:15px;
+            }
+            QPushButton#transportButtonWide{min-height:36px;border-radius:10px}
+            QPushButton#playerAction{
+                min-height:32px;background:transparent;border-color:#27313e;color:#b8c2cf;
+            }
+            QPushButton#playerAction:hover{background:#171e28;border-color:#38495f;color:#eef2f7}
+            QLabel#audioProcessingState{color:#748094;font-size:10px}
+            QSlider#seekSlider::groove:horizontal{height:4px;background:#27313e;border-radius:2px}
+            QSlider#seekSlider::sub-page:horizontal{background:#4f8fd8;border-radius:2px}
+            QSlider#seekSlider::handle:horizontal{
+                background:#e5edf7;width:12px;margin:-4px 0;border-radius:6px;
+            }
+            QPushButton#nowPlayingTitle{
+                background:transparent;
+                border:0;
+                padding:0;
+                text-align:left;
+                font-weight:700;
+                font-size:15px;
+            }
+            QPushButton#nowPlayingTitle:hover{color:#72aefb}
+            QLabel#nowPlayingMeta{color:#9da7b7}
+            QWidget#playerBar{
+                background:#0c1016;
+                border-top:1px solid #202733;
+            }
+            QWidget#queuePanel{
+                background:#0d1118;
+                border-left:1px solid #202733;
+            }
+            QLabel#panelTitle{font-size:17px;font-weight:700}
+            QLineEdit,QComboBox,QTextEdit,QPlainTextEdit,QListWidget{
+                background:#131923;
+                border:1px solid #293443;
+                border-radius:10px;
+                padding:8px;
+                selection-background-color:#274f7a;
+            }
+            QLineEdit:focus,QComboBox:focus,QTextEdit:focus,QPlainTextEdit:focus,QListWidget:focus{
+                border-color:#3c78b8;
+            }
+            QListWidget::item{
+                padding:11px;
+                border-bottom:1px solid #202733;
+            }
+            QListWidget::item:selected{background:#1e3552}
+            QListWidget#sourcesList{
+                background:transparent;
+                border:0;
+                padding:0;
+            }
+            QListWidget#sourcesList::item{
+                background:transparent;
+                border:1px solid transparent;
+                border-radius:12px;
+                padding:4px;
+            }
+            QListWidget#sourcesList::item:hover{
+                background:#131c28;
+                border-color:#26384d;
+            }
+            QListWidget#sourcesList::item:selected{
+                background:#17263a;
+                border-color:#31547d;
+            }
+            QFrame#actionCard{
+                background:#141b25;
+                border:1px solid #293544;
+                border-radius:12px;
+            }
+            QFrame#actionCard:hover{
+                background:#182231;
+                border-color:#3d5571;
+            }
+            QLabel#cardEyebrow{
+                color:#6fa9ef;
+                font-size:10px;
+                font-weight:700;
+            }
+            QLabel#cardTitle{font-size:18px;font-weight:720}
+            QLabel#cardBody{
+                color:#929dac;
+                font-size:12px;
+            }
+            QLabel#cardAction{color:#72aefb;font-weight:650}
+            QFrame#albumCard{background:transparent;border:1px solid transparent;border-radius:14px}
+            QFrame#albumCard:hover{background:#141b25;border-color:#304156}
+            QLabel#albumCardTitle{font-weight:700;font-size:13px}
+            QLabel#albumCardMeta{color:#8e9aab;font-size:11px}
+            QListView#visualTrackList{
+                background:transparent;
+                border:0;
+                padding:0;
+            }
+            QListView#visualTrackList::item{
+                background:transparent;
+                border:0;
+                padding:0;
+            }
+            QListView#visualTrackList::item:selected{
+                background:transparent;
+            }
+            QFrame#trackRow{background:#111821;border:1px solid #222e3d;border-radius:11px}
+            QFrame#trackRow:hover{background:#16202c;border-color:#354a63}
+            QLabel#trackTitle{font-size:14px;font-weight:700}
+            QLabel#trackMeta{color:#8f9bad;font-size:12px}
+            QLabel#warningPill{
+                background:#3a2a16;
+                border:1px solid #6e5126;
+                border-radius:8px;
+                color:#e2bd77;
+                padding:4px 7px;
+                font-size:10px;
+            }
+            QLabel#coverArt{background:#101722;border:1px solid #273546;border-radius:10px}
+            QFrame#emptyState{background:#111821;border:1px solid #283545;border-radius:12px}
+            QLabel#emptyTitle{font-size:20px;font-weight:720}
+            QLabel#emptyBody{color:#97a2b2;font-size:13px}
+            QFrame#homeHero{
+                background:#131c29;
+                border:1px solid #2a3d56;
+                border-radius:12px;
+            }
+            QFrame#homeFirstRun{
+                background:#102033;
+                border:1px solid #345a82;
+                border-radius:12px;
+            }
+            QFrame#continueCard{
+                background:#121923;
+                border:1px solid #273343;
+                border-radius:12px;
+            }
+            QFrame#powerPanel{
+                background:#111821;
+                border:1px solid #2b3747;
+                border-radius:12px;
+            }
+            QFrame#sourceOverview{
+                background:#121b26;
+                border:1px solid #2a3a4d;
+                border-radius:12px;
+            }
+            QFrame#sourceFirstRun{
+                background:#102033;
+                border:1px solid #345a82;
+                border-radius:12px;
+            }
+            QLabel#sourceFirstRunTitle{
+                font-size:16px;
+                font-weight:740;
+                color:#e8f2ff;
+            }
+            QLabel#sourceFirstRunBody{
+                color:#aebed1;
+                font-size:11px;
+            }
+
+            QFrame#pluginFeaturePicker{
+                background:#101720;
+                border:1px solid #253346;
+                border-radius:12px;
+            }
+            QFrame#featurePresenceBar{
+                background:#101821;
+                border:1px solid #26384c;
+                border-radius:10px;
+            }
+            QFrame#artworkProgressPanel{
+                background:#101821;
+                border:1px solid #2a3d53;
+                border-radius:11px;
+            }
+            QLabel#artworkProgressTitle{
+                font-size:12px;
+                font-weight:720;
+                color:#d8e6f6;
+            }
+            QLabel#artworkProgressSummary{
+                font-size:10px;
+                color:#93a7bd;
+            }
+            QLabel#artworkProgressDetail{
+                font-size:10px;
+                color:#8492a3;
+            }
+            QProgressBar{
+                min-height:14px;
+                max-height:14px;
+                border:1px solid #2b3a4c;
+                border-radius:7px;
+                background:#0c121a;
+                text-align:center;
+                color:#d6e5f5;
+                font-size:9px;
+            }
+            QProgressBar::chunk{
+                border-radius:6px;
+                background:#365f8d;
+            }
+
+            QFrame#featurePresenceBar[active="true"]{
+                background:#111f2c;
+                border-color:#315274;
+            }
+            QLabel#featurePresenceIcon{
+                color:#7fb7f1;
+                background:#172a3e;
+                border:1px solid #2f4e6c;
+                border-radius:7px;
+                font-size:12px;
+                font-weight:800;
+            }
+            QLabel#featurePresenceText{color:#c7d1de;font-size:11px}
+            QPushButton#featurePresenceAction{
+                background:transparent;
+                border:1px solid #30445b;
+                border-radius:8px;
+                padding:5px 8px;
+                color:#9ebfe4;
+                font-size:10px;
+                font-weight:650;
+            }
+            QPushButton#featurePresenceAction:hover{
+                background:#182536;
+                border-color:#45688e;
+                color:#e5f1ff;
+            }
+
+            QLabel#pluginFeatureTitle{font-size:13px;font-weight:700}
+            QLabel#pluginFeatureSubtitle{color:#7f8b9c;font-size:10px}
+            QPushButton#featureChip{
+                background:#151f2c;
+                border:1px solid #2d4057;
+                border-radius:9px;
+                padding:7px 10px;
+                color:#b9cce2;
+                font-weight:650;
+            }
+            QPushButton#featureChip:hover{
+                background:#1b2b3e;
+                border-color:#42658c;
+                color:#e5f0ff;
+            }
+            QFrame#sourceSummaryCard{
+                background:#0f1620;
+                border:1px solid #263547;
+                border-radius:11px;
+            }
+            QLabel#sourceSummaryIcon{
+                background:#18283c;
+                border:1px solid #2f4c6d;
+                border-radius:9px;
+                color:#7eb8ff;
+                font-size:16px;
+                font-weight:800;
+            }
+            QLabel#sourceSummaryValue{
+                color:#8f9bad;
+                font-size:11px;
+            }
+            QLabel#overviewIcon{
+                background:#193354;
+                border:1px solid #2f5d8f;
+                border-radius:12px;
+                color:#d8eaff;
+                font-size:21px;
+                font-weight:700;
+            }
+            QFrame#sourceCard{
+                background:#101720;
+                border:1px solid #223045;
+                border-radius:10px;
+            }
+            QLabel#sourceBadge{
+                background:#1c2a3e;
+                color:#dce9fb;
+                border:1px solid #34506f;
+                border-radius:10px;
+                font-size:17px;
+                font-weight:750;
+            }
+            QLabel#sourceTitle{font-size:15px;font-weight:700}
+            QLabel#originPill{
+                background:#17202c;
+                border:1px solid #2a394b;
+                border-radius:7px;
+                padding:2px 6px;
+                color:#8fa7c3;
+                font-size:9px;
+                font-weight:650;
+            }
+            QLabel#sourceDescription{color:#8f9bad}
+            QLabel#sourceKind{color:#7d899b;font-size:11px}
+            QLabel#statusPill{
+                background:#1a2634;
+                border:1px solid #30445b;
+                border-radius:9px;
+                padding:5px 8px;
+                color:#bfd4eb;
+                font-size:11px;
+            }
+            QTabWidget::pane{
+                border:0;
+                background:transparent;
+            }
+            QTabBar::tab{
+                background:transparent;
+                color:#aeb7c5;
+                border:0;
+                border-radius:8px;
+                padding:8px 14px;
+                margin-right:4px;
+            }
+            QTabBar::tab:selected{
+                background:#1875e8;
+                color:white;
+            }
+            QScrollBar:vertical{
+                background:transparent;
+                width:10px;
+                margin:2px;
+            }
+            QScrollBar::handle:vertical{
+                background:#334154;
+                min-height:32px;
+                border-radius:5px;
+            }
+            QScrollBar::handle:vertical:hover{background:#43566f}
+            QScrollBar::add-line:vertical,QScrollBar::sub-line:vertical{
+                height:0;
+                background:transparent;
+            }
+            QScrollBar::add-page:vertical,QScrollBar::sub-page:vertical{
+                background:transparent;
+            }
+            QScrollBar:horizontal{
+                background:transparent;
+                height:10px;
+                margin:2px;
+            }
+            QScrollBar::handle:horizontal{
+                background:#334154;
+                min-width:32px;
+                border-radius:5px;
+            }
+            QScrollBar::add-line:horizontal,QScrollBar::sub-line:horizontal{
+                width:0;
+                background:transparent;
+            }
+            QStatusBar{
+                background:#0b0f15;
+                color:#7f8b9b;
+                border-top:1px solid #202733;
+                font-size:11px;
+            }
+            QToolTip{
+                background:#18202c;
+                color:#f4f6fa;
+                border:1px solid #3a4658;
+                padding:7px;
+            }
+        """)
+        self.navigation.update_nav_state("home")
+        self._refresh_plugin_presence()
+
+    @staticmethod
+    def _clear_layout_items(layout) -> None:
+        while layout.count():
+            item=layout.takeAt(0)
+            child=item.layout()
+            if child is not None:
+                MainWindow._clear_layout_items(child)
+                child.deleteLater()
+            widget=item.widget()
+            if widget is not None:
+                widget.deleteLater()
+
+    def _page_layout(self, page: str, title: str, subtitle: str=""):
+        existing=self.pages[page].layout()
+        if existing is None:
+            lay=QVBoxLayout(self.pages[page])
+        else:
+            lay=existing
+            self._clear_layout_items(lay)
+        lay.setContentsMargins(30,22,30,24)
+        lay.setSpacing(5)
+        t=QLabel(title); t.setObjectName("pageTitle"); lay.addWidget(t)
+        self.page_titles[page]=t
+        if subtitle:
+            subtitle_label=QLabel(subtitle)
+            subtitle_label.setWordWrap(True)
+            subtitle_label.setObjectName("pageSubtitle")
+            lay.addWidget(subtitle_label)
+        return lay
+
+    def _prepare_lazy_page_shell(
+        self,
+        page: str,
+        title: str,
+        subtitle: str,
+    ) -> None:
+        lay=self._page_layout(page,title,subtitle)
+        hint=QLabel("Opening…")
+        hint.setObjectName("pageHint")
+        lay.addWidget(hint)
+        lay.addStretch(1)
+
+    def _build_home(self):
+        l=self._page_layout("home", "Home")
+
+        self.home_first_run = QFrame()
+        self.home_first_run.setObjectName("homeFirstRun")
+        first_run_l = QVBoxLayout(self.home_first_run)
+        first_run_l.setContentsMargins(24, 24, 24, 24)
+        first_run_l.setSpacing(12)
+        first_run_body = QLabel(
+            "Choose a folder, connect a mounted NAS folder, or play a few files. "
+            "Melodex can start before it finishes building your library."
+        )
+        first_run_body.setWordWrap(True)
+        first_run_body.setObjectName("mutedText")
+        first_run_l.addWidget(first_run_body)
+        self.home_first_run_hint = QLabel("Your files stay where they are.")
+        self.home_first_run_hint.setWordWrap(True)
+        self.home_first_run_hint.setObjectName("subtleText")
+        first_run_l.addWidget(self.home_first_run_hint)
+        first_run_actions = QHBoxLayout()
+        choose_folder = QPushButton("Choose Music Folder")
+        choose_folder.setObjectName("primaryButton")
+        choose_folder.setProperty("firstRunAction", "choose-folder")
+        choose_folder.setMinimumHeight(46)
+        choose_folder.clicked.connect(
+            lambda _checked=False: self._choose_music_folder()
+        )
+        connect_nas = QPushButton("Connect Network Music")
+        connect_nas.setObjectName("secondaryButton")
+        connect_nas.setProperty("firstRunAction", "connect-network")
+        connect_nas.setMinimumHeight(46)
+        connect_nas.clicked.connect(
+            lambda _checked=False: self._choose_music_folder(
+                "Choose a mounted NAS music folder"
+            )
+        )
+        try_files = QPushButton("Try with a few files…")
+        try_files.setObjectName("secondaryButton")
+        try_files.setProperty("firstRunAction", "try-files")
+        try_files.setMinimumHeight(46)
+        try_files.clicked.connect(
+            lambda _checked=False: self._try_audio_files()
+        )
+        first_run_actions.addWidget(choose_folder)
+        first_run_actions.addWidget(connect_nas)
+        first_run_actions.addWidget(try_files)
+        first_run_l.addLayout(first_run_actions)
+        self.first_run_play_button = QPushButton("▶  Play Something")
+        self.first_run_play_button.setObjectName("secondaryButton")
+        self.first_run_play_button.setProperty("firstRunAction", "play-something")
+        self.first_run_play_button.setMinimumHeight(44)
+        self.first_run_play_button.clicked.connect(self._first_run_play_action)
+        set_help(
+            self.first_run_play_button,
+            "Play something",
+            "Starts with playable music found so far. New discoveries join the queue while indexing continues.",
+        )
+        self.first_run_play_button.hide()
+        first_run_l.addWidget(self.first_run_play_button)
+        drop_hint = QLabel("Or drop audio files or a music folder here.")
+        drop_hint.setAlignment(Qt.AlignCenter)
+        drop_hint.setObjectName("subtleText")
+        first_run_l.addWidget(drop_hint)
+        l.addWidget(self.home_first_run)
+
+        self.home_hero=QFrame()
+        self.home_hero.setObjectName("homeHero")
+        hero_l=QVBoxLayout(self.home_hero)
+        hero_l.setContentsMargins(22,20,22,20)
+        hero_l.setSpacing(10)
+        prompt=QLabel("Start listening")
+        prompt.setObjectName("heroTitle")
+        hero_l.addWidget(prompt)
+        self.home_explanation=QLabel(
+            "A session from your library, shaped as you listen."
+        )
+        self.home_explanation.setWordWrap(True)
+        self.home_explanation.setObjectName("mutedText")
+        hero_l.addWidget(self.home_explanation)
+
+        self.home_primary_button=QPushButton("▶  Play something")
+        self.home_primary_button.setObjectName("primaryButton")
+        self.home_primary_button.setMinimumHeight(48)
+        self.home_primary_button.clicked.connect(self._home_primary_action)
+        set_help(
+            self.home_primary_button,
+            "Play something",
+            "Starts a balanced session from your library. You can steer it later.",
+        )
+        hero_l.addWidget(self.home_primary_button)
+
+        self.home_moods_widget=QWidget()
+        moods=QHBoxLayout(self.home_moods_widget)
+        moods.setContentsMargins(0,0,0,0)
+        comfort=QPushButton("Comfort")
+        explore=QPushButton("Explore")
+        rediscover=QPushButton("Rediscover")
+        tune=QPushButton("Tune it…")
+        comfort.clicked.connect(lambda:self._play_for_me("comfort",60,0.14))
+        explore.clicked.connect(lambda:self._play_for_me("explore",60,0.72))
+        rediscover.clicked.connect(lambda:self._play_for_me("rediscover",60,0.42))
+        tune.clicked.connect(lambda:self.open_page("for_you"))
+        set_help(comfort,"Comfort","Stay close to music Melodex already knows you respond well to.")
+        set_help(explore,"Explore","Move further from the familiar while keeping the session musically coherent.")
+        set_help(rediscover,"Rediscover","Favour music from your library that you once played but have not heard recently.")
+        set_help(tune,"Fine-tune listening","Open duration, familiarity and local-intelligence controls.")
+        moods.addWidget(comfort)
+        moods.addWidget(explore)
+        moods.addWidget(rediscover)
+        moods.addStretch(1)
+        moods.addWidget(tune)
+        hero_l.addWidget(self.home_moods_widget)
+        l.addWidget(self.home_hero)
+
+        self.home_continue_heading=QLabel("Continue listening")
+        self.home_continue_heading.setStyleSheet("font-size:18px;font-weight:700;margin-top:10px")
+        l.addWidget(self.home_continue_heading)
+
+        self.home_continue=QFrame()
+        self.home_continue.setObjectName("continueCard")
+        continue_l=QHBoxLayout(self.home_continue)
+        continue_l.setContentsMargins(14,14,14,14)
+        continue_l.setSpacing(15)
+        self.home_continue_cover=CoverLabel(92)
+        continue_l.addWidget(self.home_continue_cover)
+        continue_text=QVBoxLayout()
+        self.home_continue_title=QLabel("Nothing played yet")
+        self.home_continue_title.setStyleSheet("font-size:17px;font-weight:700")
+        self.home_continue_meta=QLabel("Play something and it will be easy to return here.")
+        self.home_continue_meta.setWordWrap(True)
+        self.home_continue_meta.setObjectName("mutedText")
+        continue_text.addStretch(1)
+        continue_text.addWidget(self.home_continue_title)
+        continue_text.addWidget(self.home_continue_meta)
+        continue_text.addStretch(1)
+        continue_l.addLayout(continue_text,1)
+        self.home_continue_button=QPushButton("▶ Continue")
+        self.home_continue_button.setObjectName("secondaryButton")
+        self.home_continue_button.clicked.connect(self._home_continue_play)
+        self.home_continue_button.setEnabled(False)
+        set_help(
+            self.home_continue_button,
+            "Continue listening",
+            "Starts the most recent track again. Your listening history stays private on this computer.",
+        )
+        continue_l.addWidget(self.home_continue_button)
+        l.addWidget(self.home_continue)
+
+        self.home_explore_heading=QLabel("Explore your music")
+        self.home_explore_heading.setStyleSheet("font-size:18px;font-weight:700;margin-top:10px")
+        l.addWidget(self.home_explore_heading)
+        self.home_explore_widget=QWidget()
+        cards=QHBoxLayout(self.home_explore_widget)
+        cards.setContentsMargins(0,0,0,0)
+        library_card=ActionCard(
+            "Browse your collection",
+            "Albums, artists and tracks.",
+            eyebrow="My Music",
+            action_text="Browse",
+        )
+        library_card.clicked.connect(lambda:self.open_page("library"))
+        wall_card=ActionCard(
+            "Album Wall",
+            "Browse your collection as a wall of covers.",
+            eyebrow="Visual",
+            action_text="Explore",
+        )
+        wall_card.clicked.connect(lambda:self.open_page("album_wall"))
+        map_card=ActionCard(
+            "Music Map",
+            "See how tracks in your library connect.",
+            eyebrow="Deep explore",
+            action_text="Open map",
+        )
+        map_card.clicked.connect(lambda:self.open_page("music_map"))
+        cards.addWidget(library_card,1)
+        cards.addWidget(wall_card,1)
+        cards.addWidget(map_card,1)
+        l.addWidget(self.home_explore_widget)
+
+        self.home_status=QLabel()
+        self.home_status.setWordWrap(True)
+        self.home_status.setObjectName("subtleText")
+        l.addWidget(self.home_status)
+        l.addStretch(1)
+
+
+    def _build_for_you(self):
+        l=self._page_layout(
+            "for_you",
+            "Tune your listening",
+            "Choose how long to listen and how adventurous the session should be.",
+        )
+
+        row=QHBoxLayout()
+        self.mode=QComboBox()
+        self.mode.addItem("Balanced","balanced")
+        self.mode.addItem("Comfort","comfort")
+        self.mode.addItem("Rediscover","rediscover")
+        self.mode.addItem("Explore","explore")
+        self.minutes=QComboBox()
+        self.minutes.addItems(["30","60","90","120"])
+        self.adventure=QSlider(Qt.Horizontal)
+        self.adventure.setRange(0,100)
+        self.adventure.setValue(35)
+
+        set_help(
+            self.mode,
+            "Listening style",
+            "Balanced mixes familiarity and discovery. Comfort stays close to known preferences. Rediscover favours neglected music. Explore moves further away.",
+        )
+        set_help(
+            self.minutes,
+            "Session length",
+            "Choose approximately how long Melodex should plan for.",
+        )
+        set_help(
+            self.adventure,
+            "Familiar to adventurous",
+            "Move left to stay close to music Melodex already knows you respond well to; move right to allow more unexpected choices.",
+        )
+
+        row.addWidget(QLabel("Style"))
+        row.addWidget(self.mode)
+        row.addWidget(QLabel("Minutes"))
+        row.addWidget(self.minutes)
+        row.addWidget(QLabel("Familiar"))
+        row.addWidget(self.adventure,1)
+        row.addWidget(QLabel("Adventurous"))
+        l.addLayout(row)
+
+        go=QPushButton("▶ Build this session")
+        go.setObjectName("primaryButton")
+        go.clicked.connect(
+            lambda:self._play_for_me(
+                str(self.mode.currentData() or "balanced"),
+                int(self.minutes.currentText()),
+                self.adventure.value()/100,
+            )
+        )
+        set_help(
+            go,
+            "Build this session",
+            "Creates a queue from your local library using these preferences. The exact tracks can still change as you listen.",
+        )
+        l.addWidget(go)
+
+        self.taste_label=QLabel()
+        self.taste_label.setWordWrap(True)
+        self.taste_label.setObjectName("subtleText")
+        l.addWidget(self.taste_label)
+
+        intel_title=QLabel("From your library")
+        intel_title.setStyleSheet("font-size:18px;font-weight:650;margin-top:10px")
+        l.addWidget(intel_title)
+
+        intel_help=QLabel(
+            "Local suggestions based on what you have and what you play."
+        )
+        intel_help.setWordWrap(True)
+        intel_help.setObjectName("mutedText")
+        l.addWidget(intel_help)
+
+        self.recommendation_plugin_presence=FeaturePresenceBar(
+            "Recommendation helpers",
+            baseline="Melodex local intelligence is active",
+            action_text="Add recommendation helper…",
+        )
+        self.recommendation_plugin_presence.actionRequested.connect(
+            lambda:self.sources_feature.open_plugin_directory("library_suggestions")
+        )
+        l.addWidget(self.recommendation_plugin_presence)
+
+        intel_row=QHBoxLayout()
+        similar=QPushButton("More like current")
+        similar.clicked.connect(lambda:self._run_local_intelligence("similar"))
+        rediscover=QPushButton("Forgotten favourites")
+        rediscover.clicked.connect(lambda:self._run_local_intelligence("rediscover"))
+        bridge=QPushButton("Bridge current → next")
+        bridge.clicked.connect(lambda:self._run_local_intelligence("bridge"))
+        detour=QPushButton("Find a detour")
+        detour.clicked.connect(lambda:self._run_local_intelligence("detour"))
+        analyse=QPushButton("Improve suggestions")
+        analyse.clicked.connect(self._analyse_library_for_intelligence)
+
+        set_help(similar,"More like current","Find music in your local library that is sonically near the track playing now.")
+        set_help(rediscover,"Forgotten favourites","Look for music you once played or kept but have not heard recently.")
+        set_help(bridge,"Bridge current to next","Find music that can make the transition between the current track and the next queued track feel more natural.")
+        set_help(detour,"Find a detour","Keep part of the current musical character while deliberately changing other qualities.")
+        set_help(
+            analyse,
+            "Improve suggestions",
+            "Analyse sonic features locally so similarity, detours and map placement can become more accurate. Your audio is not uploaded.",
+        )
+
+        intel_row.addWidget(similar)
+        intel_row.addWidget(rediscover)
+        intel_row.addWidget(bridge)
+        intel_row.addWidget(detour)
+        intel_row.addWidget(analyse)
+        intel_row.addStretch(1)
+        l.addLayout(intel_row)
+
+        self.intelligence_results=QListWidget()
+        self.intelligence_results.itemDoubleClicked.connect(self._play_intelligence_result)
+        l.addWidget(self.intelligence_results,1)
+
+        intel_actions=QHBoxLayout()
+        play_pick=QPushButton("▶ Play selected")
+        play_pick.clicked.connect(self._play_selected_intelligence)
+        queue_pick=QPushButton("+ Queue selected")
+        queue_pick.clicked.connect(self._queue_selected_intelligence)
+        intel_actions.addWidget(play_pick)
+        intel_actions.addWidget(queue_pick)
+        intel_actions.addStretch(1)
+        l.addLayout(intel_actions)
+
+    def _build_discover(self):
+        l=self._page_layout(
+            "discover",
+            "Discover",
+            "Search your library and connected sources.",
+        )
+        row=QHBoxLayout()
+        self.search_box=QLineEdit()
+        self.search_box.setPlaceholderText("Artist, track or album…")
+        self.search_source=QComboBox()
+        self.search_button=QPushButton("Search")
+        self.search_button.clicked.connect(self._search)
+        row.addWidget(self.search_box,1)
+        row.addWidget(self.search_source)
+        row.addWidget(self.search_button)
+        l.addLayout(row)
+        self.search_box.returnPressed.connect(self._search)
+
+        self.search_plugin_presence=FeaturePresenceBar(
+            "Search sources",
+            baseline="Your local library is always searchable",
+            action_text="Add music source…",
+        )
+        self.search_plugin_presence.actionRequested.connect(
+            lambda:self.sources_feature.open_plugin_directory("search")
+        )
+        l.addWidget(self.search_plugin_presence)
+
+        self.search_status=QLabel("Ready to search")
+        self.search_status.setWordWrap(True)
+        self.search_status.setObjectName("searchStatus")
+        l.addWidget(self.search_status)
+
+        self.results=QListWidget()
+        self.results.itemDoubleClicked.connect(self._play_result)
+        l.addWidget(self.results,1)
+
+        row2=QHBoxLayout()
+        addq=QPushButton("Add selected to queue")
+        addq.clicked.connect(self._add_selected_to_queue)
+        source_btn=QPushButton("Open source page")
+        source_btn.clicked.connect(self._open_selected_source)
+        row2.addWidget(addq)
+        row2.addWidget(source_btn)
+        row2.addStretch(1)
+        l.addLayout(row2)
+
+    def _build_library(self):
+        from .library_browser import LibraryBrowser
+
+        l=self._page_layout(
+            "library",
+            "My Music",
+            "Albums, artists and tracks from your library.",
+        )
+        self.artwork_plugin_presence=FeaturePresenceBar(
+            "Artwork helpers",
+            baseline="Built-in artwork matching is active",
+            action_text="Add artwork helper…",
+        )
+        self.artwork_plugin_presence.actionRequested.connect(
+            lambda:self.sources_feature.open_plugin_directory("artwork")
+        )
+        self.artwork_plugin_presence.setVisible(
+            bool(self.providers.local_catalog_count())
+        )
+        l.addWidget(self.artwork_plugin_presence)
+
+        self.library_browser=LibraryBrowser(self)
+        self.library_browser.playAlbumRequested.connect(self._play_album_wall_album)
+        self.library_browser.queueAlbumRequested.connect(self._queue_album_data)
+        self.library_browser.playArtistRequested.connect(self._play_library_artist)
+        self.library_browser.playTrackRequested.connect(self._play_library_track)
+        self.library_browser.queueTrackRequested.connect(self._queue_library_track)
+        self.library_browser.editMetadataRequested.connect(self._edit_local_metadata)
+        self.library_browser.addFolderRequested.connect(self._choose_music_folder)
+        self.library_browser.rescanRequested.connect(self._rescan)
+        self.library_browser.scanPauseRequested.connect(self._toggle_local_scan_pause)
+        self.library_browser.scanCancelRequested.connect(self._cancel_local_scan)
+        self.library_browser.directoryPriorityRequested.connect(
+            self._prioritize_scan_directories
+        )
+        self.library_browser.shuffleDiscoveredRequested.connect(
+            self._shuffle_discovered_tracks
+        )
+        self.library_browser.albumWallRequested.connect(lambda:self.open_page("album_wall"))
+        self.library_browser.momentsRequested.connect(lambda:self.open_page("moments"))
+        self.library_browser.artworkRequested.connect(self._library_artwork_requested)
+        self.library_browser.onlineArtworkRequested.connect(self._library_online_artwork_requested)
+        self.library_browser.artistImageRequested.connect(self._library_artist_images_requested)
+        self.library_browser.artistImageCacheRequested.connect(self._library_cached_artist_images_requested)
+        self.library_browser.artistPhotoFileRequested.connect(self._choose_artist_photo_file)
+        l.addWidget(self.library_browser,1)
+
+
+    def _build_explore(self):
+        l=self._page_layout(
+            "explore",
+            "Explore",
+            "Search, browse visually, or follow connections through your music.",
+        )
+
+        cards=QHBoxLayout()
+        search_card=ActionCard(
+            "Search everything",
+            "Find artists, albums and tracks.",
+            eyebrow="Search",
+            action_text="Search",
+        )
+        search_card.clicked.connect(lambda:self.open_page("discover"))
+        self.explore_wall_card=ActionCard(
+            "Album Wall",
+            "Browse your collection by cover.",
+            eyebrow="Browse",
+            action_text="Open wall",
+        )
+        self.explore_wall_card.clicked.connect(lambda:self.open_page("album_wall"))
+        self.explore_map_card=ActionCard(
+            "Music Map",
+            "Follow relationships between tracks.",
+            eyebrow="Relationships",
+            action_text="Open map",
+        )
+        self.explore_map_card.clicked.connect(lambda:self.open_page("music_map"))
+        cards.addWidget(search_card,1)
+        cards.addWidget(self.explore_wall_card,1)
+        cards.addWidget(self.explore_map_card,1)
+        l.addLayout(cards)
+
+        self.explore_try_section=QWidget()
+        try_l=QVBoxLayout(self.explore_try_section)
+        try_l.setContentsMargins(0,0,0,0)
+        try_l.setSpacing(8)
+        help_title=QLabel("Try something")
+        help_title.setObjectName("sectionTitle")
+        try_l.addWidget(help_title)
+        help_row=QHBoxLayout()
+        self.explore_similar_button=QPushButton("More like what is playing")
+        self.explore_similar_button.clicked.connect(
+            lambda:self._run_local_intelligence("similar")
+        )
+        rediscover=QPushButton("Find a forgotten favourite")
+        rediscover.clicked.connect(lambda:self._run_local_intelligence("rediscover"))
+        self.explore_ask_button=QPushButton("Ask Melodex…")
+        self.explore_ask_button.setObjectName("quietButton")
+        self.explore_ask_button.clicked.connect(lambda:self.open_page("ask"))
+        set_help(self.explore_similar_button,"More like this","Uses local intelligence to look for nearby music in your own library.")
+        set_help(rediscover,"Forgotten favourite","Looks for music you used to play but have not heard for a while.")
+        set_help(self.explore_ask_button,"Ask Melodex","Use an optional connected LLM for natural-language listening requests. Melodex still works without one.")
+        help_row.addWidget(self.explore_similar_button)
+        help_row.addWidget(rediscover)
+        help_row.addWidget(self.explore_ask_button)
+        help_row.addStretch(1)
+        try_l.addLayout(help_row)
+
+        note=QLabel(
+            "Album Wall is for browsing. Music Map is for connections and routes."
+        )
+        note.setWordWrap(True)
+        note.setObjectName("subtleText")
+        try_l.addWidget(note)
+        l.addWidget(self.explore_try_section)
+        l.addStretch(1)
+
+        self._refresh_explore_visibility()
+
+    def _build_album_wall(self):
+        from .album_wall import AlbumWallWidget
+
+        l=self._page_layout(
+            "album_wall",
+            "Album Wall",
+            "Browse your collection as a visual place. Drag or two-finger scroll to pan, zoom when you need it, and double-click an album to play.",
+        )
+
+        actions=QHBoxLayout()
+        self.album_wall_options_button=QPushButton("Wall options…")
+        self.album_wall_options_button.setObjectName("quietButton")
+        self.album_wall_options_button.clicked.connect(self._toggle_album_wall_tools)
+        self.album_wall_play_button=QPushButton("▶ Play selected")
+        self.album_wall_play_button.clicked.connect(self._play_album_wall_selected)
+        self.album_wall_play_button.setEnabled(False)
+        self.album_wall_queue_button=QPushButton("+ Queue selected")
+        self.album_wall_queue_button.clicked.connect(self._queue_album_wall_selected)
+        self.album_wall_queue_button.setEnabled(False)
+        set_help(
+            self.album_wall_options_button,
+            "Wall options",
+            "Reveal occasional maintenance actions such as sonic analysis, rebuilding the wall and recovering missing covers.",
+        )
+        set_help(
+            self.album_wall_play_button,
+            "Play selected album",
+            "Starts the selected album from track one in disc and track order.",
+        )
+        set_help(
+            self.album_wall_queue_button,
+            "Queue selected album",
+            "Adds every track from the selected album after the music already in your queue.",
+        )
+        actions.addWidget(self.album_wall_options_button)
+        actions.addStretch(1)
+        actions.addWidget(self.album_wall_play_button)
+        actions.addWidget(self.album_wall_queue_button)
+        l.addLayout(actions)
+
+        self.album_wall_power_panel=QFrame()
+        self.album_wall_power_panel.setObjectName("powerPanel")
+        power=QHBoxLayout(self.album_wall_power_panel)
+        power.setContentsMargins(12,8,12,8)
+        refresh=QPushButton("Rebuild wall")
+        refresh.clicked.connect(self._refresh_album_wall)
+        raw_analyse=QPushButton("Improve sonic layout")
+        raw_analyse.clicked.connect(self._analyse_library_for_album_wall)
+        recover_covers=QPushButton("Find missing covers")
+        recover_covers.clicked.connect(
+            lambda:self.album_wall.request_missing_covers()
+            if hasattr(self,"album_wall") else None
+        )
+        power.addWidget(QLabel("Wall options"))
+        power.addWidget(refresh)
+        power.addWidget(raw_analyse)
+        power.addWidget(recover_covers)
+        power.addStretch(1)
+        self.album_wall_power_panel.hide()
+        l.addWidget(self.album_wall_power_panel)
+
+        self.album_wall=AlbumWallWidget(self)
+        self.album_wall.albumSelected.connect(self._album_wall_selection_changed)
+        self.album_wall.albumActivated.connect(self._play_album_wall_album)
+        self.album_wall.artworkRequested.connect(self._album_wall_artwork_requested)
+        self.album_wall.onlineArtworkRequested.connect(self._album_wall_online_artwork_requested)
+        l.addWidget(self.album_wall,1)
+
+    def _album_wall_selection_changed(self, album: object) -> None:
+        enabled=isinstance(album,dict) and bool(album)
+        self.album_wall_play_button.setEnabled(enabled)
+        self.album_wall_queue_button.setEnabled(enabled)
+
+
+    def _toggle_album_wall_tools(self) -> None:
+        visible=not self.album_wall_power_panel.isVisible()
+        self.album_wall_power_panel.setVisible(visible)
+
+    def _build_playlists(self):
+        l=self._page_layout(
+            "playlists",
+            "Playlists",
+            "Keep playlists here, whether you made them elsewhere or built them in Melodex.",
+        )
+
+        top=QHBoxLayout()
+        imp=QPushButton("Import playlist…")
+        imp.setObjectName("primaryButton")
+        imp.clicked.connect(self._import_playlist_file)
+        ai=QPushButton("Paste from AI…")
+        ai.setObjectName("secondaryButton")
+        ai.clicked.connect(self._open_ai_playlist_import)
+        set_help(
+            imp,
+            "Import playlist",
+            "Import XSPF, M3U or M3U8. Melodex keeps unmatched requests so they can be resolved later.",
+        )
+        set_help(
+            ai,
+            "Paste from AI",
+            "Paste a playlist generated in ChatGPT, Claude, Gemini or another AI. No AI account is connected and the pasted text is not sent back to an AI service.",
+        )
+        top.addWidget(imp)
+        top.addWidget(ai)
+        top.addStretch(1)
+        l.addLayout(top)
+
+        self.playlists_stack=QStackedWidget()
+        self.playlists_list=QListWidget()
+        self.playlists_list.itemDoubleClicked.connect(self._play_saved_playlist)
+        self.playlists_list.itemSelectionChanged.connect(self._playlist_selection_changed)
+        self.playlists_empty=EmptyState(
+            "No playlists yet",
+            "Import a playlist, or save music from your current queue.",
+            "Import playlist",
+        )
+        self.playlists_empty.actionRequested.connect(self._import_playlist_file)
+        self.playlists_stack.addWidget(self.playlists_empty)
+        self.playlists_stack.addWidget(self.playlists_list)
+        l.addWidget(self.playlists_stack,1)
+
+        row=QHBoxLayout()
+        self.playlist_export_button=QPushButton("Export selected…")
+        self.playlist_export_button.clicked.connect(self._export_selected_playlist)
+        self.playlist_export_button.setEnabled(False)
+        expq=QPushButton("Export current queue…")
+        expq.clicked.connect(self._export_queue)
+        row.addWidget(self.playlist_export_button)
+        row.addWidget(expq)
+        row.addStretch(1)
+        l.addLayout(row)
+
+    def _playlist_selection_changed(self) -> None:
+        item=self.playlists_list.currentItem() if hasattr(self,"playlists_list") else None
+        record=item.data(Qt.UserRole) if item else None
+        if hasattr(self,"playlist_export_button"):
+            self.playlist_export_button.setEnabled(isinstance(record,dict))
+
+
+    def _build_moments(self):
+        l=self._page_layout(
+            "moments",
+            "Moments",
+            "Bookmarks inside songs — the exact musical moments you wanted to remember, not just a list of favourite tracks.",
+        )
+        note=QLabel(
+            "While something is playing, use the current-track actions to remember a moment. Double-click a saved moment to play from that point."
+        )
+        note.setWordWrap(True)
+        note.setStyleSheet("color:#8f9bad")
+        l.addWidget(note)
+        self.moments_stack=QStackedWidget()
+        self.moments_list=QListWidget()
+        self.moments_list.itemDoubleClicked.connect(self._play_saved_moment)
+        self.moments_empty=EmptyState(
+            "No moments saved yet",
+            "When a song reaches a part you want to remember, save that exact point and it will appear here.",
+            "Open Now Playing",
+        )
+        self.moments_empty.actionRequested.connect(lambda:self.open_page("now_playing"))
+        self.moments_stack.addWidget(self.moments_list)
+        self.moments_stack.addWidget(self.moments_empty)
+        l.addWidget(self.moments_stack,1)
+
+
+    def _build_ask(self):
+        l=self._page_layout("ask","Ask Melodex","Optional. Connect OpenWebUI, Ollama or another compatible model. The player still works without any LLM.")
+        self.chat=QTextEdit(); self.chat.setReadOnly(True); l.addWidget(self.chat,1)
+        row=QHBoxLayout(); self.ask_box=QLineEdit(); self.ask_box.setPlaceholderText("e.g. Keep this mood but make the next hour stranger"); self.ask_box.returnPressed.connect(self._ask); ask=QPushButton("Ask"); ask.clicked.connect(self._ask); cfg=QPushButton("Connect LLM…"); cfg.clicked.connect(self._llm_settings_dialog); row.addWidget(self.ask_box,1); row.addWidget(ask); row.addWidget(cfg); l.addLayout(row)
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() == QEvent.WindowStateChange:
+            self.playback_feature.set_window_minimized(self.isMinimized())
+
+    def open_page(self, name: str):
+        self.navigation.open_page(name)
+
+    def _refresh_explore_visibility(self) -> None:
+        has_library=bool(self.providers.local_catalog_count())
+        if hasattr(self,"explore_wall_card"):
+            self.explore_wall_card.setVisible(has_library)
+        if hasattr(self,"explore_map_card"):
+            self.explore_map_card.setVisible(has_library)
+        if hasattr(self,"explore_try_section"):
+            self.explore_try_section.setVisible(has_library)
+        if hasattr(self,"explore_similar_button"):
+            self.explore_similar_button.setEnabled(
+                bool(self.playback_feature.current_track())
+            )
+        if hasattr(self,"explore_ask_button"):
+            self.explore_ask_button.setVisible(
+                has_library and self.power_toggle.isChecked()
+            )
+
+    def _show_home(self):
+        self._refresh_taste()
+        count=self.providers.local_catalog_count()
+        has_library=bool(count)
+        if hasattr(self, "home_first_run"):
+            self.home_first_run.setVisible(not has_library)
+            self.home_hero.setVisible(has_library)
+            title = self.page_titles.get("home")
+            if title is not None:
+                title.setText("Home" if has_library else "Your music, immediately.")
+            if not has_library and hasattr(self, "home_first_run_hint"):
+                self.home_first_run_hint.setText(
+                    "Finding playable music…"
+                    if self.local_scan.active
+                    else "Your files stay where they are. No setup or account is needed."
+                )
+        if hasattr(self,"home_explanation"):
+            self.home_explanation.setText(
+                "A session from your library, shaped as you listen."
+                if has_library
+                else "Add a folder of music. Your files stay where they are."
+            )
+        if hasattr(self,"home_moods_widget"):
+            self.home_moods_widget.setVisible(has_library)
+        if hasattr(self,"home_explore_heading"):
+            self.home_explore_heading.setVisible(has_library)
+        if hasattr(self,"home_explore_widget"):
+            self.home_explore_widget.setVisible(has_library)
+        if hasattr(self,"home_status"):
+            self.home_status.setVisible(has_library)
+            if has_library:
+                self.home_status.setText(
+                    f"{count:,} track{'s' if count != 1 else ''} in your library"
+                )
+        if hasattr(self,"home_primary_button"):
+            if count:
+                self.home_primary_button.setText("▶  Play something")
+                set_help(
+                    self.home_primary_button,
+                    "Play something",
+                    "Builds a balanced one-hour session from your local library using your listening history and Flow when available.",
+                )
+            else:
+                self.home_primary_button.setText("+  Add my music")
+                set_help(
+                    self.home_primary_button,
+                    "Add your music",
+                    "Choose a folder of music on this computer. Melodex indexes it locally and does not upload your audio.",
+                )
+        self._refresh_home_continue()
+        self._refresh_first_run_play_affordance()
+
+    def _refresh_first_run_play_affordance(self) -> None:
+        button = getattr(self, "first_run_play_button", None)
+        if button is None:
+            return
+        tracks = self._discovered_playable_tracks()
+        queue_ready = bool(self.player.queue) and self.player.index >= 0
+        available = (
+            (bool(tracks) or queue_ready)
+            and not bool(self.providers.local_catalog_count())
+        )
+        button.setVisible(available)
+        if available:
+            if queue_ready and not self._first_discovery_preview_queue:
+                count = len(self.player.queue)
+                button.setText(f"▶  Continue queue · {count:,} ready")
+            else:
+                count = len(tracks)
+                button.setText(
+                    f"▶  Play Something · {count:,} ready"
+                    if count > 1
+                    else "▶  Play Something · 1 track ready"
+                )
+
+    def _first_run_play_action(self) -> None:
+        if (
+            self.player.queue
+            and self.player.index >= 0
+            and (
+                self._restored_playback_queue
+                or not self._first_discovery_preview_queue
+            )
+        ):
+            self.player.jump_to(self.player.index, autoplay=True)
+            return
+        self._shuffle_discovered_tracks()
+
+    def _set_queue_from_playback_feature(
+        self, tracks: object, start: int, autoplay: bool, intent: str
+    ) -> None:
+        self._first_discovery_preview_queue = False
+        self._restored_playback_queue = False
+        self.player.set_queue(
+            list(tracks or []),
+            int(start),
+            bool(autoplay),
+            intent=str(intent or "manual_queue"),
+        )
+
+    def _home_primary_action(self) -> None:
+        if self.player.queue and self.player.index >= 0:
+            self._prioritize_tracks([self.player.queue[self.player.index]])
+            self.player.jump_to(self.player.index, autoplay=True)
+            return
+        if self.providers.local_catalog_count():
+            if not self.providers.local_catalog_is_loaded():
+                recent = dict(getattr(self, "home_recent_track", {}) or {})
+                if recent and str(recent.get("local_path") or "").strip():
+                    self._home_continue_play()
+                    self.statusBar().showMessage(
+                        "Playing from your cached listening history while the library restores…",
+                        5000,
+                    )
+                else:
+                    roots = self.providers.local_roots()
+                    stored = self.state.source_statuses()
+                    availability = {
+                        str(root): str(
+                            dict(stored.get(str(root)) or {}).get("status") or "cached"
+                        )
+                        for root in roots
+                    }
+                    first_track = self.providers.first_indexed_local_track(
+                        roots, source_availability=availability
+                    )
+                    if first_track and first_track.get("availability") != "unavailable":
+                        self.player.set_queue(
+                            [first_track], 0, True, intent="manual_queue"
+                        )
+                    self._start_local_cache_hydration(
+                        roots
+                    )
+                    message = (
+                        "Playing cached music while the full library restores…"
+                        if first_track and first_track.get("availability") != "unavailable"
+                        else "Restoring your cached music in the background…"
+                    )
+                    self.statusBar().showMessage(message, 5000)
+                return
+            self._play_for_me("balanced",60,0.35)
+        else:
+            self._choose_music_folder()
+
+    def _refresh_home_continue(self) -> None:
+        if not hasattr(self,"home_continue_cover"):
+            return
+        recent = self.state.recent_tracks(1)
+        checkpoint = self.state.playback_checkpoint()
+        track = dict(
+            self.playback_feature.current_track()
+            or (recent[0] if recent else {})
+            or dict((checkpoint or {}).get("track") or {})
+        )
+        self.home_recent_track = track
+        if not track:
+            if hasattr(self,"home_continue_heading"):
+                self.home_continue_heading.hide()
+            self.home_continue.hide()
+            self.home_continue_cover.set_cover("",title="Your music",key="empty-home")
+            self.home_continue_title.setText("Nothing played yet")
+            self.home_continue_meta.setText(
+                "Choose Play something or browse My Music. Your recent listening will appear here."
+            )
+            self.home_continue_button.setEnabled(False)
+            return
+        if hasattr(self,"home_continue_heading"):
+            self.home_continue_heading.show()
+        self.home_continue.show()
+        title=str(track.get("title") or "Unknown track")
+        artist=str(track.get("artist") or "Unknown artist")
+        album=str(track.get("album") or "")
+        self.home_continue_title.setText(title)
+        self.home_continue_meta.setText(artist + (f"  ·  {album}" if album else ""))
+        self.home_continue_button.setEnabled(True)
+        self.home_continue_cover.set_cover("",title=album or title,key=UserState.track_key(track))
+        token=UserState.track_key(track)
+        self._run_async(
+            lambda:self.metadata.local_artwork(track),
+            lambda result:self._home_continue_art_loaded(token,result),
+        priority="visible", task_name="home-artwork", replace_key="home-artwork")
+
+    def _home_continue_art_loaded(self, token: str, result: object) -> None:
+        current=UserState.track_key(dict(getattr(self,"home_recent_track",{}) or {}))
+        if token!=current or not isinstance(result,dict):
+            return
+        path=str(result.get("path") or "")
+        self.home_continue_cover.set_cover(
+            path,
+            title=str(self.home_recent_track.get("album") or self.home_recent_track.get("title") or ""),
+            key=token,
+        )
+        current=dict(self.playback_feature.current_track() or {})
+        if current and token==UserState.track_key(current):
+            self.playback_feature.apply_cached_artwork(token, path)
+
+    def _home_continue_play(self) -> None:
+        track=dict(getattr(self,"home_recent_track",{}) or {})
+        if track:
+            self.player.set_queue([track],0,True,intent="manual_queue")
+            checkpoint = self.state.playback_checkpoint()
+            saved_track = dict((checkpoint or {}).get("track") or {})
+            position = max(0, int((checkpoint or {}).get("position_ms") or 0))
+            if (
+                position >= 2000
+                and UserState.track_key(saved_track) == UserState.track_key(track)
+            ):
+                self._resume_checkpoint_when_ready(track, position)
+
+    def _resume_checkpoint_when_ready(
+        self, track: dict[str, Any], position_ms: int
+    ) -> None:
+        token = UserState.track_key(track)
+        attempts = {"count": 0}
+        timer = QTimer(self)
+        timer.setInterval(100)
+
+        def resume() -> None:
+            attempts["count"] += 1
+            current = dict(self.playback_feature.current_track() or {})
+            if UserState.track_key(current) != token:
+                timer.stop()
+                timer.deleteLater()
+                return
+            deck = self.player.players[self.player.active]
+            duration = int(deck.duration() or 0)
+            if duration > 0:
+                target = min(max(0, int(position_ms)), max(0, duration - 1000))
+                if target:
+                    self.player.seek(target)
+                timer.stop()
+                timer.deleteLater()
+            elif attempts["count"] >= 50:
+                timer.stop()
+                timer.deleteLater()
+
+        timer.timeout.connect(resume)
+        timer.start()
+
+    def _power_changed(self, _, announce: bool = True):
+        enabled = self.power_toggle.isChecked()
+        self.state.set_bool("power_tools",enabled)
+        if hasattr(self, "sources_feature"):
+            self.sources_feature.set_power_tools_visible(enabled)
+        if hasattr(self, "explore_ask_button"):
+            self.explore_ask_button.setVisible(
+                enabled and bool(self.providers.local_catalog_count())
+            )
+        if hasattr(self, "playback_feature"):
+            self.playback_feature.set_power_tools_visible(enabled)
+        # Spatial browsing uses its own progressive disclosures. Global Power
+        # tools must not cover Album Wall or Music Map with controls.
+        if announce:
+            self.statusBar().showMessage(
+                "Power tools enabled" if enabled else "Power tools hidden",
+                2500,
+            )
+
+    def _open_command_palette(self) -> None:
+        actions=[
+            ("Home","Start listening and see recent music.",lambda:self.open_page("home")),
+            ("My Music","Browse albums, artists and tracks.",lambda:self.open_page("library")),
+            ("Explore","Search, Album Wall and Music Map.",lambda:self.open_page("explore")),
+            ("Search everything","Search all connected music sources.",lambda:self.open_page("discover")),
+            ("Album Wall","Browse your collection spatially.",lambda:self.open_page("album_wall")),
+            ("Music Map","Explore track relationships and routes.",lambda:self.open_page("music_map")),
+            ("Now Playing","Open artwork, lyrics and visuals.",lambda:self.open_page("now_playing")),
+            ("Journeys","Open saved listening journeys.",lambda:self.open_page("journeys")),
+            ("Playlists","Open saved and imported playlists.",lambda:self.open_page("playlists")),
+            ("Sources & plugins","Manage where Melodex finds music.",lambda:self.open_page("sources")),
+            ("Ask Melodex","Open optional natural-language control.",lambda:self.open_page("ask")),
+            ("Add music folder","Choose a local music folder.",self._choose_music_folder),
+            ("Analyse local library","Analyse sonic features locally for Flow and maps.",self._analyse_library_for_intelligence),
+        ]
+        CommandPaletteDialog(actions,self).exec()
+
+    def _refresh_source_combo(self):
+        current=self.search_source.currentData(); self.search_source.clear(); self.search_source.addItem("All sources","all")
+        for pid in self.providers.searchable_provider_ids():
+            p=self.providers.providers[pid]
+            self.search_source.addItem(p.info.name,pid)
+        idx=self.search_source.findData(current); self.search_source.setCurrentIndex(idx if idx>=0 else 0)
+
+    def _open_provider_search(self, provider_id: str) -> None:
+        self.open_page("discover")
+        self._refresh_source_combo()
+        index=self.search_source.findData(str(provider_id or ""))
+        if index >= 0:
+            self.search_source.setCurrentIndex(index)
+        self.search_box.setFocus()
+        provider=self.providers.providers.get(provider_id)
+        name=provider.info.name if provider is not None else provider_id
+        self.statusBar().showMessage(
+            f"Search ready · results will come from {name}",
+            4500,
+        )
+
+    def _use_extension(self, extension_id: str) -> None:
+        row=self.source_policy.extension_record(extension_id)
+        capabilities=[str(x) for x in list(row.get("capabilities") or []) if x]
+        name=str(row.get("name") or extension_id)
+
+        if "library_suggestions" in capabilities:
+            self.open_page("for_you")
+            self.statusBar().showMessage(
+                f"{name} participates here · use More like current, Forgotten favourites, Bridge current → next or Find a detour",
+                7000,
+            )
+            return
+        if "artwork" in capabilities:
+            self.open_page("library")
+            self.statusBar().showMessage(
+                f"{name} is used by artwork enrichment · choose Find missing artwork in My Music",
+                6500,
+            )
+            return
+        if any(cap in capabilities for cap in ("lyrics","context","metadata","identity")):
+            self.open_page("now_playing")
+            labels=", ".join(self.source_policy.capability_label(x) for x in capabilities)
+            self.statusBar().showMessage(
+                f"{name} provides {labels} automatically for the current track",
+                6500,
+            )
+            return
+
+        QMessageBox.information(
+            self,
+            "Plugin is active",
+            f"{name} is enabled. It does not declare a separate user-facing action; Melodex will call it when one of its capabilities is needed.",
+        )
+
+    def _refresh_library(self):
+        if not self.providers.local_catalog_is_loaded():
+            if self.providers.local_catalog_count():
+                self._start_local_cache_hydration(self.providers.local_roots())
+                if hasattr(self, "library_browser"):
+                    self.library_browser.set_cache_restoring(True)
+                    if self._progressive_local_tracks:
+                        self.library_browser.append_discovered_tracks(
+                            self._progressive_local_tracks
+                        )
+                        self._progressive_browser_revision = (
+                            self._progressive_track_revision
+                        )
+                        self._progressive_local_tracks.clear()
+                        self._progressive_track_index.clear()
+                self.statusBar().showMessage("Restoring cached music…")
+                return
+        catalog=self.providers.local_catalog()
+        if hasattr(self,"artwork_plugin_presence"):
+            self.artwork_plugin_presence.setVisible(bool(catalog))
+        if hasattr(self,"library_browser"):
+            if catalog:
+                self.library_browser.set_catalog(
+                    catalog,
+                    revision=self.providers.local_catalog_revision(),
+                )
+            elif (
+                self._progressive_local_tracks
+                or bool(
+                    dict(
+                        getattr(self.library_browser, "last_catalog_metrics", {})
+                        or {}
+                    ).get("progressive")
+                )
+            ):
+                if (
+                    self._progressive_local_tracks
+                    and self._progressive_browser_revision
+                    != self._progressive_track_revision
+                ):
+                    self.library_browser.append_discovered_tracks(
+                        self._progressive_local_tracks
+                    )
+                    self._progressive_browser_revision = (
+                        self._progressive_track_revision
+                    )
+                    self._progressive_local_tracks.clear()
+                    self._progressive_track_index.clear()
+            else:
+                self.library_browser.set_catalog(
+                    catalog,
+                    revision=self.providers.local_catalog_revision(),
+                )
+
+    def _play_library_track(self, track: object) -> None:
+        if not isinstance(track,dict):
+            return
+        self._first_discovery_preview_queue = False
+        self._restored_playback_queue = False
+        self._shuffle_discovered_active = False
+        self._prioritize_tracks([track])
+        tracks = (
+            self.providers.local_catalog()
+            if self.providers.local_catalog_is_loaded()
+            else []
+        )
+        tid=str(track.get("track_id") or "")
+        index=next(
+            (
+                i
+                for i,item in enumerate(tracks)
+                if str(item.get("track_id") or "")==tid
+            ),
+            None,
+        )
+        if index is None:
+            # Progressive/provisional rows intentionally precede catalog
+            # commit. Play that path directly instead of falling back to row 0.
+            tracks = [dict(track)]
+            index = 0
+        self.player.set_queue(tracks,index,True,intent="manual_queue")
+
+    def _play_library_artist(self, artist: object) -> None:
+        if not isinstance(artist,dict):
+            return
+        tracks=[dict(x) for x in list(artist.get("tracks") or []) if isinstance(x,dict)]
+        if tracks:
+            self._first_discovery_preview_queue = False
+            self._restored_playback_queue = False
+            self._shuffle_discovered_active = False
+            artist_name = str(artist.get("name") or "").strip()
+            candidates = [
+                str(root / artist_name)
+                for root in self.providers.local_roots()
+                if artist_name
+            ]
+            candidates.extend(
+                str(Path(str(track.get("local_path") or "")).parent)
+                for track in tracks
+                if str(track.get("local_path") or "").strip()
+            )
+            self._prioritize_scan_directories(list(dict.fromkeys(candidates)))
+            self.player.set_queue(tracks,0,True,intent="playlist")
+
+    def _prioritize_tracks(self, tracks: list[dict[str, Any]]) -> None:
+        directories: list[str] = []
+        seen: set[str] = set()
+        for track in tracks:
+            local_path = str(track.get("local_path") or "").strip()
+            if not local_path:
+                continue
+            directory = str(Path(local_path).parent)
+            key = os.path.normcase(os.path.abspath(directory))
+            if key in seen:
+                continue
+            seen.add(key)
+            directories.append(directory)
+            if len(directories) >= 12:
+                break
+        self._prioritize_scan_directories(directories)
+
+    def _prioritize_scan_directories(self, directories: object) -> None:
+        if not isinstance(directories, (list, tuple)):
+            return
+        for directory in list(directories)[:12]:
+            value = str(directory or "").strip()
+            if value:
+                self.state.record_recent_directory(value)
+                if self.local_scan.active:
+                    self.local_scan.prioritize(value)
+
+    def _discovered_playable_tracks(self) -> list[dict[str, Any]]:
+        candidates: list[dict[str, Any]] = []
+        active_scan = bool(self.local_scan.active)
+        pool_limit = 1000 if active_scan else None
+        local_catalog = (
+            self.providers.local_catalog()
+            if self.providers.local_catalog_is_loaded()
+            else []
+        )
+        candidates.extend(
+            local_catalog[:pool_limit] if pool_limit is not None else local_catalog
+        )
+        browser = getattr(self, "library_browser", None)
+        if browser is not None:
+            browser_catalog = getattr(browser, "catalog", []) or []
+            candidates.extend(
+                browser_catalog[:pool_limit]
+                if pool_limit is not None
+                else list(browser_catalog)
+            )
+        candidates.extend(self._progressive_local_tracks)
+        unique: dict[str, dict[str, Any]] = {}
+        for raw in candidates:
+            if not isinstance(raw, dict):
+                continue
+            path = str(raw.get("local_path") or "").strip()
+            if not path:
+                continue
+            key = str(raw.get("track_id") or path)
+            unique[key] = dict(raw)
+        return list(unique.values())
+
+    def _shuffle_discovered_tracks(self) -> None:
+        tracks = self._discovered_playable_tracks()
+        if not tracks:
+            self.statusBar().showMessage("Still looking for playable music…", 3000)
+            return
+        tracks = light_shuffle(tracks, rng=random)
+        self._first_discovery_preview_queue = False
+        self._restored_playback_queue = False
+        self._shuffle_discovered_active = bool(self.local_scan.active)
+        self.player.set_queue(tracks, 0, True, intent="manual_queue")
+        self._shuffle_discovered_ids = tuple(
+            str(item.get("track_id") or item.get("local_path") or "")
+            for item in tracks
+        )
+        self.statusBar().showMessage(
+            f"Shuffling {len(tracks):,} tracks found so far · new discoveries join the queue",
+            4500,
+        )
+
+    def _extend_discovered_shuffle(self, tracks: list[dict[str, Any]]) -> None:
+        if not self._shuffle_discovered_active or not tracks:
+            return
+        current_ids = tuple(
+            str(item.get("track_id") or item.get("local_path") or "")
+            for item in self.player.queue
+        )
+        if current_ids != self._shuffle_discovered_ids:
+            self._shuffle_discovered_active = False
+            return
+        queued = {
+            str(item.get("track_id") or item.get("local_path") or "")
+            for item in self.player.queue
+        }
+        additions = [
+            dict(track)
+            for track in tracks
+            if str(track.get("track_id") or track.get("local_path") or "")
+            and str(track.get("track_id") or track.get("local_path") or "") not in queued
+            and str(track.get("local_path") or "").strip()
+        ]
+        if additions:
+            random.shuffle(additions)
+            self.player.append_queue(additions, autoplay=False)
+            self._shuffle_discovered_ids = current_ids + tuple(
+                str(item.get("track_id") or item.get("local_path") or "")
+                for item in additions
+            )
+
+    def _queue_library_track(self, track: object) -> None:
+        if not isinstance(track,dict):
+            return
+        self._first_discovery_preview_queue = False
+        self._restored_playback_queue = False
+        if not self.player.queue:
+            self.player.set_queue([dict(track)],0,False,intent="manual_queue")
+        else:
+            self.player.append_queue([dict(track)],autoplay=False)
+        self.statusBar().showMessage(
+            f"Queued {track.get('title') or 'track'}",
+            3000,
+        )
+
+    def _edit_local_metadata(self, track: object) -> None:
+        if not isinstance(track,dict) or not str(track.get("local_path") or "").strip():
+            QMessageBox.information(
+                self,
+                "Local music only",
+                "Metadata corrections are currently available for music stored on this computer.",
+            )
+            return
+
+        original=dict(track)
+        dialog=QDialog(self)
+        dialog.setWindowTitle("Correct track details")
+        dialog.resize(520,360)
+        layout=QVBoxLayout(dialog)
+        layout.setContentsMargins(22,20,22,18)
+        title=QLabel("Correct track details")
+        title.setStyleSheet("font-size:20px;font-weight:700")
+        layout.addWidget(title)
+        note=QLabel(
+            "These corrections are stored by Melodex and survive rescans. "
+            "Your original audio file and its embedded tags are not changed."
+        )
+        note.setWordWrap(True)
+        note.setStyleSheet("color:#9aa4b8")
+        layout.addWidget(note)
+
+        form=QFormLayout()
+        fields={}
+        for key,label in (
+            ("artist","Artist"),
+            ("title","Track title"),
+            ("album","Album"),
+            ("album_artist","Album artist"),
+            ("year","Year"),
+            ("genre","Genre"),
+        ):
+            edit=QLineEdit()
+            value=str(original.get(key) or "")
+            if key=="artist" and value.casefold().strip()=="unknown artist":
+                value=""
+            edit.setText(value)
+            fields[key]=edit
+            form.addRow(label+":",edit)
+        layout.addLayout(form)
+
+        buttons=QDialogButtonBox(QDialogButtonBox.Save|QDialogButtonBox.Cancel)
+        reset=buttons.addButton("Use file tags again",QDialogButtonBox.ResetRole)
+        set_help(
+            reset,
+            "Remove Melodex correction",
+            "Forget the local correction for this file and use its embedded/file metadata again.",
+        )
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        reset.clicked.connect(lambda:self._reset_local_metadata_dialog(dialog,original))
+        layout.addWidget(buttons)
+
+        if dialog.exec()!=QDialog.Accepted:
+            return
+
+        changes={key:edit.text().strip() for key,edit in fields.items()}
+        try:
+            updated=self.providers.update_local_metadata(original,changes)
+        except Exception as exc:
+            QMessageBox.warning(self,"Could not save correction",str(exc))
+            return
+        self._apply_local_metadata_update(original,updated)
+        self.statusBar().showMessage(
+            f"Saved Melodex metadata correction for {updated.get('title') or original.get('title') or 'track'}",
+            4500,
+        )
+
+    def _reset_local_metadata_dialog(self, dialog: QDialog, track: dict[str,Any]) -> None:
+        if self.providers.clear_local_metadata_correction(track):
+            self.statusBar().showMessage(
+                "Removed Melodex metadata correction · refreshing tags in the background…"
+            )
+            self._start_local_scan("metadata reset")
+        dialog.reject()
+
+    def _apply_local_metadata_update(
+        self,
+        original: dict[str,Any],
+        updated: dict[str,Any],
+    ) -> None:
+        path=str(original.get("local_path") or "")
+        self.player.merge_queue_items(
+            lambda item: str(item.get("local_path") or "")==path,
+            updated,
+        )
+
+        current=dict(self.playback_feature.current_track() or {})
+        if str(current.get("local_path") or "")==path:
+            self.playback_feature.merge_current_track(updated)
+        self._refresh_library()
+
+    def _queue_album_data(self, album: object) -> None:
+        if not isinstance(album,dict):
+            return
+        tracks=[dict(x) for x in list(album.get("tracks") or []) if isinstance(x,dict)]
+        if not tracks:
+            return
+        if not self.player.queue:
+            self.player.set_queue(tracks,0,False,intent="album")
+        else:
+            self.player.append_queue(tracks,autoplay=False)
+        self.statusBar().showMessage(
+            f"Queued {len(tracks)} tracks from {album.get('title') or 'album'}",
+            3500,
+        )
+
+    def _library_artwork_requested(self, requests: object) -> None:
+        rows=[dict(x) for x in list(requests or []) if isinstance(x,dict)]
+        if not rows:return
+        keys=[str(row.get("key") or "") for row in rows if str(row.get("key") or "")]
+        def load():
+            result={}
+            for row in rows:
+                key=str(row.get("key") or ""); track=dict(row.get("track") or {})
+                if key and track:
+                    path=str(self.metadata.local_artwork(track).get("path") or "")
+                    result[key]=self.metadata.prepared_artwork_payload(
+                        path,int(row.get("generation") or 0),160,58
+                    )
+            return result
+        def failed(error: str) -> None:
+            self.library_browser.cached_artwork_batch_failed("albums",keys)
+            self.statusBar().showMessage(f"Cached artwork refresh paused · {error}",3500)
+        def apply(result) -> None:
+            self.library_browser.set_artwork(result)
+            self._first_music_timeline.mark("artwork_enrichment_finished")
+        self._run_async(load,apply,failed, priority="visible", task_name="library-cached-artwork")
+
+    def _library_online_artwork_requested(self, requests: object) -> None:
+        rows=[dict(x) for x in list(requests or []) if isinstance(x,dict)]
+        if not rows:return
+        self.statusBar().showMessage(f"Finding album artwork · {len(rows)} at a time")
+        def lookup_one(row: dict[str,Any]) -> dict[str,Any]:
+            key=str(row.get("key") or ""); track=dict(row.get("track") or {})
+            generation=int(row.get("generation") or 0)
+            if not key or not track:
+                return {"key":key,"generation":generation,"path":"","status":"error","error":"Missing album lookup data"}
+            try:
+                local=self.metadata.local_artwork(track); path=str(local.get("path") or "")
+                artwork_info=dict(local)
+                if not path:
+                    identity=self.metadata.identify(track)
+                    artwork_info=self.metadata.artwork(track,identity)
+                    path=str(artwork_info.get("path") or "")
+                if path:
+                    match_info=dict(artwork_info.get("match") or {}) if isinstance(artwork_info.get("match"),dict) else {}
+                    for sibling in list(row.get("tracks") or []):
+                        if isinstance(sibling,dict):
+                            self.metadata.remember_artwork(
+                                sibling,path,
+                                source=str(artwork_info.get("source") or ""),
+                                source_url=str(artwork_info.get("source_url") or ""),
+                                attribution=str(artwork_info.get("attribution") or ""),
+                                license_name=str(artwork_info.get("license_name") or artwork_info.get("license") or ""),
+                                match_method=str(match_info.get("method") or ""),
+                                match_confidence=float(match_info.get("confidence")) if match_info.get("confidence") is not None else None,
+                            )
+                    payload=self.metadata.prepared_artwork_payload(path,generation,160,58)
+                    return {"key":key,"status":"found","source":str(artwork_info.get("source") or ""),**payload}
+                return {"key":key,"generation":generation,"path":"","status":"no_match","error":""}
+            except Exception as exc:
+                return {"key":key,"generation":generation,"path":"","status":"error","error":str(exc)}
+        def load():
+            with ThreadPoolExecutor(max_workers=max(1,min(4,len(rows)))) as pool:
+                return list(pool.map(lookup_one,rows))
+        def apply(result):
+            outcomes=[dict(x) for x in list(result or []) if isinstance(x,dict)]
+            self.library_browser.set_artwork({
+                str(row.get("key") or ""):row for row in outcomes if str(row.get("path") or "")
+            })
+            self.library_browser.finish_album_artwork_lookup_batch(outcomes)
+            self._first_music_timeline.mark("artwork_enrichment_finished")
+            snapshot=self.library_browser.artwork_lookup_snapshot()
+            self.statusBar().showMessage(
+                "Album artwork · "
+                f"{snapshot.get('completed',0)}/{snapshot.get('total',0)} · "
+                f"found {snapshot.get('found',0)} · no match {snapshot.get('skipped',0)} · failed {snapshot.get('failed',0)}",
+                5000 if not snapshot.get("active") else 0,
+            )
+        def failed(error):
+            outcomes=[{"key":str(row.get("key") or ""),"path":"","status":"error","error":str(error)} for row in rows]
+            self.library_browser.finish_album_artwork_lookup_batch(outcomes)
+            self.statusBar().showMessage(f"Album artwork batch failed · {error}",5000)
+        self._run_async(load,apply,failed, priority="background", task_name="library-online-artwork")
+
+    def _choose_artist_photo_file(self, artist: object) -> None:
+        if not isinstance(artist,dict):
+            return
+        name=str(artist.get("name") or "Artist").strip() or "Artist"
+        path,_ = QFileDialog.getOpenFileName(
+            self,
+            f"Choose photo for {name}",
+            "",
+            "Images (*.jpg *.jpeg *.png *.webp);;All files (*)",
+        )
+        if not path:
+            return
+        remembered=self.metadata.remember_artist_photo_file(
+            {"name":name},
+            path,
+        )
+        saved=str(remembered.get("path") or "")
+        if not saved:
+            QMessageBox.warning(
+                self,
+                "Could not use image",
+                "Melodex could not copy that image into its artwork cache.",
+            )
+            return
+        key=str(artist.get("key") or "")
+        if key:
+            self.library_browser.set_artist_images({key:saved})
+        self.statusBar().showMessage(
+            f"Saved artist photo for {name}",
+            4500,
+        )
+
+    def _library_cached_artist_images_requested(self, requests: object) -> None:
+        rows=[dict(x) for x in list(requests or []) if isinstance(x,dict)]
+        if not rows:return
+        keys=[str(row.get("key") or "") for row in rows if str(row.get("key") or "")]
+        def load():
+            result={}
+            for row in rows:
+                key=str(row.get("key") or ""); artist_name=str(row.get("artist") or "")
+                if key and artist_name:
+                    path=str(self.metadata.cached_artist_photo({"name":artist_name}).get("path") or "")
+                    result[key]=self.metadata.prepared_artwork_payload(
+                        path,int(row.get("generation") or 0),160
+                    )
+            return result
+        def failed(error: str) -> None:
+            self.library_browser.cached_artwork_batch_failed("artists",keys)
+            self.statusBar().showMessage(f"Cached artist-photo refresh paused · {error}",3500)
+        self._run_async(load,self.library_browser.set_artist_images,failed, priority="visible", task_name="library-cached-artist-photo")
+
+    def _library_artist_images_requested(self, requests: object) -> None:
+        rows=[dict(x) for x in list(requests or []) if isinstance(x,dict)]
+        if not rows:return
+        self.statusBar().showMessage(f"Finding artist photos · {len(rows)} at a time")
+        def lookup_one(row: dict[str,Any]) -> dict[str,Any]:
+            key=str(row.get("key") or ""); artist_name=str(row.get("artist") or "")
+            track=dict(row.get("track") or {}); generation=int(row.get("generation") or 0)
+            if not key or not artist_name or not track:
+                return {"key":key,"generation":generation,"path":"","status":"error","error":"Missing artist lookup data"}
+            try:
+                cached=self.metadata.cached_artist_photo({"name":artist_name}); path=str(cached.get("path") or "")
+                if not path:
+                    artist_mbid=str(track.get("musicbrainz_artist_id") or track.get("artist_mbid") or "").strip()
+                    info=self.metadata.artist_info(artist_mbid) if artist_mbid else self.metadata.resolve_artist(artist_name)
+                    if info:
+                        if not info.get("name"):info["name"]=artist_name
+                        path=str(self.metadata.artist_photo(info).get("path") or "")
+                payload=self.metadata.prepared_artwork_payload(path,generation,160)
+                return {"key":key,"status":"found" if path else "no_match","error":"",**payload}
+            except Exception as exc:
+                return {"key":key,"generation":generation,"path":"","status":"error","error":str(exc)}
+        def load():
+            with ThreadPoolExecutor(max_workers=max(1,min(4,len(rows)))) as pool:
+                return list(pool.map(lookup_one,rows))
+        def apply(result):
+            outcomes=[dict(x) for x in list(result or []) if isinstance(x,dict)]
+            self.library_browser.set_artist_images({
+                str(row.get("key") or ""):row for row in outcomes if str(row.get("path") or "")
+            })
+            self.library_browser.finish_artist_image_lookup_batch(outcomes)
+            snapshot=self.library_browser.artwork_lookup_snapshot()
+            self.statusBar().showMessage(
+                "Artist photos · "
+                f"{snapshot.get('completed',0)}/{snapshot.get('total',0)} · "
+                f"found {snapshot.get('found',0)} · no match {snapshot.get('skipped',0)} · failed {snapshot.get('failed',0)}",
+                5000 if not snapshot.get("active") else 0,
+            )
+        def failed(error):
+            outcomes=[{"key":str(row.get("key") or ""),"path":"","status":"error","error":str(error)} for row in rows]
+            self.library_browser.finish_artist_image_lookup_batch(outcomes)
+            self.statusBar().showMessage(f"Artist photo batch failed · {error}",5000)
+        self._run_async(load,apply,failed, priority="background", task_name="library-online-artist-photo")
+
+    def _refresh_playlists(self):
+        self.playlists_list.clear()
+        records=self.state.playlists()
+        for p in records:
+            name=str(p.get("name") or "Playlist")
+            description=str(p.get("description") or "").strip()
+            count=int(p.get("track_count") or 0)
+            source=str(p.get("source") or "")
+            subtitle=f"{count} track{'s' if count!=1 else ''}"
+            if source:
+                subtitle+=f" · {source.replace('import:','imported ')}"
+            if description:
+                subtitle+=f"\n{description}"
+            item=QListWidgetItem(f"{name}\n{subtitle}")
+            item.setData(Qt.UserRole,p)
+            self.playlists_list.addItem(item)
+        if hasattr(self,"playlists_stack"):
+            self.playlists_stack.setCurrentWidget(
+                self.playlists_list if records else self.playlists_empty
+            )
+        self._playlist_selection_changed()
+
+    @staticmethod
+    def _playlist_tracks(record):
+        payload=dict(record.get("payload") or {})
+        requested=payload.get("requested_tracks")
+        if isinstance(requested,list):return [dict(x) for x in requested if isinstance(x,dict)]
+        return [dict(x) for x in list(payload.get("tracks") or payload.get("rows") or []) if isinstance(x,dict)]
+
+    def _play_saved_playlist(self,item):
+        record=dict(item.data(Qt.UserRole) or {}); tracks=self._playlist_tracks(record)
+        if not tracks:
+            self.statusBar().showMessage("This playlist has no tracks",3000); return
+        self.statusBar().showMessage("Resolving playlist across connected sources…")
+        self._run_async(lambda:self.providers.resolve_playlist(tracks),self._start_resolved_playlist, priority="foreground", task_name="playlist-resolve")
+
+    def _start_resolved_playlist(self,result):
+        tracks=list(result.get("tracks") or []); unresolved=list(result.get("unresolved") or [])
+        if tracks:self.player.set_queue(tracks,0,True,intent="playlist")
+        msg=f"Playing {len(tracks)} matched tracks"
+        if unresolved:msg+=f" · {len(unresolved)} could not be matched"
+        self.statusBar().showMessage(msg,6000)
+
+    def _import_playlist_file(self):
+        from .playlist_io import load_playlist
+        filename,_=QFileDialog.getOpenFileName(self,"Import playlist",filter="Playlists (*.xspf *.m3u *.m3u8);;XSPF (*.xspf);;M3U/M3U8 (*.m3u *.m3u8)")
+        if not filename:return
+        try:data=load_playlist(Path(filename))
+        except Exception as exc:QMessageBox.warning(self,"Could not import playlist",str(exc)); return
+        requested=[dict(x) for x in list(data.get("tracks") or []) if isinstance(x,dict)]
+        if not requested:QMessageBox.information(self,"Empty playlist","No tracks were found in this playlist."); return
+        playlist_id=str(uuid.uuid4()); name=str(data.get("name") or Path(filename).stem); description=str(data.get("description") or "")
+        self.statusBar().showMessage(f"Importing and matching {len(requested)} tracks…")
+        self._run_async(lambda:self.providers.resolve_playlist(requested),lambda result:self._finish_playlist_file_import(playlist_id,name,description,str(data.get("format") or "playlist"),requested,result), priority="foreground", task_name="playlist-import-resolve")
+
+    def _finish_playlist_file_import(self,playlist_id,name,description,fmt,requested,result):
+        from .playlist_io import save_playlist
+        tracks=list(result.get("tracks") or []); unresolved=list(result.get("unresolved") or [])
+        payload={"tracks":tracks,"unresolved":unresolved,"requested_tracks":requested,"format":fmt}
+        self.state.save_playlist(playlist_id,name,description,f"import:{fmt}",payload); self._refresh_playlists()
+        msg=f"Imported {name}: {len(tracks)} playable"
+        if unresolved:msg+=f" · {len(unresolved)} unresolved (kept for future matching)"
+        self.statusBar().showMessage(msg,7000)
+
+    def _open_ai_playlist_import(self):
+        from .playlist_io import load_playlist, parse_playlist_text
+        dialog=QDialog(self); dialog.setWindowTitle("Import an AI playlist"); dialog.resize(900,650)
+        layout=QVBoxLayout(dialog); layout.setContentsMargins(24,22,24,20); layout.setSpacing(14)
+        title=QLabel("Import an AI playlist"); title.setStyleSheet("font-size: 25px; font-weight: 700;")
+        subtitle=QLabel("Paste a playlist from ChatGPT, Claude, Gemini or another AI. JSON, Markdown lists or tables, TXT, CSV and M3U/M3U8 are supported.")
+        subtitle.setWordWrap(True); subtitle.setStyleSheet("color: #9aa4b8; font-size: 14px;")
+        layout.addWidget(title); layout.addWidget(subtitle)
+        editor=QPlainTextEdit(); editor.setPlaceholderText("Paste the playlist here…"); editor.setMinimumHeight(300); layout.addWidget(editor,1)
+        actions=QHBoxLayout()
+        copy_prompt=QPushButton("Copy ChatGPT Prompt")
+        import_file=QPushButton("Import File…")
+        paste_clipboard=QPushButton("Paste Clipboard")
+        actions.addWidget(copy_prompt); actions.addWidget(import_file); actions.addWidget(paste_clipboard); actions.addStretch(1)
+        layout.insertLayout(2,actions)
+        privacy=QLabel("No AI connection is needed, and Melodex does not send this text to an AI service. Track matching uses your connected music sources.")
+        privacy.setWordWrap(True); privacy.setStyleSheet("color: #9aa4b8;")
+        layout.addWidget(privacy)
+        buttons=QDialogButtonBox(QDialogButtonBox.Cancel)
+        analyze=buttons.addButton("Analyse Playlist",QDialogButtonBox.AcceptRole)
+        layout.addWidget(buttons)
+
+        prompt=("Create a playlist of real, released tracks. Return valid JSON only, using this structure:\n"
+                '{\n  "melodex_playlist": 1,\n  "name": "Playlist name",\n'
+                '  "description": "Short description",\n  "tracks": [\n'
+                '    {"artist": "Artist name", "title": "Exact track title", "album": "Album when known", "year": 2006, "reason": "Optional short reason"}\n'
+                '  ]\n}\nUse canonical artist and track names, and keep the tracks in the intended listening order. Do not add commentary outside the JSON.')
+
+        def do_copy_prompt():
+            QApplication.clipboard().setText(prompt)
+            self.statusBar().showMessage("Playlist prompt copied. Paste it into your AI chat.",5000)
+
+        def do_paste_clipboard():
+            value=QApplication.clipboard().text()
+            if not value.strip():
+                QMessageBox.information(dialog,"Clipboard is empty","Copy a playlist from your AI chat first, then choose Paste Clipboard.")
+                return
+            editor.setPlainText(value)
+
+        def do_import_file():
+            filename,_=QFileDialog.getOpenFileName(dialog,"Import playlist",filter="Playlist/text files (*.json *.txt *.csv *.tsv *.xspf *.m3u *.m3u8);;All files (*)")
+            if not filename:return
+            path=Path(filename)
+            try:
+                if path.suffix.lower() in {".xspf",".m3u",".m3u8"}:
+                    data=load_playlist(path)
+                else:
+                    data=parse_playlist_text(path.read_text("utf-8-sig",errors="replace"))
+                    if data.get("name") in {"Pasted playlist","AI playlist"}:
+                        data["name"]=path.stem
+                editor.setPlainText(json.dumps(data,ensure_ascii=False,indent=2))
+            except Exception as exc:
+                QMessageBox.warning(dialog,"Could not import playlist",str(exc))
+
+        def do_analyze():
+            try:
+                data=parse_playlist_text(editor.toPlainText())
+            except Exception as exc:
+                QMessageBox.warning(dialog,"Could not read playlist",str(exc)); return
+            dialog.accept()
+            self._import_ai_playlist(data,source="ai-paste")
+
+        copy_prompt.clicked.connect(do_copy_prompt)
+        import_file.clicked.connect(do_import_file)
+        paste_clipboard.clicked.connect(do_paste_clipboard)
+        buttons.rejected.connect(dialog.reject)
+        analyze.clicked.connect(do_analyze)
+        dialog.exec()
+
+    def _playlist_export_path(self,title):
+        path,chosen=QFileDialog.getSaveFileName(self,title,filter="XSPF Playlist (*.xspf);;M3U8 Playlist (*.m3u8);;M3U Playlist (*.m3u)")
+        if not path:return None
+        p=Path(path)
+        if not p.suffix:
+            suffix=".m3u8" if "M3U8" in chosen else ".m3u" if "M3U Playlist" in chosen else ".xspf"
+            p=p.with_suffix(suffix)
+        return p
+
+    def _export_selected_playlist(self):
+        from .playlist_io import save_playlist
+        item=self.playlists_list.currentItem()
+        if not item:self.statusBar().showMessage("Select a playlist first",3000); return
+        record=dict(item.data(Qt.UserRole) or {}); tracks=self._playlist_tracks(record)
+        if not tracks:self.statusBar().showMessage("This playlist has no tracks",3000); return
+        path=self._playlist_export_path("Export playlist")
+        if not path:return
+        try:save_playlist(path,tracks,str(record.get("name") or "Melodex playlist"),str(record.get("description") or "")); self.statusBar().showMessage(f"Exported {path.name}",5000)
+        except Exception as exc:QMessageBox.warning(self,"Could not export playlist",str(exc))
+
+    def _export_queue(self):
+        from .playlist_io import save_playlist
+        tracks=[dict(x) for x in self.player.queue if isinstance(x,dict)]
+        if not tracks:self.statusBar().showMessage("The queue is empty",3000); return
+        path=self._playlist_export_path("Export queue")
+        if not path:return
+        try:save_playlist(path,tracks,"Melodex queue",""); self.statusBar().showMessage(f"Exported {path.name}",5000)
+        except Exception as exc:QMessageBox.warning(self,"Could not export queue",str(exc))
+
+    def _refresh_moments(self):
+        self.moments_list.clear()
+        records=self.state.moments()
+        for m in records:
+            t=m.get("track") if isinstance(m.get("track"),dict) else {}
+            if not t:
+                try:
+                    t=json.loads(m.get("track_json") or "{}")
+                except Exception:
+                    t={}
+            sec=int(m.get("position_ms",0))//1000
+            label=str(m.get("label") or "").strip()
+            title=f"{t.get('title') or 'Unknown track'} — {t.get('artist') or 'Unknown artist'}"
+            subtitle=f"{sec//60}:{sec%60:02d}" + (f" · {label}" if label else "")
+            item=QListWidgetItem(f"{title}\n{subtitle}")
+            item.setData(Qt.UserRole,dict(m))
+            self.moments_list.addItem(item)
+        if hasattr(self,"moments_stack"):
+            self.moments_stack.setCurrentWidget(
+                self.moments_list if records else self.moments_empty
+            )
+
+    def _play_saved_moment(self, item: QListWidgetItem) -> None:
+        data=item.data(Qt.UserRole)
+        if not isinstance(data,dict):
+            return
+        track=data.get("track") if isinstance(data.get("track"),dict) else {}
+        if not track:
+            return
+        position=max(0,int(data.get("position_ms") or 0))
+        self.player.set_queue([dict(track)],0,True,intent="manual_queue")
+        if position:
+            QTimer.singleShot(700,lambda:self.player.seek(position))
+
+    def _refresh_taste(self):
+        if not hasattr(self,"taste_label"):
+            return
+        s=self.state.taste_summary(); self.taste_label.setText(f"Taste memory: {s.get('tracks',0)} tracks learned · {s.get('artists',0)} artists · completion rate {float(s.get('completion_rate',0))*100:.0f}%")
+
+    # ------------------------------- sources/search
+    def dragEnterEvent(self, event) -> None:
+        mime = event.mimeData()
+        if mime.hasUrls() and any(url.isLocalFile() for url in mime.urls()):
+            event.acceptProposedAction()
+            return
+        event.ignore()
+
+    def dragMoveEvent(self, event) -> None:
+        mime = event.mimeData()
+        if mime.hasUrls() and any(url.isLocalFile() for url in mime.urls()):
+            event.acceptProposedAction()
+            return
+        event.ignore()
+
+    def dropEvent(self, event) -> None:
+        paths = [
+            url.toLocalFile()
+            for url in event.mimeData().urls()
+            if url.isLocalFile() and url.toLocalFile()
+        ]
+        if not paths:
+            event.ignore()
+            return
+        audio_paths = [
+            path for path in paths if Path(path).suffix.lower() in AUDIO_EXTS
+        ]
+        folder_paths = [path for path in paths if path not in audio_paths]
+
+        # Queue explicit audio files first so a folder scan cannot get in front
+        # of the playback action represented by the same drop.
+        if audio_paths:
+            source_id = self._first_music_timeline.begin_source(
+                selection_started=True
+            )
+            self._play_local_files(audio_paths, source_id)
+
+        if folder_paths:
+            source_id = self._first_music_timeline.begin_source(
+                selection_started=True
+            )
+            roots = self.providers.local_roots()
+            for raw_path in folder_paths:
+                root = Path(raw_path).expanduser()
+                if root not in roots:
+                    roots.append(root)
+            self.providers.configure_local_roots(roots)
+            self._first_music_timeline.mark(
+                "source_selected", source_id=source_id
+            )
+            self._first_music_scan_started = False
+            self._start_local_scan("folder dropped")
+            if self.current_page == "home":
+                self.open_page("library")
+
+        event.acceptProposedAction()
+
+    def _choose_music_folder(self, dialog_title: str = "Choose a music folder"):
+        self._first_music_timeline.begin_source(selection_started=True)
+        folder=QFileDialog.getExistingDirectory(self, str(dialog_title))
+        if not folder:
+            return
+        roots=self.providers.local_roots()
+        p=Path(folder)
+        if p not in roots:
+            roots.append(p)
+        self.providers.configure_local_roots(roots)
+        self._first_music_timeline.mark(
+            "source_selected",
+            source_id=self._first_music_timeline.active_source_id,
+        )
+        self._first_music_scan_started = False
+        came_from_home = self.current_page == "home"
+        self._start_local_scan("folder added")
+        if came_from_home:
+            self.open_page("library")
+
+    def _try_audio_files(self) -> None:
+        source_id = self._first_music_timeline.begin_source(
+            selection_started=True
+        )
+        file_filter = "Audio files (" + " ".join(
+            f"*{suffix}" for suffix in sorted(AUDIO_EXTS)
+        ) + ")"
+        paths, _selected_filter = QFileDialog.getOpenFileNames(
+            self,
+            "Choose a few audio files to play",
+            "",
+            file_filter,
+        )
+        if not paths:
+            return
+        self._play_local_files(paths, source_id)
+
+    def _play_local_files(self, paths: list[str], source_id: int) -> None:
+        self._first_discovery_preview_queue = False
+        self._restored_playback_queue = False
+        self._first_music_timeline.mark("source_selected", source_id=source_id)
+        self._first_music_timeline.mark("source_probe_started", source_id=source_id)
+        tracks = []
+        for raw_path in list(paths or []):
+            path = Path(raw_path).expanduser().absolute()
+            if path.suffix.lower() not in AUDIO_EXTS:
+                continue
+            absolute_path = str(path)
+            tracks.append(
+                {
+                    "provider_id": "local",
+                    "track_id": absolute_path,
+                    "rel": f"local:{absolute_path}",
+                    "title": path.stem,
+                    "artist": "Unknown artist",
+                    "album": "",
+                    "duration": 0.0,
+                    "local_path": absolute_path,
+                    "source": "local",
+                    "provisional": True,
+                }
+            )
+        if not tracks:
+            self.statusBar().showMessage("No supported audio files were selected.", 5000)
+            return
+        self._first_music_timeline.mark(
+            "first_audio_file_discovered", source_id=source_id
+        )
+        self._first_music_timeline.mark(
+            "source_probe_finished", source_id=source_id
+        )
+        self._first_music_timeline.mark(
+            "first_playable_track_ready", source_id=source_id
+        )
+        self.player.set_queue(tracks, 0, True, intent="manual_queue")
+        self.statusBar().showMessage(
+            "Playing selected files. They haven’t been added to your library.",
+            5000,
+        )
+
+    def _rescan(self):
+        self._start_local_scan("rescan")
+
+    def _refresh_background_scan_activity(self) -> None:
+        if not self.local_scan.active:
+            self.background_activity.hide()
+            self._background_activity_timer.stop()
+            return
+
+        runner=self.local_scan.runner
+        view=scan_activity_state(
+            self._local_scan_last_progress,
+            elapsed_seconds=(
+                time.monotonic() - self._local_scan_started_at
+                if self._local_scan_started_at
+                else 0.0
+            ),
+            paused=bool(runner is not None and runner.paused),
+        )
+        self.background_activity_progress.setRange(view.progress_min,view.progress_max)
+        self.background_activity_progress.setValue(view.progress_value)
+        self.background_activity_progress.setFormat(view.progress_format)
+        self.background_activity_label.setText(view.label)
+        self.background_activity_pause.setText(view.pause_text)
+        self.background_activity_pause.setEnabled(runner is not None)
+        self.background_activity_cancel.setEnabled(runner is not None)
+        self.background_activity.show()
+
+    def _local_scan_progress(self, sequence: int, payload: object) -> None:
+        if (
+            self._closing
+            or not self.local_scan.is_current(sequence)
+            or not isinstance(payload,dict)
+        ):
+            return
+        provisional_track = payload.get("provisional_track")
+        if isinstance(provisional_track, dict):
+            self._accept_first_provisional_track(provisional_track)
+            return
+        discovered_tracks = payload.get("discovered_tracks")
+        if isinstance(discovered_tracks, list):
+            batch = [item for item in discovered_tracks if isinstance(item, dict)]
+            self._cache_progressive_tracks(batch)
+            browser = getattr(self, "library_browser", None)
+            count = (
+                len(browser.catalog)
+                if browser is not None
+                else len(self._progressive_local_tracks)
+            )
+            message = (
+                f"{count:,} tracks available · new music is being indexed"
+                if self.providers.local_catalog_count() > 0
+                else f"{count:,} track{'s' if count != 1 else ''} found · "
+                "indexing continues in the background"
+            )
+            self.statusBar().showMessage(message)
+            if hasattr(self, "home_status"):
+                self.home_status.setText(message)
+            self._update_progressive_queue_metadata(batch)
+            self._extend_discovered_shuffle(batch)
+            return
+        if not self.local_scan.active:
+            return
+        self._local_scan_last_progress=dict(payload)
+        source_id = self._first_music_scan_source_id
+        if int(payload.get("directories_seen") or 0) > 0:
+            self._first_music_timeline.mark(
+                "first_directory_result", source_id=source_id
+            )
+        if int(payload.get("audio_files_seen") or 0) > 0:
+            self._first_music_timeline.mark(
+                "first_audio_file_discovered", source_id=source_id
+            )
+        self._local_scan_session.update(
+            scan_progress_patch(
+                payload,
+                elapsed_seconds=time.monotonic()-self._local_scan_started_at,
+                pending_rescan=self.local_scan.pending,
+            )
+        )
+        self._refresh_background_scan_activity()
+        if hasattr(self,"library_browser"):
+            self.library_browser.set_scan_progress(payload)
+        message=scan_progress_message(payload)
+        if message:
+            self.statusBar().showMessage(message)
+            if hasattr(self,"home_status"):
+                self.home_status.setText(message)
+
+    def _accept_first_provisional_track(self, track: dict[str, object]) -> None:
+        """Expose initial discovered paths to the player before catalog commit."""
+        local_path = str(track.get("local_path") or "").strip()
+        if not local_path:
+            return
+        provisional = dict(track)
+        provisional["provisional"] = True
+        provisional["progressive_local"] = True
+        self._cache_progressive_tracks([provisional])
+        source_id = self._first_music_scan_source_id
+        self._first_music_timeline.mark(
+            "source_probe_finished", source_id=source_id
+        )
+        self._first_music_timeline.mark(
+            "first_playable_track_ready", source_id=source_id
+        )
+        self._first_music_timeline.mark(
+            "first_track_visible", source_id=source_id
+        )
+        if self._shuffle_discovered_active:
+            self._extend_discovered_shuffle([provisional])
+            return
+        current_queue = list(self.player.queue)
+        if current_queue:
+            if not all(
+                bool(item.get("progressive_local") or item.get("provisional"))
+                for item in current_queue
+            ):
+                return
+            track_id = str(provisional.get("track_id") or local_path)
+            if any(
+                str(item.get("track_id") or item.get("local_path") or "")
+                == track_id
+                for item in current_queue
+            ):
+                return
+            self.player.append_queue([provisional], autoplay=False)
+            return
+        self._first_discovery_preview_queue = True
+        self.player.set_queue(
+            [provisional],
+            0,
+            False,
+            intent="manual_queue",
+        )
+        if not self.player.jump_to(0, autoplay=False):
+            return
+        message = "Music found — ready to play. Indexing continues in the background."
+        self.statusBar().showMessage(message)
+        if hasattr(self, "home_status"):
+            self.home_status.setText(message)
+
+    def _cache_progressive_tracks(
+        self,
+        tracks: list[dict[str, object]],
+    ) -> None:
+        changed: list[dict[str, Any]] = []
+        browser = getattr(self, "library_browser", None)
+        for raw in tracks:
+            if not isinstance(raw, dict):
+                continue
+            track = dict(raw)
+            track["progressive_local"] = True
+            key = str(track.get("track_id") or track.get("local_path") or "")
+            if not key:
+                continue
+            if browser is not None:
+                changed.append(track)
+                continue
+            row = self._progressive_track_index.get(key)
+            if row is None:
+                # Keep a bounded preview if My Music has not been opened yet.
+                if len(self._progressive_local_tracks) >= 1000:
+                    continue
+                self._progressive_track_index[key] = len(self._progressive_local_tracks)
+                self._progressive_local_tracks.append(track)
+            else:
+                self._progressive_local_tracks[row] = track
+            changed.append(track)
+        if not changed:
+            return
+        self._progressive_track_revision += 1
+        if browser is not None:
+            if self._progressive_local_tracks:
+                browser.append_discovered_tracks(
+                    self._progressive_local_tracks
+                )
+                self._progressive_local_tracks.clear()
+                self._progressive_track_index.clear()
+            browser.append_discovered_tracks(changed)
+            self._progressive_browser_revision = self._progressive_track_revision
+        self._refresh_first_run_play_affordance()
+
+    def _update_progressive_queue_metadata(
+        self,
+        tracks: list[dict[str, object]],
+    ) -> None:
+        by_id = {
+            str(track.get("track_id") or track.get("local_path") or ""): dict(track)
+            for track in tracks
+            if isinstance(track, dict)
+        }
+        if not by_id:
+            return
+        for index, item in enumerate(list(self.player.queue)):
+            if not bool(item.get("progressive_local") or item.get("provisional")):
+                continue
+            track_id = str(item.get("track_id") or item.get("local_path") or "")
+            updated = by_id.get(track_id)
+            if updated is None:
+                continue
+            updated["progressive_local"] = True
+            updated["provisional"] = False
+            self.player.replace_queue_item(index, updated)
+
+    def _toggle_local_scan_pause(self) -> None:
+        paused=self.local_scan.toggle_pause()
+        if paused is None:
+            return
+        self._local_scan_session["paused"]=paused
+        if hasattr(self,"library_browser"):
+            self.library_browser.set_scan_paused(paused)
+        self._refresh_background_scan_activity()
+        self.statusBar().showMessage(
+            "Music indexing paused" if paused else "Music indexing resumed",
+            3000,
+        )
+
+    def _cancel_local_scan(self) -> None:
+        if not self.local_scan.cancel(clear_pending=True):
+            return
+        self._local_scan_session.update(
+            {
+                "status": "cancelling",
+                "running": True,
+                "paused": False,
+                "pending_rescan": False,
+            }
+        )
+        if hasattr(self,"library_browser"):
+            self.library_browser.set_scan_cancelling()
+        self.background_activity_pause.setEnabled(False)
+        self.background_activity_cancel.setEnabled(False)
+        self.background_activity_label.setText(
+            "Indexing music · Stopping safely… · existing library remains usable"
+        )
+        self.statusBar().showMessage(
+            "Stopping music indexing… a stuck NAS scanner will be terminated automatically"
+        )
+
+    def _start_local_scan(self, reason: str = "scan") -> None:
+        roots=self.providers.local_roots()
+        if not roots:
+            self.statusBar().showMessage("Add a music folder first",3000)
+            return
+
+        if self.local_scan.active:
+            self._local_scan_session["pending_rescan"]=True
+            roots_changed=self.local_scan.queue_rescan(roots)
+            if roots_changed:
+                self.statusBar().showMessage(
+                    "Music folders changed · stopping the old indexer and restarting…",
+                    5000,
+                )
+            else:
+                self.statusBar().showMessage(
+                    "Music indexing is already running · a fresh rescan is queued",
+                    4000,
+                )
+            return
+
+        if (
+            self._first_music_timeline.active_source_id is None
+            or self._first_music_scan_started
+        ):
+            source_id = self._first_music_timeline.begin_source()
+            self._first_music_timeline.mark("source_selected", source_id=source_id)
+        source_id = self._first_music_timeline.active_source_id
+
+        self._local_scan_started_at=time.monotonic()
+        self._local_scan_last_progress={"phase":"discovering","audio_files_seen":0}
+        self._local_scan_session=start_scan_session(reason,len(roots))
+        roots_snapshot=[Path(root) for root in roots]
+        if hasattr(self,"library_browser"):
+            self.library_browser.begin_scan(reason)
+        self._refresh_background_scan_activity()
+        self._background_activity_timer.start()
+        message = (
+            "Music folder saved · finding playable tracks in the background…"
+            if reason == "folder added"
+            else "Indexing your music in an isolated background scanner…"
+        )
+        self.statusBar().showMessage(
+            message
+        )
+        if hasattr(self,"home_status"):
+            self.home_status.setText(message)
+
+        try:
+            self._first_music_timeline.mark(
+                "source_probe_started", source_id=source_id
+            )
+            self._first_music_scan_source_id = source_id
+            self._first_music_scan_started = True
+            self.local_scan.start(roots_snapshot)
+        except Exception as exc:
+            self._local_scan_failed(self.local_scan.sequence,str(exc))
+            return
+        self._refresh_background_scan_activity()
+
+    def _local_scan_done(self, sequence: int, snapshot: object) -> None:
+        if self._closing or not self.local_scan.is_current(sequence):
+            return
+        scanned_roots_key=self.local_scan.roots_key
+        if not self.local_scan.finish(sequence):
+            return
+        source_id = self._first_music_scan_source_id
+        self._first_music_timeline.mark(
+            "source_probe_finished", source_id=source_id
+        )
+        self._first_music_timeline.mark(
+            "background_scan_finished", source_id=source_id
+        )
+        self._background_activity_timer.stop()
+        self.background_activity.hide()
+        current_key=scan_roots_key(self.providers.local_roots())
+        result=dict(snapshot or {})
+
+        if bool(result.get("cancelled")):
+            elapsed=max(0.0,time.monotonic()-self._local_scan_started_at)
+            self._local_scan_session.update(
+                {
+                    "status": "cancelled",
+                    "running": False,
+                    "paused": False,
+                    "pending_rescan": bool(self.local_scan.pending),
+                    "elapsed_seconds": round(elapsed, 3),
+                    "hard_cancelled": bool(result.get("hard_cancelled")),
+                }
+            )
+            if hasattr(self,"library_browser"):
+                self.library_browser.finish_scan("cancelled")
+                QTimer.singleShot(3500,self.library_browser.clear_scan_status)
+            self._show_home()
+            if bool(result.get("hard_cancelled")):
+                self.statusBar().showMessage(
+                    "Music indexing stopped · unresponsive scanner terminated · existing library kept",
+                    6500,
+                )
+            else:
+                self.statusBar().showMessage(
+                    "Music indexing cancelled · existing library kept",
+                    5000,
+                )
+            if self.local_scan.take_pending():
+                QTimer.singleShot(
+                    0,
+                    lambda:self._start_local_scan("queued rescan"),
+                )
+            return
+
+        # If roots changed while the disposable worker was scanning, its
+        # catalog is not applied. A fresh scan immediately rebuilds the
+        # current root set.
+        if current_key != scanned_roots_key:
+            self.local_scan.clear_pending()
+            QTimer.singleShot(
+                0,
+                lambda:self._start_local_scan("queued change"),
+            )
+            return
+
+        from .scan_outcome import scan_storage_message, scan_storage_outcome
+
+        count=self.providers.apply_local_scan_snapshot(result)
+        if count > 0:
+            self._progressive_local_tracks.clear()
+            self._progressive_track_index.clear()
+            self._progressive_track_revision = 0
+            self._progressive_browser_revision = -1
+            self._first_music_timeline.mark(
+                "first_playable_track_ready", source_id=source_id
+            )
+        changes=dict(result.get("changes") or {})
+        outcome=scan_storage_outcome(result)
+        roots = self.providers.local_roots()
+        unavailable_roots = int(outcome.get("roots_unavailable") or 0)
+        source_status = (
+            "unavailable"
+            if roots and unavailable_roots >= len(roots)
+            else "degraded"
+            if outcome["degraded"]
+            else "available"
+        )
+        for root in roots:
+            self.state.set_source_status(str(root), source_status)
+            self.providers.set_local_source_availability(root, source_status)
+        elapsed=max(0.0,time.monotonic()-self._local_scan_started_at)
+        self._local_scan_session.update(
+            {
+                "status": "degraded" if outcome["degraded"] else "complete",
+                "running": False,
+                "paused": False,
+                "pending_rescan": bool(self.local_scan.pending),
+                "elapsed_seconds": round(elapsed, 3),
+                "phase": "complete",
+                "completed": count,
+                "total": count,
+                "storage_state": str(outcome["state"]),
+                "root_count": int(outcome["root_count"]),
+                "roots_unavailable": int(outcome["roots_unavailable"]),
+                "roots_incomplete": int(outcome["roots_incomplete"]),
+                "io_retries": int(outcome["io_retries"]),
+            }
+        )
+        self._refresh_library()
+        self._show_home()
+        if self.providers.local_catalog_count() > 0:
+            self._first_music_timeline.mark(
+                "first_track_visible", source_id=source_id
+            )
+        storage_message=scan_storage_message(outcome)
+        if hasattr(self,"library_browser"):
+            self.library_browser.finish_scan(
+                "degraded" if outcome["degraded"] else "complete",
+                count=count,
+                changes=changes,
+                storage_outcome=outcome,
+            )
+            # Keep degraded NAS status visible until the next scan/user
+            # action; clean completion can fade away as before.
+            if not outcome["degraded"]:
+                QTimer.singleShot(3500,self.library_browser.clear_scan_status)
+        if outcome["degraded"]:
+            message=f"NAS/library warning · {storage_message}"
+            self.statusBar().showMessage(message,12000)
+            if hasattr(self,"home_status"):
+                self.home_status.setText(storage_message)
+        else:
+            suffix=scan_change_suffix(changes)
+            self.statusBar().showMessage(
+                f"Music indexing complete · {count:,} tracks{suffix}",
+                6500,
+            )
+        if self.local_scan.take_pending():
+            QTimer.singleShot(
+                0,
+                lambda:self._start_local_scan("queued rescan"),
+            )
+
+    def _local_scan_failed(self, sequence: int, error: str) -> None:
+        if self._closing or not self.local_scan.finish(sequence):
+            return
+        for root in self.providers.local_roots():
+            self.state.set_source_status(str(root), "unavailable", str(error or ""))
+            self.providers.set_local_source_availability(root, "unavailable")
+        if self.providers.local_catalog_is_loaded():
+            self._refresh_library()
+        self._first_music_timeline.mark(
+            "source_probe_finished",
+            source_id=self._first_music_scan_source_id,
+        )
+        self._first_music_timeline.mark(
+            "background_scan_finished",
+            source_id=self._first_music_scan_source_id,
+        )
+        self._background_activity_timer.stop()
+        self.background_activity.hide()
+        elapsed=max(0.0,time.monotonic()-self._local_scan_started_at)
+        error_text=str(error or "")
+        error_type=(error_text.split(":",1)[0].strip() or "scan_error")[:80]
+        self._local_scan_session.update(
+            {
+                "status": "error",
+                "running": False,
+                "paused": False,
+                "pending_rescan": bool(self.local_scan.pending),
+                "elapsed_seconds": round(elapsed, 3),
+                "error_type": error_type,
+            }
+        )
+        if hasattr(self,"library_browser"):
+            self.library_browser.finish_scan("error",error=error_type)
+        self._show_home()
+        message=(
+            "Music indexing stopped — your existing library was kept. "
+            "Export redacted diagnostics from Sources & plugins if this repeats."
+        )
+        self.statusBar().showMessage(message,10000)
+        if hasattr(self,"home_status"):
+            self.home_status.setText(message)
+        if self.local_scan.take_pending():
+            QTimer.singleShot(
+                0,
+                lambda:self._start_local_scan("queued rescan"),
+            )
+
+    def _diagnostics_ui_metrics(self) -> dict[str, Any]:
+        ui_metrics: dict[str, Any] = {}
+        if hasattr(self, "library_browser"):
+            ui_metrics["library_catalog"] = dict(
+                getattr(self.library_browser, "last_catalog_metrics", {}) or {}
+            )
+            ui_metrics["library_filter"] = dict(
+                getattr(self.library_browser, "last_filter_metrics", {}) or {}
+            )
+            ui_metrics["library_view"] = dict(
+                getattr(self.library_browser, "last_view_metrics", {}) or {}
+            )
+            ui_metrics["track_virtualization"] = dict(
+                getattr(
+                    self.library_browser,
+                    "last_track_virtualization_metrics",
+                    {},
+                ) or {}
+            )
+            ui_metrics["artwork_priority"] = dict(
+                getattr(
+                    self.library_browser,
+                    "last_artwork_priority_metrics",
+                    {},
+                ) or {}
+            )
+        if hasattr(self,"album_wall"): ui_metrics["album_wall_runtime"]=self.album_wall.diagnostics_snapshot()
+        ui_metrics["artwork_image_cache"]=self.metadata.artwork_image_cache_snapshot()
+        ui_metrics["playback_runtime"]=self.player.diagnostics_snapshot()
+        ui_metrics["local_scan_session"] = dict(self._local_scan_session or {})
+        ui_metrics["first_music"] = self._first_music_timeline.summary()
+        if hasattr(self, "background_scheduler"):
+            scheduler_metrics = self.background_scheduler.snapshot()
+            scheduler_metrics["async_invalidations"] = self._async_invalidations
+            scheduler_metrics["stale_results_dropped"] = (
+                self._async_stale_results_dropped
+            )
+            ui_metrics["background_scheduler"] = scheduler_metrics
+        if hasattr(self, "responsiveness"):
+            ui_metrics["responsiveness"] = self.responsiveness.summary()
+        return ui_metrics
+
+    def _refresh_plugin_presence(self) -> None:
+        if not self.providers.optional_plugins_loaded:
+            return
+        if hasattr(self,"search_plugin_presence"):
+            self.search_plugin_presence.set_items(self.source_policy.searchable_source_names())
+        if hasattr(self,"artwork_plugin_presence"):
+            self.artwork_plugin_presence.set_items(
+                self.source_policy.active_extension_names("artwork")
+            )
+        if hasattr(self,"recommendation_plugin_presence"):
+            self.recommendation_plugin_presence.set_items(
+                self.source_policy.active_extension_names("library_suggestions","recommendations")
+            )
+        if hasattr(self, "playback_feature"):
+            self.playback_feature.set_plugin_presence(
+                lyrics=self.source_policy.active_extension_names("lyrics"),
+                context=self.source_policy.active_extension_names(
+                    "context", "metadata", "identity"
+                ),
+            )
+
+    def _search_has_useful_results(self) -> bool:
+        if not hasattr(self, "results"):
+            return False
+        for index in range(self.results.count()):
+            data=self.results.item(index).data(Qt.UserRole)
+            if isinstance(data,dict) and data:
+                return True
+        return False
+
+    def _show_delayed_search_loading(self, sequence: int, target: str) -> None:
+        if (
+            sequence != self._search_sequence
             or sequence != self._search_pending_sequence
             or self._closing
         ):
