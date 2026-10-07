@@ -23,7 +23,7 @@ Browse your library as a visual album wall, explore relationships between tracks
 
 Melodex works with music files you already have, leaves those files where they are, and does not require an account or an AI setup. Connected sources and optional AI controls are there if you want them, but they are not the centre of the experience.
 
-> **Project status:** public beta. The desktop app is the main supported experience; macOS has had the most hands-on testing so far, with packaged Windows and Linux builds also available. Android currently works as a Bridge client. Feedback from real music libraries is especially useful.
+> **Project status:** public beta. The desktop app is the main supported experience; macOS has had the most hands-on testing so far, with packaged Windows and Linux builds also available. Android is a preview with local phone playback and an optional Provider Bridge connection. Feedback from real music libraries is especially useful.
 
 ## See your collection differently
 
@@ -68,7 +68,7 @@ You don't need Python, Git, a server, or an AI model to install a release build.
 | macOS | [Install on macOS](docs/INSTALL_MACOS.md) |
 | Windows | [Install on Windows](docs/INSTALL_WINDOWS.md) |
 | Linux | [Install on Linux](docs/INSTALL_LINUX.md) |
-| Android | [Android setup](docs/INSTALL_ANDROID.md) — currently pairs with a Melodex Bridge on a computer or home server |
+| Android | [Android setup](docs/INSTALL_ANDROID.md) — play phone music locally or connect to a Melodex Bridge |
 
 Melodex does not include a subscription music catalogue. A local collection is the best way to use its listening and discovery features; supported connected sources are also available. See [the FAQ](docs/FAQ.md) for details.
 
