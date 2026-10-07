@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 18527)
-Total output lines: 1766
-
 from __future__ import annotations
 
 import time
@@ -560,7 +557,635 @@ class JourneyWorkspace(QObject):
         live_grid.addWidget(self.music_live_label,2,2,1,2)
         live_grid.setColumnStretch(2,1)
         self.music_map_live_tab=QWidget()
-        live_tab_layout=QVBoxLayout(self.m…6527 tokens truncated…  if ordered==self.music_journey_stages_data:return
+        live_tab_layout=QVBoxLayout(self.music_map_live_tab)
+        live_tab_layout.setContentsMargins(10,8,10,8)
+        live_tab_layout.addLayout(live_grid)
+        live_tab_layout.addStretch(1)
+
+        self.music_map_planner_tabs=QTabWidget()
+        self.music_map_planner_tabs.addTab(self.music_map_route_tab,"Route")
+        self.music_map_planner_tabs.addTab(self.music_map_journey_panel,"Compose")
+        self.music_map_planner_tabs.addTab(self.music_map_live_tab,"Live")
+        power.addWidget(self.music_map_planner_tabs)
+    
+        self.music_map_power_scroll=QScrollArea()
+        self.music_map_power_scroll.setWidgetResizable(True)
+        self.music_map_power_scroll.setFrameShape(QFrame.NoFrame)
+        self.music_map_power_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.music_map_power_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.music_map_power_scroll.setMinimumHeight(108)
+        self.music_map_power_scroll.setMaximumHeight(420)
+        self.music_map_power_scroll.setWidget(self.music_map_power_panel)
+        self.music_map_power_scroll.hide()
+        l.addWidget(self.music_map_power_scroll)
+    
+        self.music_map=MusicMapWidget(self.music_map_page)
+        self.music_map.trackSelected.connect(self._music_map_selection_changed)
+        self.music_map.trackActivated.connect(self._play_music_map_track)
+        self.music_map.artworkRequested.connect(self._music_map_artwork_requested)
+        l.addWidget(self.music_map,1)
+    
+        self.music_path_steps=QListWidget()
+        self.music_path_steps.setMaximumHeight(116)
+        self.music_path_steps.addItem("Route explanations will appear here after you plan one.")
+        self.music_path_steps.hide()
+        l.addWidget(self.music_path_steps)
+    
+    
+    def _toggle_music_map_options(self) -> None:
+        visible=not self.music_map_options_panel.isVisible()
+        self.music_map_options_panel.setVisible(visible)
+    
+    
+    def _toggle_music_map_tools(self) -> None:
+        visible=not self.music_map_power_scroll.isVisible()
+        self.music_map_power_scroll.setVisible(visible)
+        self.music_path_steps.setVisible(visible)
+        if visible:
+            if hasattr(self,"music_map_planner_tabs"):
+                self.music_map_planner_tabs.setCurrentWidget(self.music_map_route_tab)
+            self._status(
+                "Route planner ready · select a track, set start and destination, then Find route",
+                5000,
+            )
+    
+    
+    def _toggle_music_journey_options(self) -> None:
+        if not self.music_map_power_scroll.isVisible():
+            self.music_map_power_scroll.show()
+            self.music_path_steps.show()
+        if hasattr(self,"music_map_planner_tabs"):
+            self.music_map_planner_tabs.setCurrentWidget(self.music_map_journey_panel)
+    
+    
+    def _music_map_selection_changed(self, track: object) -> None:
+        enabled=isinstance(track,dict) and bool(track)
+        self.music_map_play_button.setEnabled(enabled)
+        self.music_map_queue_button.setEnabled(enabled)
+    
+    
+    
+    def _archive_design_snapshot(self) -> dict[str, Any]:
+        ref_map = (
+            dict(self.music_map.ref_map or {})
+            if self.music_map_built and hasattr(self, "music_map")
+            else {}
+        )
+        mode = (
+            str(self.music_path_mode.currentData() or "balanced")
+            if self.music_map_built and hasattr(self, "music_path_mode")
+            else "balanced"
+        )
+        return {
+            "stages": list(self.music_journey_stages_data),
+            "mode": mode,
+            "ref_map": ref_map,
+            "active_recipe": dict(self.music_active_recipe),
+        }
+
+    def _queue_recipe_load(self, pending: object) -> None:
+        row = dict(pending or {}) if isinstance(pending, dict) else {}
+        if not row:
+            return
+        self.pending_journey_recipe = row
+        self.navigationRequested.emit("music_map")
+        self._status("Refreshing Music Map before loading recipe…", 3500)
+
+    def _queue_replay(self, snapshot: object, label: str) -> None:
+        route = dict(snapshot or {}) if isinstance(snapshot, dict) else {}
+        if not route:
+            return
+        self.pending_journey_replay = (route, str(label or "Journey replay"))
+        self.navigationRequested.emit("music_map")
+        self._status(f"Refreshing Music Map before {str(label or 'journey replay').lower()}…", 3500)
+
+    def _archive_recipe_activated(self, recipe_id: str, recipe: object) -> None:
+        self.music_active_recipe_id = str(recipe_id or "")
+        self.music_active_recipe = dict(recipe or {}) if isinstance(recipe, dict) else {}
+
+    def _archive_recipe_deleted(self, recipe_id: str) -> None:
+        if self.music_active_recipe_id == str(recipe_id or ""):
+            self.music_active_recipe_id = ""
+            self.music_active_recipe = {}
+
+    def _refresh_journeys(self) -> None:
+        self.archive.refresh()
+
+    def _apply_pending_journey_recipe(self):
+        from .journey_recipe import materialize_recipe_stages
+        pending=self.pending_journey_recipe
+        self.pending_journey_recipe=None
+        if not isinstance(pending,dict):
+            return
+        recipe=dict(pending.get("payload") or {})
+        try:
+            materialized=materialize_recipe_stages(
+                recipe,
+                dict(self.music_map.ref_map or {}),
+            )
+        except Exception as exc:
+            QMessageBox.warning(self._dialog_parent(),"Could not load journey recipe",str(exc)); return
+        mode=str(recipe.get("routing_mode") or "balanced")
+        index=self.music_path_mode.findData(mode)
+        if index>=0:
+            self.music_path_mode.setCurrentIndex(index)
+        self.music_journey_stages_data=[
+            dict(stage)
+            for stage in list(materialized.get("stages") or [])
+            if isinstance(stage,dict)
+        ]
+        self.music_active_recipe_id=str(pending.get("id") or "")
+        self.music_active_recipe=dict(recipe)
+        self._music_journey_render_stages()
+        unresolved=[
+            dict(stage)
+            for stage in list(materialized.get("unresolved") or [])
+            if isinstance(stage,dict)
+        ]
+        if unresolved:
+            names=", ".join(
+                str(stage.get("label") or (stage.get("selector") or {}).get("title") or "Unknown waypoint")
+                for stage in unresolved[:5]
+            )
+            QMessageBox.warning(
+                self._dialog_parent(),
+                "Recipe loaded with missing waypoints",
+                "The semantic stages were loaded, but these exact track waypoints "
+                f"are not present on the current Music Map:\n\n{names}",
+            )
+        self._status(
+            f"Loaded recipe · {recipe.get('name') or 'Journey recipe'} · choose start and destination",
+            6000,
+        )
+    
+    
+    def _apply_pending_journey_replay(self):
+        from .journey_replay import materialize_route_snapshot
+        pending=self.pending_journey_replay
+        self.pending_journey_replay=None
+        if not pending:
+            return
+        snapshot,label=pending
+        result=materialize_route_snapshot(
+            dict(snapshot or {}),
+            dict(self.music_map.ref_map or {}),
+        )
+        if not result.get("complete"):
+            unresolved=[
+                str(row.get("display") or "Unknown track")
+                for row in list(result.get("unresolved") or [])
+                if isinstance(row,dict)
+            ]
+            QMessageBox.warning(
+                self._dialog_parent(),
+                "Could not replay full journey",
+                "These historical tracks are not available on the current Music Map:\n\n"
+                + "\n".join(unresolved[:8]),
+            )
+            return
+        route=dict(result.get("route") or {})
+        refs=[str(ref) for ref in list(route.get("path_refs") or []) if str(ref)]
+        tracks=[
+            dict(self.music_map.ref_map[ref])
+            for ref in refs
+            if ref in self.music_map.ref_map
+        ]
+        if len(tracks)!=len(refs):
+            self._status("Historical route could not be fully rematched",4500); return
+        self.music_path_result=route
+        self.music_path_start_ref=refs[0]
+        self.music_path_end_ref=refs[-1]
+        self._music_path_update_label()
+        mode=str(route.get("mode") or "balanced")
+        index=self.music_path_mode.findData(mode)
+        if index>=0:
+            self.music_path_mode.setCurrentIndex(index)
+        self.music_map.show_route(route)
+        self.music_path_steps.clear()
+        for index,hop in enumerate(list(route.get("hops") or []),start=1):
+            if not isinstance(hop,dict):
+                continue
+            self.music_path_steps.addItem(
+                f"{index}. {self._music_path_name(hop.get('from') or '')}  →  "
+                f"{self._music_path_name(hop.get('to') or '')}\n"
+                f"{hop.get('reason') or 'Historical route'}"
+            )
+        self.playTracksRequested.emit(tracks)
+        self._status(f"{label} · {len(tracks)} tracks",5000)
+    
+    
+    def _build_music_map_payload(self):
+        from .music_knowledge import build_knowledge_graph
+        from .music_map_model import build_music_map
+    
+        catalog=self.providers.local_catalog()
+        profiles, _seed_refs, ref_map, _analysed = self.local_intelligence.build_snapshot(
+            catalog,
+            [],
+            max_tracks=5000,
+            analyse_seeds=False,
+        )
+        model=build_music_map(profiles,max_nodes=700,neighbours=2)
+        mapped_refs={
+            str(node.get("ref") or "")
+            for node in list(model.get("nodes") or [])
+            if isinstance(node,dict) and str(node.get("ref") or "")
+        }
+        mapped_ref_map={
+            ref:dict(track)
+            for ref,track in ref_map.items()
+            if ref in mapped_refs
+        }
+        knowledge=self.knowledge.snapshot(mapped_ref_map)
+        graph=build_knowledge_graph(mapped_ref_map,knowledge)
+        return {
+            "model":model,
+            "ref_map":mapped_ref_map,
+            "knowledge_graph":graph,
+        }
+    
+    
+    def _refresh_music_map(self):
+        catalog=self.providers.local_catalog()
+        if not catalog:
+            self.music_map.set_map({}, {}, self.current_track)
+            self._status("Add local music to build a Music Map",4000)
+            return
+        self._status("Building Music Map from cached Flow analysis…")
+        self._run_async(self._build_music_map_payload,self._apply_music_map_payload, priority="visible", task_name="music-map-model", replace_key="page:music-map-model")
+
+    def _music_map_artwork_requested(self, requests: object) -> None:
+        rows = [dict(row) for row in list(requests or []) if isinstance(row, dict)]
+        if not rows:
+            return
+        prefetch = all(bool(row.get("prefetch")) for row in rows)
+
+        def load():
+            metadata = self._metadata_getter()
+            result = {}
+            for row in rows:
+                ref = str(row.get("ref") or "")
+                track = dict(row.get("track") or {})
+                if not ref or not track:
+                    continue
+                path = str(metadata.local_artwork(track).get("path") or "")
+                result[ref] = metadata.prepared_artwork_payload(
+                    path,
+                    int(row.get("generation") or 0),
+                    128,
+                )
+                result[ref]["prefetch"] = bool(row.get("prefetch"))
+            return result
+
+        self._run_async(
+            load,
+            self.music_map.set_artwork,
+            priority="prefetch" if prefetch else "visible",
+            task_name="music-map-cover-prefetch" if prefetch else "music-map-visible-covers",
+        )
+    
+    
+    def _apply_music_map_payload(self,payload):
+        payload=dict(payload or {})
+        if self.music_live_active:
+            self._journey_live_stop("map refreshed · adaptation stopped")
+        self.music_map.set_map(
+            dict(payload.get("model") or {}),
+            dict(payload.get("ref_map") or {}),
+            self.current_track,
+            dict(payload.get("knowledge_graph") or {}),
+        )
+        self.music_path_start_ref=""
+        self.music_path_end_ref=""
+        self.music_path_result={}
+        self.music_journey_stages_data=[]
+        if self.pending_journey_recipe is None:
+            self.music_active_recipe_id=""
+            self.music_active_recipe={}
+        self._music_path_update_label()
+        if hasattr(self,"music_journey_stages"):
+            self._music_journey_render_stages()
+        if hasattr(self,"music_path_steps"):
+            self.music_path_steps.clear()
+            self.music_path_steps.addItem("Select a mapped track, set start/destination, then Find path.")
+        mapped=int((payload.get("model") or {}).get("analysed") or 0)
+        if mapped:
+            self._status(f"Music Map ready · {mapped} analysed tracks",5000)
+        else:
+            self._status("Music Map needs cached Flow analysis · choose Analyse my library",6000)
+        if self.pending_journey_recipe is not None:
+            self._apply_pending_journey_recipe()
+        if self.pending_journey_replay is not None:
+            self._apply_pending_journey_replay()
+    
+    
+    def _knowledge_bundle_for_track(self,track):
+        track=dict(track or {})
+        errors=[]
+        try:
+            identity=self.metadata.identify(track).as_dict()
+        except Exception as exc:
+            identity={
+                "artist":str(track.get("artist") or ""),
+                "title":str(track.get("title") or ""),
+                "album":str(track.get("album") or ""),
+            }
+            errors.append(f"identity: {exc}")
+    
+        artist={}
+        credits=[]
+        context=[]
+        artist_mbid=str(identity.get("artist_mbid") or "")
+        recording_mbid=str(identity.get("recording_mbid") or "")
+        if artist_mbid:
+            try:
+                artist=self.metadata.artist_info(artist_mbid)
+                qid=str(artist.get("wikidata_qid") or "")
+                if qid:
+                    identity["wikidata_id"]=qid
+            except Exception as exc:
+                errors.append(f"artist: {exc}")
+        if recording_mbid:
+            try:
+                credits=self.metadata.recording_credits(recording_mbid)
+            except Exception as exc:
+                errors.append(f"credits: {exc}")
+        if self.providers.capabilities is not None:
+            try:
+                context_result=self.metadata.enrich_context(track,identity)
+                context=[
+                    dict(x)
+                    for x in list(context_result.get("cards") or [])
+                    if isinstance(x,dict)
+                ]
+                errors.extend(
+                    str(x)
+                    for x in list(context_result.get("errors") or [])
+                    if x
+                )
+            except Exception as exc:
+                errors.append(f"context: {exc}")
+    
+        self.knowledge.remember(
+            track,
+            identity=identity,
+            artist=artist,
+            credits=credits,
+            context=context,
+        )
+        return {
+            "track":track,
+            "matched":bool(recording_mbid or artist_mbid),
+            "credits":len(credits),
+            "context_cards":len(context),
+            "errors":errors,
+        }
+    
+    
+    def _enrich_selected_map_knowledge(self):
+        track=self._music_map_selected()
+        if not track:
+            self._status("Select a mapped track first",3000)
+            return
+        self._status(
+            "Enriching selected track via MusicBrainz and enabled context plugins…"
+        )
+        self._run_async(
+            lambda:self._knowledge_bundle_for_track(track),
+            self._knowledge_enrichment_finished,
+        priority="background", task_name="knowledge-enrich-selected")
+    
+    
+    def _knowledge_needs_enrichment(self,track):
+        payload=self.knowledge.get(dict(track or {}))
+        identity=payload.get("identity") if isinstance(payload.get("identity"),dict) else {}
+        has_identity=bool(
+            identity.get("recording_mbid")
+            or identity.get("artist_mbid")
+            or track.get("musicbrainz_recording_id")
+            or track.get("musicbrainz_artist_id")
+        )
+        has_credits="credits" in payload
+        has_context="context" in payload
+        has_artist="artist" in payload
+        return not (has_identity and has_credits and has_context and has_artist)
+    
+    
+    def _enrich_map_knowledge_batch(self):
+        tracks=self.music_map.mapped_tracks() if hasattr(self,"music_map") else []
+        pending=[track for track in tracks if self._knowledge_needs_enrichment(track)]
+        batch=pending[:8]
+        if not batch:
+            self._status("Mapped knowledge is already populated for these tracks",4000)
+            return
+        self._status(
+            f"Enriching {len(batch)} mapped tracks via MusicBrainz and enabled context plugins…"
+        )
+        def work():
+            rows=[]
+            for track in batch:
+                try:
+                    rows.append(self._knowledge_bundle_for_track(track))
+                except Exception as exc:
+                    rows.append({"track":track,"matched":False,"credits":0,"context_cards":0,"errors":[str(exc)]})
+            return rows
+        self._run_async(work,self._knowledge_batch_finished, priority="background", task_name="knowledge-enrich-batch")
+    
+    
+    def _knowledge_enrichment_finished(self,result):
+        errors=[str(x) for x in list((result or {}).get("errors") or []) if x]
+        self._status(
+            f"Knowledge enriched · {int((result or {}).get('credits') or 0)} credits · "
+            f"{int((result or {}).get('context_cards') or 0)} context cards"
+            + (f" · {len(errors)} warning(s)" if errors else ""),
+            7000,
+        )
+        self._refresh_music_map()
+    
+    
+    def _knowledge_batch_finished(self,rows):
+        rows=[dict(x) for x in list(rows or []) if isinstance(x,dict)]
+        matched=sum(1 for row in rows if row.get("matched"))
+        credits=sum(int(row.get("credits") or 0) for row in rows)
+        cards=sum(int(row.get("context_cards") or 0) for row in rows)
+        warnings=sum(len(list(row.get("errors") or [])) for row in rows)
+        self._status(
+            f"Knowledge batch complete · {matched}/{len(rows)} identified · "
+            f"{credits} credits · {cards} context cards"
+            + (f" · {warnings} warning(s)" if warnings else ""),
+            9000,
+        )
+        self._refresh_music_map()
+    
+    # ------------------------------- Music Map Pathfinder
+    
+    def _music_path_name(self,ref):
+        track=dict(self.music_map.ref_map.get(str(ref),{}) or {}) if hasattr(self,"music_map") else {}
+        if not track:return "—"
+        artist=str(track.get("artist") or "Unknown artist")
+        title=str(track.get("title") or "Unknown track")
+        return f"{artist} — {title}"
+    
+    
+    def _music_path_update_label(self):
+        if not hasattr(self,"music_path_label"):return
+        self.music_path_label.setText(
+            f"Pathfinder · start {self._music_path_name(self.music_path_start_ref)}"
+            f"  →  destination {self._music_path_name(self.music_path_end_ref)}"
+        )
+        if hasattr(self,"music_journey_start_endpoint"):
+            name=self._music_path_name(self.music_path_start_ref)
+            self.music_journey_start_endpoint.set_track_label("" if name=="—" else name)
+        if hasattr(self,"music_journey_end_endpoint"):
+            name=self._music_path_name(self.music_path_end_ref)
+            self.music_journey_end_endpoint.set_track_label("" if name=="—" else name)
+
+
+    def _music_path_set_endpoint(self, endpoint: str, stage_or_ref: object):
+        ref=(
+            str(stage_or_ref.get("ref") or "")
+            if isinstance(stage_or_ref,dict)
+            else str(stage_or_ref or "")
+        )
+        if not ref or ref not in getattr(self.music_map,"ref_map",{}):
+            self._status("Choose a track that is on the current Music Map",3500)
+            return False
+        if str(endpoint or "").casefold()=="start":
+            self.music_path_start_ref=ref
+            message="Journey start set"
+        elif str(endpoint or "").casefold() in {"end","destination"}:
+            self.music_path_end_ref=ref
+            message="Journey destination set"
+        else:
+            return False
+        self.music_path_result={}
+        self.music_map.set_route_endpoints(
+            self.music_path_start_ref,
+            self.music_path_end_ref,
+        )
+        self._music_path_update_label()
+        self._status(message,2500)
+        return True
+    
+    
+    def _music_path_set_start(self):
+        ref=self.music_map.selected_ref_value() if hasattr(self,"music_map") else ""
+        if not ref:
+            self._status("Select a Music Map track first",3000); return
+        self._music_path_set_endpoint("start",ref)
+    
+    
+    def _music_path_set_end(self):
+        ref=self.music_map.selected_ref_value() if hasattr(self,"music_map") else ""
+        if not ref:
+            self._status("Select a Music Map track first",3000); return
+        self._music_path_set_endpoint("destination",ref)
+    
+    
+    def _music_path_find(self):
+        from .music_pathfinder import find_music_path
+        if not self.music_path_start_ref or not self.music_path_end_ref:
+            self._status("Set both Pathfinder start and destination",3500); return
+        mode=str(self.music_path_mode.currentData() or "balanced")
+        result=find_music_path(
+            dict(self.music_map.model or {}),
+            dict(self.music_map.knowledge_graph or {}),
+            self.music_path_start_ref,
+            self.music_path_end_ref,
+            mode=mode,
+            max_hops=12,
+        )
+        self.music_path_result=dict(result or {})
+        self.music_map.show_route(self.music_path_result)
+        self.music_path_steps.clear()
+        if not self.music_path_result.get("found"):
+            reason=str(self.music_path_result.get("reason") or "No route found")
+            self.music_path_steps.addItem(reason)
+            self._status(reason,6000)
+            return
+    
+        refs=[str(x) for x in list(self.music_path_result.get("path_refs") or []) if str(x)]
+        hops=[dict(x) for x in list(self.music_path_result.get("hops") or []) if isinstance(x,dict)]
+        for index,hop in enumerate(hops):
+            a=self._music_path_name(hop.get("from") or (refs[index] if index<len(refs) else ""))
+            b=self._music_path_name(hop.get("to") or (refs[index+1] if index+1<len(refs) else ""))
+            reason=str(hop.get("reason") or "graph connection")
+            self.music_path_steps.addItem(f"{index+1}. {a}  →  {b}\n{reason}")
+        self._status(
+            f"Pathfinder ready · {len(hops)} hop{'s' if len(hops)!=1 else ''} · "
+            f"score {float(self.music_path_result.get('score') or 0):.0%}",
+            7000,
+        )
+    
+    
+    def _music_path_tracks(self):
+        if not self.music_path_result.get("found"):return []
+        refs=[str(x) for x in list(self.music_path_result.get("path_refs") or []) if str(x)]
+        return [
+            dict(self.music_map.ref_map[ref])
+            for ref in refs
+            if ref in self.music_map.ref_map
+        ]
+    
+    
+    def _music_path_play(self):
+        if self.music_live_active:
+            self._journey_live_stop("normal route playback")
+        tracks=self._music_path_tracks()
+        if not tracks:
+            self._status("Find a Pathfinder route first",3000); return
+        self.playTracksRequested.emit(tracks)
+        self._status(f"Playing Pathfinder route · {len(tracks)} tracks",4000)
+    
+    
+    def _music_path_queue(self):
+        tracks=self._music_path_tracks()
+        if not tracks:
+            self._status("Find a Pathfinder route first",3000); return
+        self.queueTracksRequested.emit(tracks)
+        self._status(f"Queued Pathfinder route · {len(tracks)} tracks",4000)
+    
+    
+    def _music_path_clear(self):
+        if self.music_live_active:
+            self._journey_live_stop("route cleared")
+        self.music_path_start_ref=""
+        self.music_path_end_ref=""
+        self.music_path_result={}
+        if hasattr(self,"music_map"):self.music_map.clear_route()
+        self._music_path_update_label()
+        if hasattr(self,"music_path_steps"):
+            self.music_path_steps.clear()
+            self.music_path_steps.addItem("Pathfinder explanations will appear here.")
+        self._status("Pathfinder cleared",2500)
+    
+    
+    def _journey_recipe_mark_modified(self):
+        if self.music_active_recipe_id:
+            self.music_active_recipe_id=""
+            self.music_active_recipe={}
+    
+    # ------------------------------- Music Map Journey Designer
+    
+    def _music_journey_render_stages(self):
+        from .music_journey import STAGE_LABELS
+        if not hasattr(self,"music_journey_stages"):return
+        if not self.music_journey_stages_data:
+            self.music_journey_stages.set_stages([])
+            return
+        for stage in self.music_journey_stages_data:
+            if str(stage.get("type") or "")=="track":
+                label=str(stage.get("label") or self._music_path_name(stage.get("ref") or ""))
+                stage["label"]=label
+            else:
+                key=str(stage.get("constraint") or "")
+                stage["label"]=str(stage.get("label") or STAGE_LABELS.get(key,key.title()))
+        self.music_journey_stages.set_stages(self.music_journey_stages_data)
+
+
+    def _music_journey_stage_order_changed(self, stages):
+        ordered=[dict(stage) for stage in list(stages or []) if isinstance(stage,dict)]
+        if ordered==self.music_journey_stages_data:return
         self.music_journey_stages_data=ordered
         self.music_active_recipe_id=""
         self.music_active_recipe={}
