@@ -1,9 +1,9 @@
 <p align="center">
-  <img src="docs/images/melodex.jpg" width="100%" alt="Melodex — Don't shuffle. Flow. Find a listening path through your own music.">
+  <img src="docs/images/melodex.jpg" width="100%" alt="Melodex — explore the music collection you already own.">
 </p>
 
 <p align="center">
-  <strong>Find your next listen in the music you already love.</strong>
+  <strong>Explore the music collection you already own.</strong>
 </p>
 
 <p align="center">
@@ -17,23 +17,41 @@
 
 # Melodex
 
-## Don't shuffle. Flow.
+Melodex is an **open-source, local-first music player for exploring your music collection, not just searching and playing it**.
 
-Melodex is a music player that helps you find your way through your own collection. Start a listening session, keep it familiar or make it more adventurous, and rediscover albums you haven't heard in a while.
+Browse your library as a visual album wall, explore relationships between tracks on a music map, and rediscover what you own through listening journeys and interactive playback visuals.
 
-It works with music files you already have. Melodex leaves those files where they are, and you can use it without an account or an AI setup.
-
-**Melodex may suit you if** you own music that has become hard to browse, keep returning to the same favourites, or want more say in where a listening session goes.
+Melodex works with music files you already have, leaves those files where they are, and does not require an account or an AI setup. Connected sources and optional AI controls are there if you want them, but they are not the centre of the experience.
 
 > **Project status:** public beta. The desktop app is the main supported experience; macOS has had the most hands-on testing so far, with packaged Windows and Linux builds also available. Android currently works as a Bridge client. Feedback from real music libraries is especially useful.
 
-## What listening with Melodex feels like
+## See your collection differently
 
-- **Press Play something.** Start a session from your collection without first choosing every track.
-- **Set the direction.** Choose Comfort, Explore, or Rediscover, then tune how familiar or surprising the session should feel.
-- **Wander through your music.** Browse album artwork, explore a visual map, or build a journey from one part of your collection to another.
-- **Keep what you like.** Use Keep and ♥ to help Melodex remember what you enjoy.
-- **Use AI only if you want to.** Melodex works without any AI setup.
+<p align="center">
+  <img src="docs/images/album-wall.webp" alt="Melodex Album Wall showing a visual collection of album artwork">
+</p>
+
+<p align="center"><em><strong>Album Wall</strong> — browse by artwork and familiarity instead of treating your library like a spreadsheet.</em></p>
+
+<p align="center">
+  <img src="docs/images/music-map.webp" alt="Melodex Music Map showing relationships between tracks">
+</p>
+
+<p align="center"><em><strong>Music Map</strong> — pan and zoom through relationships between tracks, then follow the connections that interest you.</em></p>
+
+<p align="center">
+  <img src="docs/images/constellation.webp" alt="Melodex Constellation visual playback view">
+</p>
+
+<p align="center"><em><strong>Constellation</strong> — make playback itself an exploration surface, with related tracks around what is playing.</em></p>
+
+## Why Melodex is different
+
+- **Browse visually.** Album Wall turns a large collection into something you can scan and wander through.
+- **Explore relationships.** Music Map reveals connections between tracks and lets you move through the library spatially.
+- **Follow a path instead of shuffling.** Choose Comfort, Explore, or Rediscover, tune how familiar or surprising the session should feel, or build a journey between parts of your collection.
+- **Make playback part of discovery.** Interactive visuals such as Constellation keep nearby music within reach while a track is playing.
+- **Keep your library yours.** Local files stay where they are. No account, subscription catalogue, server, or AI model is required.
 
 For more detail on the listening experience, see [Why Melodex?](docs/WHY_MELODEX.md).
 
@@ -56,7 +74,9 @@ Melodex does not include a subscription music catalogue. A local collection is t
 
 ## Try the beta
 
-Melodex is still in public beta, and we're looking for everyday listeners. You don't need a huge collection or special expertise. The macOS build has had the most hands-on testing so far; Windows and Linux users are especially useful testers. Tell us what was easy, what confused you, whether anything failed, and whether Melodex gave you a reason to keep listening with it.
+Melodex is still in public beta, and we're looking for everyday listeners. You don't need a huge collection or special expertise. The macOS build has had the most hands-on testing so far; Windows and Linux users are especially useful testers.
+
+If you try it, tell us what was easy, what confused you, whether anything failed, and most importantly whether Melodex gave you a reason to explore something in your collection that you might otherwise have ignored.
 
 **[Follow the 10-minute tester guide](docs/TESTING.md)** · [Send beta feedback](https://github.com/Cliff-Lee/melodex/issues/new?template=tester_feedback.yml) · [Report a problem](https://github.com/Cliff-Lee/melodex/issues/new?template=bug_report.yml)
 
