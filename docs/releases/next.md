@@ -1,9 +1,11 @@
 # Next release — draft notes
 
-**Melodex v0.7.17 tester release candidate.**
+**Melodex v0.7.18 tester release candidate.**
 
-Current target version: **0.7.17**. The tester candidate is **v0.7.17-rc.2**.
+Current target version: **0.7.18**. The P14 tester candidate is **v0.7.18-rc.1**.
 
-This candidate contains the P13 player-first startup and progressive source-discovery work. It is intended for controlled tester feedback while real-device audio and NAS journeys are qualified. It is a GitHub prerelease, not a declaration that P13 has passed its final hardware/NAS gates.
+This candidate focuses on making a partially discovered collection useful sooner
+and shaping an immediate first session from available tracks. Real-device audio
+and NAS qualification remain part of tester feedback.
 
-See `docs/releases/v0.7.17.md` for candidate scope and the tester checklist.
+See `docs/releases/v0.7.18.md` for candidate scope and the tester checklist.

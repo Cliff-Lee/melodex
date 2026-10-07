@@ -3309,12 +3309,15 @@ def test_shuffle_discovered_tracks_expands_with_scan_batches(monkeypatch, tmp_pa
     class QueuePlayer:
         def __init__(self):
             self.queue = []
+            self.index = -1
+            self.append_calls = []
 
         def set_queue(self, tracks, _start, _autoplay, **_kwargs):
             self.queue = [dict(track) for track in tracks]
 
         def append_queue(self, tracks, autoplay=False):
             assert autoplay is False
+            self.append_calls.append(([dict(track) for track in tracks], autoplay))
             self.queue.extend(dict(track) for track in tracks)
 
         def close(self):
@@ -3329,11 +3332,14 @@ def test_shuffle_discovered_tracks_expands_with_scan_batches(monkeypatch, tmp_pa
 
     window._shuffle_discovered_tracks()
     assert [track["track_id"] for track in player.queue] == [first["track_id"]]
+    player.index = 0
 
     window._extend_discovered_shuffle([second])
     assert {track["track_id"] for track in player.queue} == {
         first["track_id"], second["track_id"]
     }
+    assert player.index == 0
+    assert player.append_calls[-1][1] is False
 
     player.queue = [dict(second)]
     window._extend_discovered_shuffle([second])
@@ -3341,6 +3347,52 @@ def test_shuffle_discovered_tracks_expands_with_scan_batches(monkeypatch, tmp_pa
 
     window.close()
     app.processEvents()
+
+
+def test_first_discovery_preview_stops_extending_after_manual_queue_intent(
+    monkeypatch, tmp_path
+):
+    try:
+        from types import SimpleNamespace
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+    window = main_window.MainWindow()
+
+    class QueuePlayer:
+        def __init__(self):
+            self.queue = [{
+                "track_id": "manual",
+                "local_path": "/music/manual.flac",
+                "progressive_local": True,
+            }]
+            self.index = 0
+            self.appended = []
+
+        def append_queue(self, tracks, autoplay=False):
+            self.appended.extend(tracks)
+
+        def close(self):
+            pass
+
+    window.player = QueuePlayer()
+    window.local_scan = SimpleNamespace(active=True, shutdown=lambda: None)
+    window._first_discovery_preview_queue = False
+    try:
+        window._accept_first_provisional_track(
+            {"track_id": "new", "local_path": "/music/new.flac"}
+        )
+
+        assert window.player.appended == []
+    finally:
+        window.close()
+        app.processEvents()
 
 
 def test_existing_roots_without_index_trigger_one_migration_scan(

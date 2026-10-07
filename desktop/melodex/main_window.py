@@ -32,6 +32,7 @@ from .motion import MotionController, FAST_MOTION_MS, STANDARD_MOTION_MS
 from .library_scan_controller import LibraryScanController
 from .first_music_metrics import FirstMusicTimeline
 from .first_play_policy import light_shuffle
+from .session_handoff import refined_upcoming, track_key
 from .navigation_controller import NavigationController
 from .source_policy_controller import SourcePolicyController
 from .sources_feature import SourcesFeature
@@ -501,6 +502,8 @@ class MainWindow(QMainWindow):
                 self.library_browser.set_cache_restoring(False)
             if self.current_page == "library":
                 self._refresh_library()
+            elif self.current_page == "home":
+                self._show_home()
 
     def _warm_catalog_cache_failed(self, roots: list[Path], error: str) -> None:
         self._local_cache_hydration_pending = False
@@ -1454,11 +1457,10 @@ class MainWindow(QMainWindow):
         first_run_actions.addWidget(choose_folder)
         first_run_actions.addWidget(connect_nas)
         first_run_actions.addWidget(try_files)
-        first_run_l.addLayout(first_run_actions)
         self.first_run_play_button = QPushButton("▶  Play Something")
-        self.first_run_play_button.setObjectName("secondaryButton")
+        self.first_run_play_button.setObjectName("primaryButton")
         self.first_run_play_button.setProperty("firstRunAction", "play-something")
-        self.first_run_play_button.setMinimumHeight(44)
+        self.first_run_play_button.setMinimumHeight(50)
         self.first_run_play_button.clicked.connect(self._first_run_play_action)
         set_help(
             self.first_run_play_button,
@@ -1467,6 +1469,7 @@ class MainWindow(QMainWindow):
         )
         self.first_run_play_button.hide()
         first_run_l.addWidget(self.first_run_play_button)
+        first_run_l.addLayout(first_run_actions)
         drop_hint = QLabel("Or drop audio files or a music folder here.")
         drop_hint.setAlignment(Qt.AlignCenter)
         drop_hint.setObjectName("subtleText")
@@ -2109,7 +2112,11 @@ class MainWindow(QMainWindow):
                 else "Add a folder of music. Your files stay where they are."
             )
         if hasattr(self,"home_moods_widget"):
-            self.home_moods_widget.setVisible(has_library)
+            # These controls need the hydrated catalog. The primary play
+            # action has a one-track cached fallback while hydration runs.
+            self.home_moods_widget.setVisible(
+                has_library and self.providers.local_catalog_is_loaded()
+            )
         if hasattr(self,"home_explore_heading"):
             self.home_explore_heading.setVisible(has_library)
         if hasattr(self,"home_explore_widget"):
@@ -2123,10 +2130,17 @@ class MainWindow(QMainWindow):
         if hasattr(self,"home_primary_button"):
             if count:
                 self.home_primary_button.setText("▶  Play something")
+                play_help = (
+                    "Starts from the tracks found so far. New discoveries can join "
+                    "while indexing continues."
+                    if self.local_scan.active
+                    else "Starts music immediately; listening history and Flow shape "
+                    "the rest of the session in the background."
+                )
                 set_help(
                     self.home_primary_button,
                     "Play something",
-                    "Builds a balanced one-hour session from your local library using your listening history and Flow when available.",
+                    play_help,
                 )
             else:
                 self.home_primary_button.setText("+  Add my music")
@@ -2156,7 +2170,7 @@ class MainWindow(QMainWindow):
             else:
                 count = len(tracks)
                 button.setText(
-                    f"▶  Play Something · {count:,} ready"
+                    f"▶  Play Something · {count:,} tracks ready"
                     if count > 1
                     else "▶  Play Something · 1 track ready"
                 )
@@ -2191,6 +2205,13 @@ class MainWindow(QMainWindow):
             self._prioritize_tracks([self.player.queue[self.player.index]])
             self.player.jump_to(self.player.index, autoplay=True)
             return
+        if self.local_scan.active:
+            # A partially discovered pool is already enough for a useful
+            # session. Do not wait for the full-library planner while new music
+            # is still being found.
+            if self._discovered_playable_tracks():
+                self._shuffle_discovered_tracks()
+                return
         if self.providers.local_catalog_count():
             if not self.providers.local_catalog_is_loaded():
                 recent = dict(getattr(self, "home_recent_track", {}) or {})
@@ -2226,9 +2247,96 @@ class MainWindow(QMainWindow):
                     )
                     self.statusBar().showMessage(message, 5000)
                 return
-            self._play_for_me("balanced",60,0.35)
+            self._start_balanced_session_immediately()
         else:
             self._choose_music_folder()
+
+    def _start_balanced_session_immediately(self) -> None:
+        """Start a small neutral queue before history-based planning finishes."""
+        catalog = self.providers.local_catalog()
+        if not catalog:
+            return
+
+        # Sample across the already-hydrated in-memory catalog without walking
+        # or probing files on the UI thread. The background planner receives
+        # the full catalog; this bounded sample exists only to start audio now.
+        limit = min(512, len(catalog))
+        if limit == len(catalog):
+            sampled = catalog
+        else:
+            stride = (len(catalog) - 1) / (limit - 1)
+            sampled = [catalog[round(index * stride)] for index in range(limit)]
+        immediate_pool = [dict(track) for track in sampled]
+        immediate_queue = light_shuffle(immediate_pool, rng=random)[:40]
+        if not immediate_queue:
+            return
+
+        self._first_discovery_preview_queue = False
+        self._restored_playback_queue = False
+        self._shuffle_discovered_active = False
+        self.player.set_queue(
+            immediate_queue,
+            0,
+            True,
+            intent="journey",
+        )
+        expected_ids = tuple(
+            track_key(track) for track in self.player.queue
+        )
+        self.statusBar().showMessage(
+            "Playing now · shaping the session from your listening history…",
+            5000,
+        )
+
+        self._run_async(
+            lambda: self.mind.build_session(
+                catalog,
+                self._path_for,
+                minutes=60,
+                adventure=0.35,
+                mode="balanced",
+            ),
+            lambda plan: self._apply_history_plan_to_live_queue(
+                plan, expected_ids
+            ),
+            lambda _error: None,
+            priority="foreground",
+            task_name="play-for-me",
+            replace_key="play-for-me",
+        )
+
+    def _apply_history_plan_to_live_queue(
+        self, plan: object, expected_ids: tuple[str, ...]
+    ) -> None:
+        """Refine only the unplayed tail if the quick queue is still untouched."""
+        if self._closing:
+            return
+        if not isinstance(plan, dict):
+            return
+        raw_tracks = plan.get("tracks")
+        if not isinstance(raw_tracks, list):
+            return
+        current_queue = list(self.player.queue)
+        planned = [
+            dict(track)
+            for track in raw_tracks
+            if isinstance(track, dict)
+        ]
+        upcoming = refined_upcoming(
+            current_queue,
+            self.player.index,
+            planned,
+            expected_ids,
+        )
+        if not upcoming:
+            return
+
+        self.player.replace_upcoming(upcoming)
+        self.statusBar().showMessage(
+            f"Personalized session ready · {len(planned)} tracks · "
+            f"{plan.get('new_to_you', 0)} new to you",
+            6000,
+        )
 
     def _refresh_home_continue(self) -> None:
         if not hasattr(self,"home_continue_cover"):
@@ -2621,7 +2729,11 @@ class MainWindow(QMainWindow):
             and str(track.get("local_path") or "").strip()
         ]
         if additions:
-            random.shuffle(additions)
+            additions = light_shuffle(
+                additions,
+                rng=random,
+                recent_context=list(self.player.queue[-3:]),
+            )
             self.player.append_queue(additions, autoplay=False)
             self._shuffle_discovered_ids = current_ids + tuple(
                 str(item.get("track_id") or item.get("local_path") or "")
@@ -3322,6 +3434,8 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage(message)
             if hasattr(self, "home_status"):
                 self.home_status.setText(message)
+            if hasattr(self, "home_first_run_hint"):
+                self.home_first_run_hint.setText(message)
             self._update_progressive_queue_metadata(batch)
             self._extend_discovered_shuffle(batch)
             return
@@ -3352,6 +3466,8 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage(message)
             if hasattr(self,"home_status"):
                 self.home_status.setText(message)
+            if hasattr(self, "home_first_run_hint"):
+                self.home_first_run_hint.setText(message)
 
     def _accept_first_provisional_track(self, track: dict[str, object]) -> None:
         """Expose initial discovered paths to the player before catalog commit."""
@@ -3377,6 +3493,8 @@ class MainWindow(QMainWindow):
             return
         current_queue = list(self.player.queue)
         if current_queue:
+            if not self._first_discovery_preview_queue:
+                return
             if not all(
                 bool(item.get("progressive_local") or item.get("provisional"))
                 for item in current_queue
@@ -3404,6 +3522,8 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(message)
         if hasattr(self, "home_status"):
             self.home_status.setText(message)
+        if hasattr(self, "home_first_run_hint"):
+            self.home_first_run_hint.setText(message)
 
     def _cache_progressive_tracks(
         self,
@@ -3569,6 +3689,7 @@ class MainWindow(QMainWindow):
         scanned_roots_key=self.local_scan.roots_key
         if not self.local_scan.finish(sequence):
             return
+        self._shuffle_discovered_active = False
         source_id = self._first_music_scan_source_id
         self._first_music_timeline.mark(
             "source_probe_finished", source_id=source_id
@@ -3706,6 +3827,7 @@ class MainWindow(QMainWindow):
     def _local_scan_failed(self, sequence: int, error: str) -> None:
         if self._closing or not self.local_scan.finish(sequence):
             return
+        self._shuffle_discovered_active = False
         for root in self.providers.local_roots():
             self.state.set_source_status(str(root), "unavailable", str(error or ""))
             self.providers.set_local_source_availability(root, "unavailable")

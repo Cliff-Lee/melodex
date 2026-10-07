@@ -11,6 +11,7 @@ def test_first_music_timeline_calculates_source_and_play_latencies() -> None:
     timeline.mark("source_selected", source_id=source_id, now=11.0)
     timeline.mark("first_directory_result", source_id=source_id, now=11.2)
     timeline.mark("first_audio_file_discovered", source_id=source_id, now=11.5)
+    timeline.mark("first_queue_ready", source_id=source_id, now=11.7)
     timeline.mark("first_playable_track_ready", source_id=source_id, now=12.8)
     timeline.mark("first_track_visible", source_id=source_id, now=13.0)
     timeline.mark("background_scan_finished", source_id=source_id, now=13.5)
@@ -30,6 +31,7 @@ def test_first_music_timeline_calculates_source_and_play_latencies() -> None:
     play = summary["journeys"]["plays"][0]
     assert source["source_selected_to_first_directory_ms"] == pytest.approx(200.0)
     assert source["source_selected_to_first_audio_file_ms"] == pytest.approx(500.0)
+    assert source["source_selected_to_first_queue_ready_ms"] == pytest.approx(700.0)
     assert source["source_selected_to_first_playable_track_ms"] == pytest.approx(1800.0)
     assert source["source_selected_to_first_track_visible_ms"] == pytest.approx(2000.0)
     assert source["source_selected_to_scan_finished_ms"] == pytest.approx(2500.0)

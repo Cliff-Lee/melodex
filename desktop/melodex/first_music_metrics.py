@@ -19,6 +19,7 @@ _EVENTS = frozenset(
         "first_audio_file_discovered",
         "first_playable_track_ready",
         "first_track_visible",
+        "first_queue_ready",
         "play_requested",
         "decoder_started",
         "first_audio_output",
@@ -196,6 +197,10 @@ class FirstMusicTimeline:
                     ),
                     "source_selected_to_first_track_visible_ms": self._elapsed(
                         events, "source_selected", "first_track_visible",
+                        identity_key="source_id", identity=source_id,
+                    ),
+                    "source_selected_to_first_queue_ready_ms": self._elapsed(
+                        events, "source_selected", "first_queue_ready",
                         identity_key="source_id", identity=source_id,
                     ),
                     "source_selected_to_first_audio_output_ms": self._elapsed(

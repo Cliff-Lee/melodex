@@ -126,6 +126,12 @@ class FlowPlayer(QObject):
         self.queue = [dict(item) for item in tracks]
         self.index = max(0, min(len(self.queue) - 1, start)) if self.queue else -1
         self.queueChanged.emit(self.queue)
+        if self.queue and self._first_music_timeline is not None:
+            source_id = self._first_music_timeline.active_source_id
+            if source_id is not None:
+                self._first_music_timeline.mark(
+                    "first_queue_ready", source_id=source_id
+                )
         if autoplay and self.index >= 0:
             self._load_index(self.index, play=True)
         else:

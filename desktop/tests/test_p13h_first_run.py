@@ -114,9 +114,64 @@ def test_first_discovered_music_enables_first_run_play_something(
         app.processEvents()
 
         assert window.first_run_play_button.isVisible()
+        assert window.first_run_play_button.objectName() == "primaryButton"
+        assert window.first_run_play_button.text() == "▶  Play Something · 1 track ready"
         window.first_run_play_button.click()
         assert captured["autoplay"] is True
         assert captured["tracks"][0]["local_path"] == track["local_path"]
+    finally:
+        window.close()
+        app.processEvents()
+
+
+def test_home_hides_session_tuning_until_cached_tracks_are_hydrated(
+    monkeypatch, tmp_path: Path
+):
+    app, main_window = _desktop_runtime(tmp_path, monkeypatch)
+    window = main_window.MainWindow()
+    monkeypatch.setattr(window.providers, "local_catalog_count", lambda: 12)
+    monkeypatch.setattr(window.providers, "local_catalog_is_loaded", lambda: False)
+    window.show()
+    try:
+        window._show_home()
+
+        assert window.home_hero.isVisible()
+        assert not window.home_moods_widget.isVisible()
+        assert window.home_primary_button.text() == "▶  Play something"
+
+        monkeypatch.setattr(window.providers, "local_catalog_is_loaded", lambda: True)
+        window._show_home()
+        assert window.home_moods_widget.isVisible()
+    finally:
+        window.close()
+        app.processEvents()
+
+
+def test_home_play_during_scan_uses_discovered_tracks_immediately(
+    monkeypatch, tmp_path: Path
+):
+    from types import SimpleNamespace
+
+    app, main_window = _desktop_runtime(tmp_path, monkeypatch)
+    window = main_window.MainWindow()
+    window.local_scan._runner = SimpleNamespace(shutdown=lambda: None)
+    played = []
+    monkeypatch.setattr(
+        window, "_discovered_playable_tracks", lambda: [{"local_path": "/music/one.flac"}]
+    )
+    monkeypatch.setattr(window, "_shuffle_discovered_tracks", lambda: played.append(True))
+    monkeypatch.setattr(
+        window,
+        "_play_for_me",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("partial discovery must not wait for the full session planner")
+        ),
+    )
+
+    try:
+        window._home_primary_action()
+
+        assert played == [True]
     finally:
         window.close()
         app.processEvents()
