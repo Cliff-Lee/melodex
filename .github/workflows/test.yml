@@ -81,6 +81,32 @@ jobs:
           PYTHONPATH: desktop
           QT_QPA_PLATFORM: offscreen
         run: python scripts/fluid_ci_gate.py
+      - name: Enforce P13 first-audio discovery smoke gate
+        env:
+          PYTHONPATH: desktop
+        run: >-
+          python desktop/tools/qualify_time_to_first_music.py
+          --profiles 10,1000
+          --latency-tracks 10
+          --latencies-ms 1,5
+          --first-audio-limit-ms 1000
+          --enforce
+          --json > p13-time-to-first-music.json
+      - name: Enforce P13 NAS degradation and cache gate
+        env:
+          PYTHONPATH: desktop
+        run: >-
+          python desktop/tools/qualify_nas_faults.py
+          --tracks 40
+          --json > p13-nas-faults.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: p13-time-to-first-music
+          path: |
+            p13-time-to-first-music.json
+            p13-nas-faults.json
+          if-no-files-found: warn
 
 
   visual-performance:
@@ -300,6 +326,7 @@ jobs:
         run: |
           python scripts/startup_probe.py \
             --tracks 12700 \
+            --assert-contract \
             --output startup-baseline.json
       - uses: actions/upload-artifact@v4
         if: always()

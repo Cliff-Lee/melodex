@@ -1,9 +1,11 @@
 # Next release — draft notes
 
-**Melodex v0.7.16 release candidate.**
+**Melodex v0.7.19 P15 Journey Composer tester release candidate.**
 
-Current target version: **0.7.16**.
+Current target version: **0.7.19**. The first P15 candidate is **v0.7.19-rc.1**.
 
-This release completes the Campaign V feedback follow-up: a less cluttered Album Wall with warm cover reuse and album-order playback, denser Profile Pulse contours, removal of Sonic Weather and Minimal, album-cover Music Map nodes with hover details and zoom controls, and photo credits shown on hover. Changed screens are being captured at 1024×768, 1280×800, and 1440×900; release gates must pass before publication.
+This candidate builds on P14 and replaces the Journey Designer's configuration
+boxes with a direct route composer. Test drag-and-drop, stage ordering, exact
+track waypoints, direct routes with no stages, and playback/queue actions.
 
-See `docs/releases/v0.7.16.md` for the release notes.
+See `docs/releases/v0.7.19-rc.1.md` for scope and the tester checklist.

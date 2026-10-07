@@ -375,32 +375,44 @@ class EmptyState(QFrame):
         outer.setSpacing(8)
         outer.addStretch(1)
 
-        title_label = QLabel(title)
-        title_label.setAlignment(Qt.AlignCenter)
-        title_label.setObjectName("emptyTitle")
-        outer.addWidget(title_label)
+        self.title_label = QLabel(title)
+        self.title_label.setAlignment(Qt.AlignCenter)
+        self.title_label.setObjectName("emptyTitle")
+        outer.addWidget(self.title_label)
 
-        body_label = QLabel(body)
-        body_label.setWordWrap(True)
-        body_label.setAlignment(Qt.AlignCenter)
-        body_label.setObjectName("emptyBody")
-        body_label.setMaximumWidth(560)
+        self.body_label = QLabel(body)
+        self.body_label.setWordWrap(True)
+        self.body_label.setAlignment(Qt.AlignCenter)
+        self.body_label.setObjectName("emptyBody")
+        self.body_label.setMaximumWidth(560)
         row = QHBoxLayout()
         row.addStretch(1)
-        row.addWidget(body_label)
+        row.addWidget(self.body_label)
         row.addStretch(1)
         outer.addLayout(row)
 
         if action:
-            button = QPushButton(action)
-            button.setObjectName("primaryButton")
-            button.clicked.connect(self.actionRequested)
+            self.action_button = QPushButton(action)
+            self.action_button.setObjectName("primaryButton")
+            self.action_button.clicked.connect(self.actionRequested)
             row = QHBoxLayout()
             row.addStretch(1)
-            row.addWidget(button)
+            row.addWidget(self.action_button)
             row.addStretch(1)
             outer.addLayout(row)
+        else:
+            self.action_button = None
         outer.addStretch(1)
+
+    def set_content(self, title: str, body: str, action: str | None = None) -> None:
+        self.title_label.setText(str(title or ""))
+        self.body_label.setText(str(body or ""))
+        if self.action_button is not None:
+            if action is None:
+                self.action_button.hide()
+            else:
+                self.action_button.setText(str(action))
+                self.action_button.show()
 
 
 class CommandPaletteDialog(QDialog):

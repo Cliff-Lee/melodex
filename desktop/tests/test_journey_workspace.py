@@ -141,10 +141,123 @@ def test_journey_designer_preserves_lazy_map_build():
     assert workspace._designer_open_pending is False
     assert not workspace.music_map_power_panel.isHidden()
     assert not workspace.music_map_journey_panel.isHidden()
+    assert workspace.music_map_planner_tabs.currentWidget() is workspace.music_map_journey_panel
     assert not workspace.music_path_steps.isHidden()
+
+    assert len(workspace.music_journey_palette_buttons) == 8
+    assert not hasattr(workspace, "music_journey_preset")
+    assert not hasattr(workspace, "music_journey_constraint")
 
     workspace.deleteLater()
     app.processEvents()
+
+
+def test_composer_preset_and_timeline_edits_keep_workspace_state_in_sync():
+    app, workspace, _state, _statuses, _current = _workspace()
+    workspace.build_music_map()
+
+    workspace._music_journey_load_preset(["calm", "dark", "energetic"])
+    assert [stage["constraint"] for stage in workspace.music_journey_stages_data] == [
+        "calm",
+        "dark",
+        "energetic",
+    ]
+
+    workspace.music_active_recipe_id = "saved-recipe"
+    workspace.music_journey_stages.move_stage(2, 0)
+    assert [stage["constraint"] for stage in workspace.music_journey_stages_data] == [
+        "energetic",
+        "calm",
+        "dark",
+    ]
+    assert workspace.music_active_recipe_id == ""
+
+    workspace.music_journey_palette_buttons["bright"].click()
+    assert workspace.music_journey_stages_data[-1]["constraint"] == "bright"
+    assert workspace.music_journey_stages.ordered_stages() == workspace.music_journey_stages_data
+
+    workspace.deleteLater()
+    app.processEvents()
+
+
+def test_dragged_tracks_set_composer_start_and_destination():
+    app, workspace, _state, _statuses, _current = _workspace()
+    workspace.build_music_map()
+    workspace.music_map.ref_map = {
+        "start-ref": {"artist": "First Artist", "title": "Opening"},
+        "end-ref": {"artist": "Last Artist", "title": "Closer"},
+    }
+
+    workspace.music_map.selected_ref = "start-ref"
+    workspace.music_journey_start_endpoint.click()
+    assert workspace.music_path_start_ref == "start-ref"
+    assert workspace._music_path_set_endpoint(
+        "destination", {"type": "track", "ref": "end-ref"}
+    )
+    assert workspace.music_path_start_ref == "start-ref"
+    assert workspace.music_path_end_ref == "end-ref"
+    assert "First Artist — Opening" in workspace.music_journey_start_endpoint.text()
+    assert "Last Artist — Closer" in workspace.music_journey_end_endpoint.text()
+    assert workspace.music_map.route_start_ref == "start-ref"
+    assert workspace.music_map.route_end_ref == "end-ref"
+    assert not workspace._music_path_set_endpoint(
+        "start", {"type": "track", "ref": "missing"}
+    )
+
+    workspace.deleteLater()
+    app.processEvents()
+
+
+def test_composer_endpoints_and_stages_share_one_horizontal_route_strip():
+    app, workspace, _state, _statuses, _current = _workspace()
+    workspace.build_music_map()
+    workspace.music_map_power_scroll.show()
+    workspace.music_map_planner_tabs.setCurrentWidget(workspace.music_map_journey_panel)
+    page = workspace.pages["music_map"]
+    page.resize(1400, 900)
+    page.show()
+    app.processEvents()
+
+    start_y = workspace.music_journey_start_endpoint.mapTo(page, workspace.music_journey_start_endpoint.rect().topLeft()).y()
+    stages_y = workspace.music_journey_stages.mapTo(page, workspace.music_journey_stages.rect().topLeft()).y()
+    end_y = workspace.music_journey_end_endpoint.mapTo(page, workspace.music_journey_end_endpoint.rect().topLeft()).y()
+    assert max(start_y, stages_y, end_y) - min(start_y, stages_y, end_y) <= 2
+    assert workspace.music_journey_stages.width() > 500
+
+    workspace.deleteLater()
+    app.processEvents()
+
+
+def test_composer_can_build_direct_route_with_no_stages(monkeypatch):
+    from melodex import music_journey
+
+    app, workspace, _state, statuses, _current = _workspace()
+    workspace.build_music_map()
+    workspace.music_path_start_ref = "start-ref"
+    workspace.music_path_end_ref = "end-ref"
+    calls = []
+
+    def build(_model, _knowledge, start, end, stages, **kwargs):
+        calls.append((start, end, stages, kwargs))
+        return {
+            "found": True,
+            "journey": True,
+            "path_refs": [start, end],
+            "hops": [],
+            "stages": [],
+            "score": 0.8,
+        }
+
+    monkeypatch.setattr(music_journey, "build_music_journey", build)
+    workspace._music_journey_build()
+
+    assert calls and calls[0][0:3] == ("start-ref", "end-ref", [])
+    assert workspace.music_path_result["journey"] is True
+    assert any("0 stages" in message for message, _timeout in statuses)
+
+    workspace.deleteLater()
+    app.processEvents()
+
 
 def test_journey_workspace_requests_playback_semantically(monkeypatch):
     app, workspace, _state, _statuses, _current = _workspace()

@@ -64,6 +64,10 @@ class PlaybackSessionState:
         self._position_ms = 0
         self._duration_ms = 0
 
+    def set_current_history_id(self, history_id: int) -> None:
+        """Attach a history row after its background write completes."""
+        self._current_history_id = max(0, int(history_id))
+
     def clear_current_track(self) -> None:
         self._current_track = None
         self._current_history_id = 0

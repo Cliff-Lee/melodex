@@ -24,6 +24,8 @@ from PySide6.QtWidgets import (
     QStackedWidget,
     QTabWidget,
     QTextEdit,
+    QMenu,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -214,7 +216,7 @@ class JourneyWorkspace(QObject):
 
     def _show_designer_tools(self) -> None:
         self.music_map_power_scroll.show()
-        self.music_map_journey_panel.show()
+        self.music_map_planner_tabs.setCurrentWidget(self.music_map_journey_panel)
         self.music_path_steps.show()
 
     def on_track_changed(self, track: dict[str, Any]) -> None:
@@ -371,7 +373,11 @@ class JourneyWorkspace(QObject):
         path_grid.addWidget(clear_path,1,3)
         path_grid.addWidget(self.music_path_label,2,0,1,4)
         path_grid.setColumnStretch(3,1)
-        power.addLayout(path_grid)
+        self.music_map_route_tab=QWidget()
+        route_tab_layout=QVBoxLayout(self.music_map_route_tab)
+        route_tab_layout.setContentsMargins(4,6,4,4)
+        route_tab_layout.addLayout(path_grid)
+        route_tab_layout.addStretch(1)
     
         self.music_map_journey_panel=QFrame()
         self.music_map_journey_panel.setObjectName("subtlePanel")
@@ -379,71 +385,133 @@ class JourneyWorkspace(QObject):
         journey_box.setContentsMargins(10,8,10,8)
         journey_box.setSpacing(7)
     
-        journey_edit=QGridLayout()
-        journey_edit.setHorizontalSpacing(7)
-        journey_edit.setVerticalSpacing(6)
-        self.music_journey_preset=QComboBox()
-        self.music_journey_preset.addItem(
-            "Calm → Darker → Forgotten → Energetic",
-            ["calm","dark","forgotten","energetic"],
+        preset_button=QToolButton()
+        preset_button.setText("Starting shapes ▾")
+        preset_button.setObjectName("quietButton")
+        preset_button.setPopupMode(QToolButton.InstantPopup)
+        preset_menu=QMenu(preset_button)
+        for title,keys in (
+            ("Gentle → darker → energy",["calm","dark","forgotten","energetic"]),
+            ("Calm → rhythm → energy",["calm","rhythmic","energetic"]),
+            ("Familiar → rediscovery → bright",["familiar","forgotten","bright"]),
+            ("Surprising → darker → bright",["surprising","dark","bright"]),
+        ):
+            action=preset_menu.addAction(title)
+            action.triggered.connect(
+                lambda _checked=False, stage_keys=list(keys):self._music_journey_load_preset(stage_keys)
+            )
+        preset_button.setMenu(preset_menu)
+        set_help(
+            preset_button,
+            "Starting shapes",
+            "Load a suggested sequence as a starting point. You can then add, remove, or rearrange every stage.",
         )
-        self.music_journey_preset.addItem(
-            "Calm → Rhythmic → Energetic",
-            ["calm","rhythmic","energetic"],
-        )
-        self.music_journey_preset.addItem(
-            "Familiar → Forgotten → Bright",
-            ["familiar","forgotten","bright"],
-        )
-        self.music_journey_preset.addItem(
-            "Surprising → Darker → Bright",
-            ["surprising","dark","bright"],
-        )
-        load_preset=QPushButton("Load shape")
-        load_preset.clicked.connect(self._music_journey_load_preset)
-        self.music_journey_constraint=QComboBox()
-        for key in ("calm","dark","forgotten","energetic","bright","rhythmic","familiar","surprising"):
-            self.music_journey_constraint.addItem(STAGE_LABELS[key],key)
-        add_constraint=QPushButton("Add direction")
-        add_constraint.clicked.connect(self._music_journey_add_constraint)
+        build_journey=QPushButton("Build journey")
+        build_journey.setObjectName("primaryButton")
+        build_journey.clicked.connect(self._music_journey_build)
         add_track=QPushButton("Add selected track")
         add_track.clicked.connect(self._music_journey_add_track)
+        set_help(add_track,"Add selected track","Add the selected Music Map track as an exact waypoint in this route.")
+
+        palette_header=QHBoxLayout()
+        palette_header.addWidget(QLabel("Add a direction"))
+        palette_header.addWidget(add_track)
+        palette_header.addStretch(1)
+        palette_header.addWidget(preset_button)
+        palette_header.addWidget(build_journey)
+        journey_box.addLayout(palette_header)
+
+        from .journey_composer import JourneyStagePaletteButton
+        self.music_journey_palette_buttons={}
+        palette_rows=QGridLayout()
+        palette_rows.setHorizontalSpacing(6)
+        palette_rows.setVerticalSpacing(5)
+        palette_rows.addWidget(QLabel("Sound & feel"),0,0)
+        palette_rows.addWidget(QLabel("Discovery"),1,0)
+        for row,keys in (
+            (0,("calm","dark","energetic","bright","rhythmic")),
+            (1,("familiar","forgotten","surprising")),
+        ):
+            for column,key in enumerate(keys,start=1):
+                button=JourneyStagePaletteButton(
+                    STAGE_LABELS[key],
+                    {"type":"constraint","constraint":key,"label":STAGE_LABELS[key]},
+                )
+                button.clicked.connect(
+                    lambda _checked=False, stage_key=key:self._music_journey_add_constraint(stage_key)
+                )
+                self.music_journey_palette_buttons[key]=button
+                palette_rows.addWidget(button,row,column)
+        palette_rows.setColumnStretch(6,1)
+        journey_box.addLayout(palette_rows)
+
+        from .journey_composer import JourneyEndpointDropTarget
+        journey_sequence=QHBoxLayout()
+        journey_sequence.setSpacing(6)
+        self.music_journey_start_endpoint=JourneyEndpointDropTarget("start")
+        self.music_journey_start_endpoint.setMinimumWidth(180)
+        self.music_journey_start_endpoint.setMaximumWidth(270)
+        self.music_journey_start_endpoint.setMinimumHeight(96)
+        self.music_journey_start_endpoint.clicked.connect(self._music_path_set_start)
+        self.music_journey_start_endpoint.trackDropped.connect(
+            lambda stage:self._music_path_set_endpoint("start",stage)
+        )
+        journey_sequence.addWidget(self.music_journey_start_endpoint,1)
+        endpoint_arrow=QLabel("→")
+        endpoint_arrow.setObjectName("mutedText")
+        endpoint_arrow.setAccessibleName("through the journey stages")
+        journey_sequence.addWidget(endpoint_arrow)
+        from .journey_composer import JourneyStageTimeline
+        self.music_journey_stages=JourneyStageTimeline()
+        journey_sequence.addWidget(self.music_journey_stages,4)
+        endpoint_arrow=QLabel("→")
+        endpoint_arrow.setObjectName("mutedText")
+        endpoint_arrow.setAccessibleName("to the destination")
+        journey_sequence.addWidget(endpoint_arrow)
+        self.music_journey_end_endpoint=JourneyEndpointDropTarget("destination")
+        self.music_journey_end_endpoint.setMinimumWidth(180)
+        self.music_journey_end_endpoint.setMaximumWidth(270)
+        self.music_journey_end_endpoint.setMinimumHeight(96)
+        self.music_journey_end_endpoint.clicked.connect(self._music_path_set_end)
+        self.music_journey_end_endpoint.trackDropped.connect(
+            lambda stage:self._music_path_set_endpoint("destination",stage)
+        )
+        journey_sequence.addWidget(self.music_journey_end_endpoint,1)
+        journey_box.addLayout(journey_sequence)
+        self.music_journey_stages.orderChanged.connect(
+            self._music_journey_stage_order_changed
+        )
+        set_help(
+            self.music_journey_stages,
+            "Journey stages",
+            "This is the order your route follows between its start and destination. "
+            "Drag a direction from the palette or a track from Music Map into a position; "
+            "drag stages to reorder them. Move up / Move down remain available.",
+        )
+
         remove_stage=QPushButton("Remove")
         remove_stage.clicked.connect(self._music_journey_remove_stage)
         clear_stages=QPushButton("Clear shape")
         clear_stages.clicked.connect(self._music_journey_clear_stages)
-        journey_edit.addWidget(QLabel("Shape journey"),0,0)
-        journey_edit.addWidget(self.music_journey_preset,0,1,1,2)
-        journey_edit.addWidget(load_preset,0,3)
-        journey_edit.addWidget(self.music_journey_constraint,1,0)
-        journey_edit.addWidget(add_constraint,1,1)
-        journey_edit.addWidget(add_track,1,2)
-        journey_edit.addWidget(remove_stage,2,1)
-        journey_edit.addWidget(clear_stages,2,2)
-        journey_edit.setColumnStretch(2,1)
-        journey_box.addLayout(journey_edit)
-    
-        journey_actions=QHBoxLayout()
-        build_journey=QPushButton("Build journey")
-        build_journey.clicked.connect(self._music_journey_build)
+        move_stage_up=QPushButton("Move up")
+        move_stage_up.clicked.connect(lambda:self._music_journey_move_stage(-1))
+        move_stage_down=QPushButton("Move down")
+        move_stage_down.clicked.connect(lambda:self._music_journey_move_stage(1))
+        set_help(move_stage_up,"Move stage up","Put the selected journey stage earlier in the route. Keyboard: Alt+↑.")
+        set_help(move_stage_down,"Move stage down","Put the selected journey stage later in the route. Keyboard: Alt+↓.")
+        edit_actions=QHBoxLayout()
+        edit_actions.addWidget(move_stage_up)
+        edit_actions.addWidget(move_stage_down)
+        edit_actions.addWidget(remove_stage)
+        edit_actions.addWidget(clear_stages)
+        edit_actions.addStretch(1)
         play_journey=QPushButton("▶ Play")
         play_journey.clicked.connect(self._music_path_play)
         queue_journey=QPushButton("+ Queue")
         queue_journey.clicked.connect(self._music_path_queue)
-        journey_help=QLabel("Start and destination come from the route above.")
-        journey_help.setStyleSheet("color:#aab0ba")
-        journey_actions.addWidget(build_journey)
-        journey_actions.addWidget(play_journey)
-        journey_actions.addWidget(queue_journey)
-        journey_actions.addWidget(journey_help,1)
-        journey_box.addLayout(journey_actions)
-    
-        self.music_journey_stages=QListWidget()
-        self.music_journey_stages.setMaximumHeight(92)
-        self.music_journey_stages.addItem(
-            "Choose a shape or add directions after setting a start and destination."
-        )
-        journey_box.addWidget(self.music_journey_stages)
+        edit_actions.addWidget(play_journey)
+        edit_actions.addWidget(queue_journey)
+        journey_box.addLayout(edit_actions)
     
         live_grid=QGridLayout()
         live_grid.setHorizontalSpacing(7)
@@ -488,9 +556,17 @@ class JourneyWorkspace(QObject):
         live_grid.addWidget(stop_live,2,1)
         live_grid.addWidget(self.music_live_label,2,2,1,2)
         live_grid.setColumnStretch(2,1)
-        journey_box.addLayout(live_grid)
-        self.music_map_journey_panel.hide()
-        power.addWidget(self.music_map_journey_panel)
+        self.music_map_live_tab=QWidget()
+        live_tab_layout=QVBoxLayout(self.music_map_live_tab)
+        live_tab_layout.setContentsMargins(10,8,10,8)
+        live_tab_layout.addLayout(live_grid)
+        live_tab_layout.addStretch(1)
+
+        self.music_map_planner_tabs=QTabWidget()
+        self.music_map_planner_tabs.addTab(self.music_map_route_tab,"Route")
+        self.music_map_planner_tabs.addTab(self.music_map_journey_panel,"Compose")
+        self.music_map_planner_tabs.addTab(self.music_map_live_tab,"Live")
+        power.addWidget(self.music_map_planner_tabs)
     
         self.music_map_power_scroll=QScrollArea()
         self.music_map_power_scroll.setWidgetResizable(True)
@@ -498,7 +574,7 @@ class JourneyWorkspace(QObject):
         self.music_map_power_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.music_map_power_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.music_map_power_scroll.setMinimumHeight(108)
-        self.music_map_power_scroll.setMaximumHeight(220)
+        self.music_map_power_scroll.setMaximumHeight(420)
         self.music_map_power_scroll.setWidget(self.music_map_power_panel)
         self.music_map_power_scroll.hide()
         l.addWidget(self.music_map_power_scroll)
@@ -525,9 +601,9 @@ class JourneyWorkspace(QObject):
         visible=not self.music_map_power_scroll.isVisible()
         self.music_map_power_scroll.setVisible(visible)
         self.music_path_steps.setVisible(visible)
-        if not visible and hasattr(self,"music_map_journey_panel"):
-            self.music_map_journey_panel.hide()
         if visible:
+            if hasattr(self,"music_map_planner_tabs"):
+                self.music_map_planner_tabs.setCurrentWidget(self.music_map_route_tab)
             self._status(
                 "Route planner ready · select a track, set start and destination, then Find route",
                 5000,
@@ -538,8 +614,8 @@ class JourneyWorkspace(QObject):
         if not self.music_map_power_scroll.isVisible():
             self.music_map_power_scroll.show()
             self.music_path_steps.show()
-        visible=not self.music_map_journey_panel.isVisible()
-        self.music_map_journey_panel.setVisible(visible)
+        if hasattr(self,"music_map_planner_tabs"):
+            self.music_map_planner_tabs.setCurrentWidget(self.music_map_journey_panel)
     
     
     def _music_map_selection_changed(self, track: object) -> None:
@@ -957,28 +1033,53 @@ class JourneyWorkspace(QObject):
             f"Pathfinder · start {self._music_path_name(self.music_path_start_ref)}"
             f"  →  destination {self._music_path_name(self.music_path_end_ref)}"
         )
+        if hasattr(self,"music_journey_start_endpoint"):
+            name=self._music_path_name(self.music_path_start_ref)
+            self.music_journey_start_endpoint.set_track_label("" if name=="—" else name)
+        if hasattr(self,"music_journey_end_endpoint"):
+            name=self._music_path_name(self.music_path_end_ref)
+            self.music_journey_end_endpoint.set_track_label("" if name=="—" else name)
+
+
+    def _music_path_set_endpoint(self, endpoint: str, stage_or_ref: object):
+        ref=(
+            str(stage_or_ref.get("ref") or "")
+            if isinstance(stage_or_ref,dict)
+            else str(stage_or_ref or "")
+        )
+        if not ref or ref not in getattr(self.music_map,"ref_map",{}):
+            self._status("Choose a track that is on the current Music Map",3500)
+            return False
+        if str(endpoint or "").casefold()=="start":
+            self.music_path_start_ref=ref
+            message="Journey start set"
+        elif str(endpoint or "").casefold() in {"end","destination"}:
+            self.music_path_end_ref=ref
+            message="Journey destination set"
+        else:
+            return False
+        self.music_path_result={}
+        self.music_map.set_route_endpoints(
+            self.music_path_start_ref,
+            self.music_path_end_ref,
+        )
+        self._music_path_update_label()
+        self._status(message,2500)
+        return True
     
     
     def _music_path_set_start(self):
         ref=self.music_map.selected_ref_value() if hasattr(self,"music_map") else ""
         if not ref:
             self._status("Select a Music Map track first",3000); return
-        self.music_path_start_ref=ref
-        self.music_path_result={}
-        self.music_map.set_route_endpoints(self.music_path_start_ref,self.music_path_end_ref)
-        self._music_path_update_label()
-        self._status("Pathfinder start set",2500)
+        self._music_path_set_endpoint("start",ref)
     
     
     def _music_path_set_end(self):
         ref=self.music_map.selected_ref_value() if hasattr(self,"music_map") else ""
         if not ref:
             self._status("Select a Music Map track first",3000); return
-        self.music_path_end_ref=ref
-        self.music_path_result={}
-        self.music_map.set_route_endpoints(self.music_path_start_ref,self.music_path_end_ref)
-        self._music_path_update_label()
-        self._status("Pathfinder destination set",2500)
+        self._music_path_set_endpoint("destination",ref)
     
     
     def _music_path_find(self):
@@ -1069,29 +1170,40 @@ class JourneyWorkspace(QObject):
     def _music_journey_render_stages(self):
         from .music_journey import STAGE_LABELS
         if not hasattr(self,"music_journey_stages"):return
-        self.music_journey_stages.clear()
         if not self.music_journey_stages_data:
-            self.music_journey_stages.addItem(
-                "Journey stages use the Pathfinder start/destination. Load a preset or add constraints/track waypoints."
-            )
+            self.music_journey_stages.set_stages([])
             return
-        for index,stage in enumerate(self.music_journey_stages_data, start=1):
+        for stage in self.music_journey_stages_data:
             if str(stage.get("type") or "")=="track":
                 label=str(stage.get("label") or self._music_path_name(stage.get("ref") or ""))
-                text=f"{index}. Track waypoint · {label}"
+                stage["label"]=label
             else:
                 key=str(stage.get("constraint") or "")
-                text=f"{index}. Constraint · {str(stage.get('label') or STAGE_LABELS.get(key,key.title()))}"
-            item=QListWidgetItem(text)
-            item.setData(Qt.UserRole,index-1)
-            self.music_journey_stages.addItem(item)
+                stage["label"]=str(stage.get("label") or STAGE_LABELS.get(key,key.title()))
+        self.music_journey_stages.set_stages(self.music_journey_stages_data)
+
+
+    def _music_journey_stage_order_changed(self, stages):
+        ordered=[dict(stage) for stage in list(stages or []) if isinstance(stage,dict)]
+        if ordered==self.music_journey_stages_data:return
+        self.music_journey_stages_data=ordered
+        self.music_active_recipe_id=""
+        self.music_active_recipe={}
+
+
+    def _music_journey_move_stage(self, offset: int):
+        if not hasattr(self,"music_journey_stages"):return
+        if self.music_journey_stages.move_current(offset):
+            self._music_journey_stage_order_changed(
+                self.music_journey_stages.ordered_stages()
+            )
     
     
-    def _music_journey_load_preset(self):
+    def _music_journey_load_preset(self, stage_keys: list[str] | None = None):
         from .music_journey import STAGE_LABELS
         self.music_active_recipe_id=""
         self.music_active_recipe={}
-        raw=self.music_journey_preset.currentData() if hasattr(self,"music_journey_preset") else []
+        raw=list(stage_keys or [])
         self.music_journey_stages_data=[
             {"type":"constraint","constraint":str(key),"label":STAGE_LABELS.get(str(key),str(key).title())}
             for key in list(raw or [])
@@ -1100,11 +1212,11 @@ class JourneyWorkspace(QObject):
         self._status("Journey preset loaded",2500)
     
     
-    def _music_journey_add_constraint(self):
+    def _music_journey_add_constraint(self, key: str = ""):
         from .music_journey import STAGE_LABELS
         self.music_active_recipe_id=""
         self.music_active_recipe={}
-        key=str(self.music_journey_constraint.currentData() or "") if hasattr(self,"music_journey_constraint") else ""
+        key=str(key or "")
         if not key:return
         self.music_journey_stages_data.append(
             {"type":"constraint","constraint":key,"label":STAGE_LABELS.get(key,key.title())}
@@ -1151,12 +1263,8 @@ class JourneyWorkspace(QObject):
             self._status(
                 "Set Pathfinder start and destination before building a journey",4000
             ); return
-        if not self.music_journey_stages_data:
-            self._status(
-                "Load a Journey preset or add at least one stage",3500
-            ); return
         mode=str(self.music_path_mode.currentData() or "balanced")
-        self._status("Designing staged local journey…")
+        self._status("Designing local journey…")
         result=build_music_journey(
             dict(self.music_map.model or {}),
             dict(self.music_map.knowledge_graph or {}),

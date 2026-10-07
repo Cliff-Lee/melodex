@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+import random
 import threading
 import time
 import uuid
@@ -28,9 +30,13 @@ from .responsiveness import UiResponsivenessMonitor
 from .background_scheduler import BackgroundScheduler
 from .motion import MotionController, FAST_MOTION_MS, STANDARD_MOTION_MS
 from .library_scan_controller import LibraryScanController
+from .first_music_metrics import FirstMusicTimeline
+from .first_play_policy import light_shuffle
+from .session_handoff import refined_upcoming, track_key
 from .navigation_controller import NavigationController
 from .source_policy_controller import SourcePolicyController
 from .sources_feature import SourcesFeature
+from .providers.local_files import AUDIO_EXTS
 from .library_scan_status import (
     idle_scan_session,
     scan_activity_state,
@@ -149,11 +155,24 @@ class MainWindow(QMainWindow):
             self._startup_mark("lazy_service:metadata")
         return self._metadata
 
-    def __init__(self, *, startup_timeline=None):
+    def __init__(self, *, startup_timeline=None, first_music_timeline=None):
         super().__init__()
         self._startup_timeline = startup_timeline
+        self._first_music_timeline = first_music_timeline or FirstMusicTimeline()
+        self._first_music_timeline.mark("window_created")
+        self._first_music_scan_started = False
+        self._first_music_scan_source_id: int | None = None
+        self._progressive_local_tracks: list[dict[str, Any]] = []
+        self._progressive_track_index: dict[str, int] = {}
+        self._progressive_track_revision = 0
+        self._progressive_browser_revision = -1
+        self._shuffle_discovered_active = False
+        self._shuffle_discovered_ids: tuple[str, ...] = ()
+        self._first_discovery_preview_queue = False
+        self._restored_playback_queue = False
         self._startup_mark("main_window_init_enter")
         self.setWindowTitle("Melodex")
+        self.setAcceptDrops(True)
         self._window_settings = QSettings("Melodex", "Melodex")
         saved_geometry = self._window_settings.value("window/geometry")
         trusted_normal_geometry = self._window_settings.contains(
@@ -192,6 +211,7 @@ class MainWindow(QMainWindow):
         self.providers = ProviderManager(
             self.data_dir,
             startup_timeline=self._startup_timeline,
+            defer_optional_plugins=True,
         )
         self._startup_mark("providers_ready")
         self.source_policy = SourcePolicyController(self.providers)
@@ -252,12 +272,15 @@ class MainWindow(QMainWindow):
         self._async_generations: dict[str, int] = {}
         self._async_invalidations = 0
         self._async_stale_results_dropped = 0
+        self._local_cache_hydration_pending = False
+        self._optional_plugins_loading = False
         self.externalCommand.connect(self._on_external_command)
 
         self.player = FlowPlayer(
             self.providers.resolve, self._transition_for, self,
             playback_refresher=self.providers.refresh_playback,
             transition_submit=self.background_scheduler.submit,
+            first_music_timeline=self._first_music_timeline,
         )
         from .playback_feature import PlaybackFeature
 
@@ -294,6 +317,16 @@ class MainWindow(QMainWindow):
                 queue, self.player.index
             )
         )
+        saved_queue = self.state.playback_queue()
+        if saved_queue:
+            self._restored_playback_queue = True
+            self.player.set_queue(
+                list(saved_queue["tracks"]),
+                int(saved_queue["queue_index"]),
+                False,
+                intent="manual_queue",
+            )
+        self.player.queueChanged.connect(self._persist_playback_queue_async)
         self.player.error.connect(
             lambda message: self.statusBar().showMessage(message, 7000)
         )
@@ -302,9 +335,7 @@ class MainWindow(QMainWindow):
         self.playback_feature.nextRequested.connect(self.player.next)
         self.playback_feature.seekRequested.connect(self.player.seek)
         self.playback_feature.setQueueRequested.connect(
-            lambda tracks,start,autoplay,intent:self.player.set_queue(
-                list(tracks or []),int(start),bool(autoplay),intent=str(intent or "manual_queue")
-            )
+            self._set_queue_from_playback_feature
         )
         self.playback_feature.appendQueueRequested.connect(
             lambda tracks, autoplay: self.player.append_queue(
@@ -322,6 +353,17 @@ class MainWindow(QMainWindow):
         self.playback_feature.currentTrackChanged.connect(
             self._playback_current_track_changed
         )
+        self.playback_feature.currentTrackChanged.connect(
+            self._checkpoint_track_changed
+        )
+        self.player.playingChanged.connect(self._checkpoint_playing_changed)
+        self.player.positionChanged.connect(self._checkpoint_position_changed)
+        self._checkpoint_position_ms = 0
+        self._checkpoint_timer = QTimer(self)
+        self._checkpoint_timer.setInterval(5000)
+        self._checkpoint_timer.timeout.connect(self._persist_playback_checkpoint)
+        self._checkpoint_timer.start()
+        self._checkpoint_track_started = False
         self.playback_feature.knowledgeChanged.connect(
             self._playback_knowledge_changed
         )
@@ -343,13 +385,193 @@ class MainWindow(QMainWindow):
         self.responsiveness.mark_action("startup:bridge")
         self._startup_mark("bridge_start_scheduled")
         self._start_local_bridge()
+        # Optional integrations can require package inspection, extraction or
+        # descriptor parsing. Start them only after the player and shell exist.
+        QTimer.singleShot(250, self._start_optional_plugin_loading)
         startup_roots=self.providers.local_roots()
         if startup_roots and not self.providers.local_index_ready(startup_roots):
             # One-time migration for existing users who have configured roots
-            # but no persistent index yet. Once indexed, later launches load the
-            # cache immediately and do not walk the NAS automatically.
+            # but no persistent index yet.
             QTimer.singleShot(0, lambda: self._start_local_scan("initial index"))
+        elif startup_roots and int(self.providers.local_catalog_count() or 0):
+            roots_snapshot = [Path(root) for root in startup_roots]
+            self._start_local_cache_hydration(roots_snapshot)
+            # Restore cached rows first. Reconnect/verify and delta scan only
+            # after the shell has been on screen for a moment.
+            QTimer.singleShot(
+                1200, lambda: self._start_local_scan("background refresh")
+            )
         self._startup_mark("main_window_init_ready")
+
+    def _start_local_cache_hydration(self, roots: list[Path]) -> None:
+        if self._local_cache_hydration_pending or self.providers.local_catalog_is_loaded():
+            return
+        if not self.providers.local_catalog_count():
+            return
+        self._local_cache_hydration_pending = True
+        roots_snapshot = [Path(root) for root in roots]
+        source_status_snapshot = self.state.source_statuses()
+        self._run_async(
+            lambda: self._load_warm_catalog_cache(
+                roots_snapshot, source_status_snapshot
+            ),
+            lambda result: self._apply_warm_catalog_cache(roots_snapshot, result),
+            lambda error: self._warm_catalog_cache_failed(roots_snapshot, error),
+            priority="visible",
+            task_name="warm-local-catalog-cache",
+            replace_key="warm-local-catalog-cache",
+        )
+
+    def _start_optional_plugin_loading(self) -> None:
+        if (
+            self._closing
+            or self.providers.optional_plugins_loaded
+            or self._optional_plugins_loading
+        ):
+            return
+        self._optional_plugins_loading = True
+
+        def apply(snapshot: object) -> None:
+            self._optional_plugins_loading = False
+            if not isinstance(snapshot, dict):
+                return
+            self.providers.apply_optional_plugins_snapshot(snapshot)
+            self._refresh_plugin_presence()
+            self._refresh_source_combo()
+            if self.current_page == "sources" and hasattr(self, "sources_feature"):
+                self.sources_feature.refresh()
+                self.sources_feature.refresh_config_statuses_async()
+
+        def failed(error: str) -> None:
+            self._optional_plugins_loading = False
+            self.statusBar().showMessage(
+                f"Optional music sources are still unavailable: {error}", 6000
+            )
+
+        self._run_async(
+            self.providers.load_optional_plugins_snapshot,
+            apply,
+            failed,
+            priority="background",
+            task_name="optional-plugin-startup",
+            replace_key="optional-plugin-startup",
+        )
+
+    def _load_warm_catalog_cache(
+        self,
+        roots: list[Path],
+        stored: dict[str, dict[str, Any]],
+    ) -> dict[str, Any]:
+        availability: dict[str, str] = {}
+        for root in roots:
+            previous = str(
+                dict(stored.get(str(root)) or {}).get("status") or ""
+            )
+            availability[str(root)] = (
+                previous if previous in {"unavailable", "degraded"} else "cached"
+            )
+        tracks = self.providers.load_indexed_local_tracks(
+            roots, source_availability=availability
+        )
+        return {"tracks": tracks, "availability": availability}
+
+    def _apply_warm_catalog_cache(
+        self, roots: list[Path], result: object
+    ) -> None:
+        self._local_cache_hydration_pending = False
+        if self._closing:
+            return
+        if not isinstance(result, dict) or not isinstance(result.get("tracks"), list):
+            self._warm_catalog_cache_failed(roots, "invalid cache snapshot")
+            return
+        current_roots = self.providers.local_roots()
+        if current_roots != roots:
+            return
+        tracks = list(result["tracks"])
+        availability = dict(result.get("availability") or {})
+        self.providers.hydrate_local_catalog_cache(tracks, roots)
+        if self.providers.local_catalog_is_loaded():
+            self._first_music_timeline.mark("library_cache_visible")
+            for root in roots:
+                self.providers.set_local_source_availability(
+                    root,
+                    str(availability.get(str(root)) or "cached"),
+                    update_tracks=False,
+                )
+            if hasattr(self, "library_browser"):
+                self.library_browser.set_cache_restoring(False)
+            if self.current_page == "library":
+                self._refresh_library()
+            elif self.current_page == "home":
+                self._show_home()
+
+    def _warm_catalog_cache_failed(self, roots: list[Path], error: str) -> None:
+        self._local_cache_hydration_pending = False
+        if self._closing or self.providers.local_roots() != roots:
+            return
+        if self.providers.local_catalog_is_loaded():
+            if self.current_page == "library":
+                self._refresh_library()
+            return
+        if self.current_page == "library" and hasattr(self, "library_browser"):
+            self.library_browser.set_cache_restoring(False, failed=True)
+            self.statusBar().showMessage(
+                "Could not restore cached music · playback remains available", 6000
+            )
+
+    def _checkpoint_track_changed(self, track: object) -> None:
+        row = dict(track or {}) if isinstance(track, dict) else {}
+        if not row:
+            return
+        self._checkpoint_position_ms = 0
+        self._checkpoint_track = row
+        self._checkpoint_track_started = False
+
+    def _checkpoint_playing_changed(self, playing: bool) -> None:
+        if playing:
+            self._checkpoint_track_started = True
+            self._persist_playback_checkpoint()
+
+    def _checkpoint_position_changed(self, position_ms: int, _duration_ms: int) -> None:
+        self._checkpoint_position_ms = max(0, int(position_ms))
+
+    def _persist_playback_checkpoint(self, *, synchronous: bool = False) -> None:
+        if self._closing:
+            return
+        if not getattr(self, "_checkpoint_track_started", False):
+            return
+        track = dict(
+            self.playback_feature.current_track()
+            or getattr(self, "_checkpoint_track", {})
+            or {}
+        )
+        if track:
+            position_ms = self._checkpoint_position_ms
+            if synchronous:
+                self.state.save_playback_checkpoint(track, position_ms)
+                return
+            self._run_async(
+                lambda: self.state.save_playback_checkpoint(track, position_ms),
+                lambda _result: None,
+                lambda _error: None,
+                priority="background",
+                task_name="playback-checkpoint",
+                replace_key="playback-checkpoint",
+            )
+
+    def _persist_playback_queue_async(self, tracks: object) -> None:
+        if self._closing or not isinstance(tracks, list):
+            return
+        snapshot = [dict(row) for row in tracks[:5000] if isinstance(row, dict)]
+        queue_index = int(self.player.index)
+        self._run_async(
+            lambda: self.state.save_playback_queue(snapshot, queue_index),
+            lambda _result: None,
+            lambda _error: None,
+            priority="background",
+            task_name="playback-queue-save",
+            replace_key="playback-queue-save",
+        )
 
     def _playback_current_track_changed(self, track: object) -> None:
         row = dict(track or {}) if isinstance(track, dict) else {}
@@ -904,6 +1126,11 @@ class MainWindow(QMainWindow):
                 border:1px solid #2a3d56;
                 border-radius:12px;
             }
+            QFrame#homeFirstRun{
+                background:#102033;
+                border:1px solid #345a82;
+                border-radius:12px;
+            }
             QFrame#continueCard{
                 background:#121923;
                 border:1px solid #273343;
@@ -1185,15 +1412,73 @@ class MainWindow(QMainWindow):
         lay.addStretch(1)
 
     def _build_home(self):
-        l=self._page_layout(
-            "home",
-            "Home",
-            "Pick something to play, or carry on where you left off.",
-        )
+        l=self._page_layout("home", "Home")
 
-        hero=QFrame()
-        hero.setObjectName("homeHero")
-        hero_l=QVBoxLayout(hero)
+        self.home_first_run = QFrame()
+        self.home_first_run.setObjectName("homeFirstRun")
+        first_run_l = QVBoxLayout(self.home_first_run)
+        first_run_l.setContentsMargins(24, 24, 24, 24)
+        first_run_l.setSpacing(12)
+        first_run_body = QLabel(
+            "Choose a folder, connect a mounted NAS folder, or play a few files. "
+            "Melodex can start before it finishes building your library."
+        )
+        first_run_body.setWordWrap(True)
+        first_run_body.setObjectName("mutedText")
+        first_run_l.addWidget(first_run_body)
+        self.home_first_run_hint = QLabel("Your files stay where they are.")
+        self.home_first_run_hint.setWordWrap(True)
+        self.home_first_run_hint.setObjectName("subtleText")
+        first_run_l.addWidget(self.home_first_run_hint)
+        first_run_actions = QHBoxLayout()
+        choose_folder = QPushButton("Choose Music Folder")
+        choose_folder.setObjectName("primaryButton")
+        choose_folder.setProperty("firstRunAction", "choose-folder")
+        choose_folder.setMinimumHeight(46)
+        choose_folder.clicked.connect(
+            lambda _checked=False: self._choose_music_folder()
+        )
+        connect_nas = QPushButton("Connect Network Music")
+        connect_nas.setObjectName("secondaryButton")
+        connect_nas.setProperty("firstRunAction", "connect-network")
+        connect_nas.setMinimumHeight(46)
+        connect_nas.clicked.connect(
+            lambda _checked=False: self._choose_music_folder(
+                "Choose a mounted NAS music folder"
+            )
+        )
+        try_files = QPushButton("Try with a few files…")
+        try_files.setObjectName("secondaryButton")
+        try_files.setProperty("firstRunAction", "try-files")
+        try_files.setMinimumHeight(46)
+        try_files.clicked.connect(
+            lambda _checked=False: self._try_audio_files()
+        )
+        first_run_actions.addWidget(choose_folder)
+        first_run_actions.addWidget(connect_nas)
+        first_run_actions.addWidget(try_files)
+        self.first_run_play_button = QPushButton("▶  Play Something")
+        self.first_run_play_button.setObjectName("primaryButton")
+        self.first_run_play_button.setProperty("firstRunAction", "play-something")
+        self.first_run_play_button.setMinimumHeight(50)
+        self.first_run_play_button.clicked.connect(self._first_run_play_action)
+        set_help(
+            self.first_run_play_button,
+            "Play something",
+            "Starts with playable music found so far. New discoveries join the queue while indexing continues.",
+        )
+        self.first_run_play_button.hide()
+        first_run_l.addWidget(self.first_run_play_button)
+        first_run_l.addLayout(first_run_actions)
+        drop_hint = QLabel("Or drop audio files or a music folder here.")
+        drop_hint.setAlignment(Qt.AlignCenter)
+        drop_hint.setObjectName("subtleText")
+        first_run_l.addWidget(drop_hint)
+        l.addWidget(self.home_first_run)
+
+        self.home_hero=QFrame()
+        self.home_hero.setObjectName("homeHero")
+        hero_l=QVBoxLayout(self.home_hero)
         hero_l.setContentsMargins(22,20,22,20)
         hero_l.setSpacing(10)
         prompt=QLabel("Start listening")
@@ -1238,7 +1523,7 @@ class MainWindow(QMainWindow):
         moods.addStretch(1)
         moods.addWidget(tune)
         hero_l.addWidget(self.home_moods_widget)
-        l.addWidget(hero)
+        l.addWidget(self.home_hero)
 
         self.home_continue_heading=QLabel("Continue listening")
         self.home_continue_heading.setStyleSheet("font-size:18px;font-weight:700;margin-top:10px")
@@ -1522,6 +1807,12 @@ class MainWindow(QMainWindow):
         self.library_browser.rescanRequested.connect(self._rescan)
         self.library_browser.scanPauseRequested.connect(self._toggle_local_scan_pause)
         self.library_browser.scanCancelRequested.connect(self._cancel_local_scan)
+        self.library_browser.directoryPriorityRequested.connect(
+            self._prioritize_scan_directories
+        )
+        self.library_browser.shuffleDiscoveredRequested.connect(
+            self._shuffle_discovered_tracks
+        )
         self.library_browser.albumWallRequested.connect(lambda:self.open_page("album_wall"))
         self.library_browser.momentsRequested.connect(lambda:self.open_page("moments"))
         self.library_browser.artworkRequested.connect(self._library_artwork_requested)
@@ -1802,6 +2093,18 @@ class MainWindow(QMainWindow):
         self._refresh_taste()
         count=self.providers.local_catalog_count()
         has_library=bool(count)
+        if hasattr(self, "home_first_run"):
+            self.home_first_run.setVisible(not has_library)
+            self.home_hero.setVisible(has_library)
+            title = self.page_titles.get("home")
+            if title is not None:
+                title.setText("Home" if has_library else "Your music, immediately.")
+            if not has_library and hasattr(self, "home_first_run_hint"):
+                self.home_first_run_hint.setText(
+                    "Finding playable music…"
+                    if self.local_scan.active
+                    else "Your files stay where they are. No setup or account is needed."
+                )
         if hasattr(self,"home_explanation"):
             self.home_explanation.setText(
                 "A session from your library, shaped as you listen."
@@ -1809,7 +2112,11 @@ class MainWindow(QMainWindow):
                 else "Add a folder of music. Your files stay where they are."
             )
         if hasattr(self,"home_moods_widget"):
-            self.home_moods_widget.setVisible(has_library)
+            # These controls need the hydrated catalog. The primary play
+            # action has a one-track cached fallback while hydration runs.
+            self.home_moods_widget.setVisible(
+                has_library and self.providers.local_catalog_is_loaded()
+            )
         if hasattr(self,"home_explore_heading"):
             self.home_explore_heading.setVisible(has_library)
         if hasattr(self,"home_explore_widget"):
@@ -1823,10 +2130,17 @@ class MainWindow(QMainWindow):
         if hasattr(self,"home_primary_button"):
             if count:
                 self.home_primary_button.setText("▶  Play something")
+                play_help = (
+                    "Starts from the tracks found so far. New discoveries can join "
+                    "while indexing continues."
+                    if self.local_scan.active
+                    else "Starts music immediately; listening history and Flow shape "
+                    "the rest of the session in the background."
+                )
                 set_help(
                     self.home_primary_button,
                     "Play something",
-                    "Builds a balanced one-hour session from your local library using your listening history and Flow when available.",
+                    play_help,
                 )
             else:
                 self.home_primary_button.setText("+  Add my music")
@@ -1836,20 +2150,203 @@ class MainWindow(QMainWindow):
                     "Choose a folder of music on this computer. Melodex indexes it locally and does not upload your audio.",
                 )
         self._refresh_home_continue()
+        self._refresh_first_run_play_affordance()
+
+    def _refresh_first_run_play_affordance(self) -> None:
+        button = getattr(self, "first_run_play_button", None)
+        if button is None:
+            return
+        tracks = self._discovered_playable_tracks()
+        queue_ready = bool(self.player.queue) and self.player.index >= 0
+        available = (
+            (bool(tracks) or queue_ready)
+            and not bool(self.providers.local_catalog_count())
+        )
+        button.setVisible(available)
+        if available:
+            if queue_ready and not self._first_discovery_preview_queue:
+                count = len(self.player.queue)
+                button.setText(f"▶  Continue queue · {count:,} ready")
+            else:
+                count = len(tracks)
+                button.setText(
+                    f"▶  Play Something · {count:,} tracks ready"
+                    if count > 1
+                    else "▶  Play Something · 1 track ready"
+                )
+
+    def _first_run_play_action(self) -> None:
+        if (
+            self.player.queue
+            and self.player.index >= 0
+            and (
+                self._restored_playback_queue
+                or not self._first_discovery_preview_queue
+            )
+        ):
+            self.player.jump_to(self.player.index, autoplay=True)
+            return
+        self._shuffle_discovered_tracks()
+
+    def _set_queue_from_playback_feature(
+        self, tracks: object, start: int, autoplay: bool, intent: str
+    ) -> None:
+        self._first_discovery_preview_queue = False
+        self._restored_playback_queue = False
+        self.player.set_queue(
+            list(tracks or []),
+            int(start),
+            bool(autoplay),
+            intent=str(intent or "manual_queue"),
+        )
 
     def _home_primary_action(self) -> None:
+        if self.player.queue and self.player.index >= 0:
+            self._prioritize_tracks([self.player.queue[self.player.index]])
+            self.player.jump_to(self.player.index, autoplay=True)
+            return
+        if self.local_scan.active:
+            # A partially discovered pool is already enough for a useful
+            # session. Do not wait for the full-library planner while new music
+            # is still being found.
+            if self._discovered_playable_tracks():
+                self._shuffle_discovered_tracks()
+                return
         if self.providers.local_catalog_count():
-            self._play_for_me("balanced",60,0.35)
+            if not self.providers.local_catalog_is_loaded():
+                recent = dict(getattr(self, "home_recent_track", {}) or {})
+                if recent and str(recent.get("local_path") or "").strip():
+                    self._home_continue_play()
+                    self.statusBar().showMessage(
+                        "Playing from your cached listening history while the library restores…",
+                        5000,
+                    )
+                else:
+                    roots = self.providers.local_roots()
+                    stored = self.state.source_statuses()
+                    availability = {
+                        str(root): str(
+                            dict(stored.get(str(root)) or {}).get("status") or "cached"
+                        )
+                        for root in roots
+                    }
+                    first_track = self.providers.first_indexed_local_track(
+                        roots, source_availability=availability
+                    )
+                    if first_track and first_track.get("availability") != "unavailable":
+                        self.player.set_queue(
+                            [first_track], 0, True, intent="manual_queue"
+                        )
+                    self._start_local_cache_hydration(
+                        roots
+                    )
+                    message = (
+                        "Playing cached music while the full library restores…"
+                        if first_track and first_track.get("availability") != "unavailable"
+                        else "Restoring your cached music in the background…"
+                    )
+                    self.statusBar().showMessage(message, 5000)
+                return
+            self._start_balanced_session_immediately()
         else:
             self._choose_music_folder()
+
+    def _start_balanced_session_immediately(self) -> None:
+        """Start a small neutral queue before history-based planning finishes."""
+        catalog = self.providers.local_catalog()
+        if not catalog:
+            return
+
+        # Sample across the already-hydrated in-memory catalog without walking
+        # or probing files on the UI thread. The background planner receives
+        # the full catalog; this bounded sample exists only to start audio now.
+        limit = min(512, len(catalog))
+        if limit == len(catalog):
+            sampled = catalog
+        else:
+            stride = (len(catalog) - 1) / (limit - 1)
+            sampled = [catalog[round(index * stride)] for index in range(limit)]
+        immediate_pool = [dict(track) for track in sampled]
+        immediate_queue = light_shuffle(immediate_pool, rng=random)[:40]
+        if not immediate_queue:
+            return
+
+        self._first_discovery_preview_queue = False
+        self._restored_playback_queue = False
+        self._shuffle_discovered_active = False
+        self.player.set_queue(
+            immediate_queue,
+            0,
+            True,
+            intent="journey",
+        )
+        expected_ids = tuple(
+            track_key(track) for track in self.player.queue
+        )
+        self.statusBar().showMessage(
+            "Playing now · shaping the session from your listening history…",
+            5000,
+        )
+
+        self._run_async(
+            lambda: self.mind.build_session(
+                catalog,
+                self._path_for,
+                minutes=60,
+                adventure=0.35,
+                mode="balanced",
+            ),
+            lambda plan: self._apply_history_plan_to_live_queue(
+                plan, expected_ids
+            ),
+            lambda _error: None,
+            priority="foreground",
+            task_name="play-for-me",
+            replace_key="play-for-me",
+        )
+
+    def _apply_history_plan_to_live_queue(
+        self, plan: object, expected_ids: tuple[str, ...]
+    ) -> None:
+        """Refine only the unplayed tail if the quick queue is still untouched."""
+        if self._closing:
+            return
+        if not isinstance(plan, dict):
+            return
+        raw_tracks = plan.get("tracks")
+        if not isinstance(raw_tracks, list):
+            return
+        current_queue = list(self.player.queue)
+        planned = [
+            dict(track)
+            for track in raw_tracks
+            if isinstance(track, dict)
+        ]
+        upcoming = refined_upcoming(
+            current_queue,
+            self.player.index,
+            planned,
+            expected_ids,
+        )
+        if not upcoming:
+            return
+
+        self.player.replace_upcoming(upcoming)
+        self.statusBar().showMessage(
+            f"Personalized session ready · {len(planned)} tracks · "
+            f"{plan.get('new_to_you', 0)} new to you",
+            6000,
+        )
 
     def _refresh_home_continue(self) -> None:
         if not hasattr(self,"home_continue_cover"):
             return
         recent = self.state.recent_tracks(1)
+        checkpoint = self.state.playback_checkpoint()
         track = dict(
             self.playback_feature.current_track()
             or (recent[0] if recent else {})
+            or dict((checkpoint or {}).get("track") or {})
         )
         self.home_recent_track = track
         if not track:
@@ -1897,6 +2394,44 @@ class MainWindow(QMainWindow):
         track=dict(getattr(self,"home_recent_track",{}) or {})
         if track:
             self.player.set_queue([track],0,True,intent="manual_queue")
+            checkpoint = self.state.playback_checkpoint()
+            saved_track = dict((checkpoint or {}).get("track") or {})
+            position = max(0, int((checkpoint or {}).get("position_ms") or 0))
+            if (
+                position >= 2000
+                and UserState.track_key(saved_track) == UserState.track_key(track)
+            ):
+                self._resume_checkpoint_when_ready(track, position)
+
+    def _resume_checkpoint_when_ready(
+        self, track: dict[str, Any], position_ms: int
+    ) -> None:
+        token = UserState.track_key(track)
+        attempts = {"count": 0}
+        timer = QTimer(self)
+        timer.setInterval(100)
+
+        def resume() -> None:
+            attempts["count"] += 1
+            current = dict(self.playback_feature.current_track() or {})
+            if UserState.track_key(current) != token:
+                timer.stop()
+                timer.deleteLater()
+                return
+            deck = self.player.players[self.player.active]
+            duration = int(deck.duration() or 0)
+            if duration > 0:
+                target = min(max(0, int(position_ms)), max(0, duration - 1000))
+                if target:
+                    self.player.seek(target)
+                timer.stop()
+                timer.deleteLater()
+            elif attempts["count"] >= 50:
+                timer.stop()
+                timer.deleteLater()
+
+        timer.timeout.connect(resume)
+        timer.start()
 
     def _power_changed(self, _, announce: bool = True):
         enabled = self.power_toggle.isChecked()
@@ -1991,24 +2526,85 @@ class MainWindow(QMainWindow):
         )
 
     def _refresh_library(self):
+        if not self.providers.local_catalog_is_loaded():
+            if self.providers.local_catalog_count():
+                self._start_local_cache_hydration(self.providers.local_roots())
+                if hasattr(self, "library_browser"):
+                    self.library_browser.set_cache_restoring(True)
+                    if self._progressive_local_tracks:
+                        self.library_browser.append_discovered_tracks(
+                            self._progressive_local_tracks
+                        )
+                        self._progressive_browser_revision = (
+                            self._progressive_track_revision
+                        )
+                        self._progressive_local_tracks.clear()
+                        self._progressive_track_index.clear()
+                self.statusBar().showMessage("Restoring cached music…")
+                return
         catalog=self.providers.local_catalog()
         if hasattr(self,"artwork_plugin_presence"):
             self.artwork_plugin_presence.setVisible(bool(catalog))
         if hasattr(self,"library_browser"):
-            self.library_browser.set_catalog(
-                catalog,
-                revision=self.providers.local_catalog_revision(),
-            )
+            if catalog:
+                self.library_browser.set_catalog(
+                    catalog,
+                    revision=self.providers.local_catalog_revision(),
+                )
+            elif (
+                self._progressive_local_tracks
+                or bool(
+                    dict(
+                        getattr(self.library_browser, "last_catalog_metrics", {})
+                        or {}
+                    ).get("progressive")
+                )
+            ):
+                if (
+                    self._progressive_local_tracks
+                    and self._progressive_browser_revision
+                    != self._progressive_track_revision
+                ):
+                    self.library_browser.append_discovered_tracks(
+                        self._progressive_local_tracks
+                    )
+                    self._progressive_browser_revision = (
+                        self._progressive_track_revision
+                    )
+                    self._progressive_local_tracks.clear()
+                    self._progressive_track_index.clear()
+            else:
+                self.library_browser.set_catalog(
+                    catalog,
+                    revision=self.providers.local_catalog_revision(),
+                )
 
     def _play_library_track(self, track: object) -> None:
         if not isinstance(track,dict):
             return
-        tracks=self.providers.local_catalog()
+        self._first_discovery_preview_queue = False
+        self._restored_playback_queue = False
+        self._shuffle_discovered_active = False
+        self._prioritize_tracks([track])
+        tracks = (
+            self.providers.local_catalog()
+            if self.providers.local_catalog_is_loaded()
+            else []
+        )
         tid=str(track.get("track_id") or "")
         index=next(
-            (i for i,item in enumerate(tracks) if str(item.get("track_id") or "")==tid),
-            0,
+            (
+                i
+                for i,item in enumerate(tracks)
+                if str(item.get("track_id") or "")==tid
+            ),
+            None,
         )
+        if index is None:
+            # Progressive/provisional rows intentionally precede catalog
+            # commit. Play that path directly instead of falling back to row 0.
+            tracks = [dict(track)]
+            index = 0
         self.player.set_queue(tracks,index,True,intent="manual_queue")
 
     def _play_library_artist(self, artist: object) -> None:
@@ -2016,11 +2612,139 @@ class MainWindow(QMainWindow):
             return
         tracks=[dict(x) for x in list(artist.get("tracks") or []) if isinstance(x,dict)]
         if tracks:
+            self._first_discovery_preview_queue = False
+            self._restored_playback_queue = False
+            self._shuffle_discovered_active = False
+            artist_name = str(artist.get("name") or "").strip()
+            candidates = [
+                str(root / artist_name)
+                for root in self.providers.local_roots()
+                if artist_name
+            ]
+            candidates.extend(
+                str(Path(str(track.get("local_path") or "")).parent)
+                for track in tracks
+                if str(track.get("local_path") or "").strip()
+            )
+            self._prioritize_scan_directories(list(dict.fromkeys(candidates)))
             self.player.set_queue(tracks,0,True,intent="playlist")
+
+    def _prioritize_tracks(self, tracks: list[dict[str, Any]]) -> None:
+        directories: list[str] = []
+        seen: set[str] = set()
+        for track in tracks:
+            local_path = str(track.get("local_path") or "").strip()
+            if not local_path:
+                continue
+            directory = str(Path(local_path).parent)
+            key = os.path.normcase(os.path.abspath(directory))
+            if key in seen:
+                continue
+            seen.add(key)
+            directories.append(directory)
+            if len(directories) >= 12:
+                break
+        self._prioritize_scan_directories(directories)
+
+    def _prioritize_scan_directories(self, directories: object) -> None:
+        if not isinstance(directories, (list, tuple)):
+            return
+        for directory in list(directories)[:12]:
+            value = str(directory or "").strip()
+            if value:
+                self.state.record_recent_directory(value)
+                if self.local_scan.active:
+                    self.local_scan.prioritize(value)
+
+    def _discovered_playable_tracks(self) -> list[dict[str, Any]]:
+        candidates: list[dict[str, Any]] = []
+        active_scan = bool(self.local_scan.active)
+        pool_limit = 1000 if active_scan else None
+        local_catalog = (
+            self.providers.local_catalog()
+            if self.providers.local_catalog_is_loaded()
+            else []
+        )
+        candidates.extend(
+            local_catalog[:pool_limit] if pool_limit is not None else local_catalog
+        )
+        browser = getattr(self, "library_browser", None)
+        if browser is not None:
+            browser_catalog = getattr(browser, "catalog", []) or []
+            candidates.extend(
+                browser_catalog[:pool_limit]
+                if pool_limit is not None
+                else list(browser_catalog)
+            )
+        candidates.extend(self._progressive_local_tracks)
+        unique: dict[str, dict[str, Any]] = {}
+        for raw in candidates:
+            if not isinstance(raw, dict):
+                continue
+            path = str(raw.get("local_path") or "").strip()
+            if not path:
+                continue
+            key = str(raw.get("track_id") or path)
+            unique[key] = dict(raw)
+        return list(unique.values())
+
+    def _shuffle_discovered_tracks(self) -> None:
+        tracks = self._discovered_playable_tracks()
+        if not tracks:
+            self.statusBar().showMessage("Still looking for playable music…", 3000)
+            return
+        tracks = light_shuffle(tracks, rng=random)
+        self._first_discovery_preview_queue = False
+        self._restored_playback_queue = False
+        self._shuffle_discovered_active = bool(self.local_scan.active)
+        self.player.set_queue(tracks, 0, True, intent="manual_queue")
+        self._shuffle_discovered_ids = tuple(
+            str(item.get("track_id") or item.get("local_path") or "")
+            for item in tracks
+        )
+        self.statusBar().showMessage(
+            f"Shuffling {len(tracks):,} tracks found so far · new discoveries join the queue",
+            4500,
+        )
+
+    def _extend_discovered_shuffle(self, tracks: list[dict[str, Any]]) -> None:
+        if not self._shuffle_discovered_active or not tracks:
+            return
+        current_ids = tuple(
+            str(item.get("track_id") or item.get("local_path") or "")
+            for item in self.player.queue
+        )
+        if current_ids != self._shuffle_discovered_ids:
+            self._shuffle_discovered_active = False
+            return
+        queued = {
+            str(item.get("track_id") or item.get("local_path") or "")
+            for item in self.player.queue
+        }
+        additions = [
+            dict(track)
+            for track in tracks
+            if str(track.get("track_id") or track.get("local_path") or "")
+            and str(track.get("track_id") or track.get("local_path") or "") not in queued
+            and str(track.get("local_path") or "").strip()
+        ]
+        if additions:
+            additions = light_shuffle(
+                additions,
+                rng=random,
+                recent_context=list(self.player.queue[-3:]),
+            )
+            self.player.append_queue(additions, autoplay=False)
+            self._shuffle_discovered_ids = current_ids + tuple(
+                str(item.get("track_id") or item.get("local_path") or "")
+                for item in additions
+            )
 
     def _queue_library_track(self, track: object) -> None:
         if not isinstance(track,dict):
             return
+        self._first_discovery_preview_queue = False
+        self._restored_playback_queue = False
         if not self.player.queue:
             self.player.set_queue([dict(track)],0,False,intent="manual_queue")
         else:
@@ -2158,7 +2882,10 @@ class MainWindow(QMainWindow):
         def failed(error: str) -> None:
             self.library_browser.cached_artwork_batch_failed("albums",keys)
             self.statusBar().showMessage(f"Cached artwork refresh paused · {error}",3500)
-        self._run_async(load,self.library_browser.set_artwork,failed, priority="visible", task_name="library-cached-artwork")
+        def apply(result) -> None:
+            self.library_browser.set_artwork(result)
+            self._first_music_timeline.mark("artwork_enrichment_finished")
+        self._run_async(load,apply,failed, priority="visible", task_name="library-cached-artwork")
 
     def _library_online_artwork_requested(self, requests: object) -> None:
         rows=[dict(x) for x in list(requests or []) if isinstance(x,dict)]
@@ -2203,6 +2930,7 @@ class MainWindow(QMainWindow):
                 str(row.get("key") or ""):row for row in outcomes if str(row.get("path") or "")
             })
             self.library_browser.finish_album_artwork_lookup_batch(outcomes)
+            self._first_music_timeline.mark("artwork_enrichment_finished")
             snapshot=self.library_browser.artwork_lookup_snapshot()
             self.statusBar().showMessage(
                 "Album artwork · "
@@ -2512,8 +3240,65 @@ class MainWindow(QMainWindow):
         s=self.state.taste_summary(); self.taste_label.setText(f"Taste memory: {s.get('tracks',0)} tracks learned · {s.get('artists',0)} artists · completion rate {float(s.get('completion_rate',0))*100:.0f}%")
 
     # ------------------------------- sources/search
-    def _choose_music_folder(self):
-        folder=QFileDialog.getExistingDirectory(self,"Choose a music folder")
+    def dragEnterEvent(self, event) -> None:
+        mime = event.mimeData()
+        if mime.hasUrls() and any(url.isLocalFile() for url in mime.urls()):
+            event.acceptProposedAction()
+            return
+        event.ignore()
+
+    def dragMoveEvent(self, event) -> None:
+        mime = event.mimeData()
+        if mime.hasUrls() and any(url.isLocalFile() for url in mime.urls()):
+            event.acceptProposedAction()
+            return
+        event.ignore()
+
+    def dropEvent(self, event) -> None:
+        paths = [
+            url.toLocalFile()
+            for url in event.mimeData().urls()
+            if url.isLocalFile() and url.toLocalFile()
+        ]
+        if not paths:
+            event.ignore()
+            return
+        audio_paths = [
+            path for path in paths if Path(path).suffix.lower() in AUDIO_EXTS
+        ]
+        folder_paths = [path for path in paths if path not in audio_paths]
+
+        # Queue explicit audio files first so a folder scan cannot get in front
+        # of the playback action represented by the same drop.
+        if audio_paths:
+            source_id = self._first_music_timeline.begin_source(
+                selection_started=True
+            )
+            self._play_local_files(audio_paths, source_id)
+
+        if folder_paths:
+            source_id = self._first_music_timeline.begin_source(
+                selection_started=True
+            )
+            roots = self.providers.local_roots()
+            for raw_path in folder_paths:
+                root = Path(raw_path).expanduser()
+                if root not in roots:
+                    roots.append(root)
+            self.providers.configure_local_roots(roots)
+            self._first_music_timeline.mark(
+                "source_selected", source_id=source_id
+            )
+            self._first_music_scan_started = False
+            self._start_local_scan("folder dropped")
+            if self.current_page == "home":
+                self.open_page("library")
+
+        event.acceptProposedAction()
+
+    def _choose_music_folder(self, dialog_title: str = "Choose a music folder"):
+        self._first_music_timeline.begin_source(selection_started=True)
+        folder=QFileDialog.getExistingDirectory(self, str(dialog_title))
         if not folder:
             return
         roots=self.providers.local_roots()
@@ -2521,10 +3306,75 @@ class MainWindow(QMainWindow):
         if p not in roots:
             roots.append(p)
         self.providers.configure_local_roots(roots)
+        self._first_music_timeline.mark(
+            "source_selected",
+            source_id=self._first_music_timeline.active_source_id,
+        )
+        self._first_music_scan_started = False
         came_from_home = self.current_page == "home"
         self._start_local_scan("folder added")
         if came_from_home:
             self.open_page("library")
+
+    def _try_audio_files(self) -> None:
+        source_id = self._first_music_timeline.begin_source(
+            selection_started=True
+        )
+        file_filter = "Audio files (" + " ".join(
+            f"*{suffix}" for suffix in sorted(AUDIO_EXTS)
+        ) + ")"
+        paths, _selected_filter = QFileDialog.getOpenFileNames(
+            self,
+            "Choose a few audio files to play",
+            "",
+            file_filter,
+        )
+        if not paths:
+            return
+        self._play_local_files(paths, source_id)
+
+    def _play_local_files(self, paths: list[str], source_id: int) -> None:
+        self._first_discovery_preview_queue = False
+        self._restored_playback_queue = False
+        self._first_music_timeline.mark("source_selected", source_id=source_id)
+        self._first_music_timeline.mark("source_probe_started", source_id=source_id)
+        tracks = []
+        for raw_path in list(paths or []):
+            path = Path(raw_path).expanduser().absolute()
+            if path.suffix.lower() not in AUDIO_EXTS:
+                continue
+            absolute_path = str(path)
+            tracks.append(
+                {
+                    "provider_id": "local",
+                    "track_id": absolute_path,
+                    "rel": f"local:{absolute_path}",
+                    "title": path.stem,
+                    "artist": "Unknown artist",
+                    "album": "",
+                    "duration": 0.0,
+                    "local_path": absolute_path,
+                    "source": "local",
+                    "provisional": True,
+                }
+            )
+        if not tracks:
+            self.statusBar().showMessage("No supported audio files were selected.", 5000)
+            return
+        self._first_music_timeline.mark(
+            "first_audio_file_discovered", source_id=source_id
+        )
+        self._first_music_timeline.mark(
+            "source_probe_finished", source_id=source_id
+        )
+        self._first_music_timeline.mark(
+            "first_playable_track_ready", source_id=source_id
+        )
+        self.player.set_queue(tracks, 0, True, intent="manual_queue")
+        self.statusBar().showMessage(
+            "Playing selected files. They haven’t been added to your library.",
+            5000,
+        )
 
     def _rescan(self):
         self._start_local_scan("rescan")
@@ -2559,10 +3409,48 @@ class MainWindow(QMainWindow):
             self._closing
             or not self.local_scan.is_current(sequence)
             or not isinstance(payload,dict)
-            or not self.local_scan.active
         ):
             return
+        provisional_track = payload.get("provisional_track")
+        if isinstance(provisional_track, dict):
+            self._accept_first_provisional_track(provisional_track)
+            return
+        discovered_tracks = payload.get("discovered_tracks")
+        if isinstance(discovered_tracks, list):
+            batch = [item for item in discovered_tracks if isinstance(item, dict)]
+            self._cache_progressive_tracks(batch)
+            browser = getattr(self, "library_browser", None)
+            count = (
+                len(browser.catalog)
+                if browser is not None
+                else len(self._progressive_local_tracks)
+            )
+            message = (
+                f"{count:,} tracks available · new music is being indexed"
+                if self.providers.local_catalog_count() > 0
+                else f"{count:,} track{'s' if count != 1 else ''} found · "
+                "indexing continues in the background"
+            )
+            self.statusBar().showMessage(message)
+            if hasattr(self, "home_status"):
+                self.home_status.setText(message)
+            if hasattr(self, "home_first_run_hint"):
+                self.home_first_run_hint.setText(message)
+            self._update_progressive_queue_metadata(batch)
+            self._extend_discovered_shuffle(batch)
+            return
+        if not self.local_scan.active:
+            return
         self._local_scan_last_progress=dict(payload)
+        source_id = self._first_music_scan_source_id
+        if int(payload.get("directories_seen") or 0) > 0:
+            self._first_music_timeline.mark(
+                "first_directory_result", source_id=source_id
+            )
+        if int(payload.get("audio_files_seen") or 0) > 0:
+            self._first_music_timeline.mark(
+                "first_audio_file_discovered", source_id=source_id
+            )
         self._local_scan_session.update(
             scan_progress_patch(
                 payload,
@@ -2578,6 +3466,127 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage(message)
             if hasattr(self,"home_status"):
                 self.home_status.setText(message)
+            if hasattr(self, "home_first_run_hint"):
+                self.home_first_run_hint.setText(message)
+
+    def _accept_first_provisional_track(self, track: dict[str, object]) -> None:
+        """Expose initial discovered paths to the player before catalog commit."""
+        local_path = str(track.get("local_path") or "").strip()
+        if not local_path:
+            return
+        provisional = dict(track)
+        provisional["provisional"] = True
+        provisional["progressive_local"] = True
+        self._cache_progressive_tracks([provisional])
+        source_id = self._first_music_scan_source_id
+        self._first_music_timeline.mark(
+            "source_probe_finished", source_id=source_id
+        )
+        self._first_music_timeline.mark(
+            "first_playable_track_ready", source_id=source_id
+        )
+        self._first_music_timeline.mark(
+            "first_track_visible", source_id=source_id
+        )
+        if self._shuffle_discovered_active:
+            self._extend_discovered_shuffle([provisional])
+            return
+        current_queue = list(self.player.queue)
+        if current_queue:
+            if not self._first_discovery_preview_queue:
+                return
+            if not all(
+                bool(item.get("progressive_local") or item.get("provisional"))
+                for item in current_queue
+            ):
+                return
+            track_id = str(provisional.get("track_id") or local_path)
+            if any(
+                str(item.get("track_id") or item.get("local_path") or "")
+                == track_id
+                for item in current_queue
+            ):
+                return
+            self.player.append_queue([provisional], autoplay=False)
+            return
+        self._first_discovery_preview_queue = True
+        self.player.set_queue(
+            [provisional],
+            0,
+            False,
+            intent="manual_queue",
+        )
+        if not self.player.jump_to(0, autoplay=False):
+            return
+        message = "Music found — ready to play. Indexing continues in the background."
+        self.statusBar().showMessage(message)
+        if hasattr(self, "home_status"):
+            self.home_status.setText(message)
+        if hasattr(self, "home_first_run_hint"):
+            self.home_first_run_hint.setText(message)
+
+    def _cache_progressive_tracks(
+        self,
+        tracks: list[dict[str, object]],
+    ) -> None:
+        changed: list[dict[str, Any]] = []
+        browser = getattr(self, "library_browser", None)
+        for raw in tracks:
+            if not isinstance(raw, dict):
+                continue
+            track = dict(raw)
+            track["progressive_local"] = True
+            key = str(track.get("track_id") or track.get("local_path") or "")
+            if not key:
+                continue
+            if browser is not None:
+                changed.append(track)
+                continue
+            row = self._progressive_track_index.get(key)
+            if row is None:
+                # Keep a bounded preview if My Music has not been opened yet.
+                if len(self._progressive_local_tracks) >= 1000:
+                    continue
+                self._progressive_track_index[key] = len(self._progressive_local_tracks)
+                self._progressive_local_tracks.append(track)
+            else:
+                self._progressive_local_tracks[row] = track
+            changed.append(track)
+        if not changed:
+            return
+        self._progressive_track_revision += 1
+        if browser is not None:
+            if self._progressive_local_tracks:
+                browser.append_discovered_tracks(
+                    self._progressive_local_tracks
+                )
+                self._progressive_local_tracks.clear()
+                self._progressive_track_index.clear()
+            browser.append_discovered_tracks(changed)
+            self._progressive_browser_revision = self._progressive_track_revision
+        self._refresh_first_run_play_affordance()
+
+    def _update_progressive_queue_metadata(
+        self,
+        tracks: list[dict[str, object]],
+    ) -> None:
+        by_id = {
+            str(track.get("track_id") or track.get("local_path") or ""): dict(track)
+            for track in tracks
+            if isinstance(track, dict)
+        }
+        if not by_id:
+            return
+        for index, item in enumerate(list(self.player.queue)):
+            if not bool(item.get("progressive_local") or item.get("provisional")):
+                continue
+            track_id = str(item.get("track_id") or item.get("local_path") or "")
+            updated = by_id.get(track_id)
+            if updated is None:
+                continue
+            updated["progressive_local"] = True
+            updated["provisional"] = False
+            self.player.replace_queue_item(index, updated)
 
     def _toggle_local_scan_pause(self) -> None:
         paused=self.local_scan.toggle_pause()
@@ -2635,6 +3644,14 @@ class MainWindow(QMainWindow):
                 )
             return
 
+        if (
+            self._first_music_timeline.active_source_id is None
+            or self._first_music_scan_started
+        ):
+            source_id = self._first_music_timeline.begin_source()
+            self._first_music_timeline.mark("source_selected", source_id=source_id)
+        source_id = self._first_music_timeline.active_source_id
+
         self._local_scan_started_at=time.monotonic()
         self._local_scan_last_progress={"phase":"discovering","audio_files_seen":0}
         self._local_scan_session=start_scan_session(reason,len(roots))
@@ -2643,15 +3660,23 @@ class MainWindow(QMainWindow):
             self.library_browser.begin_scan(reason)
         self._refresh_background_scan_activity()
         self._background_activity_timer.start()
+        message = (
+            "Music folder saved · finding playable tracks in the background…"
+            if reason == "folder added"
+            else "Indexing your music in an isolated background scanner…"
+        )
         self.statusBar().showMessage(
-            "Indexing your music in an isolated background scanner…"
+            message
         )
         if hasattr(self,"home_status"):
-            self.home_status.setText(
-                "Indexing your music in an isolated background scanner…"
-            )
+            self.home_status.setText(message)
 
         try:
+            self._first_music_timeline.mark(
+                "source_probe_started", source_id=source_id
+            )
+            self._first_music_scan_source_id = source_id
+            self._first_music_scan_started = True
             self.local_scan.start(roots_snapshot)
         except Exception as exc:
             self._local_scan_failed(self.local_scan.sequence,str(exc))
@@ -2664,6 +3689,14 @@ class MainWindow(QMainWindow):
         scanned_roots_key=self.local_scan.roots_key
         if not self.local_scan.finish(sequence):
             return
+        self._shuffle_discovered_active = False
+        source_id = self._first_music_scan_source_id
+        self._first_music_timeline.mark(
+            "source_probe_finished", source_id=source_id
+        )
+        self._first_music_timeline.mark(
+            "background_scan_finished", source_id=source_id
+        )
         self._background_activity_timer.stop()
         self.background_activity.hide()
         current_key=scan_roots_key(self.providers.local_roots())
@@ -2716,8 +3749,28 @@ class MainWindow(QMainWindow):
         from .scan_outcome import scan_storage_message, scan_storage_outcome
 
         count=self.providers.apply_local_scan_snapshot(result)
+        if count > 0:
+            self._progressive_local_tracks.clear()
+            self._progressive_track_index.clear()
+            self._progressive_track_revision = 0
+            self._progressive_browser_revision = -1
+            self._first_music_timeline.mark(
+                "first_playable_track_ready", source_id=source_id
+            )
         changes=dict(result.get("changes") or {})
         outcome=scan_storage_outcome(result)
+        roots = self.providers.local_roots()
+        unavailable_roots = int(outcome.get("roots_unavailable") or 0)
+        source_status = (
+            "unavailable"
+            if roots and unavailable_roots >= len(roots)
+            else "degraded"
+            if outcome["degraded"]
+            else "available"
+        )
+        for root in roots:
+            self.state.set_source_status(str(root), source_status)
+            self.providers.set_local_source_availability(root, source_status)
         elapsed=max(0.0,time.monotonic()-self._local_scan_started_at)
         self._local_scan_session.update(
             {
@@ -2738,6 +3791,10 @@ class MainWindow(QMainWindow):
         )
         self._refresh_library()
         self._show_home()
+        if self.providers.local_catalog_count() > 0:
+            self._first_music_timeline.mark(
+                "first_track_visible", source_id=source_id
+            )
         storage_message=scan_storage_message(outcome)
         if hasattr(self,"library_browser"):
             self.library_browser.finish_scan(
@@ -2770,6 +3827,20 @@ class MainWindow(QMainWindow):
     def _local_scan_failed(self, sequence: int, error: str) -> None:
         if self._closing or not self.local_scan.finish(sequence):
             return
+        self._shuffle_discovered_active = False
+        for root in self.providers.local_roots():
+            self.state.set_source_status(str(root), "unavailable", str(error or ""))
+            self.providers.set_local_source_availability(root, "unavailable")
+        if self.providers.local_catalog_is_loaded():
+            self._refresh_library()
+        self._first_music_timeline.mark(
+            "source_probe_finished",
+            source_id=self._first_music_scan_source_id,
+        )
+        self._first_music_timeline.mark(
+            "background_scan_finished",
+            source_id=self._first_music_scan_source_id,
+        )
         self._background_activity_timer.stop()
         self.background_activity.hide()
         elapsed=max(0.0,time.monotonic()-self._local_scan_started_at)
@@ -2831,6 +3902,7 @@ class MainWindow(QMainWindow):
         ui_metrics["artwork_image_cache"]=self.metadata.artwork_image_cache_snapshot()
         ui_metrics["playback_runtime"]=self.player.diagnostics_snapshot()
         ui_metrics["local_scan_session"] = dict(self._local_scan_session or {})
+        ui_metrics["first_music"] = self._first_music_timeline.summary()
         if hasattr(self, "background_scheduler"):
             scheduler_metrics = self.background_scheduler.snapshot()
             scheduler_metrics["async_invalidations"] = self._async_invalidations
@@ -2843,6 +3915,8 @@ class MainWindow(QMainWindow):
         return ui_metrics
 
     def _refresh_plugin_presence(self) -> None:
+        if not self.providers.optional_plugins_loaded:
+            return
         if hasattr(self,"search_plugin_presence"):
             self.search_plugin_presence.set_items(self.source_policy.searchable_source_names())
         if hasattr(self,"artwork_plugin_presence"):
@@ -3072,7 +4146,18 @@ class MainWindow(QMainWindow):
         else: self.statusBar().showMessage("This source did not provide a content page",3000)
 
     def _play_library(self,item):
-        t=dict(item.data(Qt.UserRole) or {}); tracks=self.providers.local_catalog(); idx=next((i for i,x in enumerate(tracks) if x.get('track_id')==t.get('track_id')),0); self.player.set_queue(tracks,idx,True,intent="manual_queue")
+        t = dict(item.data(Qt.UserRole) or {})
+        if not t:
+            return
+        if not self.providers.local_catalog_is_loaded():
+            self.player.set_queue([t], 0, True, intent="manual_queue")
+            return
+        tracks = self.providers.local_catalog()
+        idx = next(
+            (i for i, row in enumerate(tracks) if row.get("track_id") == t.get("track_id")),
+            0,
+        )
+        self.player.set_queue(tracks, idx, True, intent="manual_queue")
 
     def _add_selected_to_queue(self):
         item=self.results.currentItem()
@@ -3294,6 +4379,8 @@ class MainWindow(QMainWindow):
     def _play_album_wall_album(self,album):
         tracks=[dict(x) for x in list((album or {}).get("tracks") or []) if isinstance(x,dict)]
         if tracks:
+            self._shuffle_discovered_active = False
+            self._prioritize_tracks(tracks)
             self.player.set_queue(tracks,0,True,intent="album")
             self.statusBar().showMessage(
                 f"Playing {album.get('artist') or 'Unknown artist'} — {album.get('title') or 'Unknown album'}",
@@ -3709,6 +4796,14 @@ class MainWindow(QMainWindow):
     def closeEvent(self,event):
         self._window_settings.setValue("window/geometry", self.saveGeometry())
         self._window_settings.setValue("window/normal_geometry_trusted", True)
+        self._invalidate_async("playback-queue-save")
+        self.state.save_playback_queue(
+            list(self.player.queue[:5000]),
+            int(self.player.index),
+        )
+        self._persist_playback_checkpoint(synchronous=True)
+        if hasattr(self, "_checkpoint_timer"):
+            self._checkpoint_timer.stop()
         # Set the plain-Python gate before any Qt-owned children are torn down.
         if hasattr(self, "_async_closing_event"):
             self._async_closing_event.set()

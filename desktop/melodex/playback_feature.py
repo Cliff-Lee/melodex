@@ -109,6 +109,9 @@ class PlaybackFeature(QObject):
         self._prefetched_track_assets: dict[str, dict[str, Any]] = {}
         self._prefetch_sequence = 0
         self._prefetch_delay_ms = 350
+        self._play_history_generation = 0
+        self._history_recorded_generation = 0
+        self._history_completed_before_write: set[int] = set()
         self._seek_interaction = SeekInteraction()
         self._audio_processing = {
             "intent": "manual_queue",
@@ -452,6 +455,50 @@ class PlaybackFeature(QObject):
         self.play_button.setAccessibleName("Pause" if self._playing else "Play")
         if self.now_playing_built and hasattr(self, "living_canvas"):
             self.living_canvas.set_playing(self._playing)
+        if (
+            self._playing
+            and self._current_track
+            and self._play_history_generation
+            != self._history_recorded_generation
+        ):
+            self._history_recorded_generation = self._play_history_generation
+            self._schedule_play_history(
+                dict(self._current_track), self._play_history_generation
+            )
+
+    def _schedule_play_history(
+        self, track: dict[str, Any], history_generation: int
+    ) -> None:
+        """Write play history after FlowPlayer has acknowledged playback."""
+        def history_recorded(result: object) -> None:
+            history_id = max(0, int(result or 0))
+            if not history_id:
+                return
+            completed_before_write = (
+                history_generation in self._history_completed_before_write
+            )
+            self._history_completed_before_write.discard(history_generation)
+            if (
+                not completed_before_write
+                and history_generation == self._play_history_generation
+            ):
+                self._playback_state.set_current_history_id(history_id)
+            if completed_before_write:
+                self._run_async(
+                    lambda: self.state.mark_completed(history_id),
+                    lambda _result: None,
+                    lambda _error: None,
+                    priority="background",
+                    task_name="playback-completion-history",
+                )
+
+        self._run_async(
+            lambda: self.state.record_play(dict(track)),
+            history_recorded,
+            lambda _error: None,
+            priority="background",
+            task_name="playback-start-history",
+        )
 
     def _render_current_track_summary(self) -> None:
         track = dict(self._current_track or {})
@@ -682,12 +729,21 @@ class PlaybackFeature(QObject):
         if (
             self._current_track
             and self._current_track_started
+            and self._history_recorded_generation == self._play_history_generation
             and time.time() - self._current_track_started < 30
         ):
-            self.state.record_skip(self._current_track)
+            previous_track = dict(self._current_track)
+            self._run_async(
+                lambda: self.state.record_skip(previous_track),
+                lambda _result: None,
+                lambda _error: None,
+                priority="background",
+                task_name="playback-skip-history",
+            )
+        self._play_history_generation += 1
         self._playback_state.start_track(
             t,
-            history_id=self.state.record_play(t),
+            history_id=0,
             started_at=time.time(),
         )
         token = UserState.track_key(self._current_track)
@@ -990,8 +1046,21 @@ class PlaybackFeature(QObject):
             self.rich_now.set_position(pos)
         if dur > 0 and self._seek_interaction.follow_player_position(pos, dur):
             self.seek.setValue(int(1000 * pos / dur))
-        if dur > 0 and pos >= dur - 1500 and self._current_history_id:
-            self.state.mark_completed(self._playback_state.mark_current_track_completed())
+        if dur > 0 and pos >= dur - 1500:
+            history_id = self._current_history_id
+            if history_id:
+                completed_id = self._playback_state.mark_current_track_completed()
+                self._run_async(
+                    lambda: self.state.mark_completed(completed_id),
+                    lambda _result: None,
+                    lambda _error: None,
+                    priority="background",
+                    task_name="playback-completion-history",
+                )
+            elif self._play_history_generation:
+                self._history_completed_before_write.add(
+                    self._play_history_generation
+                )
 
     def _seek_started(self) -> None:
         self._seek_interaction.begin()

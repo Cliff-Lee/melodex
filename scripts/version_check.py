@@ -66,7 +66,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--release-tag",
         default="",
-        help="Optional Git tag, for example v0.3.0. Release tags require a non-dev VERSION.",
+        help="Optional Git tag, for example v0.3.0 or v0.7.17-rc.1.",
     )
     args = parser.parse_args(argv)
 
@@ -98,13 +98,19 @@ def main(argv: list[str] | None = None) -> int:
 
     tag = str(args.release_tag or "").strip()
     if tag:
-        expected = tag[1:] if tag.startswith("v") else tag
+        tag_version = tag[1:] if tag.startswith("v") else tag
+        match = re.fullmatch(r"(\d+\.\d+\.\d+)(?:-rc\.(\d+))?", tag_version)
+        expected = match.group(1) if match else ""
         if ".dev" in version:
             errors.append(
                 f"release tag {tag!r} cannot be built while VERSION is "
                 f"development version {version!r}"
             )
-        if version != expected:
+        if not expected:
+            errors.append(
+                f"release tag {tag!r} must be vX.Y.Z or vX.Y.Z-rc.N"
+            )
+        elif version != expected:
             errors.append(
                 f"release tag {tag!r} does not match VERSION {version!r}"
             )

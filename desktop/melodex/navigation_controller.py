@@ -158,6 +158,7 @@ class NavigationController:
         elif name == "music_map":
             host.journey_workspace.refresh_music_map()
         elif name == "sources":
+            host._start_optional_plugin_loading()
             host.sources_feature.refresh()
             self._schedule(0, host.sources_feature.refresh_config_statuses_async)
         elif name == "moments":

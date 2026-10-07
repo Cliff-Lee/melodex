@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import time
 
 import melodex.providers.local_files as local_files
 from melodex.library_index import LocalLibraryIndex
@@ -19,6 +20,32 @@ def _metadata(path: Path) -> dict[str, object]:
         "duration": 1.0,
         "source": "local",
     }
+
+
+def test_p13f_network_root_is_persisted_without_filesystem_probe(
+    monkeypatch,
+    tmp_path: Path,
+):
+    from melodex.provider_manager import ProviderManager
+
+    root = tmp_path / "nas-not-mounted"
+    calls = []
+    original_stat = Path.stat
+
+    def tracked_stat(path, *args, **kwargs):
+        if path == root:
+            calls.append(str(path))
+            raise AssertionError("source acceptance must not probe the NAS")
+        return original_stat(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "stat", tracked_stat)
+    manager = ProviderManager(tmp_path / "data")
+    try:
+        assert manager.configure_local_roots([root]) == [root]
+        assert manager.local_roots() == [root]
+        assert calls == []
+    finally:
+        manager.close()
 
 
 def test_p11d_transient_scandir_failure_retries_and_completes(
@@ -61,6 +88,73 @@ def test_p11d_transient_scandir_failure_retries_and_completes(
     ]
     assert snapshot["metrics"]["io_retries"] == 2
     assert snapshot["metrics"]["incomplete_roots"] == 0
+
+
+def test_p13f_unavailable_root_does_not_block_another_selected_root(
+    monkeypatch,
+    tmp_path: Path,
+):
+    unavailable = tmp_path / "offline-nas"
+    healthy = tmp_path / "healthy-music"
+    album = healthy / "Artist" / "Album"
+    album.mkdir(parents=True)
+    (album / "one.flac").write_bytes(b"x")
+    monkeypatch.setattr(
+        LocalFilesProvider,
+        "_metadata",
+        staticmethod(_metadata),
+    )
+    discovered = []
+
+    snapshot = LocalFilesProvider(scan_on_init=False).scan_snapshot(
+        [unavailable, healthy],
+        on_first_audio_file=discovered.append,
+    )
+
+    assert [row["available"] for row in snapshot["root_states"]] == [False, True]
+    assert discovered
+    assert discovered[0]["local_path"] == str(album / "one.flac")
+    assert snapshot["root_states"][1]["complete"] is True
+
+
+def test_p13f_stalled_subtree_degrades_locally_and_other_music_is_found(
+    monkeypatch,
+    tmp_path: Path,
+):
+    root = tmp_path / "music"
+    stalled = root / "00-stalled-archive"
+    healthy = root / "01-new-music" / "Album"
+    stalled.mkdir(parents=True)
+    healthy.mkdir(parents=True)
+    (healthy / "one.flac").write_bytes(b"x")
+    real_scandir = local_files.os.scandir
+    stalled_path = str(stalled)
+
+    def delayed_stalled_scandir(path):
+        if str(path) == stalled_path:
+            time.sleep(0.08)
+            raise OSError("simulated NAS subtree timeout")
+        return real_scandir(path)
+
+    monkeypatch.setattr(local_files.os, "scandir", delayed_stalled_scandir)
+    monkeypatch.setattr(
+        LocalFilesProvider,
+        "_metadata",
+        staticmethod(_metadata),
+    )
+    discovered = []
+
+    snapshot = LocalFilesProvider(scan_on_init=False).scan_snapshot(
+        [root],
+        on_first_audio_file=discovered.append,
+    )
+
+    assert discovered
+    assert discovered[0]["local_path"] == str(healthy / "one.flac")
+    state = snapshot["root_states"][0]
+    assert state["available"] is True
+    assert state["complete"] is False
+    assert state["walk_errors"] >= 1
 
 
 def test_p11d_exhausted_scandir_retries_preserve_root_as_incomplete(

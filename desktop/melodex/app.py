@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import sys
 import time
@@ -14,6 +15,7 @@ from PySide6.QtWidgets import QApplication
 
 from .paths import app_data_dir
 from .single_instance import SingleInstanceGuard
+from .first_music_metrics import FirstMusicTimeline
 from .startup_metrics import StartupTimeline
 
 if TYPE_CHECKING:
@@ -31,6 +33,7 @@ def _activate_window(win: "MainWindow") -> None:
 
 def main() -> int:
     startup = StartupTimeline(started_at=PROCESS_STARTED_AT)
+    first_music = FirstMusicTimeline(started_at=PROCESS_STARTED_AT)
     startup.mark("app_module_ready")
 
     app = QApplication(sys.argv)
@@ -61,7 +64,10 @@ def main() -> int:
     startup.mark("main_window_import_ready")
 
     startup.mark("main_window_construct_start")
-    win = MainWindow(startup_timeline=startup)
+    win = MainWindow(
+        startup_timeline=startup,
+        first_music_timeline=first_music,
+    )
     startup.mark("main_window_construct_ready")
 
     guard.activationRequested.connect(lambda: _activate_window(win))
@@ -74,12 +80,43 @@ def main() -> int:
 
     def first_event_loop_turn() -> None:
         startup.mark("first_event_loop_turn")
+        first_music.mark("shell_visible")
         if trace_path:
-            startup.write_json(trace_path)
+            snapshot = startup.summary()
+            snapshot["first_music"] = first_music.summary()
+            Path(trace_path).parent.mkdir(parents=True, exist_ok=True)
+            Path(trace_path).write_text(
+                json.dumps(snapshot, indent=2, sort_keys=True) + "\n", "utf-8"
+            )
         if probe_exit:
-            # Let deferred show/paint callbacks run before quitting the
-            # headless startup probe.
-            QTimer.singleShot(0, win.close)
+            wait_for_cache = str(
+                os.environ.get("MELODEX_STARTUP_PROBE_WAIT_CACHE") or ""
+            ).strip()
+            if wait_for_cache:
+                cache_deadline = time.perf_counter() + 10.0
+
+                def finish_after_cache() -> None:
+                    snapshot = startup.summary()
+                    snapshot["first_music"] = first_music.summary()
+                    Path(trace_path).parent.mkdir(parents=True, exist_ok=True)
+                    Path(trace_path).write_text(
+                        json.dumps(snapshot, indent=2, sort_keys=True) + "\n",
+                        "utf-8",
+                    )
+                    cache_visible = any(
+                        event.get("event") == "library_cache_visible"
+                        for event in first_music.summary().get("events", [])
+                    )
+                    if cache_visible or time.perf_counter() >= cache_deadline:
+                        win.close()
+                        return
+                    QTimer.singleShot(10, finish_after_cache)
+
+                QTimer.singleShot(10, finish_after_cache)
+            else:
+                # Let deferred show/paint callbacks run before quitting the
+                # headless startup probe.
+                QTimer.singleShot(0, win.close)
 
     QTimer.singleShot(0, first_event_loop_turn)
     return app.exec()
