@@ -200,7 +200,25 @@ jobs:
       - run: python scripts/release_readiness.py
       - run: |
           zip -r "Melodex-${GITHUB_REF_NAME}-source.zip" . -x '.git/*' '*/build/*' '*/dist/*' '*.pyc' '*/__pycache__/*'
+      - name: Select release notes
+        id: release_notes
+        shell: bash
+        run: |
+          NOTES_FILE="docs/releases/${GITHUB_REF_NAME}.md"
+          if [[ -f "$NOTES_FILE" ]]; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+            echo "path=$NOTES_FILE" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
       - uses: softprops/action-gh-release@v2
+        if: steps.release_notes.outputs.found == 'true'
+        with:
+          files: Melodex-${{ github.ref_name }}-source.zip
+          body_path: ${{ steps.release_notes.outputs.path }}
+          prerelease: ${{ contains(github.ref_name, '-rc.') }}
+      - uses: softprops/action-gh-release@v2
+        if: steps.release_notes.outputs.found != 'true'
         with:
           files: Melodex-${{ github.ref_name }}-source.zip
           generate_release_notes: true
