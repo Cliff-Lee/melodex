@@ -12,7 +12,7 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = 719
-        versionName = "0.7.19.dev0"
+        versionName = "0.7.19"
     }
 
     buildFeatures { compose = true }
