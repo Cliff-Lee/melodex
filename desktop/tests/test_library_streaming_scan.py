@@ -63,6 +63,117 @@ def test_p10b_metadata_is_processed_before_walk_finishes(monkeypatch, tmp_path: 
     assert snapshot["metrics"]["discovery_buffer_rows"] == 0
 
 
+def test_first_directory_and_audio_discovery_are_reported_immediately(
+    monkeypatch,
+    tmp_path: Path,
+):
+    root = tmp_path / "music"
+    root.mkdir()
+    album = root / "album"
+
+    def walk(_root, onerror=None):
+        yield str(album), [], ["first.flac"]
+
+    monkeypatch.setattr(local_files.os, "walk", walk)
+    monkeypatch.setattr(
+        LocalFilesProvider,
+        "_metadata",
+        staticmethod(_metadata_row),
+    )
+    progress: list[dict[str, object]] = []
+    provider = LocalFilesProvider(scan_on_init=False)
+    provider.scan_snapshot([root], progress=progress.append)
+
+    first_directory = next(row for row in progress if row["directories_seen"] == 1)
+    first_audio = next(row for row in progress if row["audio_files_seen"] == 1)
+    assert first_directory["phase"] == "discovering"
+    assert first_audio["phase"] == "discovering"
+
+
+def test_first_playable_path_is_emitted_before_recursive_scan_finishes(
+    monkeypatch,
+    tmp_path: Path,
+):
+    import threading
+
+    root = tmp_path / "music"
+    root.mkdir()
+    first = root / "album" / "first.flac"
+    later = root / "deep" / "later.flac"
+    first.parent.mkdir()
+    later.parent.mkdir()
+    first.write_bytes(b"first")
+    later.write_bytes(b"later")
+    continue_walk = threading.Event()
+    first_track_ready = threading.Event()
+    scan_finished = threading.Event()
+    emitted: list[dict[str, object]] = []
+
+    def walk(_root, onerror=None):
+        yield str(first.parent), [], [first.name]
+        assert continue_walk.wait(timeout=2)
+        yield str(later.parent), [], [later.name]
+
+    monkeypatch.setattr(local_files.os, "walk", walk)
+    monkeypatch.setattr(
+        LocalFilesProvider,
+        "_metadata",
+        staticmethod(_metadata_row),
+    )
+
+    def on_first(track: dict[str, object]) -> None:
+        emitted.append(track)
+        first_track_ready.set()
+
+    def scan() -> None:
+        LocalFilesProvider(scan_on_init=False).scan_snapshot(
+            [root],
+            on_first_audio_file=on_first,
+        )
+        scan_finished.set()
+
+    worker = threading.Thread(target=scan)
+    worker.start()
+    assert first_track_ready.wait(timeout=2)
+    assert not scan_finished.is_set()
+    assert emitted[0]["local_path"] == str(first)
+    assert emitted[0]["provisional"] is True
+
+    continue_walk.set()
+    worker.join(timeout=2)
+    assert not worker.is_alive()
+    assert scan_finished.is_set()
+
+
+def test_initial_provisional_pool_is_capped_at_twenty_tracks(
+    monkeypatch,
+    tmp_path: Path,
+):
+    root = tmp_path / "music"
+    root.mkdir()
+    names = [f"track-{index:02d}.flac" for index in range(25)]
+
+    monkeypatch.setattr(
+        local_files.os,
+        "walk",
+        lambda _root, onerror=None: [(str(root), [], names)],
+    )
+    monkeypatch.setattr(
+        LocalFilesProvider,
+        "_metadata",
+        staticmethod(_metadata_row),
+    )
+    provisional: list[dict[str, object]] = []
+    LocalFilesProvider(scan_on_init=False).scan_snapshot(
+        [root],
+        on_first_audio_file=provisional.append,
+    )
+
+    assert len(provisional) == 20
+    assert provisional[0]["title"] == "track-00"
+    assert provisional[-1]["title"] == "track-19"
+
+
 def test_p10b_scan_source_has_no_collection_wide_discovered_list():
     source = inspect.getsource(LocalFilesProvider.scan_snapshot)
 

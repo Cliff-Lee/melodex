@@ -204,3 +204,20 @@ jobs:
         with:
           files: Melodex-${{ github.ref_name }}-source.zip
           generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-rc.') }}
+      - name: Dispatch platform builds after release gates pass
+        if: contains(github.ref_name, '-rc.')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          RELEASE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          for workflow in desktop.yml android.yml linux.yml; do
+            gh workflow run "$workflow" \
+              --repo "$GITHUB_REPOSITORY" \
+              --ref main \
+              -f release_tag="$TAG" \
+              -f release_sha="$RELEASE_SHA"
+          done

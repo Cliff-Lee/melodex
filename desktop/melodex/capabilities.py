@@ -608,14 +608,35 @@ class ExtensionInstaller:
 class CapabilityBroker:
     """Discover, route and merge experimental enrichment capabilities."""
 
-    def __init__(self, data_dir: Path, config_broker: PluginConfigBroker | None = None):
+    def __init__(
+        self,
+        data_dir: Path,
+        config_broker: PluginConfigBroker | None = None,
+        *,
+        defer_installed: bool = False,
+    ):
         self.data_dir = Path(data_dir)
         self.config_broker = config_broker or PluginConfigBroker(self.data_dir)
         self.installer = ExtensionInstaller(self.data_dir / "extensions")
         self.settings_path = self.data_dir / "extension-settings.json"
         self.settings = self._load_settings()
         self.extensions: dict[str, ExternalExtension] = {}
-        for extension in self.installer.load_installed():
+        self._installed_loaded = False
+        if not defer_installed:
+            self.register_installed(self.load_installed_snapshot())
+
+    def load_installed_snapshot(self) -> list[ExternalExtension]:
+        """Construct installed extensions for later registration.
+
+        The filesystem walk and descriptor parsing can run outside the UI thread.
+        """
+        return self.installer.load_installed()
+
+    def register_installed(
+        self, extensions: list[ExternalExtension]
+    ) -> list[str]:
+        registered: list[str] = []
+        for extension in list(extensions or []):
             declarations = list(extension.info.configuration or [])
             if declarations:
                 extension.set_config_loader(
@@ -625,6 +646,9 @@ class CapabilityBroker:
                     )
                 )
             self.extensions[extension.info.id] = extension
+            registered.append(extension.info.id)
+        self._installed_loaded = True
+        return registered
 
     def _load_settings(self) -> dict[str, Any]:
         try:

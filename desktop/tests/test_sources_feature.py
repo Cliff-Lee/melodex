@@ -381,6 +381,34 @@ def test_sources_feature_owns_install_remove_and_health_workflows(monkeypatch, t
     app.processEvents()
 
 
+def test_sources_feature_waits_for_deferred_plugin_snapshot(monkeypatch):
+    try:
+        from PySide6.QtWidgets import QFileDialog
+    except ImportError as exc:
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app, feature, providers, _policy, statuses = _feature()
+    feature.refresh()
+    providers.optional_plugins_loaded = False
+
+    def dialog_must_not_open(*_args, **_kwargs):
+        raise AssertionError("package installation raced startup discovery")
+
+    monkeypatch.setattr(QFileDialog, "getOpenFileName", dialog_must_not_open)
+    feature.install_provider()
+    feature.install_extension()
+    feature.restore_bundled_sources()
+    priority_before = dict(providers.settings)
+    assert feature.select_source("searchable")
+    feature.move_source(1)
+
+    assert providers.installed_paths == []
+    assert providers.settings == priority_before
+    assert any("still loading" in message for message, _timeout in statuses)
+    feature.deleteLater()
+    app.processEvents()
+
+
 def test_sources_feature_config_refresh_updates_owned_state():
     app, feature, providers, _policy, _statuses = _feature()
     feature.refresh()

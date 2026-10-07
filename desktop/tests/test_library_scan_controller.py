@@ -22,6 +22,7 @@ class FakeRunner:
         self.started = False
         self.cancelled = False
         self.shutdown_called = False
+        self.priorities = []
 
     def start(self):
         self.started = True
@@ -31,6 +32,10 @@ class FakeRunner:
 
     def resume(self):
         self.paused = False
+
+    def prioritize(self, path):
+        self.priorities.append(Path(path))
+        return True
 
     def cancel(self):
         self.cancelled = True
@@ -118,3 +123,12 @@ def test_pause_cancel_and_shutdown_delegate_to_worker(tmp_path):
     controller.shutdown()
     assert runner.shutdown_called is True
     assert controller.active is False
+
+
+def test_foreground_directory_intent_is_forwarded_to_active_worker(tmp_path):
+    controller = make_controller(tmp_path)
+    controller.start([tmp_path / "music"])
+    target = tmp_path / "music" / "Artist" / "Album"
+
+    assert controller.prioritize(target) is True
+    assert controller.runner.priorities == [target]

@@ -1,8 +1,13 @@
+Warning: truncated output (original token count: 27507)
+Total output lines: 2705
+
 from __future__ import annotations
 
 from collections import OrderedDict, defaultdict
+import os
 import threading
 import time
+from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import (
@@ -303,11 +308,47 @@ class TrackListModel(QAbstractListModel):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._tracks: list[dict[str, Any]] = []
+        self._row_by_track_key: dict[str, int] = {}
 
     def set_tracks(self, tracks: list[dict[str, Any]]) -> None:
         self.beginResetModel()
         self._tracks = list(tracks)
+        self._row_by_track_key = {
+            _track_key(track): index
+            for index, track in enumerate(self._tracks)
+            if isinstance(track, dict)
+        }
         self.endResetModel()
+
+    def upsert_tracks(self, tracks: list[dict[str, Any]]) -> None:
+        additions: list[dict[str, Any]] = []
+        changed_rows: list[int] = []
+        for raw in tracks:
+            if not isinstance(raw, dict):
+                continue
+            track = dict(raw)
+            key = _track_key(track)
+            row = self._row_by_track_key.get(key)
+            if row is None:
+                self._row_by_track_key[key] = len(self._tracks) + len(additions)
+                additions.append(track)
+            elif row >= len(self._tracks):
+                additions[row - len(self._tracks)] = track
+            else:
+                self._tracks[row] = track
+                changed_rows.append(row)
+        if additions:
+            start = len(self._tracks)
+            self.beginInsertRows(QModelIndex(), start, start + len(additions) - 1)
+            self._tracks.extend(additions)
+            self.endInsertRows()
+        for row in changed_rows:
+            index = self.index(row, 0)
+            self.dataChanged.emit(
+                index,
+                index,
+                [int(Qt.DisplayRole), int(Qt.ToolTipRole), self.TrackRole],
+            )
 
     def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:
         return 0 if parent.isValid() else len(self._tracks)
@@ -381,8 +422,19 @@ class TrackRow(QFrame):
             badge.setObjectName("warningPill")
             outer.addWidget(badge)
 
+        availability = str(track.get("availability") or "").strip().lower()
+        if availability in {"unavailable", "degraded"}:
+            badge = QLabel(
+                "Unavailable" if availability == "unavailable" else "Source degraded"
+            )
+            badge.setObjectName("warningPill")
+            outer.addWidget(badge)
+
         play = QPushButton("▶")
         play.setObjectName("miniButton")
+        play.setEnabled(availability != "unavailable")
+        if availability == "unavailable":
+            play.setToolTip("This source was unavailable during the last connection check.")
         queue = QPushButton("+ Queue")
         queue.setObjectName("miniButton")
         edit = QPushButton("Edit")
@@ -434,10 +486,13 @@ class LibraryBrowser(QWidget):
     artistPhotoFileRequested = Signal(object)
     scanPauseRequested = Signal()
     scanCancelRequested = Signal()
+    directoryPriorityRequested = Signal(object)
+    shuffleDiscoveredRequested = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.catalog: list[dict[str, Any]] = []
+        self._catalog_row_by_track_key: dict[str, int] = {}
         self._catalog_revision: int | None = None
         self.albums: list[dict[str, Any]] = []
         self.cards: dict[str, AlbumCard] = {}
@@ -565,6 +620,14 @@ class LibraryBrowser(QWidget):
         moments = QPushButton("Moments")
         moments.setObjectName("quietButton")
         moments.clicked.connect(self.momentsRequested)
+        shuffle = QPushButton("Shuffle found tracks")
+        shuffle.setObjectName("quietButton")
+        shuffle.clicked.connect(self.shuffleDiscoveredRequested)
+        set_help(
+            shuffle,
+            "Shuffle found tracks",
+            "Starts with playable tracks Melodex has found so far. New tracks join the end of the queue as indexing continues.",
+        )
         self.images_button = QPushButton("Find missing artwork")
         self.images_button.setObjectName("quietButton")
         self.images_button.clicked.connect(self._request_online_artwork)
@@ -597,6 +660,7 @@ class LibraryBrowser(QWidget):
         actions.addWidget(rescan)
         actions.addWidget(wall)
         actions.addWidget(moments)
+        actions.addWidget(shuffle)
         actions.addWidget(self.images_button)
         actions.addStretch(1)
         outer.addWidget(self.library_action_controls)
@@ -788,10 +852,32 @@ class LibraryBrowser(QWidget):
             "Choose a folder that already contains your music. Melodex will index it where it is.",
             "Add my music",
         )
+        self._cache_restore_active = False
         self.empty.actionRequested.connect(self.addFolderRequested)
         self.stack.addWidget(self.empty)
         self.library_top_controls.hide()
         self.library_action_controls.hide()
+
+    def set_cache_restoring(self, restoring: bool, *, failed: bool = False) -> None:
+        self._cache_restore_active = bool(restoring)
+        if restoring:
+            self.empty.set_content(
+                "Restoring your music…",
+                "Your cached library is opening. Playback and the rest of Melodex remain available.",
+                None,
+            )
+        elif failed:
+            self.empty.set_content(
+                "Cached music could not be opened",
+                "Melodex kept the saved library data and will try again when you browse your music.",
+                "Add my music",
+            )
+        else:
+            self.empty.set_content(
+                "No music added yet",
+                "Choose a folder that already contains your music. Melodex will index it where it is.",
+                "Add my music",
+            )
 
     def eventFilter(self, watched, event):
         if event.type() == QEvent.Resize:
@@ -877,6 +963,12 @@ class LibraryBrowser(QWidget):
 
         copy_started = time.perf_counter()
         self.catalog = [dict(item) for item in catalog if isinstance(item, dict)]
+        for button in self.view_buttons.values():
+            button.setEnabled(bool(self.catalog))
+            button.setToolTip("")
+        self._catalog_row_by_track_key = {
+            _track_key(track): index for index, track in enumerate(self.catalog)
+        }
         self._catalog_revision = int(revision) if revision is not None else None
         metrics["copy_catalog_seconds"] = round(
             time.perf_counter() - copy_started,
@@ -913,675 +1005,7 @@ class LibraryBrowser(QWidget):
         self._artist_lookup_paused = False
         self._artist_lookup_cancel_requested = False
         self._artist_lookup_current = ""
-        self._artist_lookup_failures = []
-        self._artist_lookup_stats = self._new_lookup_stats()
-        self._album_lookup_queue.clear()
-        self._album_lookup_inflight = 0
-        self._album_lookup_inflight_rows = []
-        self._album_lookup_active = False
-        self._album_lookup_paused = False
-        self._album_lookup_cancel_requested = False
-        self._album_lookup_current = ""
-        self._album_lookup_failures = []
-        self._album_lookup_stats = self._new_lookup_stats()
-        self.artwork_progress_panel.hide()
-        if not self.catalog:
-            self.albums = []
-            self.artist_rows = []
-            self.library_top_controls.hide()
-            self.library_action_controls.hide()
-            self.stack.setCurrentWidget(self.empty)
-            metrics["total_seconds"] = round(time.perf_counter() - started, 6)
-            self.last_catalog_metrics = metrics
-            return
-
-        self.library_top_controls.show()
-        self.library_action_controls.show()
-
-        album_started = time.perf_counter()
-        wall = build_album_wall(self.catalog, max_albums=4000)
-        self.albums = [
-            dict(album)
-            for album in list(wall.get("albums") or [])
-            if isinstance(album, dict)
-        ]
-        metrics["album_model_seconds"] = round(
-            time.perf_counter() - album_started,
-            6,
-        )
-        metrics["album_count"] = len(self.albums)
-        self._album_search_text = {
-            str(album.get("key") or ""): _norm(
-                f"{album.get('artist','')} {album.get('title','')} "
-                + " ".join(str(x) for x in list(album.get("genres") or []))
-            )
-            for album in self.albums
-        }
-        metrics["input_album_count"] = int(
-            wall.get("input_album_count") or len(self.albums)
-        )
-        metrics["albums_truncated"] = int(wall.get("albums_truncated") or 0)
-        metrics["tracks_truncated"] = int(wall.get("tracks_truncated") or 0)
-        metrics["album_limit"] = int(wall.get("album_limit") or 4000)
-
-        album_index_started = time.perf_counter()
-        self.track_album_key = {}
-        for album in self.albums:
-            album_key = str(album.get("key") or "")
-            for track in list(album.get("tracks") or []):
-                if isinstance(track, dict):
-                    self.track_album_key[_track_key(track)] = album_key
-        metrics["album_index_seconds"] = round(
-            time.perf_counter() - album_index_started,
-            6,
-        )
-
-        artist_started = time.perf_counter()
-        self._rebuild_artists()
-        self._artist_search_text = {
-            str(artist.get("key") or ""): _norm(
-                f"{artist.get('name','')} "
-                + " ".join(
-                    str(track.get("album") or "")
-                    for track in artist.get("tracks", [])
-                )
-            )
-            for artist in self.artist_rows
-        }
-        metrics["artist_model_seconds"] = round(
-            time.perf_counter() - artist_started,
-            6,
-        )
-        metrics["artist_count"] = len(self.artist_rows)
-
-        layout_started = time.perf_counter()
-        self.set_view(self.current_view())
-        metrics["initial_layout_seconds"] = round(
-            time.perf_counter() - layout_started,
-            6,
-        )
-        metrics["rendered_album_count"] = len(self.cards)
-        metrics["rendered_artist_count"] = len(self.artist_cards)
-        metrics["rendered_track_count"] = len(self.track_rows)
-
-        artwork_started = time.perf_counter()
-        self._schedule_viewport_artwork("albums")
-        if self.current_view() == "artists":
-            self._schedule_viewport_artwork("artists")
-        metrics["artwork_request_seconds"] = round(
-            time.perf_counter() - artwork_started,
-            6,
-        )
-        metrics["total_seconds"] = round(time.perf_counter() - started, 6)
-        self.last_catalog_metrics = metrics
-        QTimer.singleShot(
-            0,
-            lambda values=scroll_snapshot: self._restore_scroll_positions(values),
-        )
-
-    def _restore_scroll_positions(self, values: dict[str, int]) -> None:
-        bars = {
-            "albums": self.album_scroll.verticalScrollBar(),
-            "artists": self.artist_scroll.verticalScrollBar(),
-            "tracks": self.track_list.verticalScrollBar(),
-        }
-        for name, value in values.items():
-            bar = bars.get(name)
-            if bar is not None:
-                bar.setValue(min(max(0, int(value)), bar.maximum()))
-
-    def _scroll_bar_for_view(self, name: str):
-        return {
-            "albums": self.album_scroll.verticalScrollBar(),
-            "artists": self.artist_scroll.verticalScrollBar(),
-            "tracks": self.track_list.verticalScrollBar(),
-        }.get(str(name))
-
-    def begin_scan(self, reason: str = "") -> None:
-        self._scan_active = True
-        self._scan_paused = False
-        self._scan_status_persistent = False
-        self.scan_progress_title.setText("Indexing your music")
-        self.scan_progress_summary.setText("Discovering files…")
-        self.scan_progress_detail.setText(
-            "Checking your selected music folders."
-        )
-        self.scan_progress.setRange(0,0)
-        self.scan_progress.setFormat("")
-        self.scan_pause_button.setText("Pause")
-        self.scan_pause_button.setEnabled(True)
-        self.scan_cancel_button.setText("Cancel")
-        self.scan_cancel_button.setEnabled(True)
-        self.scan_progress_panel.show()
-
-    def set_scan_progress(self, payload: object) -> None:
-        if not isinstance(payload,dict):
-            return
-        phase=str(payload.get("phase") or "")
-        found=max(0,int(payload.get("audio_files_seen") or 0))
-        completed=max(0,int(payload.get("completed") or 0))
-        total=max(0,int(payload.get("total") or 0))
-        current=str(payload.get("current") or "").strip()
-
-        self._scan_active=phase not in {"complete","cancelled","error"}
-        if phase=="discovering":
-            self.scan_progress.setRange(0,0)
-            self.scan_progress.setFormat("")
-            self.scan_progress_summary.setText(
-                f"{found:,} track{'s' if found != 1 else ''} found"
-            )
-            self.scan_progress_detail.setText(
-                f"Discovering files · {current}" if current else "Discovering files…"
-            )
-        elif phase=="metadata":
-            unchanged=max(0,int(payload.get("unchanged") or 0))
-            added=max(0,int(payload.get("added") or 0))
-            changed=max(0,int(payload.get("changed") or 0))
-            if total:
-                self.scan_progress.setRange(0,total)
-                self.scan_progress.setValue(min(completed,total))
-                self.scan_progress.setFormat("%v / %m")
-                self.scan_progress_summary.setText(
-                    f"Reading metadata · {completed:,} / {total:,}"
-                )
-                detail_parts=[]
-                if unchanged:
-                    detail_parts.append(f"{unchanged:,} unchanged")
-                if added:
-                    detail_parts.append(f"{added:,} new")
-                if changed:
-                    detail_parts.append(f"{changed:,} changed")
-                self.scan_progress_detail.setText(
-                    (current + (" · " if detail_parts else "") if current else "")
-                    + " · ".join(detail_parts)
-                    if current or detail_parts
-                    else "Reading track information…"
-                )
-            elif completed:
-                self.scan_progress.setRange(0,0)
-                self.scan_progress.setFormat("")
-                self.scan_progress_summary.setText(
-                    f"Reading metadata · {completed:,} read so far"
-                )
-                detail_parts=[]
-                if unchanged:
-                    detail_parts.append(f"{unchanged:,} unchanged")
-                if added:
-                    detail_parts.append(f"{added:,} new")
-                if changed:
-                    detail_parts.append(f"{changed:,} changed")
-                self.scan_progress_detail.setText(
-                    (current + (" · " if detail_parts else "") if current else "")
-                    + " · ".join(detail_parts)
-                    if current or detail_parts
-                    else "Discovering and reading track information…"
-                )
-            elif found:
-                self.scan_progress.setRange(0,1)
-                self.scan_progress.setValue(1)
-                self.scan_progress.setFormat("Up to date")
-                self.scan_progress_summary.setText("Metadata already up to date")
-                self.scan_progress_detail.setText(
-                    f"{unchanged or found:,} unchanged · no audio files need reopening"
-                )
-            else:
-                self.scan_progress.setRange(0,1)
-                self.scan_progress.setValue(0)
-                self.scan_progress.setFormat("No audio files found")
-                self.scan_progress_summary.setText("No playable audio found")
-                self.scan_progress_detail.setText(
-                    "This folder does not contain audio Melodex can play."
-                )
-        elif phase=="saving":
-            self.scan_progress.setRange(0,0)
-            self.scan_progress.setFormat("")
-            self.scan_progress_summary.setText("Saving library index…")
-            self.scan_progress_detail.setText(
-                "Saving the library index on this computer."
-            )
-        elif phase=="cancelled":
-            self.scan_progress_summary.setText("Cancelled")
-            self.scan_progress_detail.setText(
-                "The existing Melodex library was kept unchanged."
-            )
-        elif phase=="complete":
-            if total:
-                self.scan_progress.setRange(0,total)
-                self.scan_progress.setValue(total)
-                self.scan_progress.setFormat("%v / %m")
-            else:
-                self.scan_progress.setRange(0,1)
-                self.scan_progress.setValue(0)
-                self.scan_progress.setFormat("No audio files found")
-            self.scan_progress_summary.setText(
-                f"Complete · {completed:,} track{'s' if completed != 1 else ''}"
-            )
-            self.scan_progress_detail.setText("Your music index is ready.")
-
-    def set_scan_paused(self, paused: bool) -> None:
-        self._scan_paused=bool(paused)
-        self.scan_pause_button.setText("Resume" if paused else "Pause")
-        if paused:
-            self.scan_progress_title.setText("Indexing paused")
-        else:
-            self.scan_progress_title.setText("Indexing your music")
-
-    def set_scan_cancelling(self) -> None:
-        self.scan_progress_title.setText("Stopping indexing…")
-        self.scan_progress_summary.setText("Cancelling")
-        self.scan_pause_button.setEnabled(False)
-        self.scan_cancel_button.setEnabled(False)
-
-    def finish_scan(
-        self,
-        status: str,
-        *,
-        count: int = 0,
-        error: str = "",
-        changes: dict[str, Any] | None = None,
-        storage_outcome: dict[str, Any] | None = None,
-    ) -> None:
-        status=str(status or "complete")
-        self._scan_active=False
-        self._scan_paused=False
-        self._scan_status_persistent=status in {"degraded","error"}
-        self.scan_pause_button.setEnabled(False)
-        self.scan_cancel_button.setEnabled(False)
-        if status=="cancelled":
-            self.scan_progress_title.setText("Indexing cancelled")
-            self.scan_progress_summary.setText("Existing library kept")
-            self.scan_progress_detail.setText(
-                "No partial scan was applied."
-            )
-        elif status=="error":
-            self.scan_progress_title.setText("Indexing stopped")
-            self.scan_progress_summary.setText("Existing library kept")
-            self.scan_progress_detail.setText(
-                "The scanner stopped safely. Export redacted diagnostics from "
-                "Sources & plugins if this repeats."
-            )
-        elif status=="degraded":
-            outcome=dict(storage_outcome or {})
-            unavailable=max(0,int(outcome.get("roots_unavailable") or 0))
-            incomplete=max(0,int(outcome.get("roots_incomplete") or 0))
-            self.scan_progress_title.setText("Library kept available")
-            if unavailable:
-                noun="location" if unavailable == 1 else "locations"
-                self.scan_progress_summary.setText(
-                    f"{unavailable} music {noun} unavailable"
-                )
-                self.scan_progress_detail.setText(
-                    "Showing your last indexed library. No cached tracks were removed. "
-                    "Reconnect the storage and rescan when ready."
-                )
-            else:
-                noun="location" if incomplete == 1 else "locations"
-                self.scan_progress_summary.setText(
-                    f"Could not finish reading {incomplete} music {noun}"
-                )
-                self.scan_progress_detail.setText(
-                    "Showing your last indexed library. No partial scan was applied. "
-                    "Retry when the storage connection is stable."
-                )
-        else:
-            self.scan_progress_title.setText("Indexing complete")
-            self.scan_progress_summary.setText(
-                f"{max(0,int(count)):,} track{'s' if int(count) != 1 else ''}"
-            )
-            change_data=dict(changes or {})
-            parts=[]
-            for key,label in (
-                ("unchanged","unchanged"),
-                ("added","new"),
-                ("changed","updated"),
-                ("removed","removed"),
-            ):
-                value=max(0,int(change_data.get(key) or 0))
-                if value:
-                    parts.append(f"{value:,} {label}")
-            incomplete=max(0,int(change_data.get("incomplete_roots") or 0))
-            if incomplete:
-                parts.append(
-                    f"{incomplete} root{'s' if incomplete != 1 else ''} incomplete · cached copy kept"
-                )
-            self.scan_progress_detail.setText(
-                " · ".join(parts) if parts else "Your music index is ready."
-            )
-
-    def clear_scan_status(self) -> None:
-        if not self._scan_active and not self._scan_status_persistent:
-            self.scan_progress_panel.hide()
-
-    def current_view(self) -> str:
-        for key, button in self.view_buttons.items():
-            if button.isChecked():
-                return key
-        return "albums"
-
-    def set_view(self, name: str) -> None:
-        started = time.perf_counter()
-        if not self.catalog:
-            self.stack.setCurrentWidget(self.empty)
-            self.last_view_metrics = {
-                "view": str(name or "albums"),
-                "total_seconds": round(time.perf_counter() - started, 6),
-                "empty": True,
-            }
-            return
-        name = str(name or "albums")
-        if name not in self.view_buttons:
-            name = "albums"
-        self.view_buttons[name].setChecked(True)
-        target = {
-            "albums": self.album_page,
-            "artists": self.artist_page,
-            "tracks": self.track_list,
-        }[name]
-        self.stack.setCurrentWidget(target)
-        shell_seconds = time.perf_counter() - started
-        if name == "artists":
-            self.images_button.setObjectName("primaryButton")
-        else:
-            self.images_button.setObjectName("quietButton")
-        self._refresh_images_button_label()
-        self.images_button.style().unpolish(self.images_button)
-        self.images_button.style().polish(self.images_button)
-        self.images_button.update()
-        filter_started = time.perf_counter()
-        self._apply_filter()
-        if _norm(self.search.text()):
-            bar = self._scroll_bar_for_view(name)
-            if bar is not None:
-                QTimer.singleShot(0, lambda current_bar=bar: current_bar.setValue(0))
-        if name in {"albums","artists"}:
-            self._bump_artwork_generation(name)
-            self._schedule_viewport_artwork(name)
-        self.last_view_metrics = {
-            "view": name,
-            "shell_seconds": round(shell_seconds, 6),
-            "filter_seconds": round(time.perf_counter() - filter_started, 6),
-            "total_seconds": round(time.perf_counter() - started, 6),
-            "rendered_album_count": len(self.cards),
-            "rendered_artist_count": len(self.artist_cards),
-            "rendered_track_count": len(self.track_rows),
-        }
-
-    @staticmethod
-    def _new_lookup_stats(total: int = 0) -> dict[str,int]:
-        return {
-            "total":max(0,int(total)),
-            "completed":0,
-            "found":0,
-            "skipped":0,
-            "failed":0,
-        }
-
-    def _active_artwork_kind(self) -> str:
-        if self._artist_lookup_active:
-            return "artists"
-        if self._album_lookup_active:
-            return "albums"
-        return ""
-
-    def artwork_lookup_snapshot(self) -> dict[str,Any]:
-        kind=self._active_artwork_kind()
-        if not kind:
-            kind=self._last_artwork_kind
-        if not kind:
-            if self._artist_lookup_stats.get("total"):
-                kind="artists"
-            elif self._album_lookup_stats.get("total"):
-                kind="albums"
-        stats=dict(
-            self._artist_lookup_stats
-            if kind=="artists"
-            else self._album_lookup_stats
-        )
-        if kind=="artists":
-            stats.update({
-                "kind":"artists",
-                "remaining":self.artist_image_lookup_remaining(),
-                "paused":self._artist_lookup_paused,
-                "active":self._artist_lookup_active,
-            })
-        elif kind=="albums":
-            stats.update({
-                "kind":"albums",
-                "remaining":self.album_artwork_lookup_remaining(),
-                "paused":self._album_lookup_paused,
-                "active":self._album_lookup_active,
-            })
-        else:
-            stats.update({"kind":"","remaining":0,"paused":False,"active":False})
-        return stats
-
-    def _refresh_artwork_progress(self, *, kind: str = "") -> None:
-        kind=kind or self._active_artwork_kind() or self._last_artwork_kind
-        if not kind:
-            if self._artist_lookup_stats.get("total"):
-                kind="artists"
-            elif self._album_lookup_stats.get("total"):
-                kind="albums"
-        if not kind:
-            self.artwork_progress_panel.hide()
-            return
-
-        stats=(
-            self._artist_lookup_stats
-            if kind=="artists"
-            else self._album_lookup_stats
-        )
-        total=max(0,int(stats.get("total") or 0))
-        completed=max(0,min(total,int(stats.get("completed") or 0)))
-        active=(
-            self._artist_lookup_active
-            if kind=="artists"
-            else self._album_lookup_active
-        )
-        paused=(
-            self._artist_lookup_paused
-            if kind=="artists"
-            else self._album_lookup_paused
-        )
-        canceling=(
-            self._artist_lookup_cancel_requested
-            if kind=="artists"
-            else self._album_lookup_cancel_requested
-        )
-        failures=(
-            self._artist_lookup_failures
-            if kind=="artists"
-            else self._album_lookup_failures
-        )
-
-        self.artwork_progress_panel.show()
-        self.artwork_progress_title.setText(
-            "Artist photo recovery" if kind=="artists" else "Album artwork recovery"
-        )
-        self.artwork_progress.setRange(0,max(1,total))
-        self.artwork_progress.setValue(completed)
-        self.artwork_progress.setFormat(f"{completed} / {total}")
-
-        found=int(stats.get("found") or 0)
-        skipped=int(stats.get("skipped") or 0)
-        failed=int(stats.get("failed") or 0)
-        self.artwork_progress_summary.setText(
-            f"Found {found} · No match {skipped} · Failed {failed}"
-        )
-
-        if canceling and active:
-            state="Canceling after current requests…"
-        elif canceling and not active:
-            state="Canceled"
-        elif paused and active:
-            state="Paused"
-        elif active:
-            state="Searching in the background"
-        elif total and completed >= total:
-            state="Complete"
-        elif total:
-            state="Stopped"
-        else:
-            state=""
-        self.artwork_progress_detail.setText(state)
-
-        self.artwork_pause_button.setText("Resume" if paused else "Pause")
-        self.artwork_pause_button.setEnabled(bool(active and not canceling))
-        self.artwork_cancel_button.setEnabled(bool(active and not canceling))
-        self.artwork_retry_button.setVisible(bool(failures) and not active)
-        self.artwork_retry_button.setText(
-            f"Retry failed ({len(failures)})"
-            if failures
-            else "Retry failed"
-        )
-
-    def _toggle_artwork_lookup_pause(self) -> None:
-        kind=self._active_artwork_kind()
-        if kind=="artists":
-            self._artist_lookup_paused=not self._artist_lookup_paused
-            if not self._artist_lookup_paused and not self._artist_lookup_inflight:
-                self._emit_next_artist_lookup_batch()
-        elif kind=="albums":
-            self._album_lookup_paused=not self._album_lookup_paused
-            if not self._album_lookup_paused and not self._album_lookup_inflight:
-                self._emit_next_album_lookup_batch()
-        self._refresh_images_button_label()
-        self._refresh_artwork_progress(kind=kind)
-
-    def _cancel_artwork_lookup(self) -> None:
-        kind=self._active_artwork_kind()
-        if kind=="artists":
-            self._artist_lookup_cancel_requested=True
-            self._artist_lookup_queue.clear()
-            if not self._artist_lookup_inflight:
-                self._artist_lookup_active=False
-        elif kind=="albums":
-            self._album_lookup_cancel_requested=True
-            self._album_lookup_queue.clear()
-            if not self._album_lookup_inflight:
-                self._album_lookup_active=False
-        self._refresh_images_button_label()
-        self._refresh_artwork_progress(kind=kind)
-
-    def _retry_failed_artwork(self) -> None:
-        if self._artist_lookup_active or self._album_lookup_active:
-            return
-        view=self._last_artwork_kind or self.current_view()
-        if view=="artists" and self._artist_lookup_failures:
-            self._artist_lookup_queue=[dict(row) for row in self._artist_lookup_failures]
-            self._artist_lookup_failures=[]
-            self._artist_lookup_stats=self._new_lookup_stats(len(self._artist_lookup_queue))
-            self._artist_lookup_active=bool(self._artist_lookup_queue)
-            self._last_artwork_kind="artists"
-            self._artist_lookup_paused=False
-            self._artist_lookup_cancel_requested=False
-            self._emit_next_artist_lookup_batch()
-        elif view=="albums" and self._album_lookup_failures:
-            self._album_lookup_queue=[dict(row) for row in self._album_lookup_failures]
-            self._album_lookup_failures=[]
-            self._album_lookup_stats=self._new_lookup_stats(len(self._album_lookup_queue))
-            self._album_lookup_active=bool(self._album_lookup_queue)
-            self._last_artwork_kind="albums"
-            self._album_lookup_paused=False
-            self._album_lookup_cancel_requested=False
-            self._emit_next_album_lookup_batch()
-        self._refresh_artwork_progress(kind=view)
-
-    def _finish_lookup_batch(
-        self,
-        kind: str,
-        outcomes: list[dict[str,Any]],
-    ) -> bool:
-        is_artist=kind=="artists"
-        inflight_rows=(
-            self._artist_lookup_inflight_rows
-            if is_artist
-            else self._album_lookup_inflight_rows
-        )
-        stats=(
-            self._artist_lookup_stats
-            if is_artist
-            else self._album_lookup_stats
-        )
-        failures=(
-            self._artist_lookup_failures
-            if is_artist
-            else self._album_lookup_failures
-        )
-        by_key={
-            str(row.get("key") or ""):dict(row)
-            for row in list(outcomes or [])
-            if isinstance(row,dict)
-        }
-        for original in list(inflight_rows):
-            key=str(original.get("key") or "")
-            outcome=by_key.get(key,{})
-            status=str(outcome.get("status") or "error")
-            stats["completed"]+=1
-            if status=="found":
-                stats["found"]+=1
-            elif status=="no_match":
-                stats["skipped"]+=1
-            else:
-                stats["failed"]+=1
-                failures.append(dict(original))
-
-        if is_artist:
-            self._artist_lookup_inflight=0
-            self._artist_lookup_inflight_rows=[]
-            self._artist_lookup_current=""
-            if self._artist_lookup_cancel_requested:
-                self._artist_lookup_active=False
-            elif not self._artist_lookup_queue:
-                self._artist_lookup_active=False
-            elif not self._artist_lookup_paused:
-                self._emit_next_artist_lookup_batch()
-        else:
-            self._album_lookup_inflight=0
-            self._album_lookup_inflight_rows=[]
-            self._album_lookup_current=""
-            if self._album_lookup_cancel_requested:
-                self._album_lookup_active=False
-            elif not self._album_lookup_queue:
-                self._album_lookup_active=False
-            elif not self._album_lookup_paused:
-                self._emit_next_album_lookup_batch()
-
-        self._refresh_images_button_label()
-        self._refresh_artwork_progress(kind=kind)
-        return bool(
-            self._artist_lookup_active if is_artist else self._album_lookup_active
-        )
-
-    def finish_artist_image_lookup_batch(
-        self,
-        outcomes: list[dict[str,Any]],
-    ) -> bool:
-        return self._finish_lookup_batch("artists",outcomes)
-
-    def finish_album_artwork_lookup_batch(
-        self,
-        outcomes: list[dict[str,Any]],
-    ) -> bool:
-        return self._finish_lookup_batch("albums",outcomes)
-
-    @staticmethod
-    def _progress_item_label(value: str, limit: int = 22) -> str:
-        value=" ".join(str(value or "").split())
-        if len(value) <= limit:
-            return value
-        return value[: max(1, limit - 1)].rstrip() + "…"
-
-    def _refresh_images_button_label(self) -> None:
-        view=self.current_view()
-        if view == "artists":
-            if self._album_lookup_active:
-                self.images_button.setText(
-                    f"Artwork search running… {self.album_artwork_lookup_remaining()} left"
-                )
-                self.images_button.setEnabled(False)
-            elif self._artist_lookup_active:
-                remaining=self.artist_image_lookup_remaining()
+        self._artist_lookup_fail…7507 tokens truncated…tist_image_lookup_remaining()
                 current=self._progress_item_label(self._artist_lookup_current)
                 self.images_button.setText(
                     f"Finding {current}… {remaining} left"
@@ -1642,6 +1066,28 @@ class LibraryBrowser(QWidget):
         if view in {"albums", "artists"}:
             self._bump_artwork_generation(view)
         self._apply_filter(query)
+
+        if query:
+            # Search known progressive rows first, then ask the active scan to
+            # spend its next directory visits around those results.
+            directories: list[str] = []
+            seen_directories: set[str] = set()
+            for track in self.catalog[:1000]:
+                key = _track_key(track)
+                if query not in self._track_search_text.get(key, ""):
+                    continue
+                local_path = str(track.get("local_path") or "").strip()
+                if not local_path:
+                    continue
+                directory = str(Path(local_path).parent)
+                normalized = os.path.normcase(os.path.abspath(directory))
+                if normalized not in seen_directories:
+                    seen_directories.add(normalized)
+                    directories.append(directory)
+                if len(directories) >= 8:
+                    break
+            if directories:
+                self.directoryPriorityRequested.emit(directories)
 
         if query:
             bar = self._scroll_bar_for_view(view)
@@ -2058,6 +1504,13 @@ class LibraryBrowser(QWidget):
         name = str(artist.get("name") or "")
         if not name:
             return
+        directories = list(dict.fromkeys(
+            str(Path(str(track.get("local_path") or "")).parent)
+            for track in list(artist.get("tracks") or [])
+            if isinstance(track, dict) and str(track.get("local_path") or "").strip()
+        ))[:12]
+        if directories:
+            self.directoryPriorityRequested.emit(directories)
         self.search.setText(name)
         self.set_view("albums")
 

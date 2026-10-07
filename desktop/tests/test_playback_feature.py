@@ -285,15 +285,38 @@ def test_track_change_updates_owned_state_and_emits_snapshot(tmp_path):
     app.processEvents()
 
     assert feature.current_track() == track
-    assert state.plays == [track]
+    assert state.plays == []
     assert changed == [track]
     assert feature.now_title.text() == "Current"
     assert "Artist" in feature.now_meta.text()
     assert feature.current_position_ms() == 0
 
+    # Merely selecting a provisional track is not listening history. The write
+    # begins only after FlowPlayer acknowledges the playback request.
+    feature.on_playing_changed(True)
+    assert state.plays == [track]
+    assert feature.current_history_id() == 1
+
     feature.merge_current_track({"title": "Corrected"})
     assert feature.current_track()["title"] == "Corrected"
     assert feature.now_title.text() == "Corrected"
+
+    feature.deleteLater()
+    app.processEvents()
+
+
+def test_provisional_track_selection_does_not_record_until_play(tmp_path):
+    app, feature, state, _statuses = _feature(tmp_path)
+
+    feature.on_track_changed(_track("Ready", 3))
+
+    assert state.plays == []
+    assert feature.current_history_id() == 0
+
+    feature.on_playing_changed(True)
+
+    assert len(state.plays) == 1
+    assert feature.current_history_id() == 1
 
     feature.deleteLater()
     app.processEvents()

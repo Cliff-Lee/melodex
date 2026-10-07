@@ -519,3 +519,40 @@ def test_write_diagnostics_creates_json_file(tmp_path: Path):
     assert payload["sources"]
     assert payload["extensions"]
     assert isinstance(payload["system"]["packaged"], bool)
+
+
+def test_diagnostics_redacts_first_music_trace():
+    payload = build_diagnostics(
+        FakeManager(),
+        ui_metrics={
+            "first_music": {
+                "events": [
+                    {"event": "source_selected", "elapsed_ms": 125.0, "source_id": 1},
+                    {"event": "first_audio_file_discovered", "elapsed_ms": 250.0,
+                     "source_id": 1, "path": "/Volumes/private/song.flac"},
+                    {"event": "private_event", "elapsed_ms": 1.0, "track": "Secret Song"},
+                ],
+                "journeys": {
+                    "process_to_shell_ms": 320.0,
+                    "sources": [{
+                        "source_id": 1,
+                        "source_selected_to_first_audio_file_ms": 125.0,
+                        "private_path": "/Volumes/private",
+                    }],
+                    "plays": [{"play_id": 1, "play_requested_to_audio_output_ms": 480.0,
+                               "private_track": "Secret Song"}],
+                    "private_detail": "do not export",
+                },
+            }
+        },
+    )
+    trace = payload["performance"]["first_music"]
+    assert trace["journeys"]["process_to_shell_ms"] == 320.0
+    assert trace["events"] == [
+        {"event": "source_selected", "elapsed_ms": 125.0, "source_id": 1},
+        {"event": "first_audio_file_discovered", "elapsed_ms": 250.0, "source_id": 1},
+    ]
+    assert "private_detail" not in trace["journeys"]
+    assert "private_track" not in trace["journeys"]["plays"][0]
+    assert "private_path" not in json.dumps(payload)
+    assert "Secret Song" not in json.dumps(payload)

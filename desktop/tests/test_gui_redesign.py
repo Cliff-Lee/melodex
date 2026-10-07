@@ -1,3 +1,6 @@
+Warning: truncated output (original token count: 28934)
+Total output lines: 3482
+
 from __future__ import annotations
 
 import os
@@ -135,6 +138,70 @@ def test_library_reuses_rendered_state_for_same_catalog_revision():
 
     assert len(browser.albums) == 3
     assert preserved_card not in browser.cards.values()
+
+    browser.deleteLater()
+    app.processEvents()
+
+
+def test_library_accepts_progressive_track_batches_without_model_reset():
+    try:
+        from PySide6.QtWidgets import QApplication
+        from melodex.library_browser import LibraryBrowser
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    browser = LibraryBrowser()
+    first = {
+        "provider_id": "local",
+        "track_id": "/music/first.flac",
+        "local_path": "/music/first.flac",
+        "title": "first",
+        "artist": "Unknown artist",
+        "album": "",
+        "provisional": True,
+    }
+    assert browser.append_discovered_tracks([first]) == 1
+    assert browser.current_view() == "tracks"
+    assert browser.track_model.rowCount() == 1
+    assert browser.view_buttons["albums"].isEnabled() is False
+    assert browser.view_buttons["artists"].isEnabled() is False
+    assert browser.view_buttons["tracks"].isEnabled() is True
+
+    resets = []
+    original_set_tracks = browser.track_model.set_tracks
+    browser.track_model.set_tracks = lambda tracks: (
+        resets.append(len(tracks)), original_set_tracks(tracks)
+    )
+    batch = [
+        {
+            "provider_id": "local",
+            "track_id": f"/music/{index:02d}.flac",
+            "local_path": f"/music/{index:02d}.flac",
+            "title": f"Track {index:02d}",
+            "artist": "Test artist",
+            "album": "Test album",
+        }
+        for index in range(1, 51)
+    ]
+    assert browser.append_discovered_tracks(batch) == 50
+    assert browser.track_model.rowCount() == 51
+    assert resets == []
+
+    enriched = {**first, "title": "Track One", "artist": "Test artist", "provisional": False}
+    assert browser.append_discovered_tracks([enriched]) == 0
+    row = next(
+        index
+        for index in range(browser.track_model.rowCount())
+        if browser.track_model.track_at(index).get("track_id") == first["track_id"]
+    )
+    assert browser.track_model.track_at(row)["title"] == "Track One"
+    assert resets == []
+
+    browser.set_catalog(batch + [enriched], revision=7)
+    assert browser.view_buttons["albums"].isEnabled() is True
+    assert browser.view_buttons["artists"].isEnabled() is True
 
     browser.deleteLater()
     app.processEvents()
@@ -1106,1082 +1173,7 @@ def test_synced_lyrics_seek_source_switch_and_editability(monkeypatch, tmp_path)
     window = main_window.MainWindow()
     window.navigation.ensure_lazy_page_built("now_playing")
     widget = window.playback_feature.rich_now
-    audio = tmp_path / "song.mp3"
-    audio.write_bytes(b"audio")
-    widget.track = {
-        "artist": "Example Artist",
-        "title": "Example Song",
-        "provider_id": "local",
-        "track_id": str(audio),
-        "local_path": str(audio),
-    }
-
-    local = {
-        "text": "First line\nSecond line",
-        "synced": [
-            {"time_ms": 1000, "text": "First line"},
-            {"time_ms": 3500, "text": "Second line"},
-        ],
-        "source": "Example Song.lrc",
-        "path": str(tmp_path / "Example Song.lrc"),
-    }
-    online = {
-        "text": "Online first\nOnline second",
-        "synced": [],
-        "source": "LRCLIB community lyrics",
-        "status": "found",
-        "provenance": {"source_extension_id": "core.lrclib-on-demand"},
-    }
-
-    widget._local_lyrics = dict(local)
-    widget._online_lyrics = dict(online)
-    widget._active_lyrics_source = "online"
-    widget._apply_lyrics(online)
-
-    assert widget.lyrics_source_picker.isVisible() is False or widget.lyrics_source_picker.count() == 2
-    assert widget.lyrics_source_picker.count() == 2
-    assert widget.edit_lyrics_button.isEnabled() is False
-    assert widget.translate_lyrics_button.isEnabled() is True
-
-    local_index = widget.lyrics_source_picker.findData("local")
-    widget.lyrics_source_picker.setCurrentIndex(local_index)
-    assert widget._active_lyrics_source == "local"
-    assert widget._current_lyrics["source"] == "Example Song.lrc"
-    assert widget.edit_lyrics_button.isEnabled() is True
-    assert widget.fullscreen_lyrics_button.isEnabled() is True
-
-    seeks = []
-    widget.lyricsSeekRequested.connect(seeks.append)
-    widget._lyrics_anchor_clicked(QUrl("seek:3500"))
-    assert seeks == [3500]
-
-    widget.set_position(3600)
-    assert widget._lyric_index == 1
-    assert "Second line" in widget.lyrics.toPlainText()
-
-    window.close()
-    app.processEvents()
-
-
-def test_fullscreen_lyrics_tracks_synced_position(monkeypatch, tmp_path):
-    try:
-        from PySide6.QtWidgets import QApplication, QDialog
-        import melodex.main_window as main_window
-    except ImportError as exc:
-        import pytest
-        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
-
-    app = QApplication.instance() or QApplication([])
-    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
-    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
-    monkeypatch.setattr(QDialog, "showFullScreen", lambda self: self.show())
-
-    window = main_window.MainWindow()
-    window.navigation.ensure_lazy_page_built("now_playing")
-    widget = window.playback_feature.rich_now
-    widget.track = {
-        "artist": "Example Artist",
-        "title": "Example Song",
-        "provider_id": "local",
-        "track_id": "example-song",
-        "local_path": str(tmp_path / "song.mp3"),
-    }
-    lyrics = {
-        "text": "One\nTwo",
-        "synced": [
-            {"time_ms": 1000, "text": "One"},
-            {"time_ms": 4000, "text": "Two"},
-        ],
-        "source": "Example Song.lrc",
-        "path": str(tmp_path / "Example Song.lrc"),
-    }
-    widget._local_lyrics = dict(lyrics)
-    widget._active_lyrics_source = "local"
-    widget._apply_lyrics(lyrics)
-
-    widget._show_fullscreen_lyrics()
-    app.processEvents()
-    assert widget._lyrics_fullscreen_dialog is not None
-    assert widget._lyrics_fullscreen_browser is not None
-    assert "One" in widget._lyrics_fullscreen_browser.toPlainText()
-
-    widget.set_position(4100)
-    app.processEvents()
-    assert widget._lyric_index == 1
-    assert "Two" in widget._lyrics_fullscreen_browser.toPlainText()
-    assert "font-size:38px" in widget._synced_lyrics_html(1, full_screen=True)
-
-    dialog = widget._lyrics_fullscreen_dialog
-    if dialog is not None:
-        dialog.close()
-    window.close()
-    app.processEvents()
-
-
-def test_translate_lyrics_is_explicit_and_uses_configured_llm(monkeypatch, tmp_path):
-    try:
-        from PySide6.QtWidgets import QApplication, QMessageBox, QInputDialog
-        import melodex.main_window as main_window
-        from melodex.llm_bridge import LLMSettings
-    except ImportError as exc:
-        import pytest
-        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
-
-    app = QApplication.instance() or QApplication([])
-    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
-    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
-
-    window = main_window.MainWindow()
-    settings = LLMSettings(
-        provider="ollama",
-        endpoint="http://localhost:11434/api/chat",
-        model="qwen-test",
-    )
-    monkeypatch.setattr(window, "_llm_settings", lambda: settings)
-    monkeypatch.setattr(
-        QMessageBox,
-        "question",
-        lambda *args, **kwargs: QMessageBox.Yes,
-    )
-    monkeypatch.setattr(
-        QInputDialog,
-        "getText",
-        lambda *args, **kwargs: ("Chinese", True),
-    )
-
-    prompts = []
-    monkeypatch.setattr(
-        window.llm,
-        "complete",
-        lambda settings, prompt, context, history: prompts.append(prompt) or "翻译结果",
-    )
-    monkeypatch.setattr(
-        window,
-        "_run_async",
-        lambda work, done, *args, **kwargs: done(work()),
-    )
-    shown = []
-    monkeypatch.setattr(
-        window.playback_feature,
-        "_show_lyrics_translation",
-        lambda language, text: shown.append((language, text)),
-    )
-
-    window.playback_feature._translate_lyrics({
-        "text": "First line\nSecond line",
-        "artist": "Example Artist",
-        "title": "Example Song",
-    })
-
-    assert len(prompts) == 1
-    assert "Chinese" in prompts[0]
-    assert "First line\nSecond line" in prompts[0]
-    assert shown == [("Chinese", "翻译结果")]
-    assert window.state.get_text("lyrics_translation_language", "") == "Chinese"
-
-    window.close()
-    app.processEvents()
-
-
-def test_online_lyrics_translation_signal_contains_only_current_lyrics(monkeypatch, tmp_path):
-    try:
-        from PySide6.QtWidgets import QApplication
-        import melodex.main_window as main_window
-    except ImportError as exc:
-        import pytest
-        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
-
-    app = QApplication.instance() or QApplication([])
-    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
-    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
-
-    window = main_window.MainWindow()
-    window.navigation.ensure_lazy_page_built("now_playing")
-    widget = window.playback_feature.rich_now
-    widget.track = {
-        "artist": "Artist",
-        "title": "Song",
-        "provider_id": "remote",
-        "track_id": "song",
-    }
-    lyrics = {
-        "text": "Line one\nLine two",
-        "synced": [],
-        "source": "LRCLIB community lyrics",
-        "status": "found",
-        "provenance": {"source_extension_id": "core.lrclib-on-demand"},
-    }
-    widget._online_lyrics = dict(lyrics)
-    widget._active_lyrics_source = "online"
-    widget._apply_lyrics(lyrics)
-
-    widget.lyricsTranslationRequested.disconnect(
-        window.playback_feature._translate_lyrics
-    )
-    payloads = []
-    widget.lyricsTranslationRequested.connect(payloads.append)
-    widget.translate_lyrics_button.click()
-    app.processEvents()
-
-    assert len(payloads) == 1
-    assert payloads[0]["text"] == "Line one\nLine two"
-    assert payloads[0]["artist"] == "Artist"
-    assert payloads[0]["title"] == "Song"
-    assert widget.edit_lyrics_button.isEnabled() is False
-
-    window.close()
-    app.processEvents()
-
-
-
-def test_online_lyrics_miss_does_not_replace_existing_local_lyrics(monkeypatch, tmp_path):
-    try:
-        from PySide6.QtWidgets import QApplication
-        import melodex.main_window as main_window
-        from melodex.metadata import track_key
-    except ImportError as exc:
-        import pytest
-        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
-
-    app = QApplication.instance() or QApplication([])
-    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
-    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
-
-    window = main_window.MainWindow()
-    window.navigation.ensure_lazy_page_built("now_playing")
-    widget = window.playback_feature.rich_now
-    widget.track = {
-        "artist": "Example Artist",
-        "title": "Example Song",
-        "provider_id": "local",
-        "track_id": "example-song",
-        "local_path": str(tmp_path / "song.mp3"),
-    }
-    local = {
-        "text": "My local lyric",
-        "synced": [],
-        "source": "Example Song.txt",
-        "path": str(tmp_path / "Example Song.txt"),
-    }
-    widget._local_lyrics = dict(local)
-    widget._active_lyrics_source = "local"
-    widget._apply_lyrics(local)
-
-    widget._stage_loaded(
-        track_key(widget.track),
-        "community lyrics",
-        {
-            "lyrics": {
-                "text": "",
-                "synced": [],
-                "source": "LRCLIB community lyrics",
-                "instrumental": False,
-                "status": "not_found",
-                "error": "",
-            }
-        },
-    )
-
-    assert widget._active_lyrics_source == "local"
-    assert widget._current_lyrics["source"] == "Example Song.txt"
-    assert "My local lyric" in widget.lyrics.toPlainText()
-    assert widget.online_lyrics_button.text() == "Try again"
-
-    window.close()
-    app.processEvents()
-
-
-
-def test_artwork_batch_can_pause_resume_cancel_and_retry_failed():
-    try:
-        from PySide6.QtWidgets import QApplication
-        from melodex.library_browser import LibraryBrowser
-    except ImportError as exc:
-        import pytest
-        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
-
-    app = QApplication.instance() or QApplication([])
-    browser = LibraryBrowser()
-    tracks = [
-        _track(
-            f"/albums/control-{index:02d}.mp3",
-            f"Artist {index:02d}",
-            f"Album {index:02d}",
-            f"Track {index:02d}",
-            1,
-            2000 + index,
-        )
-        for index in range(10)
-    ]
-    browser.set_catalog(tracks)
-    browser.set_view("albums")
-
-    batches = []
-    browser.onlineArtworkRequested.connect(
-        lambda rows: batches.append([dict(row) for row in rows])
-    )
-    browser._request_online_artwork()
-    assert len(batches) == 1
-    assert len(browser._album_lookup_inflight_rows) == 4
-
-    browser._toggle_artwork_lookup_pause()
-    assert browser._album_lookup_paused is True
-    assert browser.artwork_pause_button.text() == "Resume"
-
-    first = list(browser._album_lookup_inflight_rows)
-    browser.finish_album_artwork_lookup_batch([
-        {"key": first[0]["key"], "status": "found"},
-        {"key": first[1]["key"], "status": "error", "error": "temporary"},
-        {"key": first[2]["key"], "status": "no_match"},
-        {"key": first[3]["key"], "status": "found"},
-    ])
-    assert len(batches) == 1
-    snapshot = browser.artwork_lookup_snapshot()
-    assert snapshot["paused"] is True
-    assert snapshot["completed"] == 4
-    assert snapshot["found"] == 2
-    assert snapshot["skipped"] == 1
-    assert snapshot["failed"] == 1
-
-    browser._toggle_artwork_lookup_pause()
-    assert browser._album_lookup_paused is False
-    assert len(batches) == 2
-
-    # Cancel while the resumed batch is in flight. It should finish that
-    # batch but not start another one.
-    browser._cancel_artwork_lookup()
-    assert browser._album_lookup_cancel_requested is True
-    second = list(browser._album_lookup_inflight_rows)
-    browser.finish_album_artwork_lookup_batch([
-        {"key": row["key"], "status": "found"}
-        for row in second
-    ])
-    assert browser._album_lookup_active is False
-    assert len(batches) == 2
-    assert browser._album_lookup_failures
-
-    # Retry only the failed item from the first batch.
-    browser._album_lookup_cancel_requested = False
-    browser._retry_failed_artwork()
-    assert browser._album_lookup_active is True
-    assert len(browser._album_lookup_inflight_rows) == 1
-    retry = list(browser._album_lookup_inflight_rows)
-    browser.finish_album_artwork_lookup_batch([
-        {"key": retry[0]["key"], "status": "found"}
-    ])
-    retry_snapshot = browser.artwork_lookup_snapshot()
-    assert retry_snapshot["total"] == 1
-    assert retry_snapshot["completed"] == 1
-    assert retry_snapshot["found"] == 1
-    assert retry_snapshot["failed"] == 0
-
-    browser.deleteLater()
-    app.processEvents()
-
-
-def test_artwork_progress_panel_reports_found_no_match_and_failed_counts():
-    try:
-        from PySide6.QtWidgets import QApplication
-        from melodex.library_browser import LibraryBrowser
-    except ImportError as exc:
-        import pytest
-        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
-
-    app = QApplication.instance() or QApplication([])
-    browser = LibraryBrowser()
-    browser._album_lookup_stats = {
-        "total": 832,
-        "completed": 147,
-        "found": 101,
-        "skipped": 40,
-        "failed": 6,
-    }
-    browser._album_lookup_active = True
-    browser._refresh_artwork_progress(kind="albums")
-
-    assert browser.artwork_progress.maximum() == 832
-    assert browser.artwork_progress.value() == 147
-    assert browser.artwork_progress.format() == "147 / 832"
-    assert "Found 101" in browser.artwork_progress_summary.text()
-    assert "No match 40" in browser.artwork_progress_summary.text()
-    assert "Failed 6" in browser.artwork_progress_summary.text()
-    assert "background" in browser.artwork_progress_detail.text().casefold()
-
-    browser.deleteLater()
-    app.processEvents()
-
-
-
-def test_sources_first_run_orientation_is_dismissible_and_persistent(monkeypatch, tmp_path):
-    try:
-        from PySide6.QtWidgets import QApplication, QLabel
-        import melodex.main_window as main_window
-    except ImportError as exc:
-        import pytest
-        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
-
-    app = QApplication.instance() or QApplication([])
-    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
-    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
-
-    first = main_window.MainWindow()
-    first.show()
-    first.open_page("sources")
-    app.processEvents()
-
-    assert first.sources_feature.source_welcome.isVisible()
-    title = first.sources_feature.source_welcome.findChild(QLabel, "sourceFirstRunTitle")
-    assert title is not None
-    assert "nothing else is required" in title.text().casefold()
-
-    first.sources_feature.dismiss_intro()
-    app.processEvents()
-    assert first.sources_feature.source_welcome.isHidden()
-    assert first.state.get_bool("sources_intro_seen", False) is True
-    first.close()
-    app.processEvents()
-
-    second = main_window.MainWindow()
-    second.show()
-    second.open_page("sources")
-    app.processEvents()
-    assert second.sources_feature.source_welcome.isHidden()
-    second.close()
-    app.processEvents()
-
-
-
-def test_native_lyrics_toolbar_hides_plugin_management_chrome(monkeypatch, tmp_path):
-    try:
-        from PySide6.QtWidgets import QApplication
-        import melodex.main_window as main_window
-    except ImportError as exc:
-        import pytest
-        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
-
-    app = QApplication.instance() or QApplication([])
-    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
-    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
-
-    window = main_window.MainWindow()
-    window.navigation.ensure_lazy_page_built("now_playing")
-    widget = window.playback_feature.rich_now
-
-    assert not hasattr(widget, "lyrics_plugin_presence")
-    assert widget.online_lyrics_button.text() == "Refresh lyrics"
-    assert widget.fullscreen_lyrics_button.text() == "Full screen"
-    assert widget.translate_lyrics_button.text() == "Translate"
-    assert widget.more_lyrics_button.text() == "More"
-    assert widget.find_lyrics_plugin_button.isHidden()
-    assert widget.import_lyrics_button.isHidden()
-    assert widget.paste_lyrics_button.isHidden()
-    assert widget.auto_online_lyrics.isHidden()
-
-    menu_labels = [
-        action.text()
-        for action in widget.lyrics_more_menu.actions()
-        if action.text()
-    ]
-    assert menu_labels == [
-        "Edit saved lyrics…",
-        "Add lyrics file…",
-        "Paste lyrics…",
-        "Auto-find online",
-        "Manage lyric sources…",
-    ]
-
-    window.close()
-    app.processEvents()
-
-
-def test_refresh_lyrics_checks_native_and_installed_sources_before_online(monkeypatch, tmp_path):
-    try:
-        from PySide6.QtWidgets import QApplication
-        import melodex.main_window as main_window
-        from melodex.metadata import track_key
-    except ImportError as exc:
-        import pytest
-        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
-
-    app = QApplication.instance() or QApplication([])
-    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
-    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
-
-    window = main_window.MainWindow()
-    window.navigation.ensure_lazy_page_built("now_playing")
-    widget = window.playback_feature.rich_now
-    widget.track = {
-        "artist": "Example Artist",
-        "title": "Example Song",
-        "provider_id": "local",
-        "track_id": "example-song",
-    }
-
-    payload = {
-        "track_key": track_key(widget.track),
-        "track": dict(widget.track),
-        "identity": {
-            "artist": "Example Artist",
-            "title": "Example Song",
-        },
-        "lyrics": {
-            "text": "Lyrics supplied by an installed source",
-            "synced": [],
-            "source": "Public Domain Lyrics Example",
-            "provenance": {
-                "source_extension_id": "org.example.lyrics",
-                "source_extension_name": "Public Domain Lyrics Example",
-            },
-        },
-        "errors": [],
-    }
-    monkeypatch.setattr(widget.metadata, "enrich_identity", lambda track: payload)
-
-    online_calls = []
-    monkeypatch.setattr(
-        widget,
-        "_find_lyrics_online",
-        lambda force=True: online_calls.append(force),
-    )
-
-    def run_immediately(key, name, fn):
-        widget._pending.add(name)
-        widget._stage_loaded(key, name, fn())
-
-    monkeypatch.setattr(widget, "_run_stage", run_immediately)
-    widget._refresh_lyrics_native()
-    app.processEvents()
-
-    assert online_calls == []
-    assert widget._current_lyrics["source"] == "Public Domain Lyrics Example"
-    assert "Lyrics supplied by an installed source" in widget.lyrics.toPlainText()
-    assert widget.lyrics_source_picker.count() == 1
-    assert widget.lyrics_source_picker.currentText() == "Public Domain Lyrics Example"
-    assert widget.online_lyrics_button.text() == "Refresh lyrics"
-
-    window.close()
-    app.processEvents()
-
-
-def test_plain_lyrics_html_uses_explicit_dark_theme_contrast():
-    try:
-        from melodex.rich_now_playing import RichNowPlayingWidget
-    except ImportError as exc:
-        import pytest
-        pytest.skip(f"Desktop runtime is unavailable: {exc}")
-
-    rendered = RichNowPlayingWidget._plain_lyrics_html("Line one\nLine two")
-    assert "color:#e5edf6" in rendered
-    assert "font-size:21px" in rendered
-    assert "Line one<br>Line two" in rendered
-
-
-
-def test_search_keeps_previous_results_visible_while_refreshing(monkeypatch, tmp_path):
-    try:
-        from PySide6.QtCore import Qt
-        from PySide6.QtWidgets import QApplication, QListWidgetItem
-        import melodex.main_window as main_window
-    except ImportError as exc:
-        import pytest
-        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
-
-    app = QApplication.instance() or QApplication([])
-    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
-    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
-
-    window = main_window.MainWindow()
-    window.search_source.clear()
-    window.search_source.addItem("All sources", "all")
-    window.search_box.setText("new query")
-
-    old_track = {
-        "provider_id": "local",
-        "track_id": "old",
-        "artist": "Previous Artist",
-        "title": "Previous Result",
-    }
-    old_item = QListWidgetItem("Previous Artist — Previous Result")
-    old_item.setData(Qt.UserRole, old_track)
-    window.results.addItem(old_item)
-
-    callbacks = {}
-
-    def hold_async(fn, done, on_error=None, **_kwargs):
-        callbacks["done"] = done
-        callbacks["error"] = on_error
-
-    monkeypatch.setattr(window, "_run_async", hold_async)
-
-    window._search()
-
-    assert window.results.count() == 1
-    assert window.results.item(0).data(Qt.UserRole) == old_track
-    assert "showing previous results" in window.search_status.text()
-    assert window.search_button.text() == "Searching…"
-
-    # Even if the delayed-loading callback runs, useful stale content stays put.
-    window._show_delayed_search_loading(
-        window._search_sequence,
-        "your connected sources",
-    )
-    assert window.results.count() == 1
-    assert window.results.item(0).data(Qt.UserRole) == old_track
-
-    callbacks["done"](
-        {
-            "items": [
-                {
-                    "provider_id": "local",
-                    "track_id": "fresh",
-                    "artist": "Fresh Artist",
-                    "title": "Fresh Result",
-                }
-            ],
-            "failures": [],
-            "searched": 1,
-            "available": 1,
-        }
-    )
-
-    assert window.results.count() == 1
-    assert window.results.item(0).data(Qt.UserRole)["track_id"] == "fresh"
-    assert window.search_button.text() == "Search"
-
-    window.close()
-    app.processEvents()
-
-
-def test_fast_search_never_flashes_delayed_loading_placeholder(monkeypatch, tmp_path):
-    try:
-        from PySide6.QtCore import Qt
-        from PySide6.QtWidgets import QApplication
-        import melodex.main_window as main_window
-    except ImportError as exc:
-        import pytest
-        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
-
-    app = QApplication.instance() or QApplication([])
-    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
-    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
-
-    window = main_window.MainWindow()
-    window.search_source.clear()
-    window.search_source.addItem("All sources", "all")
-    window.search_box.setText("fast query")
-    callbacks = {}
-
-    def hold_async(fn, done, on_error=None, **_kwargs):
-        callbacks["done"] = done
-
-    monkeypatch.setattr(window, "_run_async", hold_async)
-    window._search()
-    sequence = window._search_sequence
-
-    # Before 220 ms there is no generic loading row.
-    assert window.results.count() == 0
-
-    callbacks["done"](
-        {
-            "items": [
-                {
-                    "provider_id": "local",
-                    "track_id": "fast",
-                    "artist": "Fast Artist",
-                    "title": "Fast Result",
-                }
-            ],
-            "failures": [],
-            "searched": 1,
-            "available": 1,
-        }
-    )
-
-    # A timer firing after completion must be a no-op.
-    window._show_delayed_search_loading(sequence, "your connected sources")
-    assert window.results.count() == 1
-    assert window.results.item(0).text().startswith("Fast Artist — Fast Result")
-    assert window.results.item(0).data(Qt.UserRole)["track_id"] == "fast"
-
-    window.close()
-    app.processEvents()
-
-
-def test_search_failure_preserves_stale_useful_results(monkeypatch, tmp_path):
-    try:
-        from PySide6.QtCore import Qt
-        from PySide6.QtWidgets import QApplication, QListWidgetItem
-        import melodex.main_window as main_window
-    except ImportError as exc:
-        import pytest
-        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
-
-    app = QApplication.instance() or QApplication([])
-    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
-    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
-
-    window = main_window.MainWindow()
-    window.search_source.clear()
-    window.search_source.addItem("All sources", "all")
-    window.search_box.setText("offline query")
-
-    old_track = {
-        "provider_id": "local",
-        "track_id": "cached",
-        "artist": "Cached Artist",
-        "title": "Cached Result",
-    }
-    item = QListWidgetItem("Cached Artist — Cached Result")
-    item.setData(Qt.UserRole, old_track)
-    window.results.addItem(item)
-
-    callbacks = {}
-
-    def hold_async(fn, done, on_error=None, **_kwargs):
-        callbacks["error"] = on_error
-
-    monkeypatch.setattr(window, "_run_async", hold_async)
-    window._search()
-    callbacks["error"]("synthetic provider outage")
-
-    assert window.results.count() == 1
-    assert window.results.item(0).data(Qt.UserRole) == old_track
-    assert "showing previous results" in window.search_status.text()
-    assert window.search_status.toolTip() == "synthetic provider outage"
-
-    window.close()
-    app.processEvents()
-
-
-def test_stale_search_response_cannot_replace_newer_request(monkeypatch, tmp_path):
-    try:
-        from PySide6.QtCore import Qt
-        from PySide6.QtWidgets import QApplication
-        import melodex.main_window as main_window
-    except ImportError as exc:
-        import pytest
-        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
-
-    app = QApplication.instance() or QApplication([])
-    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
-    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
-
-    window = main_window.MainWindow()
-    window.search_source.clear()
-    window.search_source.addItem("All sources", "all")
-    calls = []
-
-    def hold_async(fn, done, on_error=None, **_kwargs):
-        calls.append((done, on_error))
-
-    monkeypatch.setattr(window, "_run_async", hold_async)
-
-    window.search_box.setText("first")
-    window._search()
-    window.search_box.setText("second")
-    window._search()
-
-    calls[0][0](
-        {
-            "items": [
-                {
-                    "provider_id": "local",
-                    "track_id": "stale",
-                    "artist": "Old",
-                    "title": "Stale",
-                }
-            ],
-            "failures": [],
-            "searched": 1,
-            "available": 1,
-        }
-    )
-    assert window.results.count() == 0
-
-    calls[1][0](
-        {
-            "items": [
-                {
-                    "provider_id": "local",
-                    "track_id": "current",
-                    "artist": "New",
-                    "title": "Current",
-                }
-            ],
-            "failures": [],
-            "searched": 1,
-            "available": 1,
-        }
-    )
-    assert window.results.count() == 1
-    assert window.results.item(0).data(Qt.UserRole)["track_id"] == "current"
-
-    window.close()
-    app.processEvents()
-
-
-def test_run_async_replace_key_drops_stale_completion(monkeypatch, tmp_path):
-    try:
-        from PySide6.QtWidgets import QApplication
-        import melodex.main_window as main_window
-    except ImportError as exc:
-        import pytest
-        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
-
-    app = QApplication.instance() or QApplication([])
-    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
-    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
-
-    window = main_window.MainWindow()
-    window.background_scheduler.shutdown(wait=True)
-
-    class HeldScheduler:
-        def __init__(self):
-            self.jobs = []
-            self.cancelled = []
-
-        def submit(self, callback, **kwargs):
-            self.jobs.append((callback, dict(kwargs)))
-            return True
-
-        def cancel_pending(self, replace_key):
-            self.cancelled.append(str(replace_key))
-            return 0
-
-        def snapshot(self):
-            return {}
-
-        def shutdown(self, *, wait=False):
-            return None
-
-    scheduler = HeldScheduler()
-    window.background_scheduler = scheduler
-    applied = []
-
-    window._run_async(
-        lambda: "old",
-        lambda result: applied.append(("old", result)),
-        priority="visible",
-        task_name="old-search",
-        replace_key="search",
-    )
-    window._run_async(
-        lambda: "new",
-        lambda result: applied.append(("new", result)),
-        priority="visible",
-        task_name="new-search",
-        replace_key="search",
-    )
-
-    assert [job[1]["replace_key"] for job in scheduler.jobs] == ["search", "search"]
-
-    scheduler.jobs[0][0]()
-    app.processEvents()
-    assert applied == []
-    assert window._async_stale_results_dropped == 1
-
-    scheduler.jobs[1][0]()
-    app.processEvents()
-    assert applied == [("new", "new")]
-
-    window.close()
-    app.processEvents()
-
-
-def test_navigation_invalidates_hidden_page_build(monkeypatch, tmp_path):
-    try:
-        from PySide6.QtWidgets import QApplication
-        import melodex.main_window as main_window
-    except ImportError as exc:
-        import pytest
-        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
-
-    app = QApplication.instance() or QApplication([])
-    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
-    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
-
-    window = main_window.MainWindow()
-    cancelled = []
-    monkeypatch.setattr(
-        window.background_scheduler,
-        "cancel_pending",
-        lambda key: cancelled.append(str(key)) or 1,
-    )
-
-    window.current_page = "album_wall"
-    window.open_page("home")
-
-    assert "page:album-wall-model" in cancelled
-    assert window._async_invalidations >= 1
-
-    window.close()
-    app.processEvents()
-
-
-def test_navigation_motion_happens_after_immediate_shell_change(monkeypatch, tmp_path):
-    try:
-        from PySide6.QtWidgets import QApplication, QGraphicsOpacityEffect
-        import melodex.main_window as main_window
-    except ImportError as exc:
-        import pytest
-        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
-
-    app = QApplication.instance() or QApplication([])
-    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
-    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
-
-    window = main_window.MainWindow()
-    window.open_page("library")
-
-    # Navigation state is already complete; motion is only a short confirmation.
-    assert window.current_page == "library"
-    assert window.stack.currentWidget() is window.pages["library"]
-    assert bool(window.nav_buttons["library"].property("active"))
-
-    title = window.page_titles["library"]
-    animation = window.motion.active_animation(title)
-    assert animation is not None
-    assert animation.duration() == main_window.FAST_MOTION_MS
-    effect = title.graphicsEffect()
-    assert isinstance(effect, QGraphicsOpacityEffect)
-    assert effect.opacity() >= 0.75
-
-    window.close()
-    app.processEvents()
-
-
-def test_navigation_shell_changes_before_slow_page_population(monkeypatch, tmp_path):
-    try:
-        from PySide6.QtWidgets import QApplication
-        import melodex.main_window as main_window
-    except ImportError as exc:
-        import pytest
-        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
-
-    app = QApplication.instance() or QApplication([])
-    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
-    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
-
-    window = main_window.MainWindow()
-    refresh_started = []
-
-    def slow_library_refresh():
-        refresh_started.append(time.monotonic())
-        time.sleep(0.12)
-
-    monkeypatch.setattr(window, "_refresh_library", slow_library_refresh)
-
-    started_at = time.monotonic()
-    window.open_page("library")
-    shell_seconds = time.monotonic() - started_at
-
-    # The click is complete once the destination shell is selected. Data
-    # population must not be part of that foreground interaction.
-    assert shell_seconds < 0.10
-    assert window.current_page == "library"
-    assert window.stack.currentWidget() is window.pages["library"]
-    assert bool(window.nav_buttons["library"].property("active"))
-    assert refresh_started == []
-
-    deadline = time.monotonic() + 0.5
-    while time.monotonic() < deadline and not refresh_started:
-        app.processEvents()
-        time.sleep(0.005)
-
-    assert refresh_started
-    window.close()
-    app.processEvents()
-
-
-def test_rapid_navigation_drops_stale_page_population(monkeypatch, tmp_path):
-    try:
-        from PySide6.QtWidgets import QApplication
-        import melodex.main_window as main_window
-    except ImportError as exc:
-        import pytest
-        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
-
-    app = QApplication.instance() or QApplication([])
-    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
-    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
-
-    window = main_window.MainWindow()
-    populated = []
-    monkeypatch.setattr(
-        window,
-        "_refresh_library",
-        lambda: populated.append("library"),
-    )
-    monkeypatch.setattr(
-        window,
-        "_refresh_playlists",
-        lambda: populated.append("playlists"),
-    )
-
-    window.open_page("library")
-    window.open_page("playlists")
-
-    # Both shells were requested before deferred population started. Only the
-    # page the user actually ended on should consume refresh work.
-    assert window.current_page == "playlists"
-    assert window.stack.currentWidget() is window.pages["playlists"]
-    assert populated == []
-
-    deadline = time.monotonic() + 0.5
-    while time.monotonic() < deadline and "playlists" not in populated:
-        app.processEvents()
-        time.sleep(0.005)
-
-    assert populated == ["playlists"]
-    window.close()
-    app.processEvents()
-
-
-def test_slow_source_config_check_keeps_qt_event_loop_responsive(monkeypatch, tmp_path):
-    try:
-        from types import SimpleNamespace
-        from PySide6.QtCore import QTimer
-        from PySide6.QtWidgets import QApplication
-        import melodex.main_window as main_window
-    except ImportError as exc:
-        import pytest
-        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
-
-    app = QApplication.instance() or QApplication([])
-    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
-    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
-
-    window = main_window.MainWindow()
-    plugin_id = "org.example.slow-config"
-    window.providers.providers[plugin_id] = SimpleNamespace(
-        info=SimpleNamespace(
-            id=plugin_id,
-            name="Slow Config Source",
-            version="0.1.0",
-            description="Synthetic source used by the responsiveness test.",
-            capabilities=["search"],
-            configuration=[
-                {
-                    "key": "api_token",
-                    "label": "API token",
-                    "type": "secret",
-                    "required": True,
-                }
-            ],
-            permissions={},
-        )
-    )
-    monkeypatch.setattr(
-        window.providers,
-        "provider_order",
-        lambda: ["local", plugin_id],
-    )
-
-    started = threading.Event()
-    release = threading.Event()
-    worker_threads = []
-
-    def slow_status(requested_id, declarations):
+    audio = tmp_pa…8934 tokens truncated…quested_id, declarations):
         if requested_id == plugin_id:
             worker_threads.append(
                 threading.current_thread() is threading.main_thread()
@@ -3032,7 +2024,7 @@ def test_cancelled_main_window_scan_keeps_existing_catalog(monkeypatch, tmp_path
     app.processEvents()
 
 
-def test_indexed_library_loads_on_startup_without_automatic_rescan(
+def test_indexed_library_is_visible_before_background_refresh(
     monkeypatch,
     tmp_path,
 ):
@@ -3088,9 +2080,192 @@ def test_indexed_library_loads_on_startup_without_automatic_rescan(
 
     assert scans == []
     assert window.providers.local_index_ready() is True
-    assert len(window.providers.local_catalog()) == 1
-    assert window.providers.local_catalog()[0]["title"] == "Cached Song"
+    assert window.providers.local_catalog_count() == 1
     assert "1 track in your library" in window.home_status.text()
+
+    deadline = time.monotonic() + 1.8
+    while time.monotonic() < deadline and not scans:
+        app.processEvents()
+        time.sleep(0.005)
+    assert scans == ["background refresh"]
+
+    window.close()
+    app.processEvents()
+
+
+def test_first_provisional_track_can_be_play_requested_before_catalog_commit(
+    monkeypatch,
+    tmp_path,
+):
+    try:
+        from PySide6.QtCore import QObject
+        from PySide6.QtMultimedia import QMediaPlayer
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+        import melodex.player as player_module
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+
+    class NullAudioOutput(QObject):
+        def setVolume(self, *_args):
+            pass
+
+    monkeypatch.setattr(player_module, "QAudioOutput", NullAudioOutput)
+    monkeypatch.setattr(QMediaPlayer, "setAudioOutput", lambda _self, _output: None)
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+
+    audio_path = tmp_path / "first-track.flac"
+    audio_path.write_bytes(b"test audio placeholder")
+    window = main_window.MainWindow()
+    source_id = window._first_music_timeline.begin_source()
+    window._first_music_scan_source_id = source_id
+    window._accept_first_provisional_track(
+        {
+            "provider_id": "local",
+            "track_id": str(audio_path),
+            "local_path": str(audio_path),
+            "title": audio_path.stem,
+            "artist": "Unknown artist",
+            "album": "",
+            "provisional": True,
+        }
+    )
+
+    assert window.providers.local_catalog_count() == 0
+    assert window.player.queue[0]["provisional"] is True
+    assert window.player.index == 0
+    window._play_library_track(window.player.queue[0])
+    assert window.providers.local_catalog_count() == 0
+    assert len(window.player.queue) == 1
+    assert window.player.queue[0]["local_path"] == str(audio_path)
+    timeline = window._first_music_timeline.summary()
+    events = timeline["events"]
+    assert any(
+        event["event"] == "first_playable_track_ready"
+        and event.get("source_id") == source_id
+        for event in events
+    )
+    assert any(
+        event["event"] == "play_requested"
+        and event.get("source_id") == source_id
+        for event in events
+    )
+    assert not any(
+        event["event"] == "background_scan_finished"
+        and event.get("source_id") == source_id
+        for event in events
+    )
+
+    window.close()
+    app.processEvents()
+
+
+def test_new_source_provisional_track_is_visible_with_existing_catalog(
+    monkeypatch,
+    tmp_path,
+):
+    try:
+        from PySide6.QtCore import QObject
+        from PySide6.QtMultimedia import QMediaPlayer
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+        import melodex.player as player_module
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+
+    class NullAudioOutput(QObject):
+        def setVolume(self, *_args):
+            pass
+
+    monkeypatch.setattr(player_module, "QAudioOutput", NullAudioOutput)
+    monkeypatch.setattr(QMediaPlayer, "setAudioOutput", lambda _self, _output: None)
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+    window = main_window.MainWindow()
+    cached = _track("/cached/known.flac", "Known Artist", "Known Album", "Known", 1)
+    window.providers.apply_local_scan_snapshot({"tracks": [cached]})
+    window.library_browser.set_catalog([cached], revision=1)
+    new_path = tmp_path / "nas" / "New Artist" / "New Album" / "new.flac"
+    new_path.parent.mkdir(parents=True)
+    new_path.write_bytes(b"audio placeholder")
+    window._first_music_scan_source_id = window._first_music_timeline.begin_source()
+
+    window._accept_first_provisional_track(
+        {
+            "provider_id": "local",
+            "track_id": str(new_path),
+            "local_path": str(new_path),
+            "title": "new",
+            "artist": "Unknown artist",
+            "album": "",
+            "provisional": True,
+        }
+    )
+
+    assert window.providers.local_catalog_count() == 1
+    assert any(
+        track.get("local_path") == str(new_path)
+        for track in window.library_browser.catalog
+    )
+    assert window.player.queue[0]["local_path"] == str(new_path)
+
+    window.close()
+    app.processEvents()
+
+
+def test_shuffle_discovered_tracks_expands_with_scan_batches(monkeypatch, tmp_path):
+    try:
+        from types import SimpleNamespace
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+    window = main_window.MainWindow()
+
+    class QueuePlayer:
+        def __init__(self):
+            self.queue = []
+
+        def set_queue(self, tracks, _start, _autoplay, **_kwargs):
+            self.queue = [dict(track) for track in tracks]
+
+        def append_queue(self, tracks, autoplay=False):
+            assert autoplay is False
+            self.queue.extend(dict(track) for track in tracks)
+
+        def close(self):
+            pass
+
+    player = QueuePlayer()
+    window.player = player
+    window.local_scan = SimpleNamespace(active=True, shutdown=lambda: None)
+    first = _track("/music/first.flac", "Artist", "Album", "First", 1)
+    second = _track("/music/second.flac", "Artist", "Album", "Second", 2)
+    window._cache_progressive_tracks([first])
+
+    window._shuffle_discovered_tracks()
+    assert [track["track_id"] for track in player.queue] == [first["track_id"]]
+
+    window._extend_discovered_shuffle([second])
+    assert {track["track_id"] for track in player.queue} == {
+        first["track_id"], second["track_id"]
+    }
+
+    player.queue = [dict(second)]
+    window._extend_discovered_shuffle([second])
+    assert window._shuffle_discovered_active is False
 
     window.close()
     app.processEvents()

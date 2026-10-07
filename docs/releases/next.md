@@ -1,9 +1,9 @@
 # Next release — draft notes
 
-**Melodex v0.7.16 release candidate.**
+**Melodex v0.7.17 tester release candidate.**
 
-Current target version: **0.7.16**.
+Current target version: **0.7.17**. The first tester tag is **v0.7.17-rc.1**.
 
-This release completes the Campaign V feedback follow-up: a less cluttered Album Wall with warm cover reuse and album-order playback, denser Profile Pulse contours, removal of Sonic Weather and Minimal, album-cover Music Map nodes with hover details and zoom controls, and photo credits shown on hover. Changed screens are being captured at 1024×768, 1280×800, and 1440×900; release gates must pass before publication.
+This candidate contains the P13 player-first startup and progressive source-discovery work. It is intended for controlled tester feedback while real-device audio and NAS journeys are qualified. It is a GitHub prerelease, not a declaration that P13 has passed its final hardware/NAS gates.
 
-See `docs/releases/v0.7.16.md` for the release notes.
+See `docs/releases/v0.7.17.md` for candidate scope and the tester checklist.

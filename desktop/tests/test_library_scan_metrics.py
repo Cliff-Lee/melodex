@@ -323,6 +323,31 @@ def test_cancelled_scan_never_returns_partial_catalog(
     assert provider.tracks == []
 
 
+def test_scan_control_keeps_recent_priority_requests_bounded(tmp_path: Path):
+    control = ScanControl()
+    paths = [tmp_path / f"artist-{index}" for index in range(40)]
+    for path in paths:
+        assert control.prioritize(path)
+    assert control.prioritize(paths[-1])
+
+    first = control.take_priority_path()
+    remaining = [control.take_priority_path() for _ in range(31)]
+    assert first == str(paths[-1])
+    assert len([value for value in remaining if value]) == 31
+    assert control.take_priority_path() is None
+
+
+def test_priority_for_another_root_remains_queued(tmp_path: Path):
+    control = ScanControl()
+    first_root = tmp_path / "first"
+    second_root = tmp_path / "second"
+    target = second_root / "Artist" / "Album"
+    control.prioritize(target)
+
+    assert control.take_priority_path(first_root) is None
+    assert control.take_priority_path(second_root) == str(target)
+
+
 def test_paused_scan_waits_until_resumed(
     monkeypatch,
     tmp_path: Path,

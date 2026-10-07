@@ -128,6 +128,12 @@ class LibraryScanController(QObject):
         runner.pause()
         return True
 
+    def prioritize(self, path: str | Path) -> bool:
+        """Forward foreground directory intent to the current scan worker."""
+        runner = self._runner
+        callback = getattr(runner, "prioritize", None) if runner is not None else None
+        return bool(callback(path)) if callable(callback) else False
+
     def cancel(self, *, clear_pending: bool = False) -> bool:
         runner = self._runner
         if runner is None:
