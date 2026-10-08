@@ -128,6 +128,29 @@ def test_music_map_surfaces_rediscovery_strength():
     assert nodes["recent"]["rediscovery"] == 0.0
 
 
+def test_music_map_uses_library_rediscovery_and_carries_its_reason():
+    profile = _profile(
+        "hidden-gem",
+        bpm=110,
+        energy=0.55,
+        centroid=1400,
+        onset=0.10,
+    )
+    profile["local_path"] = "/private/music/hidden-gem.flac"
+    reason = "deep cut from an album you enjoyed"
+    profile["library_rediscovery"] = {
+        "library_score": 0.82,
+        "reason": reason,
+    }
+
+    result = build_music_map([profile])
+    node = result["nodes"][0]
+
+    assert node["rediscovery"] == 0.82
+    assert node["rediscovery_reason"] == reason
+    assert "local_path" not in node
+
+
 def test_music_map_large_library_selection_is_deterministic():
     profiles = [
         _profile(

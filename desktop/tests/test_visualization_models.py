@@ -5,6 +5,7 @@ from melodex.visualization_models import (
     build_visual_memory,
     describe_weather,
     lyric_frame,
+    tracks_for_memory_mark,
 )
 from melodex.visualization_profile import build_visual_profile
 
@@ -109,3 +110,70 @@ def test_visual_memory_groups_local_history_at_different_scales():
     assert sessions[0].time_label
     assert "One" in sessions[0].representative
     assert not hasattr(sessions[0], "local_path")
+
+
+def test_visual_memory_keeps_private_ordered_history_refs_for_replay():
+    stamp = datetime(2026, 10, 1, 8, 0).timestamp()
+    rows = [
+        {
+            "_history_id": 12,
+            "_played_at": stamp,
+            "artist": "A",
+            "title": "One",
+            "local_path": "/music/one.flac",
+        },
+        {
+            "_history_id": 13,
+            "_played_at": stamp + 300,
+            "artist": "A",
+            "title": "Two",
+            "local_path": "/music/two.flac",
+        },
+        {
+            "_history_id": 14,
+            "_played_at": stamp + 3600,
+            "artist": "B",
+            "title": "Three",
+            "local_path": "/music/three.flac",
+        },
+    ]
+    marks = build_visual_memory(rows, "sessions")
+    assert marks[0].history_ids == (12, 13)
+    assert marks[1].history_ids == (14,)
+    assert not hasattr(marks[0], "local_path")
+
+    queue = tracks_for_memory_mark(
+        marks[0],
+        {12: rows[0], 13: rows[1], 14: rows[2]},
+    )
+    assert [track["title"] for track in queue] == ["One", "Two"]
+    assert [track["local_path"] for track in queue] == [
+        "/music/one.flac",
+        "/music/two.flac",
+    ]
+    assert all("_history_id" not in track and "_played_at" not in track for track in queue)
+    assert len(tracks_for_memory_mark(marks[0], {12: rows[0], 13: rows[1]}, limit=1)) == 1
+
+
+def test_visual_memory_replay_caps_broad_periods_at_200_tracks():
+    from melodex.visualization_models import MemoryMark
+
+    mark = MemoryMark(
+        "2026",
+        "251 plays",
+        251,
+        210,
+        0.5,
+        0.5,
+        history_ids=tuple(range(1, 252)),
+    )
+    history = {
+        index: {"_history_id": index, "title": f"Track {index}"}
+        for index in range(1, 252)
+    }
+
+    tracks = tracks_for_memory_mark(mark, history, limit=250)
+
+    assert len(tracks) == 200
+    assert tracks[0]["title"] == "Track 1"
+    assert tracks[-1]["title"] == "Track 200"

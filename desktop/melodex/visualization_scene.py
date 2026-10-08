@@ -31,6 +31,7 @@ class LivingScene(QWidget):
 
     neighbourSelected = Signal(int)
     neighbourActivated = Signal(int)
+    memoryActivated = Signal(int)
     qualityAdjusted = Signal(str)
 
     def __init__(self, parent=None):
@@ -1949,7 +1950,7 @@ class LivingScene(QWidget):
                     mark = self._memory[index]
                     self.setToolTip(
                         f"{mark.label} — {mark.detail} — {mark.count} play"
-                        f"{'s' if mark.count != 1 else ''}"
+                        f"{'s' if mark.count != 1 else ''} — double-click or press Enter to replay"
                     )
                 else:
                     self.setToolTip("")
@@ -2007,6 +2008,15 @@ class LivingScene(QWidget):
         super().mousePressEvent(event)
 
     def mouseDoubleClickEvent(self, event: QMouseEvent) -> None:
+        if event.button() == Qt.LeftButton and self.mode == "memory":
+            index = self._memory_hit_test(event.position())
+            if index is not None:
+                self._selected_memory_index = index
+                self._hovered_memory_index = index
+                self.memoryActivated.emit(index)
+                self.update()
+                event.accept()
+                return
         if event.button() == Qt.LeftButton and self.mode == "constellation":
             found = self._hit_test(event.position())
             if found:
@@ -2016,6 +2026,30 @@ class LivingScene(QWidget):
         super().mouseDoubleClickEvent(event)
 
     def keyPressEvent(self, event) -> None:
+        if self.mode == "memory" and self._memory:
+            active = self._active_memory_index()
+            current = active if active is not None and 0 <= active < len(self._memory) else -1
+            if event.key() in {Qt.Key_Right, Qt.Key_Down, Qt.Key_Tab}:
+                index = (current + 1) % len(self._memory)
+            elif event.key() in {Qt.Key_Left, Qt.Key_Up, Qt.Key_Backtab}:
+                index = (current - 1) % len(self._memory)
+            elif event.key() in {Qt.Key_Return, Qt.Key_Enter} and active is not None:
+                self.memoryActivated.emit(active)
+                event.accept()
+                return
+            else:
+                index = None
+            if index is not None:
+                mark = self._memory[index]
+                self._hovered_memory_index = None
+                self._selected_memory_index = index
+                self.setToolTip(
+                    f"{mark.label} — {mark.detail} — {mark.count} play"
+                    f"{'s' if mark.count != 1 else ''} — double-click or press Enter to replay"
+                )
+                self.update()
+                event.accept()
+                return
         if self.mode == "constellation" and self._neighbours:
             active = self._selected_token if self._selected_token is not None else self._hovered_token
             if event.key() in {Qt.Key_Right, Qt.Key_Down, Qt.Key_Tab}:

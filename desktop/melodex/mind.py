@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .flow import FlowEngine
+from .rediscovery_signals import build_rediscovery_signals
 from .user_state import UserState
 
 
@@ -98,7 +99,71 @@ class MindEngine:
             counts[artist] = counts.get(artist, 0) + 1
         return {a: total[a] / max(1, counts[a]) for a in total}
 
-    def score(self, track: dict[str, Any], stats: dict[str, dict[str, Any]], mode: str, adventure: float, now: float, artist_affinity: dict[str, float] | None = None) -> tuple[float, str]:
+    def _artist_memory_signals(
+        self, stats: dict[str, dict[str, Any]], now: float
+    ) -> dict[str, dict[str, Any]]:
+        grouped: dict[str, dict[str, Any]] = {}
+        for row in stats.values():
+            artist = str(row.get("artist") or "").strip().casefold()
+            if not artist:
+                continue
+            group = grouped.setdefault(
+                artist,
+                {
+                    "played_tracks": 0,
+                    "favorite_tracks": 0,
+                    "positive_total": 0.0,
+                    "last_played": 0.0,
+                },
+            )
+            plays = max(0, int(row.get("plays") or 0))
+            if plays:
+                group["played_tracks"] += 1
+                group["positive_total"] += self._positive_signal(row)
+            if int(row.get("loves") or 0) > 0 or int(row.get("keeps") or 0) > 0:
+                group["favorite_tracks"] += 1
+            group["last_played"] = max(
+                float(group["last_played"] or 0.0),
+                float(row.get("last_played") or 0.0),
+            )
+
+        result: dict[str, dict[str, Any]] = {}
+        for artist, group in grouped.items():
+            played_tracks = int(group["played_tracks"])
+            last_played = float(group["last_played"] or 0.0)
+            days = max(0.0, (now - last_played) / 86400.0) if last_played else None
+            average_positive = float(group["positive_total"]) / max(1, played_tracks)
+            favorite_tracks = int(group["favorite_tracks"])
+
+            spacing = 0.0
+            if played_tracks and days is not None and 21.0 <= days <= 1460.0:
+                centre = 120.0
+                spacing = math.exp(
+                    -((math.log(days + 1.0) - math.log(centre + 1.0)) ** 2) / 1.8
+                )
+            affinity = max(0.0, min(1.0, (average_positive + 0.2) / 2.7))
+            strength = 1.0 if favorite_tracks else affinity
+            result[artist] = {
+                "played_tracks": played_tracks,
+                "favorite_tracks": favorite_tracks,
+                "favorite_artist": favorite_tracks > 0,
+                "average_positive": average_positive,
+                "days_since_last_played": days,
+                "rediscovery": max(0.0, min(1.0, spacing * strength)),
+            }
+        return result
+
+    def score(
+        self,
+        track: dict[str, Any],
+        stats: dict[str, dict[str, Any]],
+        mode: str,
+        adventure: float,
+        now: float,
+        artist_affinity: dict[str, float] | None = None,
+        library_signal: dict[str, Any] | None = None,
+        artist_memory: dict[str, Any] | None = None,
+    ) -> tuple[float, str]:
         key = self.track_key(track)
         row = stats.get(key, {})
         plays = int(row.get("plays") or 0)
@@ -109,6 +174,14 @@ class MindEngine:
         artist = str(track.get("artist") or "").strip().casefold()
         affinity_map = artist_affinity if artist_affinity is not None else self._artist_affinity(stats)
         affinity = affinity_map.get(artist, 0.0) if artist else 0.0
+        library_signal = library_signal or {}
+        library_score = max(0.0, min(1.0, float(library_signal.get("library_score") or 0.0)))
+        library_reason = str(library_signal.get("reason") or "")
+        artist_memory = artist_memory or {}
+        artist_rediscovery = max(
+            0.0, min(1.0, float(artist_memory.get("rediscovery") or 0.0))
+        )
+        favorite_track = int(row.get("loves") or 0) > 0 or int(row.get("keeps") or 0) > 0
         adventure = max(0.0, min(1.0, float(adventure)))
 
         # Recently heard tracks get a strong temporary penalty: familiarity is
@@ -121,11 +194,14 @@ class MindEngine:
         elif days < 3.0:
             recent_penalty = 1.0
 
-        # Spaced resurfacing bonus: strongest around one to three months.
+        # Keep older favourites eligible for spaced resurfacing, not just
+        # tracks last played a few weeks ago.
         rediscovery = 0.0
-        if plays and 10.0 <= days <= 240.0:
-            centre = 45.0
-            rediscovery = 1.6 * math.exp(-((math.log(days + 1) - math.log(centre + 1)) ** 2) / 1.3)
+        if plays and 10.0 <= days <= 1460.0:
+            centre = 120.0
+            rediscovery = 1.6 * math.exp(
+                -((math.log(days + 1.0) - math.log(centre + 1.0)) ** 2) / 1.8
+            )
 
         unheard = 1.0 if plays == 0 else 0.0
         familiar = min(1.8, 0.45 * math.log1p(plays) + max(0.0, positive) * 0.18)
@@ -136,8 +212,28 @@ class MindEngine:
             score = 1.30 * positive + 1.5 * familiar + 0.8 * artist_bonus + 0.30 * rediscovery - 1.2 * unheard
             reason = "trusted favourite" if positive > 1.2 else "familiar fit"
         elif mode == "rediscover":
-            score = 0.72 * positive + 2.25 * rediscovery + 0.55 * familiar + 0.25 * artist_bonus - 0.4 * unheard
-            reason = "ready to rediscover" if rediscovery > 0.6 else "older favourite"
+            score = (
+                0.72 * positive + 2.25 * rediscovery + 0.55 * familiar
+                + 0.25 * artist_bonus + 1.25 * library_score
+                + 1.2 * artist_rediscovery - 0.4 * unheard
+            )
+            if rediscovery > 0.6:
+                reason = "favourite ready to return" if favorite_track else "ready to rediscover"
+            elif not plays and artist_rediscovery > 0.35:
+                reason = (
+                    "from a favourite artist you haven't heard lately"
+                    if artist_memory.get("favorite_artist")
+                    else "from an artist you haven't heard lately"
+                )
+            elif plays:
+                if favorite_track and days >= 30.0:
+                    reason = "older favourite"
+                elif days < 3.0:
+                    reason = "heard recently"
+                else:
+                    reason = "from your listening history"
+            else:
+                reason = library_reason or "new to you"
         elif mode == "explore":
             score = 2.2 * unheard + 0.65 * artist_bonus + 0.45 * max(0.0, positive) + 0.4 * adventure - 0.35 * familiar
             reason = "new to you" if unheard else "less familiar direction"
@@ -187,8 +283,20 @@ class MindEngine:
         rng = random.Random(time.time_ns())
         scored: list[tuple[float, float, dict[str, Any], str]] = []
         artist_affinity = self._artist_affinity(stats)
+        artist_memories = self._artist_memory_signals(stats, now)
+        library_signals = build_rediscovery_signals(pool, stats)
         for track in pool:
-            score, reason = self.score(track, stats, mode, adventure, now, artist_affinity)
+            artist = str(track.get("artist") or "").strip().casefold()
+            score, reason = self.score(
+                track,
+                stats,
+                mode,
+                adventure,
+                now,
+                artist_affinity,
+                library_signals.get(self.track_key(track)),
+                artist_memories.get(artist),
+            )
             # Tiny bounded jitter prevents every session from being identical
             # without turning selection into opaque random shuffle.
             jitter = rng.uniform(-0.12, 0.12) * (0.35 + adventure)

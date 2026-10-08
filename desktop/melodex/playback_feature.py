@@ -116,6 +116,8 @@ class PlaybackFeature(QObject):
         self._queue_reasons: dict[tuple[str, ...], str] = {}
         self._visual_context_sequence = 0
         self._visual_neighbour_tracks: dict[int, dict[str, Any]] = {}
+        self._memory_mark_tracks: dict[int, tuple[dict[str, Any], ...]] = {}
+        self._memory_mark_track_counts: dict[int, int] = {}
         self._visual_neighbour_artwork: dict[int, str] = {}
         self._visual_neighbour_preview_sequence = 0
         self._prefetched_track_assets: dict[str, dict[str, Any]] = {}
@@ -736,6 +738,7 @@ class PlaybackFeature(QObject):
         self.living_canvas.seekRequested.connect(self.seekRequested.emit)
         self.living_canvas.modeDataRequested.connect(self._request_visual_mode_data)
         self.living_canvas.neighbourActivated.connect(self._queue_visual_neighbour)
+        self.living_canvas.memoryActivated.connect(self._replay_visual_memory_mark)
         self.living_canvas.neighbourPreviewRequested.connect(
             self._request_visual_neighbour_preview
         )
@@ -990,6 +993,9 @@ class PlaybackFeature(QObject):
 
         self._visual_context_sequence += 1
         sequence = self._visual_context_sequence
+        if mode == "memory":
+            self._memory_mark_tracks.clear()
+            self._memory_mark_track_counts.clear()
         queue_candidates: list[dict[str, Any]] = []
         if mode == "constellation":
             queue = [dict(track) for track in self._queue]
@@ -1017,11 +1023,12 @@ class PlaybackFeature(QObject):
                     return {
                         "scale": scale,
                         "marks": build_visual_memory(recent, scale),
+                        "history": recent,
                     }
                 return {"queue": queue_candidates, "recent": recent}
             except Exception:
                 return (
-                    {"scale": scale, "marks": ()}
+                    {"scale": scale, "marks": (), "history": []}
                     if mode == "memory"
                     else {"queue": queue_candidates, "recent": []}
                 )
@@ -1037,7 +1044,7 @@ class PlaybackFeature(QObject):
         )
 
     def _visual_context_loaded(self, sequence: int, mode: str, payload: object) -> None:
-        from .visualization_models import build_constellation
+        from .visualization_models import build_constellation, tracks_for_memory_mark
 
         if self._is_closing() or sequence != self._visual_context_sequence:
             return
@@ -1049,7 +1056,26 @@ class PlaybackFeature(QObject):
             scale = str(payload.get("scale") or "sessions")
             if scale != str(self.living_canvas.memory_scale.currentData() or "sessions"):
                 return
-            self.living_canvas.set_memory_marks(tuple(payload.get("marks") or ()), scale)
+            marks = tuple(payload.get("marks") or ())
+            tracks_by_history_id: dict[int, dict[str, Any]] = {}
+            for raw_track in payload.get("history", ()):
+                if not isinstance(raw_track, dict):
+                    continue
+                try:
+                    history_id = int(raw_track.get("_history_id"))
+                except (TypeError, ValueError, OverflowError):
+                    continue
+                if history_id > 0:
+                    tracks_by_history_id[history_id] = dict(raw_track)
+            self._memory_mark_tracks = {
+                index: tracks_for_memory_mark(mark, tracks_by_history_id)
+                for index, mark in enumerate(marks)
+            }
+            self._memory_mark_track_counts = {
+                index: len(getattr(mark, "history_ids", ()))
+                for index, mark in enumerate(marks)
+            }
+            self.living_canvas.set_memory_marks(marks, scale)
             return
 
         current = dict(self._current_track or {})
@@ -1092,6 +1118,29 @@ class PlaybackFeature(QObject):
             if path:
                 self._visual_neighbour_artwork[node.token] = path
                 self.living_canvas.set_neighbour_artwork(node.token, path)
+
+    def _replay_visual_memory_mark(self, index: int) -> None:
+        if self._is_closing() or not hasattr(self, "living_canvas"):
+            return
+        if self.living_canvas.active_mode != "memory":
+            return
+        index = int(index)
+        tracks = self._memory_mark_tracks.get(index, ())
+        if not tracks:
+            self._status("This memory has no available listening history to replay.", 4000)
+            return
+        self.setQueueRequested.emit(
+            [dict(track) for track in tracks],
+            0,
+            True,
+            "manual_queue",
+        )
+        total = self._memory_mark_track_counts.get(index, len(tracks))
+        if len(tracks) < total:
+            message = f"Replaying first {len(tracks)} of {total} tracks from this memory in order"
+        else:
+            message = f"Replaying {len(tracks)} tracks from this memory in order"
+        self._status(message, 5000)
 
     def _request_visual_neighbour_preview(self, token: int) -> None:
         token = int(token)

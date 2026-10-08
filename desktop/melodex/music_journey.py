@@ -108,9 +108,11 @@ def stage_score(node: dict[str, Any], constraint: str) -> tuple[float, str]:
 
     if constraint == "forgotten":
         score = 0.82 * rediscovery + 0.18 * taste
-        return _clamp(score), (
-            f"rediscovery {rediscovery:.0%} · taste {taste:.0%}"
-        )
+        reason = f"rediscovery {rediscovery:.0%} · taste {taste:.0%}"
+        library_reason = str(node.get("rediscovery_reason") or "").strip()
+        if library_reason:
+            reason += f" · {library_reason}"
+        return _clamp(score), reason
 
     if constraint == "energetic":
         score = 0.52 * energy + 0.25 * tempo_high + 0.23 * rhythm_high

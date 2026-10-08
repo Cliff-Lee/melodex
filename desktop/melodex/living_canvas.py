@@ -190,6 +190,7 @@ class LivingCanvasView(QWidget):
     seekRequested = Signal(int)
     modeDataRequested = Signal(str)
     neighbourActivated = Signal(int)
+    memoryActivated = Signal(int)
     neighbourPreviewRequested = Signal(int)
 
     _MODE_GROUPS = (
@@ -359,6 +360,7 @@ class LivingCanvasView(QWidget):
         self.scene = LivingScene(self)
         self.scene.neighbourSelected.connect(self._neighbour_selected)
         self.scene.neighbourActivated.connect(self.neighbourActivated.emit)
+        self.scene.memoryActivated.connect(self.memoryActivated.emit)
         self.scene.qualityAdjusted.connect(self._quality_adjusted)
         layout.addWidget(self.scene, 1)
 
@@ -667,7 +669,8 @@ class LivingCanvasView(QWidget):
         elif mode == "memory":
             self.status.setText(
                 "Memory Atlas: left-to-right is chronological time, height is average time of day, "
-                "island size is play count; hover a group for details."
+                "island size is play count; hover a group for details, then double-click or press Enter "
+                "to replay its recorded tracks in order."
             )
         elif mode == "minimal":
             self.status.setText("A quiet identity scene. Choose Battery quality for a static, low-power view.")

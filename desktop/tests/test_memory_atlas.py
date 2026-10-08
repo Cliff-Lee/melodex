@@ -22,6 +22,7 @@ def _qt():
 
 def test_memory_atlas_hover_explains_a_group_and_click_pins_it():
     QEvent, QPointF, Qt, QColor, QImage, QMouseEvent, QApplication = _qt()
+    from PySide6.QtGui import QKeyEvent
     from melodex.visualization_models import MemoryMark
     from melodex.visualization_profile import build_visual_profile
     from melodex.visualization_scene import LivingScene
@@ -94,6 +95,24 @@ def test_memory_atlas_hover_explains_a_group_and_click_pins_it():
     QApplication.sendEvent(scene, press)
     assert scene._selected_memory_index == 0
 
+    activated = []
+    scene.memoryActivated.connect(activated.append)
+    double_click = QMouseEvent(
+        QEvent.MouseButtonDblClick,
+        point,
+        point,
+        point,
+        Qt.LeftButton,
+        Qt.LeftButton,
+        Qt.NoModifier,
+    )
+    QApplication.sendEvent(scene, double_click)
+    assert activated == [0]
+
+    enter = QKeyEvent(QEvent.KeyPress, Qt.Key_Return, Qt.NoModifier)
+    QApplication.sendEvent(scene, enter)
+    assert activated == [0, 0]
+
     empty = QPointF(scene.width() - 3, scene.height() - 3)
     move_away = QMouseEvent(
         QEvent.MouseMove,
@@ -147,6 +166,7 @@ def test_memory_atlas_is_named_and_status_explains_visual_semantics():
     assert "left-to-right is chronological time" in status
     assert "height is average time of day" in status
     assert "island size is play count" in status
+    assert "double-click or press enter" in status
 
     view.deleteLater()
     app.processEvents()
