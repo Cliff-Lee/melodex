@@ -11,7 +11,7 @@ Melodex does not run downloaded provider code on Android. Local playback opens
 the selected audio item through Android's media library. Bridge access is
 optional.
 
-This release includes P19a, the first Android standalone-player slice. Choose **On this phone**, grant audio access when requested, then play an indexed track or use **Play something**. Provider Bridge remains an optional second path.
+The v0.7.22 release includes P19a–P19d: local playback, background controls, local library search and queue, and optional QR pairing with a desktop Bridge. Choose **On this phone** to play without a computer, or **Connect a Melodex** to pair over your local network.
 
 ## 1. Download the Android APK
 
@@ -138,13 +138,13 @@ play/pause buttons are supported, and unplugging headphones pauses playback.
 
 ## 8. Current preview limitations
 
-The published v0.7.21 APK includes P19a: the phone library and direct track
-playback. P19b, P19c, and P19d are development work and are not included in
-that release. P19d adds QR pairing, encrypted saved credentials, and per-phone
-revocation. Check the version installed on your device before following the QR
-steps above; v0.7.21 uses the advanced manual setup. Physical-device
-verification is still needed for the newer campaign builds. Flow and taste
-tools remain later campaign work.
+The published v0.7.22 APK includes P19a–P19d: local playback, background
+controls, local search and queue, and QR pairing with per-phone credentials and
+revocation. Automatic local-network discovery and Flow/taste tools remain later
+campaign work. Physical-device verification is still useful for QR scanning,
+reconnection after relaunch, permission behavior, and playback. If you install
+an older v0.7.21 APK, use its Advanced manual setup because that build predates
+QR pairing.
 
 ## 9. Update or uninstall
 
