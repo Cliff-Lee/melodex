@@ -12,7 +12,7 @@ Reduce avoidable waits between queued tracks, especially when a source lives on 
 - The queue remains authoritative. Melodex prepares exactly the item at the next queue position.
 - Resolution runs on the existing bounded background prefetch lane. The active deck keeps playing while work runs.
 - Read-ahead starts within 15 seconds of the current track ending. A Journey transition can start earlier to cover its planned fade, up to 30 seconds ahead.
-- The inactive media deck stays muted while it prepares the source. Playback starts only when the listener advances, the track ends, or an existing Journey crossfade begins.
+- The inactive media deck stays muted while it prepares the source. Audible playback starts only when the listener advances, the track ends, or an existing Journey crossfade begins. Before that, the inactive deck plays muted until buffer-ready or a short 1.8-second limit, then pauses at position zero.
 - An edit that changes the upcoming item, seek, pause, or stop invalidates the prepared source. A late background result is discarded.
 - A failed or rejected prefetch never interrupts the current track. Manual next and natural end fall back to the existing load and recovery path.
 - P24 does not download whole tracks, persist stream URLs, add a cloud service, or change provider permissions. Native iPhone support remains deferred.
@@ -30,6 +30,6 @@ Reduce avoidable waits between queued tracks, especially when a source lives on 
 
 ## Implementation
 
-P24 extends FlowPlayer's existing dual-deck architecture. It resolves the next item on BackgroundScheduler's single-worker prefetch lane, installs the source on the inactive deck, and records readiness from Qt's LoadedMedia or BufferedMedia status. The current source stays active until the existing transition path takes ownership of the prepared deck.
+P24 extends FlowPlayer's existing dual-deck architecture. It resolves the next item on BackgroundScheduler's single-worker prefetch lane, installs the source on the inactive deck, and records readiness from Qt's BufferingMedia or BufferedMedia status after silent priming begins. The current source stays active until the existing transition path takes ownership of the prepared deck.
 
 The implementation adds no UI surface and does not replace P13's artwork prefetch or P22's active-track recovery.
