@@ -1,11 +1,7 @@
 # Next release — draft notes
 
-**Melodex v0.7.24 — Android 16 and Google Play preparation.**
+**Melodex v0.7.25 — resilient playback and session restoration.**
 
-Current target version: **0.7.24**.
+Current target version: **0.7.25**.
 
-P21 keeps iPhone support deferred and prepares the Android app for Google Play:
-target Android 16 (API 36), link the privacy policy from the app, and support
-signing the release App Bundle with an owner-managed upload key. GitHub releases
-remain available; no Play Console upload or store publication is part of this
-campaign.
+P22 qualifies bounded playback recovery, route reactivation, and safe desktop and Android session restoration. Desktop fault injection and supported package builds run in GitHub Actions. Android device-level Bluetooth, audio-focus, and playback-service restart checks remain owner follow-up. Native iPhone support and Google Play publication remain outside this release.
