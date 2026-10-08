@@ -437,9 +437,13 @@ class MusicMapWidget(QWidget):
                 self._activate_ref,
                 self._journey_stage_for_ref,
             )
-            item.setToolTip(
+            tooltip = (
                 "Drag this track to the Journey Composer timeline to add it as an exact waypoint."
             )
+            rediscovery_reason = str(node.get("rediscovery_reason") or "").strip()
+            if rediscovery_reason:
+                tooltip += f"\nRediscovery: {rediscovery_reason}"
+            item.setToolTip(tooltip)
             if len(nodes) <= 55:
                 card_w, card_h = 86.0, 86.0
             elif len(nodes) <= 180:
@@ -777,10 +781,13 @@ class MusicMapWidget(QWidget):
             if connections
             else ""
         )
+        rediscovery_reason = str(node.get("rediscovery_reason") or "").strip()
+        rediscovery_text = f" · {rediscovery_reason}" if rediscovery_reason else ""
         self.status.setText(
             f"{node.get('artist') or 'Unknown artist'} — {node.get('title') or 'Unknown track'} · "
             f"{float(node.get('bpm') or 0):.0f} BPM · energy {float(node.get('energy') or 0):.0%} · "
             f"taste {float(node.get('taste') or 0):.0%} · rediscovery {float(node.get('rediscovery') or 0):.0%}"
+            + rediscovery_text
             + connection_text
             + " · drag to Compose to add as a waypoint"
         )

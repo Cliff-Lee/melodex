@@ -163,12 +163,26 @@ def _taste_metrics(profile: dict[str, Any]) -> tuple[float, float]:
 
     days = taste.get("days_since_last_played")
     if days is None or plays <= 0:
-        return positive, 0.0
-    days = max(0.0, float(days))
-    if days < 7.0:
-        return positive, 0.0
-    spacing = math.exp(-((math.log(days + 1.0) - math.log(76.0)) ** 2) / 1.35)
-    return positive, _clamp(positive * spacing)
+        rediscovery = 0.0
+    else:
+        days = max(0.0, float(days))
+        spacing = (
+            math.exp(-((math.log(days + 1.0) - math.log(76.0)) ** 2) / 1.35)
+            if days >= 7.0
+            else 0.0
+        )
+        rediscovery = _clamp(positive * spacing)
+
+    library_signal = profile.get("library_rediscovery")
+    if isinstance(library_signal, dict):
+        try:
+            rediscovery = max(
+                rediscovery,
+                _clamp(float(library_signal.get("library_score") or 0.0)),
+            )
+        except (TypeError, ValueError, OverflowError):
+            pass
+    return positive, rediscovery
 
 
 def _distance(a: list[float], b: list[float]) -> float:
@@ -251,6 +265,12 @@ def build_music_map(
     for index, ((profile, _raw), z) in enumerate(zip(analysed, standardized)):
         taste, rediscovery = _taste_metrics(profile)
         analysis = profile.get("analysis") if isinstance(profile.get("analysis"), dict) else {}
+        library_signal = profile.get("library_rediscovery")
+        rediscovery_reason = (
+            str(library_signal.get("reason") or "").strip()
+            if isinstance(library_signal, dict)
+            else ""
+        )
         nodes.append(
             {
                 "ref": str(profile.get("ref") or f"t{index}"),
@@ -265,6 +285,7 @@ def build_music_map(
                 "key_mode": str(analysis.get("key_mode") or ""),
                 "taste": taste,
                 "rediscovery": rediscovery,
+                "rediscovery_reason": rediscovery_reason,
                 "plays": int((profile.get("taste") or {}).get("plays") or 0)
                 if isinstance(profile.get("taste"), dict)
                 else 0,

@@ -80,6 +80,20 @@ visual-context task. Playback uses the manual queue intent so the captured
 historical order is preserved, and the local file paths never enter the visual
 mark or its renderer.
 
+## P17e progress
+
+Music Map now combines the P17 library score with its existing recent-favourite
+signal. Strong hidden gems, album gaps, and artist returns can therefore stay
+visible in the Rediscovery lens even when they have no recent play signal. The
+map exposes the reason on hover and selection, and Forgotten journey stages
+carry that reason into their fit explanation. Journey Live steers against the
+same map values; Living Queue's Rediscover route already uses the shared P17
+signal builder through MindEngine.
+
+The map derives signals from the bounded local catalog and UserState snapshot
+inside its existing background task. It adds no scan to startup or the playback
+path, and introduces no schema or network dependency.
+
 ## Completion gates
 
 P17 is complete when a fresh install can start a useful rediscovery route, a

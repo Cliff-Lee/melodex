@@ -63,11 +63,13 @@ def test_stage_scores_are_interpretable():
 
 def test_forgotten_stage_uses_rediscovery_signal():
     old = _node("old", [0] * 8, taste=0.8, rediscovery=0.9, plays=8)
+    old["rediscovery_reason"] = "deep cut from an album you enjoyed"
     recent = _node("recent", [0] * 8, taste=0.9, rediscovery=0.0, plays=20)
     old_score, reason = stage_score(old, "forgotten")
     recent_score, _ = stage_score(recent, "forgotten")
     assert old_score > recent_score
     assert "rediscovery" in reason
+    assert "deep cut from an album you enjoyed" in reason
 
 
 def test_journey_designer_builds_requested_semantic_arc():

@@ -110,7 +110,16 @@ def test_music_map_defaults_to_selection_focused_relationships():
     widget.show()
 
     nodes = [
-        {"ref": "a", "artist": "A", "title": "One", "x": -0.7, "y": 0.0, "taste": 0.5, "rediscovery": 0.1},
+        {
+            "ref": "a",
+            "artist": "A",
+            "title": "One",
+            "x": -0.7,
+            "y": 0.0,
+            "taste": 0.5,
+            "rediscovery": 0.1,
+            "rediscovery_reason": "deep cut from an album you enjoyed",
+        },
         {"ref": "b", "artist": "B", "title": "Two", "x": 0.0, "y": 0.2, "taste": 0.4, "rediscovery": 0.2},
         {"ref": "c", "artist": "C", "title": "Three", "x": 0.7, "y": -0.1, "taste": 0.3, "rediscovery": 0.3},
     ]
@@ -138,6 +147,7 @@ def test_music_map_defaults_to_selection_focused_relationships():
     assert widget.zoom_in_button.toolTip().startswith("Zoom in")
     assert widget.zoom_out_button.toolTip().startswith("Zoom out")
     assert len(widget.edge_items) == 0
+    assert "deep cut from an album you enjoyed" in widget.node_items["a"].toolTip()
     widget.connections_button.click()
     app.processEvents()
     assert widget.edge_mode.isVisible()
@@ -159,6 +169,7 @@ def test_music_map_defaults_to_selection_focused_relationships():
     widget._select_ref("a")
     app.processEvents()
     assert len(widget.edge_items) == 1
+    assert "deep cut from an album you enjoyed" in widget.status.text()
 
     all_links = widget.edge_mode.findData("sonic")
     assert all_links >= 0

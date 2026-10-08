@@ -779,6 +779,8 @@ class JourneyWorkspace(QObject):
     def _build_music_map_payload(self):
         from .music_knowledge import build_knowledge_graph
         from .music_map_model import build_music_map
+        from .rediscovery_signals import build_rediscovery_signals
+        from .user_state import UserState
     
         catalog=self.providers.local_catalog()
         profiles, _seed_refs, ref_map, _analysed = self.local_intelligence.build_snapshot(
@@ -787,6 +789,22 @@ class JourneyWorkspace(QObject):
             max_tracks=5000,
             analyse_seeds=False,
         )
+        history_signals = {
+            str(row.get("track_key") or ""): dict(row)
+            for row in self.state.track_signals(5000)
+            if isinstance(row, dict) and str(row.get("track_key") or "")
+        }
+        library_signals = build_rediscovery_signals(
+            list(ref_map.values()),
+            history_signals,
+        )
+        for profile in profiles:
+            track = ref_map.get(str(profile.get("ref") or ""))
+            if not isinstance(track, dict):
+                continue
+            signal = library_signals.get(UserState.track_key(track))
+            if signal:
+                profile["library_rediscovery"] = dict(signal)
         model=build_music_map(profiles,max_nodes=700,neighbours=2)
         mapped_refs={
             str(node.get("ref") or "")
