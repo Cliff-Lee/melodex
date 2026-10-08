@@ -91,23 +91,12 @@ If you use Melodex only on the PC, you can leave incoming LAN access disabled.
 1. Put the Windows PC and Android phone on the same trusted Wi-Fi/LAN.
 2. In desktop Melodex open **Sources → Provider Bridge…**.
 3. Choose **Yes** when asked whether devices on your LAN may connect.
-4. Copy the bearer token Melodex displays.
-5. Find the Windows PC's IPv4 address. Either:
-   - open **Settings → Network & internet → Wi-Fi/Ethernet → Properties**, or
-   - open Command Prompt and run `ipconfig`.
-6. Look for an address such as `192.168.1.42` or `10.0.0.25`.
-7. On Android set the Bridge URL to:
+4. In Android Melodex choose **Connect a Melodex → Scan desktop QR code** and scan the code shown by Windows.
+5. Allow camera access when Android asks.
 
-   `http://WINDOWS-IP:8766`
+The code expires after two minutes and works once. The phone receives its own saved connection; you can revoke it from the desktop **Paired phones** list.
 
-   Example:
-
-   `http://192.168.1.42:8766`
-
-8. Enter the current Bridge token.
-9. Tap **Connect**.
-
-Treat the token like a password. The current preview generates a new token when the Bridge is restarted.
+For manual setup, choose **Show advanced manual setup** in the desktop pairing dialog and use **Advanced setup** on Android. The dialog shows the Bridge URL and session token. Treat the token like a password; it changes when the Bridge restarts.
 
 See [Install on Android](INSTALL_ANDROID.md).
 

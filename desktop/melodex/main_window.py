@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
+
 from PySide6.QtCore import QEvent, QSettings, QSize, Qt, QTimer, Signal, Slot, QObject
 from PySide6.QtGui import QAction, QColor, QDesktopServices, QKeySequence, QPixmap, QShortcut
 from PySide6.QtWidgets import (
@@ -4679,30 +4680,29 @@ class MainWindow(QMainWindow):
             replace_key="local-control-bridge",
         )
 
-    def _restart_bridge(self,host):
-        token=self.bridge.token if self.bridge else ""; port=self.bridge.port if self.bridge else 0
-        if self.bridge:self.bridge.stop()
-        self.bridge=ProviderBridge(self.providers,host,port,token=token,controller=self._control_request,state_path=self.data_dir/"bridge.json"); self.bridge.start()
+    def _restart_bridge(self, host: str) -> None:
+        token = self.bridge.token if self.bridge else ""
+        port = self.bridge.port if self.bridge else 0
+        if self.bridge:
+            self.bridge.stop()
+        self.bridge = ProviderBridge(
+            self.providers,
+            host,
+            port,
+            token=token,
+            controller=self._control_request,
+            state_path=self.data_dir / "bridge.json",
+        )
+        self.bridge.start()
 
-    def _bridge_dialog(self):
-        if not self.bridge:
-            self._start_local_bridge()
-            if self._bridge_start_pending:
-                self.statusBar().showMessage(
-                    "AI control bridge is starting in the background…",
-                    3000,
-                )
-            return
-        if self.bridge.host=="127.0.0.1":
-            choice=QMessageBox.question(self,"Provider Bridge",f"The private AI control bridge is running locally on port {self.bridge.port}.\n\nAllow phones/computers on your LAN to use the provider bridge too?\n\nChoose No to keep it local-only.",QMessageBox.Yes|QMessageBox.No)
-            if choice==QMessageBox.Yes:
-                try:self._restart_bridge("0.0.0.0"); QMessageBox.information(self,"Provider Bridge",f"LAN bridge enabled on port {self.bridge.port}.\n\nBearer token:\n{self.bridge.token}\n\nKeep this token private.")
-                except Exception as exc:self.statusBar().showMessage(str(exc),7000)
-        else:
-            choice=QMessageBox.question(self,"Provider Bridge",f"The bridge currently accepts LAN connections on port {self.bridge.port}.\n\nRestrict it to this computer only?",QMessageBox.Yes|QMessageBox.No)
-            if choice==QMessageBox.Yes:
-                try:self._restart_bridge("127.0.0.1"); self.statusBar().showMessage("Provider bridge restricted to this computer",4000)
-                except Exception as exc:self.statusBar().showMessage(str(exc),7000)
+    def _bridge_dialog(self) -> None:
+        from .bridge_dialog import show_provider_bridge_dialog
+        show_provider_bridge_dialog(
+            self, get_bridge=lambda: self.bridge,
+            start_bridge=self._start_local_bridge,
+            bridge_start_pending=lambda: self._bridge_start_pending,
+            restart_bridge=self._restart_bridge,
+        )
 
     # ------------------------------- helpers
     def _invalidate_async(self, replace_key: str) -> int:

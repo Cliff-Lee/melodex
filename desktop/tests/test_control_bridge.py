@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+import json
+import os
+import stat
+import urllib.error
+import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -160,3 +165,117 @@ def test_client_follows_bridge_restart(tmp_path: Path):
         assert client.health()["ok"] is True
     finally:
         second.stop()
+
+
+
+def _bridge_http(url: str, method: str = "GET", payload: dict | None = None, token: str = ""):
+    headers = {"Accept": "application/json"}
+    data = None
+    if payload is not None:
+        headers["Content-Type"] = "application/json"
+        data = json.dumps(payload).encode("utf-8")
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    request = urllib.request.Request(url, data=data, headers=headers, method=method)
+    try:
+        with urllib.request.urlopen(request, timeout=3) as response:
+            return response.status, json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        return exc.code, json.loads(exc.read().decode("utf-8"))
+
+
+def test_paired_device_token_persists_and_can_be_revoked(tmp_path: Path):
+    media = tmp_path / "song.mp3"
+    media.write_bytes(b"track")
+    state = tmp_path / "bridge.json"
+    manager = FakeManager(media)
+    controller = FakeController()
+    first = ProviderBridge(manager, "127.0.0.1", 0, token="desktop-one", controller=controller, state_path=state)
+    first.start()
+    try:
+        code = first.new_pairing_code()
+        pair_url = f"http://127.0.0.1:{first.port}/v1/pair"
+        status, paired = _bridge_http(
+            pair_url,
+            "POST",
+            {"code": code, "device_name": "  Android phone  "},
+        )
+        assert status == 200
+        assert paired["ok"] is True
+        assert paired["device_name"] == "Android phone"
+        token = paired["token"]
+        device_id = paired["device_id"]
+
+        status, providers = _bridge_http(
+            f"http://127.0.0.1:{first.port}/v1/providers",
+            token=token,
+        )
+        assert status == 200
+        assert providers["providers"][0]["id"] == "local"
+
+        status, resolved = _bridge_http(
+            f"http://127.0.0.1:{first.port}/v1/resolve?provider=local&id=song",
+            token=token,
+        )
+        assert status == 200
+        media_url = resolved["stream_url"]
+        assert f"token={token}" in media_url
+
+        status, _ = _bridge_http(pair_url, "POST", {"code": code, "device_name": "second"})
+        assert status == 401
+
+        paired_state = tmp_path / "bridge.paired-devices.json"
+        assert paired_state.exists()
+        assert token not in paired_state.read_text("utf-8")
+        assert len(json.loads(paired_state.read_text("utf-8"))["devices"]) == 1
+        if os.name != "nt":
+            assert stat.S_IMODE(paired_state.stat().st_mode) & 0o077 == 0
+    finally:
+        first.stop()
+
+    second = ProviderBridge(manager, "127.0.0.1", 0, token="desktop-two", controller=controller, state_path=state)
+    second.start()
+    try:
+        status, _ = _bridge_http(f"http://127.0.0.1:{second.port}/v1/providers", token=token)
+        assert status == 200
+        status, resolved_after_restart = _bridge_http(
+            f"http://127.0.0.1:{second.port}/v1/resolve?provider=local&id=song",
+            token=token,
+        )
+        assert status == 200
+        media_url = resolved_after_restart["stream_url"]
+
+        status, response = _bridge_http(
+            f"http://127.0.0.1:{second.port}/v1/unpair",
+            "POST",
+            {"device_id": device_id},
+            token=token,
+        )
+        assert status == 200
+        assert response["ok"] is True
+        status, _ = _bridge_http(f"http://127.0.0.1:{second.port}/v1/providers", token=token)
+        assert status == 401
+        status, _ = _bridge_http(media_url)
+        assert status == 401
+    finally:
+        second.stop()
+
+
+def test_pairing_code_rejects_expired_code(tmp_path: Path):
+    media = tmp_path / "song.mp3"
+    media.write_bytes(b"track")
+    bridge = ProviderBridge(FakeManager(media), "127.0.0.1", 0, token="desktop", state_path=tmp_path / "bridge.json")
+    bridge.start()
+    try:
+        code = bridge.new_pairing_code()
+        bridge._pairing_expires_at = 0
+        status, response = _bridge_http(
+            f"http://127.0.0.1:{bridge.port}/v1/pair",
+            "POST",
+            {"code": code, "device_name": "phone"},
+        )
+        assert status == 401
+        assert "expired" in response["error"]
+        assert bridge.paired_devices() == []
+    finally:
+        bridge.stop()

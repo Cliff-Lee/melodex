@@ -18,11 +18,11 @@ melodex-provider validate path/to/provider
 
 ## Android cannot reach the Bridge
 
-- use the desktop machine's LAN IP, not `127.0.0.1`;
-- ensure the Bridge was started in LAN mode;
-- check the firewall;
-- keep phone and server on the same network;
-- confirm the bearer token exactly.
+- keep the phone and computer on the same trusted Wi-Fi/LAN;
+- check that the Bridge is in LAN mode and allow it through the computer's firewall;
+- refresh the desktop QR code if it was open for more than two minutes or has already been scanned;
+- if using Advanced setup, check the Bridge URL and current session token;
+- guest Wi-Fi client isolation can block devices even when they show the same network.
 
 ## LLM connection fails
 

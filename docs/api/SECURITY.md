@@ -10,7 +10,9 @@ External devices should only be allowed when LAN access is intentional.
 
 Treat Bridge and MCP bearer tokens as passwords.
 
-Do not include them in logs, screenshots, issue reports or model prompts.
+QR pairing uses a one-time code that expires after two minutes. Each paired phone receives a separate token. The phone encrypts its saved Bridge token with Android Keystore; the desktop stores only the token digest in a file with user-only permissions where supported and supports revocation per phone.
+
+Do not include tokens in logs, screenshots, issue reports or model prompts.
 
 ## Media query token
 
@@ -20,7 +22,7 @@ Do not treat token-bearing media URLs as permanent track IDs, and do not paste t
 
 ## LAN / remote access
 
-Plain HTTP bearer tokens are not appropriate across untrusted networks. Use a trusted VPN or TLS reverse proxy for remote access.
+Pairing and playback use the existing local Bridge HTTP connection. Use only a trusted local network; plain HTTP bearer tokens are not appropriate across untrusted networks. Use a trusted VPN or TLS reverse proxy for remote access.
 
 ## OpenAPI document
 

@@ -41,6 +41,8 @@ import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.ListenableFuture
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanOptions
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -83,7 +85,39 @@ class BridgeClient(var baseUrl: String, var token: String) {
         return JSONObject(body)
     }
 
+    private fun post(path: String, body: JSONObject): JSONObject {
+        val conn = URL(baseUrl.trimEnd('/') + path).openConnection() as HttpURLConnection
+        conn.requestMethod = "POST"
+        conn.connectTimeout = 8000
+        conn.readTimeout = 15000
+        conn.doOutput = true
+        conn.setRequestProperty("Accept", "application/json")
+        conn.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+        if (token.isNotBlank()) conn.setRequestProperty("Authorization", "Bearer $token")
+        conn.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+        val code = conn.responseCode
+        val response = (if (code in 200..299) conn.inputStream else conn.errorStream)
+            .bufferedReader().use { it.readText() }
+        if (code !in 200..299) throw IllegalStateException("Bridge error $code: $response")
+        return JSONObject(response)
+    }
+
     fun health(): Boolean = get("/health").optBoolean("ok", false)
+
+    fun verify(): Boolean {
+        get("/v1/providers")
+        return true
+    }
+
+    fun pair(code: String, deviceName: String): JSONObject = post(
+        "/v1/pair",
+        JSONObject().put("code", code).put("device_name", deviceName)
+    )
+
+    fun unpair(deviceId: String): Boolean = post(
+        "/v1/unpair",
+        JSONObject().put("device_id", deviceId)
+    ).optBoolean("ok", false)
 
     fun search(query: String): List<Track> {
         val q = URLEncoder.encode(query, "UTF-8")
@@ -214,10 +248,164 @@ fun MelodexApp(player: Player) {
     var queueDialogOpen by remember { mutableStateOf(false) }
     var bridgeUrl by remember { mutableStateOf("") }
     var token by remember { mutableStateOf("") }
+    var bridgeName by remember { mutableStateOf("") }
+    var bridgeDeviceId by remember { mutableStateOf("") }
+    var showAdvancedBridgeSetup by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
-    var bridgeStatus by remember { mutableStateOf("Enter your Bridge address and token to connect.") }
+    var bridgeStatus by remember { mutableStateOf("Pairing is optional. Scan a desktop QR code to connect.") }
     var bridgeResults by remember { mutableStateOf<List<Track>>(emptyList()) }
     var nowPlaying by remember { mutableStateOf<Track?>(null) }
+
+    val scanOptions = remember {
+        ScanOptions().apply {
+            setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+            setPrompt("Scan the QR code shown by your Melodex computer")
+            setBeepEnabled(false)
+            setOrientationLocked(false)
+        }
+    }
+    val scanQrLauncher = rememberLauncherForActivityResult(ScanContract()) { result ->
+        val rawCode = result.contents
+        if (rawCode.isNullOrBlank()) {
+            bridgeStatus = "QR scan cancelled."
+        } else {
+            scope.launch {
+                bridgeStatus = "Pairing with your computer…"
+                try {
+                    val pairing = withContext(Dispatchers.IO) {
+                        BridgePairingPayloadParser.parse(rawCode)
+                    }
+                    val deviceName = "Android ${Build.MODEL}".trim()
+                    val enrolled = withContext(Dispatchers.IO) {
+                        BridgeClient(pairing.baseUrl, "").pair(pairing.code, deviceName)
+                    }
+                    val bridgeToken = enrolled.getString("token")
+                    val deviceId = enrolled.getString("device_id")
+                    val displayName = pairing.displayName
+                    val connected = withContext(Dispatchers.IO) {
+                        BridgeClient(pairing.baseUrl, bridgeToken).verify()
+                    }
+                    if (!connected) throw IllegalStateException("The Bridge did not accept this pairing.")
+                    withContext(Dispatchers.IO) {
+                        BridgeConnectionStore.save(
+                            context.applicationContext,
+                            StoredBridgeConnection(pairing.baseUrl, bridgeToken, displayName, deviceId)
+                        )
+                    }
+                    bridgeUrl = pairing.baseUrl
+                    token = bridgeToken
+                    bridgeName = displayName
+                    bridgeDeviceId = deviceId
+                    bridgeResults = emptyList()
+                    bridgeStatus = "Connected to $displayName."
+                    musicSource = MusicSource.BRIDGE
+                } catch (e: Exception) {
+                    bridgeStatus = e.message ?: "Could not pair with that Bridge."
+                }
+            }
+        }
+    }
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            scanQrLauncher.launch(scanOptions)
+        } else {
+            bridgeStatus = "Camera access is needed to scan a pairing code."
+        }
+    }
+
+    fun startQrScan() {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+            scanQrLauncher.launch(scanOptions)
+        } else {
+            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+        }
+    }
+
+    fun connectBridge(url: String, bridgeToken: String, displayName: String = "Melodex computer", deviceId: String = "") {
+        val normalizedUrl = url.trim().trimEnd('/')
+        val normalizedToken = bridgeToken.trim()
+        if (normalizedUrl.isBlank() || normalizedToken.isBlank()) {
+            bridgeStatus = "Enter the Bridge address and token."
+            return
+        }
+        scope.launch {
+            bridgeStatus = "Connecting…"
+            try {
+                val connected = withContext(Dispatchers.IO) {
+                    BridgeClient(normalizedUrl, normalizedToken).verify()
+                }
+                if (!connected) throw IllegalStateException("The Bridge did not accept this token.")
+                withContext(Dispatchers.IO) {
+                    BridgeConnectionStore.save(
+                        context.applicationContext,
+                        StoredBridgeConnection(normalizedUrl, normalizedToken, displayName, deviceId)
+                    )
+                }
+                bridgeUrl = normalizedUrl
+                token = normalizedToken
+                bridgeName = displayName
+                bridgeDeviceId = deviceId
+                bridgeStatus = "Connected to $displayName."
+            } catch (e: Exception) {
+                bridgeStatus = e.message ?: "Connection failed."
+            }
+        }
+    }
+
+    fun forgetBridge() {
+        val currentUrl = bridgeUrl
+        val currentToken = token
+        val currentDeviceId = bridgeDeviceId
+        scope.launch {
+            var revoked = currentDeviceId.isBlank()
+            if (currentDeviceId.isNotBlank()) {
+                try {
+                    revoked = withContext(Dispatchers.IO) {
+                        BridgeClient(currentUrl, currentToken).unpair(currentDeviceId)
+                    }
+                } catch (_: Exception) {
+                    revoked = false
+                }
+            }
+            withContext(Dispatchers.IO) {
+                BridgeConnectionStore.clear(context.applicationContext)
+            }
+            bridgeUrl = ""
+            token = ""
+            bridgeName = ""
+            bridgeDeviceId = ""
+            bridgeResults = emptyList()
+            showAdvancedBridgeSetup = false
+            bridgeStatus = if (revoked) {
+                "Saved Bridge connection removed from this phone."
+            } else {
+                "Removed from this phone. If the computer is offline, revoke this phone in its Bridge settings."
+            }
+        }
+    }
+
+    LaunchedEffect(context) {
+        val saved = withContext(Dispatchers.IO) {
+            BridgeConnectionStore.load(context.applicationContext)
+        }
+        if (saved != null) {
+            bridgeUrl = saved.baseUrl
+            token = saved.token
+            bridgeName = saved.displayName
+            bridgeDeviceId = saved.deviceId
+            bridgeStatus = "Checking the saved connection…"
+            bridgeStatus = try {
+                withContext(Dispatchers.IO) {
+                    BridgeClient(saved.baseUrl, saved.token).verify()
+                }
+                "Connected to ${saved.displayName}."
+            } catch (e: Exception) {
+                "Saved connection to ${saved.displayName} is unavailable: ${e.message ?: "check the local network"}."
+            }
+        }
+    }
 
     val visibleLocalTracks = remember(localTracks, localSearch, localSort) {
         val needle = localSearch.trim()
@@ -562,34 +750,62 @@ fun MelodexApp(player: Player) {
                     }
                 } else {
                     Column(Modifier.fillMaxWidth().weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedTextField(
-                            bridgeUrl,
-                            { bridgeUrl = it },
-                            label = { Text("Bridge URL") },
-                            placeholder = { Text("http://192.168.1.20:8766") },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        OutlinedTextField(
-                            token,
-                            { token = it },
-                            label = { Text("Bridge token") },
-                            visualTransformation = PasswordVisualTransformation(),
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Button(onClick = {
-                                scope.launch {
-                                    bridgeStatus = "Connecting…"
-                                    bridgeStatus = try {
-                                        val ok = withContext(Dispatchers.IO) { BridgeClient(bridgeUrl, token).health() }
-                                        if (ok) "Connected." else "Bridge did not report healthy."
-                                    } catch (e: Exception) { e.message ?: "Connection failed" }
+                        Card(Modifier.fillMaxWidth()) {
+                            Column(
+                                Modifier.fillMaxWidth().padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                if (bridgeUrl.isNotBlank() && token.isNotBlank()) {
+                                    Text(
+                                        "Paired with ${bridgeName.ifBlank { "Melodex computer" }}",
+                                        style = MaterialTheme.typography.titleSmall
+                                    )
+                                    Text(bridgeStatus, style = MaterialTheme.typography.bodySmall)
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Button(onClick = {
+                                            connectBridge(bridgeUrl, token, bridgeName, bridgeDeviceId)
+                                        }) { Text("Reconnect") }
+                                        TextButton(onClick = { forgetBridge() }) { Text("Forget on this phone") }
+                                    }
+                                } else {
+                                    Text(
+                                        "Connect to another Melodex on your local Wi-Fi. Pairing is optional; "
+                                            + "music stored on this phone works without a computer."
+                                    )
+                                    Button(
+                                        onClick = { startQrScan() },
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) { Text("Scan desktop QR code") }
+                                    Text(bridgeStatus, style = MaterialTheme.typography.bodySmall)
                                 }
-                            }) { Text("Connect") }
-                            Text(bridgeStatus, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+
+                                TextButton(onClick = { showAdvancedBridgeSetup = !showAdvancedBridgeSetup }) {
+                                    Text(if (showAdvancedBridgeSetup) "Hide advanced setup" else "Advanced setup")
+                                }
+                                if (showAdvancedBridgeSetup) {
+                                    OutlinedTextField(
+                                        bridgeUrl,
+                                        { bridgeUrl = it },
+                                        label = { Text("Bridge URL") },
+                                        placeholder = { Text("http://192.168.1.20:8766") },
+                                        singleLine = true,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                    OutlinedTextField(
+                                        token,
+                                        { token = it },
+                                        label = { Text("Bridge token") },
+                                        visualTransformation = PasswordVisualTransformation(),
+                                        singleLine = true,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                    Button(onClick = {
+                                        connectBridge(bridgeUrl, token)
+                                    }) { Text("Connect manually") }
+                                }
+                            }
                         }
+
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                             OutlinedTextField(
                                 query,
@@ -598,19 +814,22 @@ fun MelodexApp(player: Player) {
                                 singleLine = true,
                                 modifier = Modifier.weight(1f)
                             )
-                            Button(onClick = {
-                                scope.launch {
-                                    bridgeStatus = "Searching…"
-                                    try {
-                                        bridgeResults = withContext(Dispatchers.IO) {
-                                            BridgeClient(bridgeUrl, token).search(query)
+                            Button(
+                                onClick = {
+                                    scope.launch {
+                                        bridgeStatus = "Searching…"
+                                        try {
+                                            bridgeResults = withContext(Dispatchers.IO) {
+                                                BridgeClient(bridgeUrl, token).search(query)
+                                            }
+                                            bridgeStatus = "${bridgeResults.size} results"
+                                        } catch (e: Exception) {
+                                            bridgeStatus = e.message ?: "Search failed"
                                         }
-                                        bridgeStatus = "${bridgeResults.size} results"
-                                    } catch (e: Exception) {
-                                        bridgeStatus = e.message ?: "Search failed"
                                     }
-                                }
-                            }) { Text("Search") }
+                                },
+                                enabled = bridgeUrl.isNotBlank() && token.isNotBlank() && query.isNotBlank()
+                            ) { Text("Search") }
                         }
                         TrackList(bridgeResults, onSelect = { track ->
                             scope.launch {

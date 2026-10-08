@@ -8,7 +8,7 @@ The desktop app runs an authenticated local control bridge.
 
 ## Authentication
 
-Except for `/health` and `/openapi.json`, requests require:
+Requests require bearer authentication except for public `/health`, `/openapi.json`, and the one-time `POST /v1/pair` enrollment endpoint:
 
 ```http
 Authorization: Bearer <bridge-token>
@@ -81,6 +81,28 @@ Streams local media with Range support or redirects to a remote resource.
 Returns Melodex function schemas in Responses and Chat Completions tool formats.
 
 ## POST endpoints
+
+### `POST /v1/pair`
+
+The desktop pairing QR contains a random code that expires after two minutes and can be redeemed once. Pairing is local to the Bridge host; it does not use an account or external rendezvous service.
+
+Request:
+
+```json
+{"code": "one-time-code", "device_name": "Android phone"}
+```
+
+Success returns a device-specific bearer token and device ID. Android stores the token encrypted with Android Keystore. The desktop stores only its SHA-256 digest in `bridge.paired-devices.json`, with user-only permissions where the operating system supports them. The raw token is returned only during pairing.
+
+### `POST /v1/unpair`
+
+Requires the paired device's bearer token and accepts:
+
+```json
+{"device_id": "paired-device-id"}
+```
+
+This revokes that device token. Devices can also be revoked in the desktop Provider Bridge pairing dialog.
 
 ### `POST /v1/play`
 
