@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import mimetypes
 import os
@@ -36,8 +37,121 @@ class ProviderBridge:
         self.token = token or secrets.token_urlsafe(24)
         self.controller = controller
         self.state_path = Path(state_path) if state_path else None
+        self.paired_devices_path = (
+            self.state_path.with_name(f"{self.state_path.stem}.paired-devices.json")
+            if self.state_path
+            else None
+        )
+        self._paired_devices = self._load_paired_devices()
+        self._pairing_code = ""
+        self._pairing_expires_at = 0.0
         self._server: ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
+
+    def _load_paired_devices(self) -> list[dict[str, Any]]:
+        if self.paired_devices_path is None or not self.paired_devices_path.exists():
+            return []
+        try:
+            data = json.loads(self.paired_devices_path.read_text("utf-8"))
+            rows = data.get("devices") if isinstance(data, dict) else []
+            devices = []
+            for row in rows or []:
+                if not isinstance(row, dict):
+                    continue
+                device_id = str(row.get("id") or "").strip()
+                token_hash = str(row.get("token_hash") or "").strip().lower()
+                if len(device_id) < 8 or len(token_hash) != 64:
+                    continue
+                try:
+                    int(token_hash, 16)
+                except ValueError:
+                    continue
+                devices.append({
+                    "id": device_id,
+                    "name": str(row.get("name") or "Android device")[:80],
+                    "token_hash": token_hash,
+                    "paired_at": float(row.get("paired_at") or 0),
+                })
+            return devices
+        except Exception:
+            return []
+
+    def _save_paired_devices(self) -> None:
+        if self.paired_devices_path is None:
+            return
+        self.paired_devices_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = self.paired_devices_path.with_suffix(self.paired_devices_path.suffix + ".tmp")
+        tmp.write_text(json.dumps({"version": 1, "devices": self._paired_devices}, indent=2), "utf-8")
+        try:
+            os.chmod(tmp, 0o600)
+        except OSError:
+            pass
+        tmp.replace(self.paired_devices_path)
+        try:
+            os.chmod(self.paired_devices_path, 0o600)
+        except OSError:
+            pass
+
+    def paired_devices(self) -> list[dict[str, Any]]:
+        return [
+            {"id": row["id"], "name": row["name"], "paired_at": row["paired_at"]}
+            for row in self._paired_devices
+        ]
+
+    def revoke_paired_device(self, device_id: str) -> bool:
+        before = len(self._paired_devices)
+        self._paired_devices = [row for row in self._paired_devices if row["id"] != str(device_id)]
+        if len(self._paired_devices) == before:
+            return False
+        self._save_paired_devices()
+        return True
+
+    def revoke_all_paired_devices(self) -> int:
+        count = len(self._paired_devices)
+        if count:
+            self._paired_devices = []
+            self._save_paired_devices()
+        return count
+
+    def new_pairing_code(self, ttl_seconds: int = 120) -> str:
+        self._pairing_code = secrets.token_urlsafe(18)
+        self._pairing_expires_at = time.monotonic() + max(1, min(int(ttl_seconds), 300))
+        return self._pairing_code
+
+    def _pair_device(self, code: str, device_name: str) -> dict[str, Any]:
+        supplied = str(code or "")
+        if (
+            not self._pairing_code
+            or time.monotonic() >= self._pairing_expires_at
+            or not secrets.compare_digest(supplied, self._pairing_code)
+        ):
+            raise PermissionError("Pairing code is invalid or expired. Refresh the QR code on the computer.")
+        self._pairing_code = ""
+        self._pairing_expires_at = 0.0
+        name = "".join(char for char in str(device_name or "") if char.isprintable()).strip()[:80]
+        name = name or "Android device"
+        token = secrets.token_urlsafe(32)
+        row = {
+            "id": secrets.token_hex(8),
+            "name": name,
+            "token_hash": hashlib.sha256(token.encode("utf-8")).hexdigest(),
+            "paired_at": time.time(),
+        }
+        self._paired_devices.append(row)
+        try:
+            self._save_paired_devices()
+        except Exception:
+            self._paired_devices.remove(row)
+            raise
+        return {"ok": True, "device_id": row["id"], "device_name": name, "token": token}
+
+    def _authorized_token(self, token: str) -> bool:
+        if not token:
+            return False
+        if secrets.compare_digest(token, self.token):
+            return True
+        supplied_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+        return any(secrets.compare_digest(supplied_hash, row["token_hash"]) for row in self._paired_devices)
 
     def _write_state(self) -> None:
         if not self.state_path:
@@ -93,7 +207,8 @@ class ProviderBridge:
                     return True
                 auth = self.headers.get("Authorization", "")
                 query_token = q.get("token", [""])[0]
-                return auth == f"Bearer {bridge.token}" or secrets.compare_digest(query_token, bridge.token)
+                header_token = auth[7:] if auth.startswith("Bearer ") else ""
+                return bridge._authorized_token(header_token) or bridge._authorized_token(query_token)
 
             def _send(self, code: int, payload: Any, ctype: str = "application/json"):
                 body = payload if isinstance(payload, (bytes, bytearray)) else json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -293,9 +408,22 @@ class ProviderBridge:
                     return self._send(500, {"error": str(exc)})
 
             def do_POST(self):
+                u, _ = self._query()
+                if u.path == "/v1/pair":
+                    try:
+                        body = self._json_body(max_bytes=16 * 1024)
+                        return self._send(
+                            200,
+                            bridge._pair_device(body.get("code", ""), body.get("device_name", "")),
+                        )
+                    except PermissionError as exc:
+                        return self._send(401, {"error": str(exc)})
+                    except ValueError as exc:
+                        return self._send(400, {"error": str(exc)})
+                    except Exception as exc:
+                        return self._send(500, {"error": str(exc)})
                 if not self._auth():
                     return self._send(401, {"error": "unauthorized"})
-                u, _ = self._query()
                 try:
                     body = self._json_body()
                     if u.path == "/v1/play":
