@@ -20,7 +20,7 @@ Then choose your platform:
 | Other glibc Linux desktops x86_64 | `Melodex-linux-x86_64.AppImage` | [Linux](INSTALL_LINUX.md) |
 | Android phone/tablet | `Melodex-Android.apk` | [Android](INSTALL_ANDROID.md) |
 
-> **Android has two listening paths.** Choose **On this phone** to play audio stored locally without a computer. Choose **Connect a Melodex** to reach sources exposed by a desktop, NAS, or home server through Provider Bridge. This release includes the first local-playback preview; see the [Android guide](INSTALL_ANDROID.md) for its limits.
+> **Android has two listening paths.** Choose **On this phone** to play audio stored locally without a computer. Choose **Connect a Melodex** to reach sources exposed by a desktop, NAS, or home server through Provider Bridge. v0.7.22 adds background controls, local search and queue, and optional QR pairing; see the [Android guide](INSTALL_ANDROID.md) for setup and limits.
 
 Do **not** download these unless you know you need them:
 
