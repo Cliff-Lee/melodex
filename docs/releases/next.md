@@ -1,13 +1,12 @@
 # Next release — draft notes
 
-**Melodex v0.7.21 — Android Standalone Player.**
+**Melodex v0.7.22 — Android Playback Continuity.**
 
-Current target version: **0.7.21**.
+Current target version: **0.7.22**.
 
-This development cycle starts P19, making Melodex useful on a phone without
-requiring another computer. The planned work centers on local phone-library
-playback while keeping Provider Bridge available as an optional connection.
+P19 continues beyond the first local-phone playback preview. Planned work is
+to move playback into a MediaSession service, add audio-focus and
+lock-screen/headset controls, then improve local search and queue handling.
 
-Follow-up work will make playback dependable in the background, improve local
-library and queue controls, and qualify permissions, interruptions, and device
-compatibility before release.
+The next release should build on device feedback from v0.7.21 and keep
+Provider Bridge optional.

@@ -73,7 +73,9 @@ Before installing any third-party code, review its publisher, permissions and so
 
 ## Android
 
-Android uses Provider Bridge rather than arbitrary downloaded provider code.
+Android can play audio indexed on the phone and can optionally use Provider
+Bridge to reach sources configured on another Melodex installation. It does
+not execute arbitrary downloaded provider code.
 
 
 ## Trust labels
