@@ -1,0 +1,49 @@
+# P17 — Rediscovery Engine
+
+## Purpose
+
+P17 helps listeners find worthwhile music that has faded from view. It combines
+private listening history with the structure already present in a local music
+library, then surfaces those signals in the player and listening tools.
+
+Rediscovery must work on a fresh install. Listening history should make its
+suggestions more personal over time, but a new listener should still get useful
+routes from album order, artist coverage, and library structure.
+
+## Campaign stages
+
+1. **P17a — Build rediscovery signals.** Combine per-track play and feedback
+   history with local metadata such as album membership, track order, and
+   artist coverage. Keep a useful metadata-only path when play history is empty.
+2. **P17b — Resurface forgotten favourites and neglected artists.** Rank loved,
+   kept, completed, and skipped music with recency and artist-level memory.
+3. **P17c — Explore hidden gems and deep cuts.** Find unplayed parts of known
+   albums, deep cuts, and underexplored albums without over-relying on tags.
+4. **P17d — Add listening time travel.** Let listeners revisit meaningful
+   periods and sessions from their own history.
+5. **P17e — Connect the music surfaces.** Carry rediscovery signals into Music
+   Map, Journeys, and Living Queue so suggestions remain steerable in context.
+6. **P17f — Polish and qualify.** Make the reasons understandable, keep large
+   libraries responsive, and test sparse metadata, new installs, and mature
+   listening histories.
+
+## P17a progress
+
+The local session planner now receives a bounded metadata signal alongside its
+existing per-track history. It recognizes album gaps, ordered deep cuts, and
+tracks from artists already present in listening history. The Rediscover route
+uses those signals when there are no plays to score, and labels metadata-backed
+choices plainly. Missing album or track-order tags produce a neutral score so
+the existing new-to-you selection remains available.
+
+The P17a gate is the focused rediscovery signal and planner test suite, plus the
+existing Mind and Music Map tests. Signals are calculated in memory from the
+current catalog and local UserState; there is no schema migration or network
+dependency.
+
+## Completion gates
+
+P17 is complete when a fresh install can start a useful rediscovery route, a
+listener's history makes it more personal, the choice reasons are clear, and
+all integrated surfaces stay responsive on large libraries. Each stage must
+pass its focused tests before the next stage starts.
