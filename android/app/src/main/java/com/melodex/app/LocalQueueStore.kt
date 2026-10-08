@@ -9,7 +9,8 @@ import java.util.concurrent.Executors
 
 internal data class SavedLocalQueue(
     val tracks: List<Track>,
-    val currentIndex: Int
+    val currentIndex: Int,
+    val currentPositionMs: Long,
 )
 
 /** Stores local MediaStore queue entries in SQLite; Bridge stream URLs may expire. */
@@ -18,6 +19,7 @@ internal object LocalQueueStore {
     private const val TABLE = "queue_items"
     private const val PREFERENCES = "local_playback_queue"
     private const val INDEX_KEY = "current_index"
+    private const val POSITION_KEY = "position_ms"
 
     private val writer = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "MelodexQueueWriter").apply { isDaemon = true }
@@ -80,23 +82,35 @@ internal object LocalQueueStore {
             helper.close()
         }
         if (tracks.isEmpty()) return null
-        val index = context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
-            .getInt(INDEX_KEY, 0)
-            .coerceIn(0, tracks.lastIndex)
-        return SavedLocalQueue(tracks, index)
+        val preferences = context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
+        val index = preferences.getInt(INDEX_KEY, 0).coerceIn(0, tracks.lastIndex)
+        val positionMs = preferences.getLong(POSITION_KEY, 0L).coerceAtLeast(0L)
+        return SavedLocalQueue(tracks, index, positionMs)
     }
 
     /** Queue writes run serially off the UI thread, including very large queues. */
-    fun saveAsync(context: Context, tracks: List<Track>, currentIndex: Int) {
+    fun saveAsync(
+        context: Context,
+        tracks: List<Track>,
+        currentIndex: Int,
+        currentPositionMs: Long = 0L
+    ) {
         val snapshot = tracks.toList()
-        writer.execute { save(context.applicationContext, snapshot, currentIndex) }
+        writer.execute {
+            save(context.applicationContext, snapshot, currentIndex, currentPositionMs)
+        }
     }
 
     fun clearAsync(context: Context) {
         writer.execute { clear(context.applicationContext) }
     }
 
-    private fun save(context: Context, tracks: List<Track>, currentIndex: Int) {
+    private fun save(
+        context: Context,
+        tracks: List<Track>,
+        currentIndex: Int,
+        currentPositionMs: Long
+    ) {
         if (tracks.isEmpty()) {
             clear(context)
             return
@@ -131,6 +145,7 @@ internal object LocalQueueStore {
         }
         context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE).edit()
             .putInt(INDEX_KEY, currentIndex.coerceIn(0, tracks.lastIndex))
+            .putLong(POSITION_KEY, currentPositionMs.coerceAtLeast(0L))
             .apply()
     }
 
@@ -143,23 +158,29 @@ internal object LocalQueueStore {
         }
         context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE).edit()
             .remove(INDEX_KEY)
+            .remove(POSITION_KEY)
             .apply()
     }
 
-    /** Persist just the index as system controls move through a saved local queue. */
+    /** Persist index and position while the saved queue contains only local MediaStore items. */
     fun saveFromPlayer(context: Context, player: Player) {
         if (player.mediaItemCount == 0) return
         for (index in 0 until player.mediaItemCount) {
             if (!player.getMediaItemAt(index).mediaId.startsWith("local|")) return
         }
-        savePosition(context, player.currentMediaItemIndex)
+        savePosition(
+            context,
+            player.currentMediaItemIndex,
+            player.currentPosition.coerceAtLeast(0L)
+        )
     }
 
-    private fun savePosition(context: Context, index: Int) {
+    private fun savePosition(context: Context, index: Int, positionMs: Long) {
         if (index < 0) return
         writer.execute {
             context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE).edit()
                 .putInt(INDEX_KEY, index)
+                .putLong(POSITION_KEY, positionMs.coerceAtLeast(0L))
                 .apply()
         }
     }

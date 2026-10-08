@@ -415,11 +415,79 @@ class UserState:
         title = str(track.get("title", "") or "").strip().casefold()
         return "meta:" + "|".join((artist, album, title))
 
+    @staticmethod
+    def playback_track_snapshot(track: dict[str, Any] | None) -> dict[str, Any]:
+        """Keep stable identity and display metadata, never transient sources or credentials."""
+        source = dict(track or {})
+        allowed = (
+            "provider_id", "track_id", "id", "rel", "local_path", "title",
+            "artist", "album", "name", "duration", "duration_seconds", "track_no",
+            "disc_no", "year", "genre", "provisional", "progressive_local",
+        )
+        snapshot: dict[str, Any] = {}
+        for key in allowed:
+            value = source.get(key)
+            if value is None or value == "":
+                continue
+            if key == "local_path" and isinstance(value, Path):
+                value = str(value)
+            if key in {"local_path", "rel"} and isinstance(value, str):
+                if value.strip().casefold().startswith(("http://", "https://")):
+                    continue
+            if key == "provider_id" and isinstance(value, str):
+                value = value.strip()
+            if not isinstance(value, (str, int, float, bool)):
+                continue
+            if isinstance(value, float) and not math.isfinite(value):
+                continue
+            if key in {"track_id", "id"} and isinstance(value, str):
+                identity = value.strip()
+                if not identity or identity.casefold().startswith(("http://", "https://")):
+                    continue
+                if "?" in identity or "#" in identity:
+                    continue
+                value = identity
+            snapshot[key] = value
+        return snapshot
+
+    @staticmethod
+    def playback_identity(track: dict[str, Any] | None) -> str:
+        row = UserState.playback_track_snapshot(track)
+        local_path = str(row.get("local_path") or "").strip()
+        if local_path:
+            return "file:" + local_path
+        rel = str(row.get("rel") or "").strip()
+        if rel:
+            return "rel:" + rel
+        provider = str(row.get("provider_id") or "").strip()
+        track_id = row.get("track_id")
+        if track_id in (None, ""):
+            track_id = row.get("id")
+        if provider and track_id not in (None, ""):
+            return "provider:" + json.dumps(
+                [provider, str(track_id)], ensure_ascii=False, separators=(",", ":")
+            )
+        return ""
+
+    @staticmethod
+    def same_playback_track(
+        left: dict[str, Any] | None, right: dict[str, Any] | None
+    ) -> bool:
+        left_identity = UserState.playback_identity(left)
+        right_identity = UserState.playback_identity(right)
+        if left_identity or right_identity:
+            return bool(left_identity and right_identity and left_identity == right_identity)
+        left_row = dict(left or {})
+        right_row = dict(right or {})
+        if not any(str(left_row.get(key) or "").strip() for key in ("artist", "album", "title")):
+            return False
+        return UserState.track_key(left_row) == UserState.track_key(right_row)
+
     def _signal_event(self, track: dict[str, Any], event: str) -> None:
         key = self.track_key(track)
         if not key:
             return
-        payload = json.dumps(dict(track), ensure_ascii=False)
+        payload = json.dumps(self.playback_track_snapshot(track), ensure_ascii=False)
         artist = str(track.get("artist", "") or "")
         now = time.time()
         column = {
@@ -434,25 +502,34 @@ class UserState:
                 "ON CONFLICT(track_key) DO UPDATE SET track_json=excluded.track_json,artist=excluded.artist",
                 (key, payload, artist),
             )
-            extra = ""
-            params: list[Any] = [now if event == "play" else now if event == "complete" else now, key]
+            params: list[Any] = [now, key]
             if event == "play":
-                self._conn.execute(f"UPDATE track_signals SET {column}={column}+1,last_played=? WHERE track_key=?", params)
+                self._conn.execute(
+                    f"UPDATE track_signals SET {column}={column}+1,last_played=? WHERE track_key=?",
+                    params,
+                )
             elif event == "complete":
-                self._conn.execute(f"UPDATE track_signals SET {column}={column}+1,last_completed=? WHERE track_key=?", params)
+                self._conn.execute(
+                    f"UPDATE track_signals SET {column}={column}+1,last_completed=? WHERE track_key=?",
+                    params,
+                )
             else:
-                self._conn.execute(f"UPDATE track_signals SET {column}={column}+1,last_feedback=? WHERE track_key=?", params)
+                self._conn.execute(
+                    f"UPDATE track_signals SET {column}={column}+1,last_feedback=? WHERE track_key=?",
+                    params,
+                )
 
     def record_play(self, track: dict[str, Any]) -> int:
-        payload = json.dumps(dict(track), ensure_ascii=False)
+        snapshot = self.playback_track_snapshot(track)
+        payload = json.dumps(snapshot, ensure_ascii=False)
         with self._lock, self._conn:
             cur = self._conn.execute(
                 "INSERT INTO listening_history(rel,track_json,played_at,completed) VALUES(?,?,?,0)",
-                (str(track.get("rel", "") or ""), payload, time.time()),
+                (str(snapshot.get("rel", "") or ""), payload, time.time()),
             )
             history_id = int(cur.lastrowid or 0)
         self._signal_event(track, "play")
-        path = str(track.get("local_path") or "").strip()
+        path = str(snapshot.get("local_path") or "").strip()
         if path:
             self.record_recent_directory(str(Path(path).parent))
         return history_id
@@ -460,9 +537,13 @@ class UserState:
     def save_playback_checkpoint(
         self, track: dict[str, Any] | None, position_ms: int
     ) -> None:
-        """Persist the last local playback position without filesystem access."""
-        row = dict(track or {})
-        if not row:
+        """Persist a stable track identity and position, never a short-lived source."""
+        if not track:
+            return
+        row = self.playback_track_snapshot(track)
+        if not self.playback_identity(row):
+            with self._lock, self._conn:
+                self._conn.execute("DELETE FROM playback_checkpoint WHERE id=1")
             return
         payload = json.dumps(row, ensure_ascii=False)
         with self._lock, self._conn:
@@ -482,11 +563,23 @@ class UserState:
         if row is None:
             return None
         try:
-            track = json.loads(row["track_json"])
+            raw_track = json.loads(row["track_json"])
         except Exception:
             return None
-        if not isinstance(track, dict):
+        if not isinstance(raw_track, dict):
             return None
+        track = self.playback_track_snapshot(raw_track)
+        if not self.playback_identity(track):
+            with self._lock, self._conn:
+                self._conn.execute("DELETE FROM playback_checkpoint WHERE id=1")
+            return None
+        payload = json.dumps(track, ensure_ascii=False)
+        if payload != row["track_json"]:
+            with self._lock, self._conn:
+                self._conn.execute(
+                    "UPDATE playback_checkpoint SET track_json=? WHERE id=1",
+                    (payload,),
+                )
         return {
             "track": track,
             "position_ms": max(0, int(row["position_ms"] or 0)),
@@ -500,76 +593,96 @@ class UserState:
         *,
         max_tracks: int = 5000,
     ) -> None:
-        """Persist a bounded, local-only queue without transient stream URLs."""
+        """Persist a bounded queue of resolvable identities without temporary URLs."""
         source = [dict(row) for row in list(tracks or []) if isinstance(row, dict)]
-        current = source[int(queue_index)] if 0 <= int(queue_index) < len(source) else None
-        allowed = {
-            "provider_id", "track_id", "rel", "title", "artist", "album",
-            "duration", "local_path", "track_no", "disc_no", "year",
-            "genre", "provisional", "progressive_local", "availability",
-        }
-        local_rows = [
-            {key: value for key, value in row.items() if key in allowed}
-            for row in source
-            if str(row.get("local_path") or "").strip()
-        ][: max(1, int(max_tracks))]
-        if not local_rows:
+        try:
+            requested_index = int(queue_index)
+        except (TypeError, ValueError):
+            requested_index = -1
+        entries = []
+        for source_index, row in enumerate(source):
+            snapshot = self.playback_track_snapshot(row)
+            if self.playback_identity(snapshot):
+                entries.append((source_index, snapshot))
+        if not entries:
             with self._lock, self._conn:
                 self._conn.execute("DELETE FROM playback_queue WHERE id=1")
             return
-        current_key = (
-            str(current.get("track_id") or current.get("local_path") or "")
-            if isinstance(current, dict)
-            else ""
+        target_position = next(
+            (i for i, (source_index, _) in enumerate(entries) if source_index == requested_index),
+            None,
         )
-        saved_index = next(
-            (
-                index
-                for index, row in enumerate(local_rows)
-                if current_key
-                and str(row.get("track_id") or row.get("local_path") or "")
-                == current_key
-            ),
-            0,
-        )
-        payload = json.dumps(local_rows, ensure_ascii=False)
+        if target_position is None and requested_index >= 0:
+            target_position = min(
+                range(len(entries)),
+                key=lambda i: (abs(entries[i][0] - requested_index), entries[i][0] > requested_index),
+            )
+        if target_position is None:
+            target_position = 0
+        limit = max(1, int(max_tracks))
+        if len(entries) > limit:
+            start = max(0, min(target_position - limit // 2, len(entries) - limit))
+            entries = entries[start:start + limit]
+            target_position -= start
+        payload = json.dumps([row for _, row in entries], ensure_ascii=False)
         with self._lock, self._conn:
             self._conn.execute(
                 "INSERT INTO playback_queue(id,tracks_json,queue_index,updated_at) "
                 "VALUES(1,?,?,?) ON CONFLICT(id) DO UPDATE SET "
                 "tracks_json=excluded.tracks_json,queue_index=excluded.queue_index,"
                 "updated_at=excluded.updated_at",
-                (payload, saved_index, time.time()),
+                (payload, target_position, time.time()),
             )
 
     def playback_queue(self, *, max_tracks: int = 5000) -> dict[str, Any] | None:
         with self._lock:
-            row = self._conn.execute(
+            saved = self._conn.execute(
                 "SELECT tracks_json,queue_index,updated_at FROM playback_queue WHERE id=1"
             ).fetchone()
-        if row is None:
+        if saved is None:
             return None
         try:
-            tracks = json.loads(row["tracks_json"])
+            raw_tracks = json.loads(saved["tracks_json"])
         except Exception:
             return None
-        if not isinstance(tracks, list):
+        if not isinstance(raw_tracks, list):
             return None
-        local_tracks = [
-            dict(track)
-            for track in tracks
-            if isinstance(track, dict)
-            and str(track.get("local_path") or "").strip()
-        ][: max(1, int(max_tracks))]
-        if not local_tracks:
+        entries = []
+        for source_index, raw_track in enumerate(raw_tracks):
+            if not isinstance(raw_track, dict):
+                continue
+            snapshot = self.playback_track_snapshot(raw_track)
+            if self.playback_identity(snapshot):
+                entries.append((source_index, snapshot))
+        if not entries:
+            with self._lock, self._conn:
+                self._conn.execute("DELETE FROM playback_queue WHERE id=1")
             return None
+        old_index = max(0, min(len(raw_tracks) - 1, int(saved["queue_index"] or 0)))
+        target_position = next(
+            (i for i, (source_index, _) in enumerate(entries) if source_index == old_index),
+            None,
+        )
+        if target_position is None:
+            target_position = min(
+                range(len(entries)),
+                key=lambda i: (abs(entries[i][0] - old_index), entries[i][0] > old_index),
+            )
+        limit = max(1, int(max_tracks))
+        if len(entries) > limit:
+            start = max(0, min(target_position - limit // 2, len(entries) - limit))
+            entries = entries[start:start + limit]
+            target_position -= start
+        tracks = [row for _, row in entries]
+        with self._lock, self._conn:
+            self._conn.execute(
+                "UPDATE playback_queue SET tracks_json=?,queue_index=? WHERE id=1",
+                (json.dumps(tracks, ensure_ascii=False), target_position),
+            )
         return {
-            "tracks": local_tracks,
-            "queue_index": max(
-                0,
-                min(len(local_tracks) - 1, int(row["queue_index"] or 0)),
-            ),
-            "updated_at": float(row["updated_at"] or 0),
+            "tracks": tracks,
+            "queue_index": target_position,
+            "updated_at": float(saved["updated_at"] or 0),
         }
 
     def record_recent_directory(self, path: str | Path) -> None:
@@ -817,7 +930,7 @@ class UserState:
         key = self.track_key(track)
         if not key:
             raise ValueError("track is required")
-        payload = json.dumps(dict(track), ensure_ascii=False)
+        payload = json.dumps(self.playback_track_snapshot(track), ensure_ascii=False)
         with self._lock, self._conn:
             cur = self._conn.execute(
                 "INSERT INTO moments(track_key,track_json,position_ms,label,created_at) VALUES(?,?,?,?,?)",
@@ -832,18 +945,29 @@ class UserState:
                 (max(1, int(limit)),),
             ).fetchall()
         out: list[dict[str, Any]] = []
+        updates: list[tuple[str, int]] = []
         for row in rows:
             try:
-                track = json.loads(row["track_json"])
-                if not isinstance(track, dict):
-                    track = {}
+                raw_track = json.loads(row["track_json"])
+                if not isinstance(raw_track, dict):
+                    raw_track = {}
             except Exception:
-                track = {}
+                raw_track = {}
+            track = self.playback_track_snapshot(raw_track)
+            payload = json.dumps(track, ensure_ascii=False)
+            if payload != row["track_json"]:
+                updates.append((payload, int(row["id"])))
             out.append({
                 "id": int(row["id"]), "track_key": row["track_key"], "track": track,
                 "position_ms": int(row["position_ms"] or 0), "label": str(row["label"] or ""),
                 "created_at": float(row["created_at"] or 0),
             })
+        if updates:
+            with self._lock, self._conn:
+                self._conn.executemany(
+                    "UPDATE moments SET track_json=? WHERE id=?",
+                    updates,
+                )
         return out
 
     def delete_moment(self, moment_id: int) -> None:
@@ -962,17 +1086,30 @@ class UserState:
                 (max(1, int(limit)),),
             ).fetchall()
         out: list[dict[str, Any]] = []
+        updates: list[tuple[str, int]] = []
         for row in rows:
             try:
-                item = json.loads(row["track_json"])
-                if not isinstance(item, dict):
+                raw_item = json.loads(row["track_json"])
+                if not isinstance(raw_item, dict):
                     continue
             except Exception:
                 continue
+            item = self.playback_track_snapshot(raw_item)
+            if not item:
+                continue
+            payload = json.dumps(item, ensure_ascii=False)
+            if payload != row["track_json"]:
+                updates.append((payload, int(row["id"])))
             item["_history_id"] = row["id"]
             item["_played_at"] = row["played_at"]
             item["_completed"] = bool(row["completed"])
             out.append(item)
+        if updates:
+            with self._lock, self._conn:
+                self._conn.executemany(
+                    "UPDATE listening_history SET track_json=? WHERE id=?",
+                    updates,
+                )
         return out
 
     def sessions(self, limit: int = 16, gap_minutes: int = 45) -> list[dict[str, Any]]:

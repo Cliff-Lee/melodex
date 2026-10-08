@@ -564,7 +564,7 @@ class MainWindow(QMainWindow):
     def _persist_playback_queue_async(self, tracks: object) -> None:
         if self._closing or not isinstance(tracks, list):
             return
-        snapshot = [dict(row) for row in tracks[:5000] if isinstance(row, dict)]
+        snapshot = [dict(row) for row in tracks if isinstance(row, dict)]
         queue_index = int(self.player.index)
         self._run_async(
             lambda: self.state.save_playback_queue(snapshot, queue_index),
@@ -2399,14 +2399,13 @@ class MainWindow(QMainWindow):
             position = max(0, int((checkpoint or {}).get("position_ms") or 0))
             if (
                 position >= 2000
-                and UserState.track_key(saved_track) == UserState.track_key(track)
+                and UserState.same_playback_track(saved_track, track)
             ):
                 self._resume_checkpoint_when_ready(track, position)
 
     def _resume_checkpoint_when_ready(
         self, track: dict[str, Any], position_ms: int
     ) -> None:
-        token = UserState.track_key(track)
         attempts = {"count": 0}
         timer = QTimer(self)
         timer.setInterval(100)
@@ -2414,7 +2413,7 @@ class MainWindow(QMainWindow):
         def resume() -> None:
             attempts["count"] += 1
             current = dict(self.playback_feature.current_track() or {})
-            if UserState.track_key(current) != token:
+            if not UserState.same_playback_track(current, track):
                 timer.stop()
                 timer.deleteLater()
                 return
@@ -4797,7 +4796,7 @@ class MainWindow(QMainWindow):
         self._window_settings.setValue("window/normal_geometry_trusted", True)
         self._invalidate_async("playback-queue-save")
         self.state.save_playback_queue(
-            list(self.player.queue[:5000]),
+            list(self.player.queue),
             int(self.player.index),
         )
         self._persist_playback_checkpoint(synchronous=True)

@@ -124,3 +124,23 @@ def test_recommendation_result_resolves_through_playback_provider_without_direct
     assert recommend.resolve_calls == 0
     assert recommend.search_calls == 0
     assert playable.resolve_calls == 1
+
+
+def test_direct_provider_id_identity_stays_direct_without_track_id():
+    class IdentityDroppingProvider(FakeProvider):
+        def resolve(self, track):
+            self.resolve_calls += 1
+            return {"stream_url": "https://example.invalid/fresh"}
+
+    provider = IdentityDroppingProvider("a", [])
+    manager = Manager({"a": provider})
+    out = UniversalResolver(manager).resolve({
+        "provider_id": "a",
+        "id": "provider-track-123",
+        "artist": "X",
+        "title": "Y",
+    })
+    assert out["provider_id"] == "a"
+    assert out["id"] == "provider-track-123"
+    assert out["_resolution"]["mode"] == "direct"
+    assert provider.resolve_calls == 1
