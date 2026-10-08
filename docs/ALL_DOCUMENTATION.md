@@ -111,12 +111,14 @@ This page is intentionally exhaustive. For a shorter route by goal, use the [doc
 - [P17 — Rediscovery Engine](P17_REDISCOVERY_ENGINE.md)
 - [P18 — Private Taste Engine](P18_PRIVATE_TASTE_ENGINE.md)
 - [P19 — Android Standalone Player](P19_ANDROID_STANDALONE.md)
+- [P21 — Android 16 and Google Play preparation](P21_ANDROID_PLAY_READINESS.md)
 
 ## Build and release
 
 - [Build from source](BUILD_FROM_SOURCE.md)
 - [Releases, `main`, and version numbers](RELEASES_AND_MAIN.md)
 - [Releasing](RELEASING.md)
+- [Melodex v0.7.23 release notes](releases/v0.7.23.md)
 - [Melodex v0.7.21 release notes](releases/v0.7.21.md)
 - [Melodex v0.7.20 release notes](releases/v0.7.20.md)
 - [Melodex v0.7.2 release notes](releases/v0.7.2.md)

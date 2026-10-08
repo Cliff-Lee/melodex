@@ -1,4 +1,4 @@
-# Privacy
+# Melodex Privacy Policy
 
 Melodex is designed to be local-first, but **local-first does not mean no network activity**, and it does not mean every local secret is currently stored in an operating-system credential vault.
 
@@ -109,6 +109,38 @@ relative days since last play
 The contract does not include absolute local paths, provider-local IDs, SQLite/database keys, raw audio or absolute listening timestamps. Core retains the real track objects and maps returned ephemeral refs back after the plugin responds.
 
 This is a **data-minimisation boundary**, not an OS sandbox. As with other desktop plugins, executable third-party extension code still runs with the current user's operating-system permissions unless stronger platform sandboxing is configured.
+
+## Android app
+
+The Android app has no Melodex account, ads, or analytics SDK. In **On this
+phone** mode, it reads Android MediaStore audio metadata and album artwork only
+after the user grants audio access. The selected files, metadata, and audio
+remain on the phone; Melodex does not copy the files or upload local playback.
+The app stores the local queue and current position in app-private storage so
+they can be restored after a restart. Clearing app data or uninstalling removes
+that local state.
+
+The camera is requested only when the user chooses QR pairing. Melodex decodes
+the QR on the phone and does not save or upload the camera image.
+
+When the user chooses **Connect a Melodex**, search requests and playback
+requests go from the phone to the paired desktop Bridge. The Bridge may contact
+music sources that the user configured on that desktop; those providers' own
+privacy terms apply. Audio for Bridge playback is streamed to the phone and is
+not saved as an Android queue URL.
+
+Android stores each paired Bridge address, device ID, display name, and token
+in app-private preferences encrypted with Android Keystore. The token remains
+until the user unpairs the phone, clears app data, or uninstalls Melodex. The
+desktop can revoke that phone's token. Pairing and Bridge playback are intended
+for a trusted local network; raw HTTP Bridge traffic is visible to devices that
+can observe that network.
+
+## Privacy contact
+
+For a privacy question, use [Melodex GitHub Discussions](https://github.com/Cliff-Lee/melodex/discussions).
+Please do not post passwords, tokens, private media URLs, or sensitive personal
+details in a public discussion.
 
 ## Provider Bridge
 

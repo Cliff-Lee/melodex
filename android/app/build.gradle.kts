@@ -3,16 +3,51 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+val playUploadStoreFile = providers.environmentVariable("MELODEX_UPLOAD_STORE_FILE").orNull
+val playUploadStorePassword = providers.environmentVariable("MELODEX_UPLOAD_STORE_PASSWORD").orNull
+val playUploadKeyAlias = providers.environmentVariable("MELODEX_UPLOAD_KEY_ALIAS").orNull
+val playUploadKeyPassword = providers.environmentVariable("MELODEX_UPLOAD_KEY_PASSWORD").orNull
+val playUploadSigningValues = listOf(
+    playUploadStoreFile,
+    playUploadStorePassword,
+    playUploadKeyAlias,
+    playUploadKeyPassword
+)
+val hasPlayUploadSigning = playUploadSigningValues.all { !it.isNullOrBlank() }
+val hasAnyPlayUploadSigning = playUploadSigningValues.any { !it.isNullOrBlank() }
+if (hasAnyPlayUploadSigning && !hasPlayUploadSigning) {
+    throw GradleException("Set all four MELODEX_UPLOAD_* signing variables or leave all unset.")
+}
+
 android {
     namespace = "com.melodex.app"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.melodex.app"
         minSdk = 26
-        targetSdk = 35
-        versionCode = 723
-        versionName = "0.7.23"
+        targetSdk = 36
+        versionCode = 724
+        versionName = "0.7.24.dev0"
+    }
+
+    signingConfigs {
+        if (hasPlayUploadSigning) {
+            create("playUpload") {
+                storeFile = file(playUploadStoreFile!!)
+                storePassword = playUploadStorePassword
+                keyAlias = playUploadKeyAlias
+                keyPassword = playUploadKeyPassword
+            }
+        }
+    }
+
+    buildTypes {
+        getByName("release") {
+            if (hasPlayUploadSigning) {
+                signingConfig = signingConfigs.getByName("playUpload")
+            }
+        }
     }
 
     buildFeatures { compose = true }

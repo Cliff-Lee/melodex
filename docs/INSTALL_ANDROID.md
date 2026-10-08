@@ -136,23 +136,24 @@ The Provider Bridge is intended for a **trusted local network**.
 - For remote access, use an HTTPS reverse proxy or trusted VPN rather than raw
   port forwarding.
 
-## 7. Background playback
+## 8. Background playback
 
 Playback continues when you leave Melodex or lock the screen. Use Android's
 media notification or lock-screen controls to pause or resume. Headset/Bluetooth
 play/pause buttons are supported, and unplugging headphones pauses playback.
 
-## 8. Current preview limitations
+## 9. Current preview limitations
 
-The published v0.7.22 APK includes P19a–P19d: local playback, background
-controls, local search and queue, and QR pairing with per-phone credentials and
-revocation. Automatic local-network discovery and Flow/taste tools remain later
-campaign work. Physical-device verification is still useful for QR scanning,
-reconnection after relaunch, permission behavior, and playback. If you install
-an older v0.7.21 APK, use its Advanced manual setup because that build predates
-QR pairing.
+The v0.7.23 release includes P19a–P19d: local playback, background controls,
+local search and queue, and QR pairing with per-phone credentials and
+revocation. P20 adds the Android icon, seekable now-playing controls, and
+independent playback on each phone. Automatic local-network discovery and
+Flow/taste tools remain later campaign work. Physical-device verification is
+still useful for QR scanning, reconnection after relaunch, permission behavior,
+playback, and multi-phone independence. If you install an older v0.7.21 APK,
+use its Advanced manual setup because that build predates QR pairing.
 
-## 9. Update or uninstall
+## 10. Update or uninstall
 
 To update, download the new `Melodex-Android.apk` from the official GitHub
 Releases page, open it, and confirm the update.

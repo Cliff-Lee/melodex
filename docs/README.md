@@ -44,4 +44,4 @@ Use the [Tinkerer's guide](TINKERERS_GUIDE.md) for optional sources, plugins, vi
 
 The [complete documentation index](ALL_DOCUMENTATION.md) is exhaustive. It includes installation, user help, plugin and provider references, API guides, privacy, security, and release material.
 
-For the current release notes, see [Melodex v0.7.2](releases/v0.7.2.md).
+For the current release notes, see [Melodex v0.7.23](releases/v0.7.23.md).

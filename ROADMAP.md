@@ -18,7 +18,7 @@ The current priority is to make the desktop player dependable and pleasant for e
 
 Once the desktop beta is stable enough that ordinary testing stops uncovering basic behavioural defects:
 
-- make the Android app useful as a standalone local player while keeping Bridge connectivity optional;
+- prepare Android for public distribution with Android 16 compatibility, Play upload signing, and accurate privacy disclosures;
 - improve metadata and artwork recovery;
 - strengthen playlist import/export and sharing;
 - continue improving connected music-source reliability and extension tooling;
@@ -41,6 +41,7 @@ Longer-term possibilities include:
 Melodex already has:
 
 - packaged desktop builds for macOS, Windows and Linux;
+- Android local playback with optional Provider Bridge pairing;
 - local-library and NAS-oriented indexing;
 - Flow listening sessions, rediscovery and taste memory;
 - playlists, lyrics, listening history and visualisations;
