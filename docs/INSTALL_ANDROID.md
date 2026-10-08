@@ -59,39 +59,37 @@ music later, open **Settings → Apps → Melodex → Permissions → Music and 
 For this path, the phone and computer should be on the same trusted Wi-Fi/LAN.
 First confirm that the computer's Melodex can play the source you want to use.
 
-### Start the Provider Bridge
+### Pair Android with a QR code
 
 On the Mac or Windows computer:
 
-1. Open Melodex.
-2. Open **Sources**.
-3. Click **Provider Bridge…**.
-4. When asked **Allow phones/computers on your LAN to connect?**, choose **Yes**.
-5. Keep the displayed bearer token available. You will enter it on Android.
+1. Open Melodex and choose **Sources → Provider Bridge…**.
+2. When asked to allow LAN access, choose **Yes**.
+3. Keep the pairing dialog open; it displays a QR code.
 
-The token is a password for this Bridge session. Do not post it publicly.
+On Android:
 
-### Find the computer's local IP address
+1. Choose **Connect a Melodex → Scan desktop QR code**.
+2. Allow camera access when Android asks, then scan the code shown on your computer.
+3. Search for a song, artist, or other term, then tap a result to play it.
 
-On macOS, open **System Settings → Network → Wi-Fi → Details** and look for
-**IP Address**.
+The QR code is a one-time code that expires after two minutes. The phone and
+computer must be on the same trusted local network. Pairing does not use an
+account or an external rendezvous service. Android saves a separate encrypted
+connection for this phone, and the desktop can revoke it from **Paired phones**.
+If the phone is offline when you forget the connection, revoke it from the
+desktop dialog when it is back online.
 
-On Windows, open **Settings → Network & internet → Wi-Fi/Ethernet → Properties**
-and look for **IPv4 address**. Or run `ipconfig` in Command Prompt.
+### Advanced setup: enter the Bridge details manually
 
-For example, the address may look like `192.168.1.42` or `10.0.0.25`. Do not
-use `127.0.0.1` or `localhost` on the phone; those refer to the phone itself.
+In the desktop pairing dialog, choose **Show advanced manual setup** to reveal
+the Bridge URL and session token. In Android choose **Advanced setup**, enter
+those values, then tap **Connect manually**.
 
-### Connect and play
-
-1. In Android Melodex, choose **Connect a Melodex**.
-2. For **Bridge URL**, enter `http://COMPUTER-IP:8766`, for example
-   `http://192.168.1.42:8766`.
-3. Enter the desktop Melodex bearer token and tap **Connect**.
-4. Search for a song, artist, or other term, then tap a result to play it.
-
-The preview asks for the Bridge address and token manually. QR pairing and
-automatic LAN discovery are not available yet.
+The Bridge URL usually looks like `http://192.168.1.42:8766` or
+`http://10.0.0.25:8766`. Do not use `127.0.0.1` or `localhost` on the
+phone; those refer to the phone itself. Treat the session token like a
+password. It changes when the desktop Bridge restarts.
 
 ## 5. If Android cannot connect to the Bridge
 
@@ -141,11 +139,12 @@ play/pause buttons are supported, and unplugging headphones pauses playback.
 ## 8. Current preview limitations
 
 The published v0.7.21 APK includes P19a: the phone library and direct track
-playback. P19b and P19c are development work and are not included in that
-release. P19c adds local search and sorting, album thumbnails, richer metadata,
-clearer empty/error states, and a queue saved across app restarts; those
-features still need physical-device verification before release. QR pairing
-and Flow/taste remain later campaign work.
+playback. P19b, P19c, and P19d are development work and are not included in
+that release. P19d adds QR pairing, encrypted saved credentials, and per-phone
+revocation. Check the version installed on your device before following the QR
+steps above; v0.7.21 uses the advanced manual setup. Physical-device
+verification is still needed for the newer campaign builds. Flow and taste
+tools remain later campaign work.
 
 ## 9. Update or uninstall
 
