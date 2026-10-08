@@ -67,9 +67,9 @@ play-pause actions use that session. ExoPlayer handles audio focus and pauses
 when the audio output becomes noisy, such as when headphones are unplugged.
 Track title, artist, and album metadata are included in the session item.
 
-Playback is now independent of the Activity lifecycle. This stage still uses
-one current item: queue persistence, local search, artwork, QR pairing, and
-Flow/taste features remain for later P19 work.
+Playback is now independent of the Activity lifecycle. P19b still used one
+current item; local search, sorting, artwork, metadata cleanup, and a persistent
+queue are the focus of P19c. QR pairing and Flow/taste remain later work.
 
 ## P19b verification
 
@@ -78,6 +78,28 @@ check that playback continues after leaving the app and locking the screen;
 test notification/lock-screen and headset controls, audio interruptions, and
 the optional Bridge path. P19f will add the broader supported-device and
 accessibility matrix.
+
+## P19c progress
+
+The local library first loads a small MediaStore preview so tracks can be played
+while the complete list loads in the background. Once loaded, listeners can
+search title, artist, or album and sort by any of those fields. Missing metadata
+gets clear fallbacks, duration is shown when available, and rows request album
+thumbnails without blocking playback.
+
+The local queue supports adding, removing, and clearing tracks. It is saved
+across app restarts, including the current track position, and the playback
+service updates that position when Android notification, lock-screen, or
+headset controls skip tracks. Bridge stream URLs are not persisted because
+they may expire.
+
+## P19c verification
+
+GitHub Actions must build the debug APK and release bundle and pass the
+repository test/package gates. On a device, check that the first preview track
+can play before the full list finishes, search and sorting work with missing
+metadata, album art appears when available, empty/error states are understandable,
+and the queue survives an app restart and system media-control skips.
 
 ## Completion gates
 
