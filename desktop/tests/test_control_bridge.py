@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from pathlib import Path
 import json
+import os
 import stat
 import urllib.error
 import urllib.request
+from dataclasses import dataclass
+from pathlib import Path
 
 from melodex.bridge_server import ProviderBridge
 from melodex.control_client import MelodexControlClient
@@ -212,6 +213,14 @@ def test_paired_device_token_persists_and_can_be_revoked(tmp_path: Path):
         assert status == 200
         assert providers["providers"][0]["id"] == "local"
 
+        status, resolved = _bridge_http(
+            f"http://127.0.0.1:{first.port}/v1/resolve?provider=local&id=song",
+            token=token,
+        )
+        assert status == 200
+        media_url = resolved["stream_url"]
+        assert f"token={token}" in media_url
+
         status, _ = _bridge_http(pair_url, "POST", {"code": code, "device_name": "second"})
         assert status == 401
 
@@ -239,6 +248,8 @@ def test_paired_device_token_persists_and_can_be_revoked(tmp_path: Path):
         assert status == 200
         assert response["ok"] is True
         status, _ = _bridge_http(f"http://127.0.0.1:{second.port}/v1/providers", token=token)
+        assert status == 401
+        status, _ = _bridge_http(media_url)
         assert status == 401
     finally:
         second.stop()
