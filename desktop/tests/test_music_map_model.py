@@ -151,6 +151,25 @@ def test_music_map_uses_library_rediscovery_and_carries_its_reason():
     assert "local_path" not in node
 
 
+def test_music_map_carries_the_shared_taste_match_and_explanation():
+    profile = _profile(
+        "taste-corrected",
+        bpm=110,
+        energy=0.55,
+        centroid=1400,
+        onset=0.10,
+    )
+    profile["taste_model_adjustment"] = 0.8
+    profile["taste_model_reason"] = "matches your request for more Northbound"
+
+    node = build_music_map([profile])["nodes"][0]
+
+    assert node["taste"] > 0.1
+    assert node["taste_adjustment"] == 0.8
+    assert node["taste_reason"] == "matches your request for more Northbound"
+    assert "local_path" not in node
+
+
 def test_music_map_large_library_selection_is_deterministic():
     profiles = [
         _profile(

@@ -448,6 +448,31 @@ class PlaybackFeature(QObject):
         self.love_button = QPushButton("♥")
         self.love_button.setObjectName("playerAction")
         self.love_button.clicked.connect(lambda: self._feedback(True))
+        self.taste_button = QPushButton("Taste")
+        self.taste_button.setObjectName("playerAction")
+        self.taste_button.setAccessibleName("Taste feedback")
+        self.taste_button.setEnabled(False)
+        taste_menu = QMenu(self.taste_button)
+        self.more_taste_action = taste_menu.addAction("More like this")
+        self.more_taste_action.setStatusTip(
+            "Give more weight to this track's artist and genre in your local taste model."
+        )
+        self.more_taste_action.triggered.connect(
+            lambda _checked=False: self._correct_taste("more")
+        )
+        self.less_taste_action = taste_menu.addAction("Less like this")
+        self.less_taste_action.setStatusTip(
+            "Give less weight to this track's artist and genre in your local taste model."
+        )
+        self.less_taste_action.triggered.connect(
+            lambda _checked=False: self._correct_taste("less")
+        )
+        taste_menu.addSeparator()
+        self.clear_taste_action = taste_menu.addAction("Clear taste correction")
+        self.clear_taste_action.triggered.connect(
+            lambda _checked=False: self._clear_taste_correction()
+        )
+        self.taste_button.setMenu(taste_menu)
         self.queue_button = QPushButton("Queue")
         self.queue_button.setObjectName("playerAction")
         self.queue_button.clicked.connect(
@@ -459,9 +484,16 @@ class PlaybackFeature(QObject):
             "Teach Melodex that this track is worth keeping around in future listening.",
         )
         set_help(self.love_button, "Love", "Mark this as a strong positive preference.")
+        set_help(
+            self.taste_button,
+            "Correct taste",
+            "Choose More like this or Less like this to adjust how Melodex uses this artist and genre. "
+            "The correction stays on this device and can be cleared from this menu.",
+        )
         set_help(self.queue_button, "Queue", "Show or hide the music that is coming next.")
         layout.addWidget(self.keep_button)
         layout.addWidget(self.love_button)
+        layout.addWidget(self.taste_button)
         layout.addWidget(self.queue_button)
 
         self.player_power_actions = QWidget()
@@ -1249,6 +1281,15 @@ class PlaybackFeature(QObject):
         """Compatibility shim for older tests/callers using QSlider semantics."""
         self._seek_finished(int(self.seek.value()))
 
+    @staticmethod
+    def _has_taste_traits(track: dict[str, Any]) -> bool:
+        if str(track.get("artist") or track.get("album_artist") or "").strip():
+            return True
+        genres = track.get("genres") or track.get("genre")
+        if isinstance(genres, (list, tuple, set)):
+            return any(str(value or "").strip() for value in genres)
+        return bool(str(genres or "").strip())
+
     def _set_taste_action_state(
         self,
         *,
@@ -1261,6 +1302,9 @@ class PlaybackFeature(QObject):
         if hasattr(self, "keep_button"):
             self.keep_button.setText("✓ Kept" if kept else "Keep")
             self.keep_button.setEnabled(not kept)
+        if hasattr(self, "taste_button"):
+            track = dict(self._current_track or {})
+            self.taste_button.setEnabled(self._has_taste_traits(track))
 
     def _load_taste_action_state(self, track: dict[str, Any]) -> None:
         token = UserState.track_key(track)
@@ -1328,6 +1372,62 @@ class PlaybackFeature(QObject):
             failed,
             priority="foreground",
             task_name="taste-feedback-save",
+        )
+
+    def _correct_taste(self, direction: str) -> None:
+        track = dict(self._current_track or {})
+        if not track:
+            return
+        if not self._has_taste_traits(track):
+            self._status("Add artist or genre details before correcting taste", 4000)
+            return
+        direction = str(direction or "").strip().lower()
+        if direction not in {"more", "less"}:
+            return
+
+        def persist() -> bool:
+            return bool(self.state.record_taste_correction(track, direction))
+
+        def saved(result: object) -> None:
+            if result:
+                self._status(
+                    "Taste correction saved · choose the opposite action to change it",
+                    4500,
+                )
+            else:
+                self._status("Could not save taste correction", 4000)
+
+        def failed(error: str) -> None:
+            self._status(f"Could not save taste correction · {error}", 5000)
+
+        self._run_async(
+            persist,
+            saved,
+            failed,
+            priority="foreground",
+            task_name="taste-correction-save",
+        )
+
+    def _clear_taste_correction(self) -> None:
+        track = dict(self._current_track or {})
+        if not track:
+            return
+
+        def persist() -> bool:
+            return bool(self.state.clear_taste_correction(track))
+
+        def saved(result: object) -> None:
+            self._status(
+                "Taste correction cleared" if result else "No taste correction to clear",
+                3500,
+            )
+
+        self._run_async(
+            persist,
+            saved,
+            lambda error: self._status(f"Could not clear taste correction · {error}", 5000),
+            priority="foreground",
+            task_name="taste-correction-clear",
         )
 
     def _keep(self):
@@ -1572,7 +1672,11 @@ class PlaybackFeature(QObject):
                 item.setToolTip(
                     "This track is protected from automatic journey changes."
                 )
-            explanation = self._queue_reasons.get(queue_track_key(t), "")
+            explanation = str(
+                t.get("_mind_reason")
+                or self._queue_reasons.get(queue_track_key(t), "")
+                or t.get("_taste_model_reason")
+            )
             if explanation:
                 item.setToolTip(
                     (item.toolTip() + "\n" if item.toolTip() else "")
@@ -1615,7 +1719,11 @@ class PlaybackFeature(QObject):
             parts = []
             if entry.pinned or entry.locked:
                 parts.append("This track is protected from automatic journey changes.")
-            explanation = self._queue_reasons.get(queue_track_key(entry.track), "")
+            explanation = str(
+                entry.track.get("_mind_reason")
+                or self._queue_reasons.get(queue_track_key(entry.track), "")
+                or entry.track.get("_taste_model_reason")
+            )
             if explanation:
                 parts.append("Why this track: " + explanation)
             item.setToolTip("\n".join(parts))
@@ -1696,6 +1804,11 @@ class PlaybackFeature(QObject):
         if 0 <= index < len(self.living_queue.entries):
             reason = self._queue_reasons.get(
                 queue_track_key(self.living_queue.entries[index].track), ""
+            )
+            reason = str(
+                self.living_queue.entries[index].track.get("_mind_reason")
+                or reason
+                or self.living_queue.entries[index].track.get("_taste_model_reason")
             )
         self.queue_reason_label.setText(
             f"Why this track: {reason}"

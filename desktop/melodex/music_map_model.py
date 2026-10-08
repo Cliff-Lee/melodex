@@ -146,6 +146,14 @@ def _scale_axis(values: list[float]) -> list[float]:
     ]
 
 
+def _taste_model_adjustment(profile: dict[str, Any]) -> float:
+    try:
+        value = float(profile.get("taste_model_adjustment") or 0.0)
+    except (TypeError, ValueError, OverflowError):
+        return 0.0
+    return max(-1.0, min(1.0, value))
+
+
 def _taste_metrics(profile: dict[str, Any]) -> tuple[float, float]:
     taste = profile.get("taste") if isinstance(profile.get("taste"), dict) else {}
     plays = max(0, int(taste.get("plays") or 0))
@@ -160,6 +168,8 @@ def _taste_metrics(profile: dict[str, Any]) -> tuple[float, float]:
         + 0.12 * _clamp(math.log1p(plays) / math.log(20.0))
         - 0.30 * skip
     )
+    model_adjustment = _taste_model_adjustment(profile)
+    positive = _clamp(positive + 0.18 * model_adjustment)
 
     days = taste.get("days_since_last_played")
     if days is None or plays <= 0:
@@ -284,6 +294,8 @@ def build_music_map(
                 "key_pc": int(analysis.get("key_pc", -1)),
                 "key_mode": str(analysis.get("key_mode") or ""),
                 "taste": taste,
+                "taste_adjustment": _taste_model_adjustment(profile),
+                "taste_reason": str(profile.get("taste_model_reason") or "").strip(),
                 "rediscovery": rediscovery,
                 "rediscovery_reason": rediscovery_reason,
                 "plays": int((profile.get("taste") or {}).get("plays") or 0)

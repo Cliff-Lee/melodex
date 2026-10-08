@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from .flow import FlowEngine, TrackAnalysis
+from .taste_model import build_local_taste_model, score_taste_match
 from .user_state import UserState
 
 
@@ -227,6 +228,34 @@ class LocalIntelligenceService:
             ]
             item["_intelligence_extension_id"] = str(row.get("_extension_id") or "")
             tracks.append(item)
+
+        if str(intent or "").strip().lower() == "rediscover" and tracks:
+            # Keep the richer model inside Core: only the existing bounded
+            # snapshot reaches the extension, and returned candidates are
+            # adjusted locally after the suggestion call completes.
+            taste_model = build_local_taste_model(
+                self.state,
+                adventure=adventure,
+            )
+            reranked: list[tuple[float, int, dict[str, Any]]] = []
+            for index, item in enumerate(tracks):
+                adjustment, reason = score_taste_match(item, taste_model)
+                try:
+                    base_score = float(item.get("_intelligence_score") or 0.0)
+                except (TypeError, ValueError, OverflowError):
+                    base_score = 0.0
+                score = max(0.0, min(1.0, base_score + 0.12 * adjustment))
+                item["_intelligence_score"] = score
+                item["_taste_model_adjustment"] = adjustment
+                item["_taste_model_reason"] = reason
+                if reason:
+                    existing = str(item.get("_intelligence_reason") or "").strip()
+                    item["_intelligence_reason"] = (
+                        f"{existing} · {reason}" if existing else reason
+                    )
+                reranked.append((score, -index, item))
+            tracks = [row[2] for row in sorted(reranked, reverse=True)]
+
         return {
             "intent": str(intent),
             "tracks": tracks,

@@ -780,6 +780,7 @@ class JourneyWorkspace(QObject):
         from .music_knowledge import build_knowledge_graph
         from .music_map_model import build_music_map
         from .rediscovery_signals import build_rediscovery_signals
+        from .taste_model import build_local_taste_model, score_taste_match
         from .user_state import UserState
     
         catalog=self.providers.local_catalog()
@@ -798,10 +799,14 @@ class JourneyWorkspace(QObject):
             list(ref_map.values()),
             history_signals,
         )
+        taste_model = build_local_taste_model(self.state)
         for profile in profiles:
             track = ref_map.get(str(profile.get("ref") or ""))
             if not isinstance(track, dict):
                 continue
+            adjustment, reason = score_taste_match(track, taste_model)
+            profile["taste_model_adjustment"] = adjustment
+            profile["taste_model_reason"] = reason
             signal = library_signals.get(UserState.track_key(track))
             if signal:
                 profile["library_rediscovery"] = dict(signal)
@@ -811,11 +816,20 @@ class JourneyWorkspace(QObject):
             for node in list(model.get("nodes") or [])
             if isinstance(node,dict) and str(node.get("ref") or "")
         }
+        mapped_nodes = {
+            str(node.get("ref") or ""): dict(node)
+            for node in list(model.get("nodes") or [])
+            if isinstance(node, dict) and str(node.get("ref") or "")
+        }
         mapped_ref_map={
             ref:dict(track)
             for ref,track in ref_map.items()
             if ref in mapped_refs
         }
+        for ref, track in mapped_ref_map.items():
+            taste_reason = str(mapped_nodes.get(ref, {}).get("taste_reason") or "").strip()
+            if taste_reason:
+                track["_taste_model_reason"] = taste_reason
         knowledge=self.knowledge.snapshot(mapped_ref_map)
         graph=build_knowledge_graph(mapped_ref_map,knowledge)
         return {
