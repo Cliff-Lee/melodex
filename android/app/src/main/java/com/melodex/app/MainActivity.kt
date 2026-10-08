@@ -1,6 +1,12 @@
 package com.melodex.app
 
 import android.Manifest
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.media.MediaMetadataRetriever
+import android.net.Uri
+import android.util.Size
 import android.content.pm.PackageManager
 import android.content.ComponentName
 import android.os.Build
@@ -9,10 +15,18 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -42,10 +56,18 @@ data class Track(
     val title: String,
     val artist: String,
     val album: String = "",
-    val streamUrl: String = ""
+    val streamUrl: String = "",
+    val artworkUri: String = "",
+    val durationMs: Long = 0L
 )
 
 private enum class MusicSource { PHONE, BRIDGE }
+
+private enum class LocalSort(val label: String) {
+    TITLE("Title"),
+    ARTIST("Artist"),
+    ALBUM("Album")
+}
 
 class BridgeClient(var baseUrl: String, var token: String) {
     private fun get(path: String): JSONObject {
@@ -182,8 +204,14 @@ fun MelodexApp(player: Player) {
         mutableStateOf(ContextCompat.checkSelfPermission(context, audioPermission) == PackageManager.PERMISSION_GRANTED)
     }
     var localStatus by remember { mutableStateOf("Choose phone music to see audio stored on this device.") }
+    var localError by remember { mutableStateOf<String?>(null) }
     var localTracks by remember { mutableStateOf<List<Track>>(emptyList()) }
     var localLoading by remember { mutableStateOf(false) }
+    var localSearch by remember { mutableStateOf("") }
+    var localSort by remember { mutableStateOf(LocalSort.TITLE) }
+    var sortMenuExpanded by remember { mutableStateOf(false) }
+    var localQueue by remember { mutableStateOf<List<Track>>(emptyList()) }
+    var queueDialogOpen by remember { mutableStateOf(false) }
     var bridgeUrl by remember { mutableStateOf("") }
     var token by remember { mutableStateOf("") }
     var query by remember { mutableStateOf("") }
@@ -191,21 +219,57 @@ fun MelodexApp(player: Player) {
     var bridgeResults by remember { mutableStateOf<List<Track>>(emptyList()) }
     var nowPlaying by remember { mutableStateOf<Track?>(null) }
 
+    val visibleLocalTracks = remember(localTracks, localSearch, localSort) {
+        val needle = localSearch.trim()
+        val comparator: Comparator<Track> = when (localSort) {
+            LocalSort.TITLE -> compareBy(String.CASE_INSENSITIVE_ORDER) { it.title }.thenBy { it.artist }
+            LocalSort.ARTIST -> compareBy(String.CASE_INSENSITIVE_ORDER) { it.artist }.thenBy { it.title }
+            LocalSort.ALBUM -> compareBy(String.CASE_INSENSITIVE_ORDER) { it.album.ifBlank { it.title } }.thenBy { it.title }
+        }
+        localTracks
+            .filter { track ->
+                needle.isBlank() ||
+                    track.title.contains(needle, ignoreCase = true) ||
+                    track.artist.contains(needle, ignoreCase = true) ||
+                    track.album.contains(needle, ignoreCase = true)
+            }
+            .sortedWith(comparator)
+    }
+
     val refreshLocalLibrary: () -> Unit = {
         scope.launch {
             localLoading = true
-            localStatus = "Looking for audio on this device…"
+            localError = null
+            localStatus = "Finding music on this phone…"
             try {
-                localTracks = withContext(Dispatchers.IO) {
+                val preview = withContext(Dispatchers.IO) {
+                    queryLocalAudioTracks(
+                        context.contentResolver,
+                        context,
+                        limitPerVolume = LOCAL_AUDIO_PREVIEW_SIZE
+                    )
+                }
+                localTracks = preview
+                if (preview.isNotEmpty()) {
+                    localStatus = "Found ${preview.size} tracks. Loading the rest of your library…"
+                }
+
+                val completeLibrary = withContext(Dispatchers.IO) {
                     queryLocalAudioTracks(context.contentResolver, context)
                 }
-                localStatus = if (localTracks.isEmpty()) {
+                localTracks = completeLibrary
+                localStatus = if (completeLibrary.isEmpty()) {
                     "No audio tracks were found on this device."
                 } else {
-                    "${localTracks.size} tracks on this device"
+                    "${completeLibrary.size} tracks on this device"
                 }
             } catch (e: Exception) {
-                localStatus = e.message ?: "Could not read music on this device."
+                localError = e.message ?: "Could not read music on this device."
+                localStatus = if (localTracks.isEmpty()) {
+                    localError ?: "Could not read music on this device."
+                } else {
+                    "Showing the tracks found so far. Could not finish loading the library."
+                }
             } finally {
                 localLoading = false
             }
@@ -216,25 +280,115 @@ fun MelodexApp(player: Player) {
         ActivityResultContracts.RequestPermission()
     ) { granted ->
         hasAudioPermission = granted
-        localStatus = if (granted) "Music access allowed." else "Music access was not allowed. You can still connect a Bridge."
+        localStatus = if (granted) {
+            "Music access allowed."
+        } else {
+            "Music access was not allowed. You can still connect a Bridge."
+        }
     }
 
     LaunchedEffect(hasAudioPermission) {
         if (hasAudioPermission) refreshLocalLibrary()
     }
 
-    fun play(track: Track) {
-        val mediaItem = MediaItem.Builder()
-            .setUri(track.streamUrl)
-            .setMediaMetadata(
-                MediaMetadata.Builder()
-                    .setTitle(track.title)
-                    .setArtist(track.artist)
-                    .setAlbumTitle(track.album)
-                    .build()
+    LaunchedEffect(player, hasAudioPermission) {
+        if (!hasAudioPermission) return@LaunchedEffect
+        val savedQueue = withContext(Dispatchers.IO) { LocalQueueStore.load(context) }
+        if (savedQueue != null) {
+            localQueue = savedQueue.tracks
+            nowPlaying = savedQueue.tracks.getOrNull(savedQueue.currentIndex)
+            if (player.mediaItemCount == 0) {
+                player.setMediaItems(
+                    savedQueue.tracks.map(::trackToMediaItem),
+                    savedQueue.currentIndex,
+                    0L
+                )
+                player.prepare()
+            }
+        }
+    }
+
+    val latestQueue = rememberUpdatedState(localQueue)
+    DisposableEffect(player) {
+        val listener = object : Player.Listener {
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                if (mediaItem?.mediaId?.startsWith("local|") == true) {
+                    nowPlaying = latestQueue.value.getOrNull(player.currentMediaItemIndex)
+                }
+            }
+        }
+        player.addListener(listener)
+        onDispose { player.removeListener(listener) }
+    }
+
+    fun startLocalQueue(track: Track, candidates: List<Track>) {
+        val queue = if (candidates.any { it.trackId == track.trackId }) candidates else listOf(track)
+        val startIndex = queue.indexOfFirst { it.trackId == track.trackId }.coerceAtLeast(0)
+        localQueue = queue
+        nowPlaying = track
+        player.setMediaItems(queue.map(::trackToMediaItem), startIndex, 0L)
+        player.prepare()
+        player.play()
+        LocalQueueStore.save(context, queue, startIndex)
+    }
+
+    fun addToLocalQueue(track: Track) {
+        if (localQueue.any { it.trackId == track.trackId }) {
+            localStatus = "That track is already in the queue."
+            return
+        }
+        val wasPlayingLocalQueue = player.hasOnlyLocalItems()
+        val updatedQueue = localQueue + track
+        localQueue = updatedQueue
+        if (wasPlayingLocalQueue) {
+            val currentTrackId = player.currentMediaItem?.mediaId?.removePrefix("local|")
+            val currentIndex = updatedQueue.indexOfFirst { it.trackId == currentTrackId }.coerceAtLeast(0)
+            player.setMediaItems(
+                updatedQueue.map(::trackToMediaItem),
+                currentIndex,
+                player.currentPosition
             )
-            .build()
-        player.setMediaItem(mediaItem)
+            player.prepare()
+        }
+        val savedIndex = if (wasPlayingLocalQueue) player.currentMediaItemIndex else 0
+        LocalQueueStore.save(context, updatedQueue, savedIndex.coerceAtLeast(0))
+        localStatus = "Added to queue: ${track.title}"
+    }
+
+    fun removeFromLocalQueue(index: Int) {
+        if (index !in localQueue.indices) return
+        val wasPlayingLocalQueue = player.hasOnlyLocalItems()
+        val updatedQueue = localQueue.toMutableList().also { it.removeAt(index) }
+        localQueue = updatedQueue
+        if (wasPlayingLocalQueue) {
+            if (updatedQueue.isEmpty()) {
+                player.clearMediaItems()
+                nowPlaying = null
+            } else {
+                val nextIndex = player.currentMediaItemIndex.coerceIn(0, updatedQueue.lastIndex)
+                player.setMediaItems(updatedQueue.map(::trackToMediaItem), nextIndex, player.currentPosition)
+                player.prepare()
+            }
+        }
+        if (updatedQueue.isEmpty()) {
+            LocalQueueStore.clear(context)
+        } else {
+            LocalQueueStore.save(context, updatedQueue, player.currentMediaItemIndex.coerceAtLeast(0))
+        }
+    }
+
+    fun clearLocalQueue() {
+        if (player.hasOnlyLocalItems()) {
+            player.clearMediaItems()
+            nowPlaying = null
+        }
+        localQueue = emptyList()
+        LocalQueueStore.clear(context)
+        queueDialogOpen = false
+    }
+
+    fun playBridgeTrack(track: Track) {
+        player.setMediaItem(trackToMediaItem(track))
         player.prepare()
         player.play()
         nowPlaying = track
@@ -286,32 +440,121 @@ fun MelodexApp(player: Player) {
                             }
                         }
                     } else {
-                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            Text(localStatus, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
-                            TextButton(onClick = refreshLocalLibrary, enabled = !localLoading) {
-                                Text(if (localLoading) "Loading…" else "Refresh")
+                        Column(Modifier.fillMaxWidth().weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    localStatus,
+                                    modifier = Modifier.weight(1f),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (localError == null) MaterialTheme.colorScheme.onSurfaceVariant
+                                    else MaterialTheme.colorScheme.error
+                                )
+                                TextButton(onClick = refreshLocalLibrary, enabled = !localLoading) {
+                                    Text(if (localLoading) "Loading…" else "Refresh")
+                                }
                             }
-                        }
-                        Button(
-                            onClick = {
-                                localTracks.randomOrNull()?.let { track ->
-                                    try {
-                                        play(track)
-                                    } catch (e: Exception) {
-                                        localStatus = e.message ?: "Could not play this track."
+                            if (localLoading) LinearProgressIndicator(Modifier.fillMaxWidth())
+
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                OutlinedTextField(
+                                    value = localSearch,
+                                    onValueChange = { localSearch = it },
+                                    label = { Text("Search phone music") },
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Box {
+                                    TextButton(onClick = { sortMenuExpanded = true }) {
+                                        Text("Sort: ${localSort.label}")
+                                    }
+                                    DropdownMenu(
+                                        expanded = sortMenuExpanded,
+                                        onDismissRequest = { sortMenuExpanded = false }
+                                    ) {
+                                        LocalSort.values().forEach { option ->
+                                            DropdownMenuItem(
+                                                text = { Text(option.label) },
+                                                onClick = {
+                                                    localSort = option
+                                                    sortMenuExpanded = false
+                                                }
+                                            )
+                                        }
                                     }
                                 }
-                            },
-                            enabled = localTracks.isNotEmpty() && !localLoading,
-                            modifier = Modifier.fillMaxWidth()
-                        ) { Text("Play something") }
-                        TrackList(localTracks, onSelect = { track ->
-                            try {
-                                play(track)
-                            } catch (e: Exception) {
-                                localStatus = e.message ?: "Could not play this track."
                             }
-                        }, modifier = Modifier.weight(1f))
+
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Button(
+                                    onClick = {
+                                        visibleLocalTracks.randomOrNull()?.let { track ->
+                                            startLocalQueue(track, visibleLocalTracks)
+                                        }
+                                    },
+                                    enabled = visibleLocalTracks.isNotEmpty(),
+                                    modifier = Modifier.weight(1f)
+                                ) { Text("Play something") }
+                                OutlinedButton(
+                                    onClick = { queueDialogOpen = true },
+                                    enabled = localQueue.isNotEmpty()
+                                ) { Text("Queue (${localQueue.size})") }
+                            }
+
+                            when {
+                                localTracks.isEmpty() && localLoading -> {
+                                    Box(
+                                        Modifier.fillMaxWidth().weight(1f),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            CircularProgressIndicator()
+                                            Spacer(Modifier.height(10.dp))
+                                            Text("Finding tracks so you can start listening…")
+                                        }
+                                    }
+                                }
+                                localTracks.isEmpty() -> {
+                                    Card(Modifier.fillMaxWidth().weight(1f)) {
+                                        Column(
+                                            Modifier.fillMaxWidth().padding(20.dp),
+                                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Text(
+                                                if (localError == null) "No tracks found" else "Could not load music",
+                                                style = MaterialTheme.typography.titleMedium
+                                            )
+                                            Text(localError ?: "Add music to your phone, then refresh the library.")
+                                            Button(onClick = refreshLocalLibrary, enabled = !localLoading) {
+                                                Text("Refresh library")
+                                            }
+                                        }
+                                    }
+                                }
+                                visibleLocalTracks.isEmpty() -> {
+                                    Box(
+                                        Modifier.fillMaxWidth().weight(1f),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text("No tracks match “$localSearch”. Try another search.")
+                                    }
+                                }
+                                else -> {
+                                    TrackList(
+                                        tracks = visibleLocalTracks,
+                                        onSelect = { track -> startLocalQueue(track, visibleLocalTracks) },
+                                        onAddToQueue = ::addToLocalQueue,
+                                        showQueueAction = true,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
+                            }
+                            if (localLoading && localTracks.isNotEmpty()) {
+                                Text(
+                                    "You can play these tracks while the rest of the library loads.",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+                        }
                     }
                 } else {
                     Column(Modifier.fillMaxWidth().weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -375,7 +618,7 @@ fun MelodexApp(player: Player) {
                                     if (resolved.streamUrl.isBlank()) {
                                         throw IllegalStateException("Source did not return a stream URL")
                                     }
-                                    play(resolved)
+                                    playBridgeTrack(resolved)
                                     bridgeStatus = "Playing"
                                 } catch (e: Exception) {
                                     bridgeStatus = e.message ?: "Playback failed"
@@ -396,21 +639,164 @@ fun MelodexApp(player: Player) {
                 }
             }
         }
+
+        if (queueDialogOpen) {
+            AlertDialog(
+                onDismissRequest = { queueDialogOpen = false },
+                title = { Text("Play queue (${localQueue.size})") },
+                text = {
+                    if (localQueue.isEmpty()) {
+                        Text("Your queue is empty. Add a track from the phone library.")
+                    } else {
+                        LazyColumn(Modifier.heightIn(max = 420.dp)) {
+                            itemsIndexed(localQueue, key = { index, track -> "${index}:${track.trackId}" }) { index, track ->
+                                ListItem(
+                                    leadingContent = { TrackArtwork(track, Modifier.size(48.dp)) },
+                                    headlineContent = { Text(track.title) },
+                                    supportingContent = { Text("${track.artist}${if (track.album.isNotBlank()) " · ${track.album}" else ""}") },
+                                    trailingContent = {
+                                        TextButton(onClick = { removeFromLocalQueue(index) }) { Text("Remove") }
+                                    },
+                                    modifier = Modifier.clickable {
+                                        player.setMediaItems(localQueue.map(::trackToMediaItem), index, 0L)
+                                        player.prepare()
+                                        player.play()
+                                        nowPlaying = track
+                                        LocalQueueStore.save(context, localQueue, index)
+                                        queueDialogOpen = false
+                                    }
+                                )
+                                HorizontalDivider()
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { queueDialogOpen = false }) { Text("Done") }
+                },
+                dismissButton = {
+                    if (localQueue.isNotEmpty()) {
+                        TextButton(onClick = ::clearLocalQueue) { Text("Clear queue") }
+                    }
+                }
+            )
+        }
     }
 }
 
 @Composable
-private fun TrackList(tracks: List<Track>, onSelect: (Track) -> Unit, modifier: Modifier = Modifier) {
+private fun TrackList(
+    tracks: List<Track>,
+    onSelect: (Track) -> Unit,
+    modifier: Modifier = Modifier,
+    onAddToQueue: (Track) -> Unit = {},
+    showQueueAction: Boolean = false
+) {
     LazyColumn(modifier) {
-        items(tracks) { track ->
+        itemsIndexed(tracks, key = { _, track -> "${track.providerId}:${track.trackId}" }) { _, track ->
+            val details = listOf(
+                track.artist,
+                track.album.takeIf(String::isNotBlank),
+                formatDuration(track.durationMs).takeIf(String::isNotBlank)
+            ).filterNotNull().filter(String::isNotBlank).joinToString(" · ")
             ListItem(
+                leadingContent = { TrackArtwork(track, Modifier.size(52.dp)) },
                 headlineContent = { Text(track.title) },
-                supportingContent = {
-                    Text("${track.artist}${if (track.album.isNotBlank()) " · ${track.album}" else ""}")
+                supportingContent = { Text(details) },
+                trailingContent = {
+                    if (showQueueAction) {
+                        TextButton(onClick = { onAddToQueue(track) }) { Text("Queue") }
+                    }
                 },
                 modifier = Modifier.clickable { onSelect(track) }
             )
             HorizontalDivider()
         }
     }
+}
+
+@Composable
+private fun TrackArtwork(track: Track, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val bitmap by produceState<Bitmap?>(initialValue = null, key1 = track.trackId, key2 = track.streamUrl) {
+        value = withContext(Dispatchers.IO) { loadTrackArtwork(context, track) }
+    }
+    if (bitmap != null) {
+        Image(
+            bitmap = bitmap!!.asImageBitmap(),
+            contentDescription = track.album.takeIf(String::isNotBlank)?.let { "$it artwork" } ?: "Album artwork",
+            contentScale = ContentScale.Crop,
+            modifier = modifier.clip(RoundedCornerShape(6.dp))
+        )
+    } else {
+        Box(
+            modifier
+                .clip(RoundedCornerShape(6.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant),
+            contentAlignment = Alignment.Center
+        ) {
+            Text("♫", style = MaterialTheme.typography.titleMedium)
+        }
+    }
+}
+
+private fun loadTrackArtwork(context: Context, track: Track): Bitmap? {
+    if (!track.streamUrl.startsWith("content://")) return null
+    val audioUri = Uri.parse(track.streamUrl)
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        try {
+            return context.contentResolver.loadThumbnail(audioUri, Size(128, 128), null)
+        } catch (_: Exception) {
+            // Older MediaStore entries may not expose a generated thumbnail.
+        }
+    }
+
+    val retriever = MediaMetadataRetriever()
+    return try {
+        retriever.setDataSource(context, audioUri)
+        val bytes = retriever.embeddedPicture ?: return null
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+        val options = BitmapFactory.Options()
+        var sampleSize = 1
+        while (bounds.outWidth / (sampleSize * 2) >= 128 &&
+            bounds.outHeight / (sampleSize * 2) >= 128
+        ) {
+            sampleSize *= 2
+        }
+        options.inSampleSize = sampleSize
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+    } catch (_: Exception) {
+        null
+    } finally {
+        retriever.release()
+    }
+}
+
+private fun trackToMediaItem(track: Track): MediaItem {
+    val metadata = MediaMetadata.Builder()
+        .setTitle(track.title.ifBlank { "Unknown track" })
+        .setArtist(track.artist.ifBlank { "Unknown artist" })
+        .setAlbumTitle(track.album)
+        .apply {
+            if (track.artworkUri.isNotBlank()) setArtworkUri(Uri.parse(track.artworkUri))
+        }
+        .build()
+    return MediaItem.Builder()
+        .setMediaId("${track.providerId}|${track.trackId}")
+        .setUri(track.streamUrl)
+        .setMediaMetadata(metadata)
+        .build()
+}
+
+private fun Player.hasOnlyLocalItems(): Boolean =
+    mediaItemCount > 0 && (0 until mediaItemCount).all {
+        getMediaItemAt(it).mediaId.startsWith("local|")
+    }
+
+private fun formatDuration(durationMs: Long): String {
+    if (durationMs <= 0L) return ""
+    val seconds = durationMs / 1000L
+    return "${seconds / 60}:${(seconds % 60).toString().padStart(2, '0')}"
 }
