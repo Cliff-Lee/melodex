@@ -67,6 +67,16 @@ See:
 
 Melodex is not affiliated with or endorsed by Jamendo.
 
+## Android QR scanning
+
+Android QR pairing uses `zxing-android-embedded` and ZXing Core. Both are
+licensed under the Apache License, Version 2.0. The full license text is in
+`docs/licenses/APACHE-2.0.txt`.
+
+Upstream projects:
+- https://github.com/journeyapps/zxing-android-embedded
+- https://github.com/zxing/zxing
+
 ## Python and application dependencies
 
 Melodex uses third-party Python/application dependencies such as PySide6, requests, NumPy, mutagen and the optional MCP SDK. Those packages retain their own licences and copyright notices. Refer to each dependency's distribution metadata/upstream repository for its applicable licence.
