@@ -683,6 +683,35 @@ fun MelodexApp(player: Player) {
         }
     }
 
+    suspend fun loadDesktopPlayback(showLoading: Boolean) {
+        if (bridgeConnectionState != BridgeConnectionState.CONNECTED) return
+        val baseUrl = bridgeUrl
+        val bridgeToken = token
+        if (showLoading) {
+            desktopPlaybackLoading = true
+            desktopPlaybackMessage = if (desktopPlayback == null) "Loading desktop playback…" else "Refreshing desktop playback…"
+        }
+        try {
+            val snapshot = withContext(Dispatchers.IO) {
+                BridgeClient(baseUrl, bridgeToken).playbackSnapshot()
+            }
+            if (baseUrl == bridgeUrl && bridgeToken == token && bridgeConnectionState == BridgeConnectionState.CONNECTED) {
+                desktopPlayback = snapshot
+                desktopPlaybackMessage = "Desktop playback is up to date."
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            if (baseUrl == bridgeUrl && bridgeToken == token && bridgeConnectionState == BridgeConnectionState.CONNECTED) {
+                desktopPlayback = null
+                desktopQueueDialogOpen = false
+                desktopPlaybackMessage = "Desktop playback status could not be loaded. Reconnect or refresh to try again."
+            }
+        } finally {
+            if (showLoading) desktopPlaybackLoading = false
+        }
+    }
+
     LaunchedEffect(bridgeUrl, token, bridgeConnectionState, isAppForeground, musicSource) {
         if (musicSource != MusicSource.BRIDGE || !isAppForeground) return@LaunchedEffect
         if (bridgeConnectionState != BridgeConnectionState.CONNECTED) {
@@ -831,35 +860,6 @@ fun MelodexApp(player: Player) {
             } finally {
                 bridgeLibraryLoading = false
             }
-        }
-    }
-
-    suspend fun loadDesktopPlayback(showLoading: Boolean) {
-        if (bridgeConnectionState != BridgeConnectionState.CONNECTED) return
-        val baseUrl = bridgeUrl
-        val bridgeToken = token
-        if (showLoading) {
-            desktopPlaybackLoading = true
-            desktopPlaybackMessage = if (desktopPlayback == null) "Loading desktop playback…" else "Refreshing desktop playback…"
-        }
-        try {
-            val snapshot = withContext(Dispatchers.IO) {
-                BridgeClient(baseUrl, bridgeToken).playbackSnapshot()
-            }
-            if (baseUrl == bridgeUrl && bridgeToken == token && bridgeConnectionState == BridgeConnectionState.CONNECTED) {
-                desktopPlayback = snapshot
-                desktopPlaybackMessage = "Desktop playback is up to date."
-            }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (_: Exception) {
-            if (baseUrl == bridgeUrl && bridgeToken == token && bridgeConnectionState == BridgeConnectionState.CONNECTED) {
-                desktopPlayback = null
-                desktopQueueDialogOpen = false
-                desktopPlaybackMessage = "Desktop playback status could not be loaded. Reconnect or refresh to try again."
-            }
-        } finally {
-            if (showLoading) desktopPlaybackLoading = false
         }
     }
 
