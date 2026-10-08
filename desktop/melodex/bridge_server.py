@@ -281,7 +281,12 @@ class ProviderBridge:
                 host = self.headers.get("Host") or f"127.0.0.1:{bridge.port}"
                 pid = str(resolved.get("provider_id") or "local")
                 tid = str(resolved.get("track_id") or "")
-                media_q = urllib.parse.urlencode({"provider": pid, "id": tid, "token": bridge.token})
+                authorization = self.headers.get("Authorization", "")
+                access_token = authorization[7:] if authorization.startswith("Bearer ") else ""
+                if not access_token:
+                    _, query = self._query()
+                    access_token = query.get("token", [""])[0]
+                media_q = urllib.parse.urlencode({"provider": pid, "id": tid, "token": access_token})
                 out = bridge._public_track(resolved)
                 out["stream_url"] = f"http://{host}/v1/media?{media_q}"
                 return out
