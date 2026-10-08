@@ -66,6 +66,20 @@ The focused P17c test compares a deep cut from an album with a loved track
 against an equally deep cut from an album with no listening evidence. Sparse
 metadata continues to use the neutral fallback.
 
+## P17d progress
+
+Memory Atlas now replays a selected session, album, week, or year from its
+recorded play order. Double-clicking an island starts the replay; keyboard
+users can select islands with the arrow keys and press Enter. The renderer
+holds only opaque local history IDs, while the playback layer resolves those
+IDs to queue entries. Replay is capped at 200 tracks per activation so a broad
+time period cannot create an unbounded queue.
+
+The listening history query and grouping remain in the existing background
+visual-context task. Playback uses the manual queue intent so the captured
+historical order is preserved, and the local file paths never enter the visual
+mark or its renderer.
+
 ## Completion gates
 
 P17 is complete when a fresh install can start a useful rediscovery route, a

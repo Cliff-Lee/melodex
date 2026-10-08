@@ -198,6 +198,8 @@ def describe_weather(profile: VisualProfile) -> SonicWeather:
 
 @dataclass(frozen=True, slots=True)
 class MemoryMark:
+    """A Memory Atlas island with opaque local play-history references."""
+
     label: str
     detail: str
     count: int
@@ -208,6 +210,54 @@ class MemoryMark:
     time_label: str = ""
     representative: str = ""
     daypart: str = ""
+    history_ids: tuple[int, ...] = ()
+
+
+def tracks_for_memory_mark(
+    mark: MemoryMark,
+    tracks_by_history_id: Mapping[int, Mapping[str, Any]],
+    *,
+    limit: int = 200,
+) -> tuple[dict[str, Any], ...]:
+    """Resolve a memory island to a bounded, chronological playback slice.
+
+    File paths stay in the playback layer and never enter the rendered mark.
+    The mark carries only local history row IDs; this helper drops those
+    history-only columns before returning queue entries.
+    """
+
+    try:
+        maximum = max(0, min(200, int(limit)))
+    except (TypeError, ValueError, OverflowError):
+        maximum = 200
+    if (
+        maximum == 0
+        or not isinstance(mark, MemoryMark)
+        or not isinstance(tracks_by_history_id, Mapping)
+    ):
+        return ()
+
+    result: list[dict[str, Any]] = []
+    seen: set[int] = set()
+    for raw_id in mark.history_ids:
+        try:
+            history_id = int(raw_id)
+        except (TypeError, ValueError, OverflowError):
+            continue
+        if history_id <= 0 or history_id in seen:
+            continue
+        seen.add(history_id)
+        track = tracks_by_history_id.get(history_id)
+        if not isinstance(track, Mapping):
+            continue
+        item = dict(track)
+        item.pop("_history_id", None)
+        item.pop("_played_at", None)
+        item.pop("_completed", None)
+        result.append(item)
+        if len(result) >= maximum:
+            break
+    return tuple(result)
 
 
 def _average_clock_hour(group: list[tuple[float, Mapping[str, Any]]]) -> float:
@@ -354,6 +404,20 @@ def build_visual_memory(
         horizontal_span = (finish - start) / span_seconds if len(groups) > 1 else 0.0
         y = 0.14 + (average_hour / 24.0) * 0.68
 
+        history_ids: list[int] = []
+        seen_history_ids: set[int] = set()
+        for _, row in group:
+            raw_history_id = row.get("_history_id")
+            if isinstance(raw_history_id, bool):
+                continue
+            try:
+                history_id = int(raw_history_id)
+            except (TypeError, ValueError, OverflowError):
+                continue
+            if history_id > 0 and history_id not in seen_history_ids:
+                seen_history_ids.add(history_id)
+                history_ids.append(history_id)
+
         result.append(
             MemoryMark(
                 label=label,
@@ -366,6 +430,7 @@ def build_visual_memory(
                 time_label=time_label,
                 representative=representative,
                 daypart=daypart,
+                history_ids=tuple(history_ids),
             )
         )
     return tuple(result)
