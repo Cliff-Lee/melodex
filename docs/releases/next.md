@@ -1,21 +1,13 @@
 # Next release — draft notes
 
-**Melodex v0.7.20 — Rediscovery and Private Taste.**
+**Melodex v0.7.21 — Android Standalone Player.**
 
-Current target version: **0.7.20**.
+Current target version: **0.7.21**.
 
-This release brings the P17 Rediscovery Engine and P18 Private Taste Engine
-into the stable desktop and Android Bridge-client builds.
+This development cycle starts P19, making Melodex useful on a phone without
+requiring another computer. The planned work centers on local phone-library
+playback while keeping Provider Bridge available as an optional connection.
 
-- Resurface forgotten favourites, neglected-artist tracks, and hidden album
-  deep cuts from local listening history.
-- Replay Memory Atlas sessions, albums, weeks, and years in order, with a
-  200-track activation cap.
-- Share rediscovery scores and reasons across Music Map, journeys, and Living
-  Queue.
-- Keep durable taste, recent session reactions, and session exploration
-  separate, with direct More/Less/Clear correction controls.
-- Keep taste data local and out of provider snapshots and external AI requests.
-
-The Android package remains Bridge-based in this release; standalone phone
-library support is still in development.
+Follow-up work will make playback dependable in the background, improve local
+library and queue controls, and qualify permissions, interruptions, and device
+compatibility before release.
