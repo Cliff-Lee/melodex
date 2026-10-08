@@ -28,8 +28,10 @@ data class BridgePairingPayload(
 object BridgePairingPayloadParser {
     private fun isLocalHost(host: String): Boolean {
         if (host.endsWith(".local")) return true
-        val octets = host.split(".").map { it.toIntOrNull() ?: return false }
-        if (octets.size != 4 || octets.any { it !in 0..255 }) return false
+        val parts = host.split(".")
+        if (parts.size != 4) return false
+        val octets = parts.map { it.toIntOrNull() ?: -1 }
+        if (octets.any { it !in 0..255 }) return false
         return octets[0] == 10 ||
             (octets[0] == 192 && octets[1] == 168) ||
             (octets[0] == 172 && octets[1] in 16..31) ||
