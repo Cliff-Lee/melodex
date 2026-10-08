@@ -157,8 +157,10 @@ internal object LocalQueueStore {
 
     private fun savePosition(context: Context, index: Int) {
         if (index < 0) return
-        context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE).edit()
-            .putInt(INDEX_KEY, index)
-            .apply()
+        writer.execute {
+            context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE).edit()
+                .putInt(INDEX_KEY, index)
+                .apply()
+        }
     }
 }
