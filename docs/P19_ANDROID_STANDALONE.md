@@ -50,19 +50,34 @@ after adding music. **Play something** starts a randomly selected track from
 the loaded phone library. Bridge URL and token fields remain available from
 the second path and are blank on first launch.
 
-Playback is still owned by `MainActivity` in this stage. Background service,
-media notification, headset controls, persistent queue, local search, and
-pairing are later P19 stages; this slice does not claim them.
+P19a playback was owned by `MainActivity`. P19b moves it into
+`PlaybackService`, so the player can continue after the activity closes.
 
 ## P19a verification
 
-The local environment has Java 17, but no Gradle executable, wrapper, or
-Android SDK. GitHub Actions builds `assembleDebug` and `bundleRelease`; this
-release is being published so the flow can be checked on real devices. Test at
-least one Android 12-or-older device and one Android 13-or-newer device,
-including permission grant and denial, empty and populated libraries, and
-direct track playback. P19f will add broader interruption, accessibility, and
-Bridge qualification.
+The v0.7.21 APK passed the GitHub Android build. On-device checks remain useful
+for permission grant/denial, empty and populated libraries, and direct track
+playback on Android 12-or-older and Android 13-or-newer devices.
+
+## P19b progress
+
+The playback service owns ExoPlayer and a MediaSession. Android system media
+controls, the playback notification, lock-screen actions, and headset/Bluetooth
+play-pause actions use that session. ExoPlayer handles audio focus and pauses
+when the audio output becomes noisy, such as when headphones are unplugged.
+Track title, artist, and album metadata are included in the session item.
+
+Playback is now independent of the Activity lifecycle. This stage still uses
+one current item: queue persistence, local search, artwork, QR pairing, and
+Flow/taste features remain for later P19 work.
+
+## P19b verification
+
+GitHub Actions builds both `assembleDebug` and `bundleRelease`. On a device,
+check that playback continues after leaving the app and locking the screen;
+test notification/lock-screen and headset controls, audio interruptions, and
+the optional Bridge path. P19f will add the broader supported-device and
+accessibility matrix.
 
 ## Completion gates
 

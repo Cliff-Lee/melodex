@@ -132,11 +132,17 @@ The Provider Bridge is intended for a **trusted local network**.
 - For remote access, use an HTTPS reverse proxy or trusted VPN rather than raw
   port forwarding.
 
-## 7. Current preview limitations
+## 7. Background playback
 
-Local library browsing currently shows title, artist, and album with basic
-playback controls. Background media-session controls, a persistent queue, local
-search, artwork, QR pairing, and Flow/taste features are later campaign work.
+Playback continues when you leave Melodex or lock the screen. Use Android's
+media notification or lock-screen controls to pause or resume. Headset/Bluetooth
+play/pause buttons are supported, and unplugging headphones pauses playback.
+
+## 8. Current preview limitations
+
+The local library still shows title, artist, and album with basic playback
+controls. A persistent queue, local search, artwork, QR pairing, and Flow/taste
+features are later campaign work.
 
 ## 8. Update or uninstall
 
