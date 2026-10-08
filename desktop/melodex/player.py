@@ -5,8 +5,9 @@ from pathlib import Path
 import time
 from typing import Any, Callable
 
-from PySide6.QtCore import QObject, QTimer, QUrl, Signal
-from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
+from PySide6.QtCore import QObject, QTimer, QUrl, Qt, Signal
+from PySide6.QtGui import QGuiApplication
+from PySide6.QtMultimedia import QAudioOutput, QMediaDevices, QMediaPlayer
 
 from .album_track_order import album_order_diagnostics
 from .playback_gateway import PlaybackGateway
@@ -185,6 +186,10 @@ class FlowPlayer(QObject):
             "buffer_stall_ms_total": 0,
             "buffer_stall_ms_max": 0,
             "buffer_progress_min_permille": 1000,
+            "audio_route_reconciliations": 0,
+            "audio_route_rebinds": 0,
+            "audio_route_resume_requests": 0,
+            "audio_route_pause_requests": 0,
         }
         self._last_seek_requested_ms = 0
         self._transitionPlanReady.connect(self._apply_transition_plan)
@@ -215,6 +220,16 @@ class FlowPlayer(QObject):
                         deck, progress
                     )
                 )
+
+        self._media_devices = QMediaDevices(self)
+        self._media_devices.audioOutputsChanged.connect(
+            self._reconcile_audio_output_route
+        )
+        application = QGuiApplication.instance()
+        if application is not None:
+            application.applicationStateChanged.connect(
+                self._on_application_state_changed
+            )
 
     def set_queue(
         self,
@@ -391,6 +406,46 @@ class FlowPlayer(QObject):
         self._invalidate_transition_plan()
         self.stop()
         self.gateway.close()
+
+    def _on_application_state_changed(self, state: Qt.ApplicationState) -> None:
+        # The app may have been suspended while the system output route changed.
+        if state == Qt.ApplicationState.ApplicationActive:
+            QTimer.singleShot(0, self._reconcile_audio_output_route)
+
+    def _reconcile_audio_output_route(self) -> None:
+        """Rebind both decks to the current system output and honor play intent."""
+        self._runtime_metrics["audio_route_reconciliations"] += 1
+        device = self._media_devices.defaultAudioOutput()
+        if device.isNull():
+            return
+
+        rebound = False
+        for output in self.outputs:
+            if output.device() != device:
+                output.setDevice(device)
+                rebound = True
+        if rebound:
+            self._runtime_metrics["audio_route_rebinds"] += 1
+
+        if not (0 <= self.index < len(self.queue)):
+            return
+        decks = [self.active]
+        if self._crossfading and self._crossfade_deck is not None:
+            decks.append(self._crossfade_deck)
+        for deck in decks:
+            player = self.players[deck]
+            if player.mediaStatus() in {
+                QMediaPlayer.EndOfMedia,
+                QMediaPlayer.InvalidMedia,
+            }:
+                continue
+            if self._playback_should_play:
+                if player.playbackState() != QMediaPlayer.PlayingState:
+                    player.play()
+                    self._runtime_metrics["audio_route_resume_requests"] += 1
+            elif player.playbackState() == QMediaPlayer.PlayingState:
+                player.pause()
+                self._runtime_metrics["audio_route_pause_requests"] += 1
 
     def current_track(self) -> dict[str, Any] | None:
         return dict(self.queue[self.index]) if 0 <= self.index < len(self.queue) else None
