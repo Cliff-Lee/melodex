@@ -87,24 +87,24 @@ internal object LocalQueueStore {
     /** Keep the saved position current while notification or headset controls skip tracks. */
     fun saveFromPlayer(context: Context, player: Player) {
         if (player.mediaItemCount == 0) return
-        val tracks = buildList {
-            for (index in 0 until player.mediaItemCount) {
-                val item = player.getMediaItemAt(index)
-                if (!item.mediaId.startsWith("local|")) return
-                val uri = item.localConfiguration?.uri?.toString() ?: return
-                val metadata = item.mediaMetadata
-                add(
-                    Track(
-                        providerId = "local",
-                        trackId = item.mediaId.removePrefix("local|"),
-                        title = metadata.title?.toString().orEmpty().ifBlank { "Unknown track" },
-                        artist = metadata.artist?.toString().orEmpty().ifBlank { "Unknown artist" },
-                        album = metadata.albumTitle?.toString().orEmpty(),
-                        streamUrl = uri,
-                        artworkUri = metadata.artworkUri?.toString().orEmpty()
-                    )
-                )
-            }
+        val knownDurations = load(context)?.tracks?.associate { it.trackId to it.durationMs }.orEmpty()
+        val tracks = mutableListOf<Track>()
+        for (index in 0 until player.mediaItemCount) {
+            val item = player.getMediaItemAt(index)
+            if (!item.mediaId.startsWith("local|")) return
+            val uri = item.localConfiguration?.uri?.toString() ?: return
+            val metadata = item.mediaMetadata
+            val trackId = item.mediaId.removePrefix("local|")
+            tracks += Track(
+                providerId = "local",
+                trackId = trackId,
+                title = metadata.title?.toString().orEmpty().ifBlank { "Unknown track" },
+                artist = metadata.artist?.toString().orEmpty().ifBlank { "Unknown artist" },
+                album = metadata.albumTitle?.toString().orEmpty(),
+                streamUrl = uri,
+                artworkUri = metadata.artworkUri?.toString().orEmpty(),
+                durationMs = knownDurations[trackId] ?: 0L
+            )
         }
         save(context, tracks, player.currentMediaItemIndex.coerceAtLeast(0))
     }
