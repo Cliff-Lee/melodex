@@ -765,7 +765,7 @@ fun MelodexApp(player: Player) {
                                         Button(onClick = {
                                             connectBridge(bridgeUrl, token, bridgeName, bridgeDeviceId)
                                         }) { Text("Reconnect") }
-                                        TextButton(onClick = ::forgetBridge) { Text("Forget on this phone") }
+                                        TextButton(onClick = { forgetBridge() }) { Text("Forget on this phone") }
                                     }
                                 } else {
                                     Text(
@@ -773,7 +773,7 @@ fun MelodexApp(player: Player) {
                                             + "music stored on this phone works without a computer."
                                     )
                                     Button(
-                                        onClick = ::startQrScan,
+                                        onClick = { startQrScan() },
                                         modifier = Modifier.fillMaxWidth()
                                     ) { Text("Scan desktop QR code") }
                                     Text(bridgeStatus, style = MaterialTheme.typography.bodySmall)
