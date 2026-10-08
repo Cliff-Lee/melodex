@@ -220,6 +220,11 @@ class FlowPlayer(QObject):
         self._buffer_notice_timer = QTimer(self)
         self._buffer_notice_timer.setSingleShot(True)
         self._buffer_notice_timer.timeout.connect(self._show_buffering_notice)
+        self._predictive_prefetch_prime_timer = QTimer(self)
+        self._predictive_prefetch_prime_timer.setSingleShot(True)
+        self._predictive_prefetch_prime_timer.timeout.connect(
+            self._finish_predictive_prefetch_prime_timeout
+        )
         self._timer = QTimer(self)
         self._timer.setInterval(100)
         self._timer.timeout.connect(self._tick)
@@ -976,6 +981,7 @@ class FlowPlayer(QObject):
         return True
 
     def _invalidate_predictive_prefetch(self) -> None:
+        self._predictive_prefetch_prime_timer.stop()
         request = self._predictive_prefetch_request
         candidate = self._predictive_prefetch
         if request is None and candidate is None and self._predictive_prefetch_failure is None:
@@ -1147,10 +1153,14 @@ class FlowPlayer(QObject):
                 "track": resolved,
                 "url": url,
                 "ready": False,
+                "priming": True,
                 "started_at": float(request["started_at"]),
             }
             self.players[deck].setSource(url)
+            self.players[deck].play()
+            self._predictive_prefetch_prime_timer.start(1800)
         except Exception:
+            self._predictive_prefetch_prime_timer.stop()
             candidate = self._predictive_prefetch
             self._predictive_prefetch = None
             if candidate is not None:
@@ -1158,12 +1168,51 @@ class FlowPlayer(QObject):
             self._predictive_prefetch_failure = (index, dict(request["track"]))
             self._runtime_metrics["predictive_prefetch_failures"] += 1
 
+    def _finish_predictive_prefetch_prime_timeout(self) -> None:
+        self._finish_predictive_prefetch_prime(ready=False)
+
+    def _finish_predictive_prefetch_prime(self, *, ready: bool) -> None:
+        candidate = self._predictive_prefetch
+        if candidate is None or not candidate.get("priming"):
+            return
+        self._predictive_prefetch_prime_timer.stop()
+        candidate["priming"] = False
+        deck = int(candidate["deck"])
+        player = self.players[deck]
+        try:
+            player.pause()
+            player.setPosition(0)
+        except Exception:
+            try:
+                player.stop()
+            except Exception:
+                pass
+        if ready and not candidate.get("ready"):
+            candidate["ready"] = True
+            prepared_ms = max(
+                0, int((time.monotonic() - float(candidate["started_at"])) * 1000)
+            )
+            self._runtime_metrics["predictive_prefetch_ready"] += 1
+            self._runtime_metrics["predictive_prefetch_prepare_ms_total"] += prepared_ms
+            self._runtime_metrics["predictive_prefetch_prepare_ms_max"] = max(
+                int(self._runtime_metrics["predictive_prefetch_prepare_ms_max"]),
+                prepared_ms,
+            )
+
     def _take_predictive_prefetch(self, index: int) -> dict[str, Any] | None:
         if not self._predictive_prefetch_matches(index):
             return None
         candidate = self._predictive_prefetch
         if candidate is None:
             return None
+        self._predictive_prefetch_prime_timer.stop()
+        deck = int(candidate["deck"])
+        try:
+            self.players[deck].pause()
+            self.players[deck].setPosition(0)
+        except Exception:
+            self.players[deck].stop()
+        candidate["priming"] = False
         self._predictive_prefetch = None
         self._predictive_prefetch_generation += 1
         self._predictive_prefetch_failure = None
@@ -1640,6 +1689,7 @@ class FlowPlayer(QObject):
         if deck != self.active:
             candidate = self._predictive_prefetch
             if candidate is not None and int(candidate.get("deck", -1)) == deck:
+                self._predictive_prefetch_prime_timer.stop()
                 failed_index = int(candidate.get("index", -1))
                 failed_track = dict(candidate.get("requested_track") or {})
                 self._predictive_prefetch = None
@@ -1835,25 +1885,20 @@ class FlowPlayer(QObject):
         }:
             self._begin_buffer_stall(deck, "media_status")
         if status in {
-            QMediaPlayer.LoadedMedia,
+            QMediaPlayer.BufferingMedia,
             QMediaPlayer.BufferedMedia,
         }:
             candidate = self._predictive_prefetch
             if (
                 candidate is not None
                 and int(candidate.get("deck", -1)) == deck
-                and not candidate.get("ready")
+                and candidate.get("priming")
             ):
-                candidate["ready"] = True
-                prepared_ms = max(
-                    0, int((time.monotonic() - float(candidate["started_at"])) * 1000)
-                )
-                self._runtime_metrics["predictive_prefetch_ready"] += 1
-                self._runtime_metrics["predictive_prefetch_prepare_ms_total"] += prepared_ms
-                self._runtime_metrics["predictive_prefetch_prepare_ms_max"] = max(
-                    int(self._runtime_metrics["predictive_prefetch_prepare_ms_max"]),
-                    prepared_ms,
-                )
+                self._finish_predictive_prefetch_prime(ready=True)
+        if status in {
+            QMediaPlayer.LoadedMedia,
+            QMediaPlayer.BufferedMedia,
+        }:
             self._complete_playback_recovery(deck)
             if deck == self.active:
                 self._end_buffer_stall()
