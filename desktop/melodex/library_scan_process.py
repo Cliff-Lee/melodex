@@ -78,6 +78,14 @@ def run_library_scan_child() -> int:
         return 2
 
     control = ScanControl()
+    output_lock = threading.Lock()
+
+    def send_message(payload: dict[str, Any]) -> None:
+        # Discovery and scan-progress callbacks can originate on different
+        # threads. Serialize JSON lines so the parent never sees interleaved
+        # messages.
+        with output_lock:
+            _write_message(sys.stdout, payload)
 
     def read_controls() -> None:
         for raw in sys.stdin:
@@ -94,6 +102,10 @@ def run_library_scan_child() -> int:
                 control.resume()
             elif action == "cancel":
                 control.cancel()
+            elif action == "prioritize":
+                value = str(command.get("path") or "").strip()
+                if value:
+                    control.prioritize(value)
 
     threading.Thread(
         target=read_controls,
@@ -160,10 +172,34 @@ def run_library_scan_child() -> int:
                 flush_checkpoints()
 
         def progress(payload: dict[str, Any]) -> None:
-            _write_message(
-                sys.stdout,
-                {"type": "progress", "payload": dict(payload or {})},
+            send_message({"type": "progress", "payload": dict(payload or {})})
+
+        def first_audio_file(track: dict[str, Any]) -> None:
+            send_message({"type": "provisional_track", "payload": dict(track)})
+
+        track_batch: list[dict[str, Any]] = []
+        first_track_batch = True
+        last_track_batch_at = time.monotonic()
+
+        def flush_track_batch() -> None:
+            nonlocal first_track_batch, last_track_batch_at
+            if not track_batch:
+                return
+            send_message(
+                {"type": "track_batch", "payload": {"tracks": list(track_batch)}}
             )
+            track_batch.clear()
+            first_track_batch = False
+            last_track_batch_at = time.monotonic()
+
+        def track_ready(track: dict[str, Any]) -> None:
+            track_batch.append(dict(track))
+            batch_target = 10 if first_track_batch else 50
+            if (
+                len(track_batch) >= batch_target
+                or time.monotonic() - last_track_batch_at >= 0.1
+            ):
+                flush_track_batch()
 
         scan_started = time.perf_counter()
         snapshot = provider.scan_snapshot(
@@ -175,7 +211,10 @@ def run_library_scan_child() -> int:
             cache_keys_canonical=True,
             collect_tracks=False,
             checkpoint=checkpoint,
+            on_first_audio_file=first_audio_file,
+            on_track_ready=track_ready,
         )
+        flush_track_batch()
         phase_seconds["scan"] = time.perf_counter() - scan_started
         metrics = dict(snapshot.get("metrics") or {})
         metrics["process_isolated"] = True
@@ -407,6 +446,20 @@ class LibraryScanProcess:
         self._paused = False
         self._send({"type": "resume"})
 
+    def prioritize(self, path: str | Path) -> bool:
+        """Ask the active bounded scan to visit a selected directory next."""
+        if not self.running:
+            return False
+        candidate = os.path.normcase(os.path.abspath(os.path.expanduser(str(path))))
+        for root in self.roots:
+            root_key = os.path.normcase(os.path.abspath(os.path.expanduser(str(root))))
+            try:
+                if os.path.commonpath((root_key, candidate)) == root_key:
+                    return self._send({"type": "prioritize", "path": candidate})
+            except ValueError:
+                continue
+        return False
+
     def cancel(self, *, hard_after: float | None = None) -> None:
         if self._finished:
             return
@@ -521,6 +574,22 @@ class LibraryScanProcess:
             if kind == "progress":
                 try:
                     self.on_progress(dict(message.get("payload") or {}))
+                except Exception:
+                    pass
+            elif kind == "provisional_track":
+                try:
+                    self.on_progress(
+                        {"provisional_track": dict(message.get("payload") or {})}
+                    )
+                except Exception:
+                    pass
+            elif kind == "track_batch":
+                try:
+                    self.on_progress(
+                        {"discovered_tracks": list(
+                            dict(message.get("payload") or {}).get("tracks") or []
+                        )}
+                    )
                 except Exception:
                     pass
             elif kind == "result":

@@ -4,7 +4,10 @@ from melodex.music_journey_live import (
     live_steering_stage,
     remaining_journey_stages,
     replan_live_journey,
+    route_track_reasons,
 )
+from melodex.living_queue import queue_track_key
+from melodex.living_queue import LivingQueue
 
 
 def _node(
@@ -80,6 +83,190 @@ def test_live_steering_is_transparent_semantic_stage():
     assert stage["constraint"] == "energetic"
     assert stage["label"] == "More energy next"
     assert stage["_live_steering"] is True
+
+
+def test_live_more_like_adds_a_one_shot_similarity_waypoint():
+    nodes = [
+        _node("current", [-2.0] * 8),
+        _node("reference", [1.0] * 8),
+        _node("near", [0.9] * 8),
+        _node("far", [-0.5] * 8),
+        _node("end", [2.0] * 8),
+    ]
+    active = {
+        "found": True,
+        "journey": True,
+        "path_refs": ["current", "end"],
+        "stages": [],
+    }
+
+    result = replan_live_journey(
+        _model(nodes),
+        {"edges": []},
+        active,
+        "current",
+        "end",
+        similar_to_ref="reference",
+        mode="sonic",
+    )
+
+    assert result["found"] is True
+    assert result["stages"][0]["type"] == "similar"
+    assert result["stages"][0]["target_ref"] == "reference"
+    assert result["stages"][0]["ref"] == "near"
+    assert "Live steer: More like Artist — reference" in result["reason"]
+    assert remaining_journey_stages(result, "current")[0]["target_ref"] == "reference"
+    assert remaining_journey_stages(result, "near") == []
+
+
+def test_live_toward_artist_adds_artist_waypoint():
+    nodes = [
+        _node("current", [-2.0] * 8, artist="Start"),
+        _node("target", [0.2] * 8, artist="Artist To Find"),
+        _node("other", [0.1] * 8, artist="Other"),
+        _node("end", [2.0] * 8, artist="End"),
+    ]
+    active = {
+        "found": True,
+        "journey": True,
+        "path_refs": ["current", "end"],
+        "stages": [],
+    }
+    result = replan_live_journey(
+        _model(nodes),
+        {"edges": []},
+        active,
+        "current",
+        "end",
+        target_artist=" artist to find ",
+        mode="sonic",
+    )
+
+    assert result["found"] is True
+    assert result["stages"][0]["type"] == "artist"
+    assert result["stages"][0]["artist"] == "artist to find"
+    assert result["stages"][0]["ref"] == "target"
+    assert "Live steer: Toward artist to find" in result["reason"]
+    pending = remaining_journey_stages(result, "current")
+    assert pending[0]["type"] == "artist"
+    assert pending[0]["artist"] == "artist to find"
+
+
+def test_live_toward_map_area_adds_region_waypoint():
+    nodes = [
+        _node("current", [-1.0] * 8),
+        _node("reference", [0.0] * 8),
+        _node("near", [0.1] * 8),
+        _node("far", [0.2] * 8),
+        _node("end", [1.0] * 8),
+    ]
+    nodes[1].update({"x": 0.0, "y": 0.0})
+    nodes[2].update({"x": 0.1, "y": 0.1})
+    nodes[3].update({"x": 0.9, "y": 0.9})
+    active = {
+        "found": True,
+        "journey": True,
+        "path_refs": ["current", "end"],
+        "stages": [],
+    }
+    result = replan_live_journey(
+        _model(nodes),
+        {"edges": []},
+        active,
+        "current",
+        "end",
+        target_region_ref="reference",
+        mode="sonic",
+    )
+
+    assert result["found"] is True
+    assert result["stages"][0]["type"] == "region"
+    assert result["stages"][0]["target_ref"] == "reference"
+    assert result["stages"][0]["ref"] == "near"
+    assert "Live steer: Toward this map area" in result["reason"]
+
+
+def test_route_reasons_explain_stages_and_connections_by_queue_track():
+    tracks = {
+        "waypoint": _node("waypoint", [0.2] * 8),
+        "next": _node("next", [0.4] * 8),
+    }
+    result = {
+        "path_refs": ["current", "waypoint", "next"],
+        "stages": [
+            {
+                "ref": "waypoint",
+                "label": "More like this",
+                "reason": "similarity 94% to another track",
+            }
+        ],
+        "hops": [
+            {"to": "waypoint", "reason": "close sonic connection"},
+            {"to": "next", "reason": "smooth transition"},
+        ],
+    }
+
+    reasons = route_track_reasons(result, tracks)
+
+    assert reasons[queue_track_key(tracks["waypoint"])] == (
+        "More like this · similarity 94% to another track"
+    )
+    assert reasons[queue_track_key(tracks["next"])] == "smooth transition"
+
+
+def test_adaptive_route_queue_preserves_anchor_and_undoes_as_one_flow():
+    nodes = [
+        _node("current", [-2.0] * 8),
+        _node("reference", [1.0] * 8),
+        _node("similar", [0.9] * 8),
+        _node("old", [0.0] * 8),
+        _node("keep", [-0.4] * 8),
+        _node("end", [2.0] * 8),
+    ]
+    model = _model(nodes)
+    route = {
+        "found": True,
+        "journey": True,
+        "path_refs": ["current", "old", "end"],
+        "stages": [],
+    }
+    replanned = replan_live_journey(
+        model,
+        {"edges": []},
+        route,
+        "current",
+        "end",
+        similar_to_ref="reference",
+        mode="sonic",
+    )
+    assert replanned["found"] is True
+
+    ref_map = {node["ref"]: node for node in nodes}
+    queue = LivingQueue(
+        [ref_map[ref] for ref in ("current", "old", "keep", "end")],
+        current_index=0,
+    )
+    assert queue.pin(2) is True
+    queue.replace_generated_tail(
+        [ref_map[ref] for ref in replanned["path_refs"][1:]]
+    )
+    assert [track["ref"] for track in queue.tracks()] == [
+        "current",
+        "similar",
+        "keep",
+        "end",
+    ]
+    reasons = route_track_reasons(replanned, ref_map)
+    assert "More like" in reasons[queue_track_key(ref_map["similar"])]
+
+    assert queue.undo_replan() is True
+    assert [track["ref"] for track in queue.tracks()] == [
+        "current",
+        "old",
+        "keep",
+        "end",
+    ]
+    assert queue.entries[2].pinned is True
 
 
 def test_live_replan_preserves_unsatisfied_stages_and_adds_steer():

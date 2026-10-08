@@ -59,12 +59,17 @@ def _run_launch(
     trace_path: Path,
     *,
     timeout_seconds: float = 45.0,
+    wait_for_cache: bool = False,
 ) -> dict[str, Any]:
     env = dict(os.environ)
     env["QT_QPA_PLATFORM"] = "offscreen"
     env["MELODEX_DATA_DIR"] = str(data_dir)
     env["MELODEX_STARTUP_TRACE"] = str(trace_path)
     env["MELODEX_STARTUP_PROBE_EXIT"] = "1"
+    if wait_for_cache:
+        env["MELODEX_STARTUP_PROBE_WAIT_CACHE"] = "1"
+    else:
+        env.pop("MELODEX_STARTUP_PROBE_WAIT_CACHE", None)
     existing_pythonpath = str(env.get("PYTHONPATH") or "")
     env["PYTHONPATH"] = (
         str(DESKTOP)
@@ -105,7 +110,39 @@ def _run_launch(
         "wall_ms": round(wall_ms, 3),
         "timeline_total_ms": round(float(trace.get("total_ms") or 0.0), 3),
         "phases": phases,
+        "first_music": dict(trace.get("first_music") or {}),
     }
+
+
+def _contract_violations(
+    result: dict[str, Any], *, warm_limit_ms: float, cached_limit_ms: float
+) -> list[str]:
+    violations: list[str] = []
+    warm_elapsed = float(result["warm_profile"]["timeline_total_ms"])
+    cached_elapsed = float(result["large_cached_profile"]["timeline_total_ms"])
+    cached_journeys = dict(
+        dict(result["large_cached_profile"].get("first_music") or {}).get(
+            "journeys"
+        )
+        or {}
+    )
+    cached_visible = cached_journeys.get("process_to_cached_library_ms")
+    if warm_elapsed >= float(warm_limit_ms):
+        violations.append(
+            f"warm shell {warm_elapsed:.1f} ms >= {float(warm_limit_ms):.1f} ms"
+        )
+    if cached_elapsed >= float(cached_limit_ms):
+        violations.append(
+            f"cached-library shell {cached_elapsed:.1f} ms >= {float(cached_limit_ms):.1f} ms"
+        )
+    if cached_visible is None:
+        violations.append("cached library never became visible in the startup probe")
+    elif float(cached_visible) >= float(cached_limit_ms):
+        violations.append(
+            f"cached library visible {float(cached_visible):.1f} ms >= "
+            f"{float(cached_limit_ms):.1f} ms"
+        )
+    return violations
 
 
 def _seed_cached_library(data_dir: Path, track_count: int) -> None:
@@ -197,6 +234,7 @@ def run_probe(
             large_profile,
             root / "large-cached.json",
             timeout_seconds=timeout_seconds,
+            wait_for_cache=True,
         )
 
     fresh_total = float(fresh["timeline_total_ms"])
@@ -205,7 +243,7 @@ def run_probe(
     large_total = float(large_cached["timeline_total_ms"])
     warm_gain = max(0.0, fresh_total - warm_total)
 
-    return {
+    result = {
         "schema": 1,
         "cached_library_tracks": track_count,
         "fresh_profile": fresh,
@@ -233,6 +271,17 @@ def run_probe(
             ),
         },
     }
+    result["contract"] = {
+        "limits_ms": {
+            "warm_shell": 1000.0,
+            "cached_library_shell": 1000.0,
+            "cached_library_visible": 1000.0,
+        },
+        "violations": _contract_violations(
+            result, warm_limit_ms=1000.0, cached_limit_ms=1000.0
+        ),
+    }
+    return result
 
 
 def main() -> int:
@@ -244,6 +293,13 @@ def main() -> int:
     )
     parser.add_argument("--tracks", type=int, default=12_700)
     parser.add_argument("--timeout", type=float, default=45.0)
+    parser.add_argument(
+        "--assert-contract",
+        action="store_true",
+        help="fail if warm shell or cached-library startup exceeds one second",
+    )
+    parser.add_argument("--warm-limit-ms", type=float, default=1000.0)
+    parser.add_argument("--cached-library-limit-ms", type=float, default=1000.0)
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
 
@@ -251,11 +307,28 @@ def main() -> int:
         track_count=args.tracks,
         timeout_seconds=args.timeout,
     )
+    result["contract"]["limits_ms"] = {
+        "warm_shell": float(args.warm_limit_ms),
+        "cached_library_shell": float(args.cached_library_limit_ms),
+        "cached_library_visible": float(args.cached_library_limit_ms),
+    }
+    result["contract"]["violations"] = _contract_violations(
+        result,
+        warm_limit_ms=args.warm_limit_ms,
+        cached_limit_ms=args.cached_library_limit_ms,
+    )
     rendered = json.dumps(result, indent=2, sort_keys=True)
     print(rendered)
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(rendered + "\n", "utf-8")
+    if args.assert_contract and result["contract"]["violations"]:
+        print(
+            "Startup contract failed: "
+            + "; ".join(result["contract"]["violations"]),
+            file=sys.stderr,
+        )
+        return 1
     return 0
 
 

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
-from PySide6.QtCore import QAbstractAnimation, QEasingCurve, QRectF, Qt, QTimer, QVariantAnimation, Signal
-from PySide6.QtGui import QColor, QBrush, QImage, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap
+from PySide6.QtCore import QAbstractAnimation, QEasingCurve, QMimeData, QRectF, Qt, QTimer, QVariantAnimation, Signal
+from PySide6.QtGui import QColor, QBrush, QDrag, QImage, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import (
+    QApplication,
     QComboBox,
     QGraphicsObject,
     QGraphicsItem,
@@ -18,6 +20,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+from .journey_composer import STAGE_MIME_TYPE
 
 
 _KEY_NAMES = ("C", "C♯", "D", "E♭", "E", "F", "F♯", "G", "A♭", "A", "B♭", "B")
@@ -98,12 +102,14 @@ class _MapView(QGraphicsView):
 class _NodeItem(QGraphicsObject):
     """Album-art point that expands into a track detail card on hover."""
 
-    def __init__(self, ref: str, node: dict[str, Any], selected, activated):
+    def __init__(self, ref: str, node: dict[str, Any], selected, activated, stage_for_ref):
         super().__init__()
         self.ref = ref
         self.node = node
         self._selected = selected
         self._activated = activated
+        self._stage_for_ref = stage_for_ref
+        self._press_scene_pos = None
         self._bounds = QRectF(0, 0, 84, 84)
         self._base_size = (84.0, 84.0)
         self._hovered = False
@@ -213,8 +219,36 @@ class _NodeItem(QGraphicsObject):
         painter.drawRoundedRect(r.adjusted(.5, .5, -.5, -.5), radius, radius)
 
     def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self._press_scene_pos = event.scenePos()
         self._selected(self.ref)
         super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if (
+            self._press_scene_pos is not None
+            and event.buttons() & Qt.LeftButton
+            and (event.scenePos() - self._press_scene_pos).manhattanLength()
+            >= QApplication.startDragDistance()
+        ):
+            stage = self._stage_for_ref(self.ref)
+            if stage:
+                drag = QDrag(self)
+                mime = QMimeData()
+                mime.setData(
+                    STAGE_MIME_TYPE,
+                    json.dumps(stage, ensure_ascii=False).encode("utf-8"),
+                )
+                drag.setMimeData(mime)
+                drag.exec(Qt.CopyAction)
+                self._press_scene_pos = None
+                event.accept()
+                return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        self._press_scene_pos = None
+        super().mouseReleaseEvent(event)
 
     def mouseDoubleClickEvent(self, event):
         self._activated(self.ref)
@@ -396,7 +430,16 @@ class MusicMapWidget(QWidget):
             if ref not in self.positions:
                 continue
             x, y = self.positions[ref]
-            item = _NodeItem(ref, node, self._select_ref, self._activate_ref)
+            item = _NodeItem(
+                ref,
+                node,
+                self._select_ref,
+                self._activate_ref,
+                self._journey_stage_for_ref,
+            )
+            item.setToolTip(
+                "Drag this track to the Journey Composer timeline to add it as an exact waypoint."
+            )
             if len(nodes) <= 55:
                 card_w, card_h = 86.0, 86.0
             elif len(nodes) <= 180:
@@ -739,6 +782,7 @@ class MusicMapWidget(QWidget):
             f"{float(node.get('bpm') or 0):.0f} BPM · energy {float(node.get('energy') or 0):.0%} · "
             f"taste {float(node.get('taste') or 0):.0%} · rediscovery {float(node.get('rediscovery') or 0):.0%}"
             + connection_text
+            + " · drag to Compose to add as a waypoint"
         )
         self.trackSelected.emit(track)
 
@@ -760,6 +804,18 @@ class MusicMapWidget(QWidget):
         if self.selected_ref and self.selected_ref in self.ref_map:
             return dict(self.ref_map[self.selected_ref])
         return {}
+
+    def _journey_stage_for_ref(self, ref: str) -> dict[str, Any]:
+        track = dict(self.ref_map.get(str(ref) or "") or {})
+        if not track:
+            return {}
+        artist = str(track.get("artist") or "Unknown artist")
+        title = str(track.get("title") or "Unknown track")
+        return {
+            "type": "track",
+            "ref": str(ref),
+            "label": f"{artist} — {title}",
+        }
 
     def highlight_track(self, track: dict[str, Any]) -> None:
         self.current_identity = _track_identity(dict(track or {})) if track else ""

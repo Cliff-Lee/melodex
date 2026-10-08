@@ -18,6 +18,9 @@ from ..storage_concurrency import StorageConcurrencyController
 AUDIO_EXTS = {".mp3", ".flac", ".m4a", ".aac", ".ogg", ".opus", ".wav", ".aiff", ".wma"}
 _ORIGINAL_OS_WALK = os.walk
 _NAS_IO_RETRY_DELAYS = (0.05, 0.15)
+FIRST_PLAYABLE_TARGET = 20
+FIRST_MUSIC_BREADTH_DIRECTORY_LIMIT = 512
+FIRST_MUSIC_BREADTH_FRONTIER_LIMIT = 512
 
 
 def _retry_oserror(
@@ -48,16 +51,82 @@ def _scandir_walk(
     root: Path,
     *,
     onerror: Callable[[OSError | None, int], None] | None = None,
+    control: ScanControl | None = None,
+    first_playable_target: int = FIRST_PLAYABLE_TARGET,
+    breadth_directory_limit: int = FIRST_MUSIC_BREADTH_DIRECTORY_LIMIT,
+    breadth_frontier_limit: int = FIRST_MUSIC_BREADTH_FRONTIER_LIMIT,
 ):
-    """Yield directory batches using DirEntry stat data when available.
+    """Yield directory batches with a bounded breadth-first first-music pass.
 
     Production uses scandir to avoid constructing a Path and issuing a separate
     Path.stat call for every discovered file. If os.walk has been monkeypatched
     (tests/custom probes), callers deliberately fall back to that walker.
+
+    The initial breadth-first pass ends after the first playable target, the
+    directory budget, or the bounded frontier is exhausted. Remaining work is
+    handed to the existing depth-first traversal so a large hierarchy does not
+    leave an unbounded breadth-first queue behind.
     """
-    stack = [Path(root)]
-    while stack:
-        base = stack.pop()
+    frontier = deque([Path(root)])
+    stack: list[Path] = []
+    priority_frontier: deque[Path] = deque()
+    visited_directories: set[str] = set()
+    root_key = os.path.normcase(os.path.abspath(str(root)))
+    breadth_directories = 0
+    breadth_audio_files = 0
+    first_playable_target = max(1, int(first_playable_target))
+    breadth_directory_limit = max(1, int(breadth_directory_limit))
+    breadth_frontier_limit = max(1, int(breadth_frontier_limit))
+    breadth_complete = False
+    while frontier or stack:
+        if control is not None:
+            requested = control.take_priority_path(root)
+            if requested:
+                candidate = os.path.normcase(os.path.abspath(requested))
+                try:
+                    inside_root = os.path.commonpath((root_key, candidate)) == root_key
+                except ValueError:
+                    inside_root = False
+                if inside_root and candidate not in visited_directories:
+                    priority_frontier.appendleft(Path(requested))
+        if priority_frontier:
+            base = priority_frontier.popleft()
+            base_key = os.path.normcase(os.path.abspath(str(base)))
+            if base_key in visited_directories:
+                continue
+            visited_directories.add(base_key)
+            breadth_pass = False
+            priority_pass = True
+        elif (
+            not breadth_complete
+            and breadth_audio_files < first_playable_target
+            and breadth_directories < breadth_directory_limit
+            and frontier
+        ):
+            base = frontier.popleft()
+            base_key = os.path.normcase(os.path.abspath(str(base)))
+            if base_key in visited_directories:
+                continue
+            visited_directories.add(base_key)
+            breadth_directories += 1
+            breadth_pass = True
+            priority_pass = False
+        else:
+            breadth_complete = True
+            # Preserve queued breadth-first directories, then continue with the
+            # scanner's ordinary depth-first work order.
+            if frontier:
+                stack.extend(reversed(frontier))
+                frontier.clear()
+            if not stack:
+                break
+            base = stack.pop()
+            base_key = os.path.normcase(os.path.abspath(str(base)))
+            if base_key in visited_directories:
+                continue
+            visited_directories.add(base_key)
+            breadth_pass = False
+            priority_pass = False
         retries = 0
 
         def retried(_error: OSError) -> None:
@@ -134,9 +203,32 @@ def _scandir_walk(
                 stat_elapsed = max(0.0, time.perf_counter() - started)
             files.append((entry.name, stat_result, stat_elapsed))
 
-        # os.walk is depth-first in practice. Reverse the sorted children so
-        # popping the stack visits them in ascending lexical order.
-        stack.extend(reversed(directories))
+        if priority_pass:
+            # A user-requested subtree takes precedence over the background
+            # queue. Keep its descendants in the same priority lane.
+            breadth_audio_files += sum(
+                1
+                for name, _stat, _elapsed in files
+                if Path(name).suffix.lower() in AUDIO_EXTS
+            )
+            for directory in reversed(directories):
+                priority_frontier.appendleft(directory)
+        elif breadth_pass:
+            audio_in_directory = sum(
+                1
+                for name, _stat, _elapsed in files
+                if Path(name).suffix.lower() in AUDIO_EXTS
+            )
+            breadth_audio_files += audio_in_directory
+            room = max(0, breadth_frontier_limit - len(frontier))
+            frontier.extend(directories[:room])
+            overflow = directories[room:]
+            # Keep the breadth-first frontier bounded. Overflow becomes the
+            # tail of the normal depth-first continuation after this pass.
+            stack.extend(reversed(overflow))
+        else:
+            # Reverse sorted children so popping visits them lexically.
+            stack.extend(reversed(directories))
         yield str(base), files
 
 
@@ -164,6 +256,7 @@ class LocalFilesProvider(MusicProvider):
         self._last_scan_metrics: dict[str, object] = {}
         self._cached_loader: Callable[[], list[dict[str, Any]]] | None = None
         self._cached_loader_lock = threading.RLock()
+        self._source_availability: dict[str, str] = {}
         if self.roots and scan_on_init:
             self.scan()
 
@@ -234,7 +327,38 @@ class LocalFilesProvider(MusicProvider):
 
     def configure_roots(self, roots: list[Path]) -> None:
         """Update configured roots without touching the filesystem."""
-        self.roots = [Path(x) for x in roots]
+        new_roots = [Path(x) for x in roots]
+        old_keys = tuple(self._root_key(root) for root in self.roots)
+        new_keys = tuple(self._root_key(root) for root in new_roots)
+        if old_keys != new_keys and self._tracks:
+            retained = [
+                track
+                for track in self._tracks
+                if self._path_is_under_roots(
+                    str(track.get("local_path") or track.get("track_id") or ""),
+                    new_roots,
+                )
+            ]
+            if len(retained) != len(self._tracks):
+                self._tracks = retained
+                self._catalog_revision += 1
+        self.roots = new_roots
+
+    @staticmethod
+    def _root_key(root: str | Path) -> str:
+        return os.path.normcase(
+            os.path.abspath(os.path.expanduser(str(root)))
+        )
+
+    @classmethod
+    def _path_is_under_roots(cls, path: str, roots: list[Path]) -> bool:
+        if not path:
+            return False
+        candidate = cls._root_key(path)
+        return any(
+            candidate == root or candidate.startswith(root.rstrip(os.sep) + os.sep)
+            for root in (cls._root_key(item) for item in roots)
+        )
 
     def set_roots(self, roots: list[Path]) -> None:
         """Compatibility API for callers that explicitly want a synchronous scan."""
@@ -325,6 +449,8 @@ class LocalFilesProvider(MusicProvider):
         cache_keys_canonical: bool = False,
         collect_tracks: bool = True,
         checkpoint: Callable[[dict[str, Any]], None] | None = None,
+        on_first_audio_file: Callable[[dict[str, Any]], None] | None = None,
+        on_track_ready: Callable[[dict[str, Any]], None] | None = None,
     ) -> dict[str, Any]:
         """Scan roots through a bounded discovery/metadata pipeline.
 
@@ -391,6 +517,7 @@ class LocalFilesProvider(MusicProvider):
         )
         producer_done = threading.Event()
         producer_error: list[BaseException] = []
+        provisional_audio_files_emitted = 0
         max_queue_depth = 0
         queue_backpressure_events = 0
         directory_manifest_hits = 0
@@ -466,6 +593,7 @@ class LocalFilesProvider(MusicProvider):
                         continue
 
         def discover() -> None:
+            nonlocal provisional_audio_files_emitted
             nonlocal stat_failures
             nonlocal file_work_items_materialized
             nonlocal directory_reuse_materializations_avoided
@@ -517,7 +645,11 @@ class LocalFilesProvider(MusicProvider):
                             root_walk_errors += 1
 
                     if os.walk is _ORIGINAL_OS_WALK:
-                        walker = _scandir_walk(root, onerror=on_walk_error)
+                        walker = _scandir_walk(
+                            root,
+                            onerror=on_walk_error,
+                            control=control,
+                        )
                         fast_scandir = True
                     else:
                         try:
@@ -533,6 +665,8 @@ class LocalFilesProvider(MusicProvider):
                     for base, files in walker:
                         control.checkpoint()
                         probe.directory_seen()
+                        if probe.metrics.directories_seen == 1:
+                            emit("discovering", force=True, current=Path(base).name)
                         manifest = hashlib.sha256()
                         audio_count = 0
                         directory_key = self._override_key(base)
@@ -563,6 +697,38 @@ class LocalFilesProvider(MusicProvider):
                             control.checkpoint()
                             is_audio = Path(name).suffix.lower() in AUDIO_EXTS
                             probe.file_seen(audio=is_audio)
+                            if is_audio and probe.metrics.audio_files_seen == 1:
+                                emit("discovering", force=True, current=Path(base).name)
+                            if (
+                                is_audio
+                                and on_first_audio_file is not None
+                                and provisional_audio_files_emitted
+                                < FIRST_PLAYABLE_TARGET
+                            ):
+                                provisional_audio_files_emitted += 1
+                                provisional_path = Path(base) / name
+                                absolute_path = os.path.abspath(
+                                    os.path.expanduser(str(provisional_path))
+                                )
+                                try:
+                                    on_first_audio_file(
+                                        {
+                                            "provider_id": "local",
+                                            "track_id": absolute_path,
+                                            "rel": f"local:{absolute_path}",
+                                            "title": provisional_path.stem,
+                                            "artist": "Unknown artist",
+                                            "album": "",
+                                            "duration": 0.0,
+                                            "local_path": absolute_path,
+                                            "source": "local",
+                                            "provisional": True,
+                                        }
+                                    )
+                                except Exception:
+                                    # Early playback is opportunistic. A UI or
+                                    # IPC callback failure must not fail indexing.
+                                    pass
                             if not is_audio:
                                 continue
 
@@ -773,8 +939,15 @@ class LocalFilesProvider(MusicProvider):
                     checkpoint(dict(record))
                 index_records.append(record)
                 tracks_indexed += 1
+                prepared_track = self._apply_override(raw_metadata)
                 if collect_tracks:
-                    tracks.append(self._apply_override(raw_metadata))
+                    tracks.append(prepared_track)
+                if on_track_ready is not None:
+                    try:
+                        on_track_ready(dict(prepared_track))
+                    except Exception:
+                        # Progressive UI updates must not fail the durable scan.
+                        pass
 
         def drain_metadata() -> None:
             while pending_metadata:
@@ -1169,26 +1342,92 @@ class LocalFilesProvider(MusicProvider):
             self._cached_loader = None
             tracks = loader()
             self._tracks = self.prepare_cached_tracks(tracks)
+            self._apply_source_availability(
+                self._tracks, self._source_availability
+            )
             self._catalog_revision += 1
 
     def prepare_cached_tracks(
         self,
         tracks: list[dict[str, Any]],
+        *,
+        source_availability: dict[str, str] | None = None,
     ) -> list[dict[str, Any]]:
         """Apply Melodex-only corrections without probing any audio path."""
-        return [
+        prepared = [
             self._apply_override(dict(item))
             for item in list(tracks or [])
             if isinstance(item, dict)
         ]
+        self._apply_source_availability(
+            prepared,
+            self._source_availability
+            if source_availability is None
+            else source_availability,
+        )
+        return prepared
 
-    def load_cached_tracks(self, tracks: list[dict[str, Any]]) -> int:
+    def load_cached_tracks(
+        self, tracks: list[dict[str, Any]], *, prepared: bool = False
+    ) -> int:
         """Load persisted metadata without probing the underlying audio files."""
         with self._cached_loader_lock:
             self._cached_loader = None
-        self._tracks = self.prepare_cached_tracks(tracks)
+        self._tracks = (
+            tracks
+            if prepared
+            else self.prepare_cached_tracks(tracks)
+        )
+        if not prepared:
+            self._apply_source_availability(
+                self._tracks, self._source_availability
+            )
         self._catalog_revision += 1
         return len(self._tracks)
+
+    def set_source_availability(
+        self,
+        root: str | Path,
+        status: str,
+        *,
+        update_tracks: bool = True,
+    ) -> None:
+        """Annotate cached rows from one source without checking its files."""
+        key = os.path.normcase(os.path.abspath(os.path.expanduser(str(root))))
+        normalized = str(status or "cached").strip().lower()
+        if normalized not in {"available", "unavailable", "degraded", "cached"}:
+            normalized = "cached"
+        self._source_availability[key] = normalized
+        if update_tracks:
+            self._apply_source_availability(
+                self._tracks, self._source_availability
+            )
+        self._catalog_revision += 1
+
+    @staticmethod
+    def _apply_source_availability(
+        tracks: list[dict[str, Any]],
+        source_availability: dict[str, str],
+    ) -> None:
+        roots = [
+            (
+                os.path.normcase(os.path.abspath(os.path.expanduser(root))),
+                status,
+            )
+            for root, status in source_availability.items()
+        ]
+        for track in tracks:
+            path = str(track.get("local_path") or "").strip()
+            if not path:
+                continue
+            canonical = os.path.normcase(os.path.abspath(os.path.expanduser(path)))
+            matches = [
+                (root, status)
+                for root, status in roots
+                if canonical == root or canonical.startswith(root.rstrip(os.sep) + os.sep)
+            ]
+            if matches:
+                track["availability"] = max(matches, key=lambda item: len(item[0]))[1]
 
     def apply_scan_snapshot(self, snapshot: dict[str, Any]) -> int:
         """Atomically replace the live catalog with a completed scan snapshot."""
@@ -1200,6 +1439,7 @@ class LocalFilesProvider(MusicProvider):
         metrics = dict((snapshot or {}).get("metrics") or {})
         with self._cached_loader_lock:
             self._cached_loader = None
+        self._apply_source_availability(tracks, self._source_availability)
         self._tracks = tracks
         self._catalog_revision += 1
         self._last_scan_metrics = metrics
@@ -1212,6 +1452,11 @@ class LocalFilesProvider(MusicProvider):
     @property
     def catalog_loaded(self) -> bool:
         return self._cached_loader is None
+
+    @property
+    def track_count(self) -> int:
+        """Return the in-memory row count without copying track dictionaries."""
+        return len(self._tracks)
 
     @property
     def catalog_revision(self) -> int:

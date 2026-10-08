@@ -9,6 +9,11 @@ or artwork request may take seconds or minutes. During that work the application
 continue to acknowledge input, navigate, scroll, play audio, pause/cancel work, and
 remain usable.
 
+> Incomplete library allowed. Silent player not.
+
+No operation needed only for complete library knowledge may sit on the critical path
+between the user selecting accessible music and Melodex playing it.
+
 Responsiveness is both an engineering property and an end-user experience. Fluid
 Melodex therefore measures four different things:
 

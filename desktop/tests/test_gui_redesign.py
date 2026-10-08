@@ -140,6 +140,70 @@ def test_library_reuses_rendered_state_for_same_catalog_revision():
     app.processEvents()
 
 
+def test_library_accepts_progressive_track_batches_without_model_reset():
+    try:
+        from PySide6.QtWidgets import QApplication
+        from melodex.library_browser import LibraryBrowser
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    browser = LibraryBrowser()
+    first = {
+        "provider_id": "local",
+        "track_id": "/music/first.flac",
+        "local_path": "/music/first.flac",
+        "title": "first",
+        "artist": "Unknown artist",
+        "album": "",
+        "provisional": True,
+    }
+    assert browser.append_discovered_tracks([first]) == 1
+    assert browser.current_view() == "tracks"
+    assert browser.track_model.rowCount() == 1
+    assert browser.view_buttons["albums"].isEnabled() is False
+    assert browser.view_buttons["artists"].isEnabled() is False
+    assert browser.view_buttons["tracks"].isEnabled() is True
+
+    resets = []
+    original_set_tracks = browser.track_model.set_tracks
+    browser.track_model.set_tracks = lambda tracks: (
+        resets.append(len(tracks)), original_set_tracks(tracks)
+    )
+    batch = [
+        {
+            "provider_id": "local",
+            "track_id": f"/music/{index:02d}.flac",
+            "local_path": f"/music/{index:02d}.flac",
+            "title": f"Track {index:02d}",
+            "artist": "Test artist",
+            "album": "Test album",
+        }
+        for index in range(1, 51)
+    ]
+    assert browser.append_discovered_tracks(batch) == 50
+    assert browser.track_model.rowCount() == 51
+    assert resets == []
+
+    enriched = {**first, "title": "Track One", "artist": "Test artist", "provisional": False}
+    assert browser.append_discovered_tracks([enriched]) == 0
+    row = next(
+        index
+        for index in range(browser.track_model.rowCount())
+        if browser.track_model.track_at(index).get("track_id") == first["track_id"]
+    )
+    assert browser.track_model.track_at(row)["title"] == "Track One"
+    assert resets == []
+
+    browser.set_catalog(batch + [enriched], revision=7)
+    assert browser.view_buttons["albums"].isEnabled() is True
+    assert browser.view_buttons["artists"].isEnabled() is True
+
+    browser.deleteLater()
+    app.processEvents()
+
+
 def test_library_filter_reuses_cards_and_only_processes_active_view(monkeypatch):
     try:
         from PySide6.QtTest import QTest
@@ -3032,7 +3096,7 @@ def test_cancelled_main_window_scan_keeps_existing_catalog(monkeypatch, tmp_path
     app.processEvents()
 
 
-def test_indexed_library_loads_on_startup_without_automatic_rescan(
+def test_indexed_library_is_visible_before_background_refresh(
     monkeypatch,
     tmp_path,
 ):
@@ -3088,12 +3152,247 @@ def test_indexed_library_loads_on_startup_without_automatic_rescan(
 
     assert scans == []
     assert window.providers.local_index_ready() is True
-    assert len(window.providers.local_catalog()) == 1
-    assert window.providers.local_catalog()[0]["title"] == "Cached Song"
+    assert window.providers.local_catalog_count() == 1
     assert "1 track in your library" in window.home_status.text()
+
+    deadline = time.monotonic() + 1.8
+    while time.monotonic() < deadline and not scans:
+        app.processEvents()
+        time.sleep(0.005)
+    assert scans == ["background refresh"]
 
     window.close()
     app.processEvents()
+
+
+def test_first_provisional_track_can_be_play_requested_before_catalog_commit(
+    monkeypatch,
+    tmp_path,
+):
+    try:
+        from PySide6.QtCore import QObject
+        from PySide6.QtMultimedia import QMediaPlayer
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+        import melodex.player as player_module
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+
+    class NullAudioOutput(QObject):
+        def setVolume(self, *_args):
+            pass
+
+    monkeypatch.setattr(player_module, "QAudioOutput", NullAudioOutput)
+    monkeypatch.setattr(QMediaPlayer, "setAudioOutput", lambda _self, _output: None)
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+
+    audio_path = tmp_path / "first-track.flac"
+    audio_path.write_bytes(b"test audio placeholder")
+    window = main_window.MainWindow()
+    source_id = window._first_music_timeline.begin_source()
+    window._first_music_scan_source_id = source_id
+    window._accept_first_provisional_track(
+        {
+            "provider_id": "local",
+            "track_id": str(audio_path),
+            "local_path": str(audio_path),
+            "title": audio_path.stem,
+            "artist": "Unknown artist",
+            "album": "",
+            "provisional": True,
+        }
+    )
+
+    assert window.providers.local_catalog_count() == 0
+    assert window.player.queue[0]["provisional"] is True
+    assert window.player.index == 0
+    window._play_library_track(window.player.queue[0])
+    assert window.providers.local_catalog_count() == 0
+    assert len(window.player.queue) == 1
+    assert window.player.queue[0]["local_path"] == str(audio_path)
+    timeline = window._first_music_timeline.summary()
+    events = timeline["events"]
+    assert any(
+        event["event"] == "first_playable_track_ready"
+        and event.get("source_id") == source_id
+        for event in events
+    )
+    assert any(
+        event["event"] == "play_requested"
+        and event.get("source_id") == source_id
+        for event in events
+    )
+    assert not any(
+        event["event"] == "background_scan_finished"
+        and event.get("source_id") == source_id
+        for event in events
+    )
+
+    window.close()
+    app.processEvents()
+
+
+def test_new_source_provisional_track_is_visible_with_existing_catalog(
+    monkeypatch,
+    tmp_path,
+):
+    try:
+        from PySide6.QtCore import QObject
+        from PySide6.QtMultimedia import QMediaPlayer
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+        import melodex.player as player_module
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+
+    class NullAudioOutput(QObject):
+        def setVolume(self, *_args):
+            pass
+
+    monkeypatch.setattr(player_module, "QAudioOutput", NullAudioOutput)
+    monkeypatch.setattr(QMediaPlayer, "setAudioOutput", lambda _self, _output: None)
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+    window = main_window.MainWindow()
+    cached = _track("/cached/known.flac", "Known Artist", "Known Album", "Known", 1)
+    window.providers.apply_local_scan_snapshot({"tracks": [cached]})
+    window.library_browser.set_catalog([cached], revision=1)
+    new_path = tmp_path / "nas" / "New Artist" / "New Album" / "new.flac"
+    new_path.parent.mkdir(parents=True)
+    new_path.write_bytes(b"audio placeholder")
+    window._first_music_scan_source_id = window._first_music_timeline.begin_source()
+
+    window._accept_first_provisional_track(
+        {
+            "provider_id": "local",
+            "track_id": str(new_path),
+            "local_path": str(new_path),
+            "title": "new",
+            "artist": "Unknown artist",
+            "album": "",
+            "provisional": True,
+        }
+    )
+
+    assert window.providers.local_catalog_count() == 1
+    assert any(
+        track.get("local_path") == str(new_path)
+        for track in window.library_browser.catalog
+    )
+    assert window.player.queue[0]["local_path"] == str(new_path)
+
+    window.close()
+    app.processEvents()
+
+
+def test_shuffle_discovered_tracks_expands_with_scan_batches(monkeypatch, tmp_path):
+    try:
+        from types import SimpleNamespace
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+    window = main_window.MainWindow()
+
+    class QueuePlayer:
+        def __init__(self):
+            self.queue = []
+            self.index = -1
+            self.append_calls = []
+
+        def set_queue(self, tracks, _start, _autoplay, **_kwargs):
+            self.queue = [dict(track) for track in tracks]
+
+        def append_queue(self, tracks, autoplay=False):
+            assert autoplay is False
+            self.append_calls.append(([dict(track) for track in tracks], autoplay))
+            self.queue.extend(dict(track) for track in tracks)
+
+        def close(self):
+            pass
+
+    player = QueuePlayer()
+    window.player = player
+    window.local_scan = SimpleNamespace(active=True, shutdown=lambda: None)
+    first = _track("/music/first.flac", "Artist", "Album", "First", 1)
+    second = _track("/music/second.flac", "Artist", "Album", "Second", 2)
+    window._cache_progressive_tracks([first])
+
+    window._shuffle_discovered_tracks()
+    assert [track["track_id"] for track in player.queue] == [first["track_id"]]
+    player.index = 0
+
+    window._extend_discovered_shuffle([second])
+    assert {track["track_id"] for track in player.queue} == {
+        first["track_id"], second["track_id"]
+    }
+    assert player.index == 0
+    assert player.append_calls[-1][1] is False
+
+    player.queue = [dict(second)]
+    window._extend_discovered_shuffle([second])
+    assert window._shuffle_discovered_active is False
+
+    window.close()
+    app.processEvents()
+
+
+def test_first_discovery_preview_stops_extending_after_manual_queue_intent(
+    monkeypatch, tmp_path
+):
+    try:
+        from types import SimpleNamespace
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+    window = main_window.MainWindow()
+
+    class QueuePlayer:
+        def __init__(self):
+            self.queue = [{
+                "track_id": "manual",
+                "local_path": "/music/manual.flac",
+                "progressive_local": True,
+            }]
+            self.index = 0
+            self.appended = []
+
+        def append_queue(self, tracks, autoplay=False):
+            self.appended.extend(tracks)
+
+        def close(self):
+            pass
+
+    window.player = QueuePlayer()
+    window.local_scan = SimpleNamespace(active=True, shutdown=lambda: None)
+    window._first_discovery_preview_queue = False
+    try:
+        window._accept_first_provisional_track(
+            {"track_id": "new", "local_path": "/music/new.flac"}
+        )
+
+        assert window.player.appended == []
+    finally:
+        window.close()
+        app.processEvents()
 
 
 def test_existing_roots_without_index_trigger_one_migration_scan(

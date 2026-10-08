@@ -38,6 +38,30 @@ class UserState:
                     key TEXT PRIMARY KEY,
                     value TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS playback_checkpoint (
+                    id INTEGER PRIMARY KEY CHECK(id=1),
+                    track_json TEXT NOT NULL,
+                    position_ms INTEGER NOT NULL DEFAULT 0,
+                    updated_at REAL NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS playback_queue (
+                    id INTEGER PRIMARY KEY CHECK(id=1),
+                    tracks_json TEXT NOT NULL,
+                    queue_index INTEGER NOT NULL DEFAULT 0,
+                    updated_at REAL NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS recent_directories (
+                    path TEXT PRIMARY KEY,
+                    accessed_at REAL NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_recent_directories_accessed
+                    ON recent_directories(accessed_at DESC);
+                CREATE TABLE IF NOT EXISTS source_status (
+                    source_id TEXT PRIMARY KEY,
+                    status TEXT NOT NULL,
+                    checked_at REAL NOT NULL,
+                    detail TEXT NOT NULL DEFAULT ''
+                );
                 CREATE TABLE IF NOT EXISTS pins (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     kind TEXT NOT NULL,
@@ -427,7 +451,181 @@ class UserState:
             )
             history_id = int(cur.lastrowid or 0)
         self._signal_event(track, "play")
+        path = str(track.get("local_path") or "").strip()
+        if path:
+            self.record_recent_directory(str(Path(path).parent))
         return history_id
+
+    def save_playback_checkpoint(
+        self, track: dict[str, Any] | None, position_ms: int
+    ) -> None:
+        """Persist the last local playback position without filesystem access."""
+        row = dict(track or {})
+        if not row:
+            return
+        payload = json.dumps(row, ensure_ascii=False)
+        with self._lock, self._conn:
+            self._conn.execute(
+                "INSERT INTO playback_checkpoint(id,track_json,position_ms,updated_at) "
+                "VALUES(1,?,?,?) ON CONFLICT(id) DO UPDATE SET "
+                "track_json=excluded.track_json,position_ms=excluded.position_ms,"
+                "updated_at=excluded.updated_at",
+                (payload, max(0, int(position_ms)), time.time()),
+            )
+
+    def playback_checkpoint(self) -> dict[str, Any] | None:
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT track_json,position_ms,updated_at FROM playback_checkpoint WHERE id=1"
+            ).fetchone()
+        if row is None:
+            return None
+        try:
+            track = json.loads(row["track_json"])
+        except Exception:
+            return None
+        if not isinstance(track, dict):
+            return None
+        return {
+            "track": track,
+            "position_ms": max(0, int(row["position_ms"] or 0)),
+            "updated_at": float(row["updated_at"] or 0),
+        }
+
+    def save_playback_queue(
+        self,
+        tracks: list[dict[str, Any]],
+        queue_index: int,
+        *,
+        max_tracks: int = 5000,
+    ) -> None:
+        """Persist a bounded, local-only queue without transient stream URLs."""
+        source = [dict(row) for row in list(tracks or []) if isinstance(row, dict)]
+        current = source[int(queue_index)] if 0 <= int(queue_index) < len(source) else None
+        allowed = {
+            "provider_id", "track_id", "rel", "title", "artist", "album",
+            "duration", "local_path", "track_no", "disc_no", "year",
+            "genre", "provisional", "progressive_local", "availability",
+        }
+        local_rows = [
+            {key: value for key, value in row.items() if key in allowed}
+            for row in source
+            if str(row.get("local_path") or "").strip()
+        ][: max(1, int(max_tracks))]
+        if not local_rows:
+            with self._lock, self._conn:
+                self._conn.execute("DELETE FROM playback_queue WHERE id=1")
+            return
+        current_key = (
+            str(current.get("track_id") or current.get("local_path") or "")
+            if isinstance(current, dict)
+            else ""
+        )
+        saved_index = next(
+            (
+                index
+                for index, row in enumerate(local_rows)
+                if current_key
+                and str(row.get("track_id") or row.get("local_path") or "")
+                == current_key
+            ),
+            0,
+        )
+        payload = json.dumps(local_rows, ensure_ascii=False)
+        with self._lock, self._conn:
+            self._conn.execute(
+                "INSERT INTO playback_queue(id,tracks_json,queue_index,updated_at) "
+                "VALUES(1,?,?,?) ON CONFLICT(id) DO UPDATE SET "
+                "tracks_json=excluded.tracks_json,queue_index=excluded.queue_index,"
+                "updated_at=excluded.updated_at",
+                (payload, saved_index, time.time()),
+            )
+
+    def playback_queue(self, *, max_tracks: int = 5000) -> dict[str, Any] | None:
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT tracks_json,queue_index,updated_at FROM playback_queue WHERE id=1"
+            ).fetchone()
+        if row is None:
+            return None
+        try:
+            tracks = json.loads(row["tracks_json"])
+        except Exception:
+            return None
+        if not isinstance(tracks, list):
+            return None
+        local_tracks = [
+            dict(track)
+            for track in tracks
+            if isinstance(track, dict)
+            and str(track.get("local_path") or "").strip()
+        ][: max(1, int(max_tracks))]
+        if not local_tracks:
+            return None
+        return {
+            "tracks": local_tracks,
+            "queue_index": max(
+                0,
+                min(len(local_tracks) - 1, int(row["queue_index"] or 0)),
+            ),
+            "updated_at": float(row["updated_at"] or 0),
+        }
+
+    def record_recent_directory(self, path: str | Path) -> None:
+        value = str(Path(path).expanduser().absolute())
+        if not value:
+            return
+        now = time.time()
+        with self._lock, self._conn:
+            self._conn.execute(
+                "INSERT INTO recent_directories(path,accessed_at) VALUES(?,?) "
+                "ON CONFLICT(path) DO UPDATE SET accessed_at=excluded.accessed_at",
+                (value, now),
+            )
+            self._conn.execute(
+                "DELETE FROM recent_directories WHERE path NOT IN "
+                "(SELECT path FROM recent_directories ORDER BY accessed_at DESC LIMIT 100)"
+            )
+
+    def recent_directories(self, limit: int = 20) -> list[dict[str, Any]]:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT path,accessed_at FROM recent_directories "
+                "ORDER BY accessed_at DESC LIMIT ?",
+                (max(1, int(limit)),),
+            ).fetchall()
+        return [
+            {"path": str(row["path"]), "accessed_at": float(row["accessed_at"] or 0)}
+            for row in rows
+        ]
+
+    def set_source_status(
+        self, source_id: str, status: str, detail: str = ""
+    ) -> None:
+        key = str(source_id or "").strip()
+        if not key:
+            return
+        with self._lock, self._conn:
+            self._conn.execute(
+                "INSERT INTO source_status(source_id,status,checked_at,detail) "
+                "VALUES(?,?,?,?) ON CONFLICT(source_id) DO UPDATE SET "
+                "status=excluded.status,checked_at=excluded.checked_at,detail=excluded.detail",
+                (key, str(status or "unknown"), time.time(), str(detail or "")[:300]),
+            )
+
+    def source_statuses(self) -> dict[str, dict[str, Any]]:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT source_id,status,checked_at,detail FROM source_status"
+            ).fetchall()
+        return {
+            str(row["source_id"]): {
+                "status": str(row["status"]),
+                "checked_at": float(row["checked_at"] or 0),
+                "detail": str(row["detail"] or ""),
+            }
+            for row in rows
+        }
 
     def mark_completed(self, history_id: int) -> None:
         if not history_id:

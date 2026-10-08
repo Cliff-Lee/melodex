@@ -268,11 +268,92 @@ _RESPONSIVENESS_INTERACTION_FIELDS = (
     "duration_ms",
 )
 
+_FIRST_MUSIC_EVENT_NAMES = frozenset(
+    {
+        "application_process_start", "window_created", "shell_visible",
+        "library_cache_visible", "source_selection_started", "source_selected",
+        "source_probe_started", "source_probe_finished", "first_directory_result",
+        "first_audio_file_discovered", "first_playable_track_ready",
+        "first_track_visible", "play_requested",
+        "decoder_started", "first_audio_output", "background_scan_finished",
+        "artwork_enrichment_finished",
+    }
+)
+
+_FIRST_MUSIC_JOURNEY_FIELDS = (
+    "process_to_shell_ms",
+    "process_to_cached_library_ms",
+)
+
+_FIRST_MUSIC_SOURCE_FIELDS = (
+    "source_selected_to_first_directory_ms",
+    "source_selected_to_first_audio_file_ms",
+    "source_selected_to_first_playable_track_ms",
+    "source_selected_to_first_track_visible_ms",
+    "source_selected_to_first_audio_output_ms",
+    "source_selected_to_scan_finished_ms",
+)
+
+_FIRST_MUSIC_PLAY_FIELDS = (
+    "play_requested_to_decoder_ms",
+    "play_requested_to_audio_output_ms",
+)
+
 
 def _metric_summary(raw: Any, allowed: tuple[str, ...]) -> dict[str, Any]:
     if not isinstance(raw, dict):
         return {}
     return {key: raw.get(key) for key in allowed if key in raw}
+
+
+def _first_music_summary(raw: Any) -> dict[str, Any]:
+    if not isinstance(raw, dict):
+        return {}
+    summary: dict[str, Any] = {
+        "schema": 1,
+        "audio_output_measurement": "first playback-position advance; not hardware loopback",
+        "source_probe_measurement": "ends when the first provisional path is accepted; empty sources end with scan completion",
+        "artwork_measurement": "first library artwork batch applied",
+    }
+    events: list[dict[str, Any]] = []
+    for event in list(raw.get("events") or [])[-500:]:
+        if not isinstance(event, dict):
+            continue
+        name = str(event.get("event") or "")
+        if name not in _FIRST_MUSIC_EVENT_NAMES:
+            continue
+        clean: dict[str, Any] = {
+            "event": name,
+            "elapsed_ms": max(0.0, float(event.get("elapsed_ms") or 0.0)),
+        }
+        for key in ("source_id", "play_id"):
+            if key in event:
+                clean[key] = max(0, int(event[key] or 0))
+        events.append(clean)
+    summary["events"] = events
+
+    journeys = raw.get("journeys")
+    if not isinstance(journeys, dict):
+        return summary
+    clean_journeys = _metric_summary(journeys, _FIRST_MUSIC_JOURNEY_FIELDS)
+    clean_journeys["sources"] = [
+        {
+            **({"source_id": max(0, int(item["source_id"]))} if "source_id" in item else {}),
+            **_metric_summary(item, _FIRST_MUSIC_SOURCE_FIELDS),
+        }
+        for item in list(journeys.get("sources") or [])[-20:]
+        if isinstance(item, dict)
+    ]
+    clean_journeys["plays"] = [
+        {
+            **({"play_id": max(0, int(item["play_id"]))} if "play_id" in item else {}),
+            **_metric_summary(item, _FIRST_MUSIC_PLAY_FIELDS),
+        }
+        for item in list(journeys.get("plays") or [])[-20:]
+        if isinstance(item, dict)
+    ]
+    summary["journeys"] = clean_journeys
+    return summary
 
 
 def _responsiveness_summary(raw: Any) -> dict[str, Any]:
@@ -497,6 +578,10 @@ def build_diagnostics(
     if ui_responsiveness:
         performance["ui_responsiveness"] = ui_responsiveness
 
+    first_music = _first_music_summary(supplied_ui.get("first_music"))
+    if first_music:
+        performance["first_music"] = first_music
+
     library_index: dict[str, Any] = {}
     summary_fn = getattr(manager, "local_index_summary", None)
     if callable(summary_fn):
@@ -530,6 +615,8 @@ def build_diagnostics(
             "to help diagnose installation provenance.",
             "Performance telemetry contains counts, timings, aggregate storage state and thread information only; "
             "library root, directory and file names are not included.",
+            "First-music telemetry records event labels, elapsed times and integer attempt IDs only; "
+            "audio-output timing uses playback-position advance as a proxy, not hardware loopback.",
             "Scan failures include only a coarse error type, never the raw exception message.",
         ],
     }

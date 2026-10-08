@@ -85,6 +85,15 @@ class SourcesFeature(QWidget):
     def _status(self, message: str, timeout_ms: int = 0) -> None:
         self.statusMessageRequested.emit(str(message), int(timeout_ms))
 
+    def _optional_integrations_ready(self) -> bool:
+        if bool(getattr(self.providers, "optional_plugins_loaded", True)):
+            return True
+        self._status(
+            "Optional integrations are still loading. Try again in a moment.",
+            3500,
+        )
+        return False
+
     def _build_page(self) -> None:
         layout = QVBoxLayout(self)
         layout.setContentsMargins(28, 24, 28, 24)
@@ -727,6 +736,8 @@ class SourcesFeature(QWidget):
             self.test_selected_plugin()
 
     def move_source(self, delta: int) -> None:
+        if not self._optional_integrations_ready():
+            return
         item = self.sources_list.currentItem()
         if not item:
             return
@@ -764,6 +775,8 @@ class SourcesFeature(QWidget):
         )
 
     def open_plugin_directory(self, capability: str = "") -> None:
+        if not self._optional_integrations_ready():
+            return
         from .plugin_directory import PluginDirectoryDialog
 
         dialog = PluginDirectoryDialog(
@@ -823,6 +836,8 @@ class SourcesFeature(QWidget):
         self._status(f"Exported {path.name}", 4000)
 
     def install_provider(self) -> None:
+        if not self._optional_integrations_ready():
+            return
         from .plugin_configuration_dialog import configure_plugin
         from .plugin_onboarding import plugin_needs_setup
 
@@ -853,6 +868,8 @@ class SourcesFeature(QWidget):
             QMessageBox.critical(self, "Could not install provider", str(exc))
 
     def install_extension(self) -> None:
+        if not self._optional_integrations_ready():
+            return
         from .plugin_configuration_dialog import configure_plugin
         from .plugin_onboarding import plugin_needs_setup
 
@@ -883,6 +900,8 @@ class SourcesFeature(QWidget):
             QMessageBox.critical(self, "Could not install extension", str(exc))
 
     def test_all_plugins(self) -> None:
+        if not self._optional_integrations_ready():
+            return
         plugin_ids = [
             pid
             for pid in self.providers.provider_order()
@@ -973,6 +992,8 @@ class SourcesFeature(QWidget):
         )
 
     def test_selected_plugin(self) -> None:
+        if not self._optional_integrations_ready():
+            return
         plugin_id = self.selected_plugin_id()
         if not plugin_id:
             self._status(
@@ -1013,6 +1034,8 @@ class SourcesFeature(QWidget):
         )
 
     def configure_selected_plugin(self) -> None:
+        if not self._optional_integrations_ready():
+            return
         from .plugin_configuration_dialog import configure_plugin
 
         plugin_id = self.selected_plugin_id()
@@ -1025,6 +1048,8 @@ class SourcesFeature(QWidget):
             self._status("Plugin configuration updated", 3000)
 
     def toggle_extension(self) -> None:
+        if not self._optional_integrations_ready():
+            return
         extension_id = self.selected_extension_id()
         if not extension_id:
             self._status("Select a capability extension first", 2500)
@@ -1048,6 +1073,8 @@ class SourcesFeature(QWidget):
         )
 
     def remove_extension(self) -> None:
+        if not self._optional_integrations_ready():
+            return
         extension_id = self.selected_extension_id()
         if not extension_id:
             self._status("Select a capability extension first", 2500)
@@ -1076,6 +1103,8 @@ class SourcesFeature(QWidget):
             self._status(f"Removed {name}", 3000)
 
     def remove_provider(self) -> None:
+        if not self._optional_integrations_ready():
+            return
         plugin_id = self.selected_provider_id()
         if not plugin_id:
             self._status("Select an installed provider first", 2500)
@@ -1104,6 +1133,8 @@ class SourcesFeature(QWidget):
             self._status(f"Removed {provider.info.name}", 3000)
 
     def restore_bundled_sources(self) -> None:
+        if not self._optional_integrations_ready():
+            return
         restored = self.providers.restore_bundled_providers()
         self.refresh()
         message = (
