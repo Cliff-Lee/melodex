@@ -38,6 +38,12 @@ def _player(resolver, scheduler):
         def source(self):
             return self._source
 
+        def pause(self):
+            self.state = QMediaPlayer.PausedState
+
+        def setPosition(self, position):
+            self._position = int(position)
+
         def setSource(self, source):
             self._source = source
             self.sources.append(source.toString())
@@ -124,14 +130,15 @@ def test_prefetch_resolves_on_scheduler_and_manual_next_uses_prepared_deck():
         assert flow._predictive_prefetch["deck"] == 1
         assert flow._predictive_prefetch["ready"] is False
         assert flow.players[1].sources == ["https://media.example/b.mp3"]
+        assert flow.outputs[1].volume() == 0.0
 
-        flow._on_media_status(1, QMediaPlayer.LoadedMedia)
+        flow._on_media_status(1, QMediaPlayer.BufferingMedia)
         flow.next()
 
         assert flow.index == 1
         assert flow.active == 1
         assert flow.players[1].sources == ["https://media.example/b.mp3"]
-        assert flow.players[1].plays == 1
+        assert flow.players[1].plays == 2
         assert flow.diagnostics_snapshot()["predictive_prefetch_uses"] == 1
         assert flow.diagnostics_snapshot()["predictive_prefetch_ready_uses"] == 1
         assert flow.diagnostics_snapshot()["predictive_prefetch_requests"] == 1
@@ -165,6 +172,29 @@ def test_prefetch_result_is_discarded_after_upcoming_track_changes():
         flow.close()
 
 
+def test_prefetch_prime_timeout_pauses_and_resets_unready_source():
+    scheduler = FakeScheduler()
+    flow, _, QMediaPlayer = _player(
+        lambda track: {**track, "stream_url": "https://media.example/b.mp3"},
+        scheduler,
+    )
+    try:
+        flow._request_predictive_prefetch()
+        callback, _ = scheduler.jobs[0]
+        callback()
+        flow.players[1]._position = 750
+
+        assert flow.players[1].playbackState() == QMediaPlayer.PlayingState
+        flow._finish_predictive_prefetch_prime_timeout()
+
+        assert flow.players[1].playbackState() == QMediaPlayer.PausedState
+        assert flow.players[1].position() == 0
+        assert flow._predictive_prefetch["ready"] is False
+        assert flow._predictive_prefetch["priming"] is False
+    finally:
+        flow.close()
+
+
 def test_journey_crossfade_reuses_prepared_source():
     scheduler = FakeScheduler()
     resolved = []
@@ -183,7 +213,7 @@ def test_journey_crossfade_reuses_prepared_source():
         assert flow._crossfading is True
         assert flow._crossfade_deck == 1
         assert flow.players[1].sources == ["https://media.example/b.mp3"]
-        assert flow.players[1].plays == 1
+        assert flow.players[1].plays == 2
         assert len(resolved) == 1
         assert flow.diagnostics_snapshot()["predictive_prefetch_uses"] == 1
     finally:
@@ -209,7 +239,7 @@ def test_natural_end_starts_prepared_source_without_resolving_twice():
         assert flow.index == 1
         assert flow.active == 1
         assert flow.players[1].sources == ["https://media.example/b.mp3"]
-        assert flow.players[1].plays == 1
+        assert flow.players[1].plays == 2
         assert len(resolved) == 1
         assert flow.diagnostics_snapshot()["natural_ends"] == 1
     finally:
