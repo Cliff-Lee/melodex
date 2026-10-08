@@ -64,12 +64,29 @@ def test_stage_scores_are_interpretable():
 def test_forgotten_stage_uses_rediscovery_signal():
     old = _node("old", [0] * 8, taste=0.8, rediscovery=0.9, plays=8)
     old["rediscovery_reason"] = "deep cut from an album you enjoyed"
+    old["taste_reason"] = "matches your request for more Northbound"
     recent = _node("recent", [0] * 8, taste=0.9, rediscovery=0.0, plays=20)
     old_score, reason = stage_score(old, "forgotten")
     recent_score, _ = stage_score(recent, "forgotten")
     assert old_score > recent_score
     assert "rediscovery" in reason
     assert "deep cut from an album you enjoyed" in reason
+    assert "request for more Northbound" in reason
+
+
+def test_surprising_stage_respects_a_recent_negative_taste_signal():
+    neutral = _node("neutral", [0] * 8, taste=0.5, plays=0)
+    skipped = dict(
+        neutral,
+        taste_adjustment=-0.8,
+        taste_reason="reflects a recent quick skip near Quick Exit",
+    )
+
+    neutral_score, _ = stage_score(neutral, "surprising")
+    skipped_score, reason = stage_score(skipped, "surprising")
+
+    assert skipped_score < neutral_score
+    assert "quick skip near Quick Exit" in reason
 
 
 def test_journey_designer_builds_requested_semantic_arc():

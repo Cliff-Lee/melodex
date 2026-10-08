@@ -14,6 +14,8 @@ class FakeState:
         self.completed = []
         self.feedback = []
         self.keeps = []
+        self.taste_adjustments = []
+        self.cleared_taste_adjustments = []
         self.moments = []
 
     def get_bool(self, key, default=False):
@@ -46,6 +48,14 @@ class FakeState:
 
     def record_keep(self, track):
         self.keeps.append(dict(track))
+
+    def record_taste_correction(self, track, direction):
+        self.taste_adjustments.append((dict(track), str(direction)))
+        return True
+
+    def clear_taste_correction(self, track):
+        self.cleared_taste_adjustments.append(dict(track))
+        return True
 
     def recent_tracks(self, _limit):
         return []
@@ -302,6 +312,44 @@ def test_selected_queue_track_displays_route_reason(tmp_path):
     app.processEvents()
 
 
+def test_selected_queue_track_displays_mind_taste_reason_without_route_mapping(tmp_path):
+    app, feature, _state, _statuses = _feature(tmp_path)
+    current = _track("Current", 1)
+    upcoming = dict(
+        _track("Suggested", 2),
+        _mind_reason="fresh discovery · matches your listening history with Artist",
+    )
+    feature.on_queue_changed([current, upcoming], index=0)
+
+    feature.queue_list.setCurrentRow(1)
+
+    expected = "Why this track: " + upcoming["_mind_reason"]
+    assert feature.queue_reason_label.text() == expected
+    assert expected in feature.queue_list.item(1).toolTip()
+
+    feature.deleteLater()
+    app.processEvents()
+
+
+def test_selected_map_track_carries_taste_reason_into_living_queue(tmp_path):
+    app, feature, _state, _statuses = _feature(tmp_path)
+    current = _track("Current", 1)
+    upcoming = dict(
+        _track("Suggested", 2),
+        _taste_model_reason="matches your request for more Artist",
+    )
+    feature.on_queue_changed([current, upcoming], index=0)
+
+    feature.queue_list.setCurrentRow(1)
+
+    expected = "Why this track: " + upcoming["_taste_model_reason"]
+    assert feature.queue_reason_label.text() == expected
+    assert expected in feature.queue_list.item(1).toolTip()
+
+    feature.deleteLater()
+    app.processEvents()
+
+
 def test_transport_seek_and_queue_actions_are_semantic(tmp_path):
     app, feature, _state, _statuses = _feature(tmp_path)
 
@@ -503,6 +551,34 @@ def test_taste_actions_are_owned_and_optimistic(tmp_path):
     assert feature.keep_button.text() == "✓ Kept"
     assert feature.keep_button.isEnabled() is False
     assert state.keeps == [track]
+
+    feature.deleteLater()
+    app.processEvents()
+
+
+def test_more_and_less_like_actions_update_and_clear_local_taste(tmp_path):
+    app, feature, state, statuses = _feature(tmp_path)
+    track = dict(_track("Suggested", 9), genre="Ambient")
+    feature.on_track_changed(track)
+
+    action_names = [
+        action.text()
+        for action in feature.taste_button.menu().actions()
+        if not action.isSeparator()
+    ]
+    feature.more_taste_action.trigger()
+    feature.less_taste_action.trigger()
+    feature.clear_taste_action.trigger()
+
+    assert action_names == [
+        "More like this",
+        "Less like this",
+        "Clear taste correction",
+    ]
+    assert feature.taste_button.isEnabled() is True
+    assert state.taste_adjustments == [(track, "more"), (track, "less")]
+    assert state.cleared_taste_adjustments == [track]
+    assert statuses[-1][0] == "Taste correction cleared"
 
     feature.deleteLater()
     app.processEvents()

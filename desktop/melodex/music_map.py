@@ -443,6 +443,9 @@ class MusicMapWidget(QWidget):
             rediscovery_reason = str(node.get("rediscovery_reason") or "").strip()
             if rediscovery_reason:
                 tooltip += f"\nRediscovery: {rediscovery_reason}"
+            taste_reason = str(node.get("taste_reason") or "").strip()
+            if taste_reason:
+                tooltip += f"\nTaste model: {taste_reason}"
             item.setToolTip(tooltip)
             if len(nodes) <= 55:
                 card_w, card_h = 86.0, 86.0
@@ -783,11 +786,14 @@ class MusicMapWidget(QWidget):
         )
         rediscovery_reason = str(node.get("rediscovery_reason") or "").strip()
         rediscovery_text = f" · {rediscovery_reason}" if rediscovery_reason else ""
+        taste_reason = str(node.get("taste_reason") or "").strip()
+        taste_text = f" · {taste_reason}" if taste_reason else ""
         self.status.setText(
             f"{node.get('artist') or 'Unknown artist'} — {node.get('title') or 'Unknown track'} · "
             f"{float(node.get('bpm') or 0):.0f} BPM · energy {float(node.get('energy') or 0):.0%} · "
             f"taste {float(node.get('taste') or 0):.0%} · rediscovery {float(node.get('rediscovery') or 0):.0%}"
             + rediscovery_text
+            + taste_text
             + connection_text
             + " · drag to Compose to add as a waypoint"
         )

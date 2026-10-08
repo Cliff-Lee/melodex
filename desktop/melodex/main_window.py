@@ -3236,7 +3236,7 @@ class MainWindow(QMainWindow):
     def _refresh_taste(self):
         if not hasattr(self,"taste_label"):
             return
-        s=self.state.taste_summary(); self.taste_label.setText(f"Taste memory: {s.get('tracks',0)} tracks learned · {s.get('artists',0)} artists · completion rate {float(s.get('completion_rate',0))*100:.0f}%")
+        self.taste_label.setText(self.state.taste_display_summary())
 
     # ------------------------------- sources/search
     def dragEnterEvent(self, event) -> None:

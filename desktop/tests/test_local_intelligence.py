@@ -157,3 +157,32 @@ def test_local_intelligence_maps_detour_refs_back_inside_core(tmp_path: Path):
         assert "/music/" not in json.dumps(broker.received["tracks"])
     finally:
         state.close()
+
+
+def test_rediscover_applies_shared_taste_model_after_the_plugin_response(tmp_path: Path):
+    state = UserState(tmp_path / "taste.sqlite3")
+    broker = CaptureBroker()
+    service = LocalIntelligenceService(state, FakeFlow(), broker)
+    try:
+        favorite = _track("/private/Music/favorite.flac", "Favorite")
+        candidate = _track("/private/Music/candidate.flac", "Candidate")
+        favorite["artist"] = candidate["artist"] = "Northbound"
+        state.record_taste_correction(favorite, "more")
+
+        result = service.suggest("rediscover", [favorite, candidate], limit=5)
+
+        suggested = result["tracks"][0]
+        assert suggested["title"] == "Candidate"
+        assert suggested["_intelligence_score"] > 0.88
+        assert "matches your request for more Northbound" in suggested["_intelligence_reason"]
+        assert "request for more" not in json.dumps(broker.received["tracks"])
+        assert all(
+            set(profile) == {
+                "ref", "title", "artist", "album", "duration_ms", "analysis", "taste"
+            }
+            for profile in broker.received["tracks"]
+        )
+        assert "session_reactions" not in json.dumps(broker.received["tracks"])
+        assert "/private/Music" not in json.dumps(broker.received["tracks"])
+    finally:
+        state.close()

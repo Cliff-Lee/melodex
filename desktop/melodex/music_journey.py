@@ -75,6 +75,11 @@ def stage_score(node: dict[str, Any], constraint: str) -> tuple[float, str]:
     taste = _clamp(float(node.get("taste") or 0.0))
     rediscovery = _clamp(float(node.get("rediscovery") or 0.0))
     plays = max(0, int(node.get("plays") or 0))
+    taste_reason = str(node.get("taste_reason") or "").strip()
+    try:
+        taste_adjustment = max(-1.0, min(1.0, float(node.get("taste_adjustment") or 0.0)))
+    except (TypeError, ValueError, OverflowError):
+        taste_adjustment = 0.0
     mode = str(node.get("key_mode") or "")
 
     tempo_high = _sigmoid(vector[1]) if len(vector) > 1 else 0.5
@@ -112,6 +117,8 @@ def stage_score(node: dict[str, Any], constraint: str) -> tuple[float, str]:
         library_reason = str(node.get("rediscovery_reason") or "").strip()
         if library_reason:
             reason += f" · {library_reason}"
+        if taste_reason:
+            reason += f" · {taste_reason}"
         return _clamp(score), reason
 
     if constraint == "energetic":
@@ -138,16 +145,22 @@ def stage_score(node: dict[str, Any], constraint: str) -> tuple[float, str]:
     if constraint == "familiar":
         play_strength = _clamp(math.log1p(plays) / math.log(16.0))
         score = 0.72 * taste + 0.28 * play_strength
-        return _clamp(score), (
+        reason = (
             f"taste {taste:.0%} · familiarity {play_strength:.0%}"
         )
+        if taste_reason:
+            reason += f" · {taste_reason}"
+        return _clamp(score), reason
 
     if constraint == "surprising":
         unheard = 1.0 if plays == 0 else _clamp(1.0 - math.log1p(plays) / math.log(12.0))
-        score = 0.62 * unheard + 0.38 * (1.0 - taste)
-        return _clamp(score), (
+        score = 0.62 * unheard + 0.38 * (1.0 - taste) + 0.22 * min(0.0, taste_adjustment)
+        reason = (
             f"novelty {unheard:.0%} · low familiarity {1.0-taste:.0%}"
         )
+        if taste_reason:
+            reason += f" · {taste_reason}"
+        return _clamp(score), reason
 
     return 0.0, "unknown stage constraint"
 

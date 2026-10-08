@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import sqlite3
@@ -665,6 +666,117 @@ class UserState:
             else:
                 self._conn.execute("UPDATE track_signals SET dislikes=1,loves=0,last_feedback=? WHERE track_key=?", (now, key))
 
+    @classmethod
+    def _taste_correction_key(cls, track: dict[str, Any]) -> str:
+        track = dict(track or {})
+        if not any(
+            str(track.get(field) or "").strip()
+            for field in ("rel", "local_path", "track_id", "artist", "title", "album")
+        ):
+            return ""
+        identity = cls.track_key(track)
+        if not str(track.get("rel") or "").strip() and not str(
+            track.get("local_path") or ""
+        ).strip() and str(track.get("track_id") or "").strip():
+            identity = "provider:" + "|".join(
+                (
+                    str(track.get("provider_id") or "").strip().casefold(),
+                    str(track.get("track_id") or "").strip(),
+                )
+            )
+        if not identity:
+            return ""
+        digest = hashlib.sha256(identity.encode("utf-8", errors="replace")).hexdigest()
+        return "taste_correction:" + digest
+
+    def record_taste_correction(self, track: dict[str, Any], direction: str) -> bool:
+        """Remember one reversible, path-free correction for a track's traits."""
+        direction = str(direction or "").strip().lower()
+        if direction not in {"more", "less"}:
+            raise ValueError("direction must be 'more' or 'less'")
+        key = self._taste_correction_key(track)
+        if not key:
+            return False
+        artist = str(
+            track.get("artist") or track.get("album_artist") or ""
+        ).strip()[:200]
+        raw_genres = track.get("genres") or track.get("genre")
+        if isinstance(raw_genres, (list, tuple, set)):
+            values = sorted(raw_genres, key=str) if isinstance(raw_genres, set) else raw_genres
+            genres: Any = [
+                str(value).strip()[:80]
+                for value in values
+                if str(value or "").strip()
+            ][:8]
+        else:
+            genres = str(raw_genres or "").strip()[:300]
+        if not artist and not genres:
+            return False
+        payload = json.dumps(
+            {
+                "direction": direction,
+                "artist": artist,
+                "genres": genres,
+            },
+            ensure_ascii=False,
+        )
+        with self._lock, self._conn:
+            self._conn.execute("DELETE FROM preferences WHERE key=?", (key,))
+            self._conn.execute(
+                "INSERT INTO preferences(key,value) VALUES(?,?)",
+                (key, payload),
+            )
+        return True
+
+    def taste_correction(self, track: dict[str, Any]) -> str:
+        key = self._taste_correction_key(track)
+        if not key:
+            return ""
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT value FROM preferences WHERE key=?", (key,)
+            ).fetchone()
+        if row is None:
+            return ""
+        try:
+            payload = json.loads(row["value"])
+        except (TypeError, ValueError):
+            return ""
+        direction = str(payload.get("direction") or "") if isinstance(payload, dict) else ""
+        return direction if direction in {"more", "less"} else ""
+
+    def clear_taste_correction(self, track: dict[str, Any]) -> bool:
+        key = self._taste_correction_key(track)
+        if not key:
+            return False
+        with self._lock, self._conn:
+            cur = self._conn.execute("DELETE FROM preferences WHERE key=?", (key,))
+            return cur.rowcount > 0
+
+    def taste_corrections(self, limit: int = 5000) -> list[dict[str, Any]]:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT value FROM preferences WHERE key GLOB 'taste_correction:*' "
+                "ORDER BY rowid DESC LIMIT ?",
+                (max(1, int(limit)),),
+            ).fetchall()
+        corrections: list[dict[str, Any]] = []
+        for row in rows:
+            try:
+                payload = json.loads(row["value"])
+            except (TypeError, ValueError):
+                continue
+            if not isinstance(payload, dict) or payload.get("direction") not in {"more", "less"}:
+                continue
+            corrections.append(
+                {
+                    "direction": str(payload["direction"]),
+                    "artist": str(payload.get("artist") or ""),
+                    "genres": payload.get("genres") or "",
+                }
+            )
+        return corrections
+
     def record_keep(self, track: dict[str, Any]) -> None:
         self._signal_event(track, "keep")
 
@@ -780,8 +892,8 @@ class UserState:
             g["score"] = 3.0 * int(g["loves"]) + 1.4 * int(g["keeps"]) + 1.2 * completion + 0.22 * math.log1p(int(g["plays"])) - 1.5 * skip_rate - 5.0 * int(g["dislikes"])
         return sorted(grouped.values(), key=lambda x: (float(x.get("score") or 0), int(x.get("plays") or 0)), reverse=True)[:max(1, int(limit))]
 
-    def taste_summary(self) -> dict[str, Any]:
-        rows = self.track_signals(5000)
+    @staticmethod
+    def _taste_summary_from_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
         if not rows:
             return {"tracks": 0, "artists": 0, "plays": 0, "completion_rate": 0.0, "loved": 0, "skips": 0}
         plays = sum(int(r.get("plays") or 0) for r in rows)
@@ -793,6 +905,55 @@ class UserState:
             "tracks": len(rows), "artists": len(artists), "plays": plays,
             "completion_rate": completes / max(1, plays), "loved": loved, "skips": skips,
         }
+
+    def taste_summary(self) -> dict[str, Any]:
+        return self._taste_summary_from_rows(self.track_signals(5000))
+
+    def taste_profile(self, *, adventure: float = 0.35, recent_limit: int = 20) -> dict[str, Any]:
+        """Return a bounded, path-free view of locally learned taste layers."""
+        from .taste_model import build_local_taste_model
+
+        model = build_local_taste_model(
+            self,
+            adventure=adventure,
+            recent_limit=recent_limit,
+        )
+        return model.as_dict()
+
+    def taste_display_summary(self) -> str:
+        """Build a private, concise Home summary without expanding LLM context."""
+        from .taste_model import build_local_taste_model
+
+        rows = self.track_signals(5000)
+        summary = self._taste_summary_from_rows(rows)
+        profile = build_local_taste_model(self, track_signals=rows).as_dict()
+        identity = profile["identity"]
+        highlights = [
+            str(item["name"])
+            for item in list(identity.get("artists") or [])[:2]
+            if float(item.get("score") or 0.0) > 0.05
+        ]
+        highlights.extend(
+            str(item["name"])
+            for item in list(identity.get("genres") or [])[:2]
+            if float(item.get("score") or 0.0) > 0.05
+        )
+        base = (
+            f"Taste memory: {summary['tracks']} tracks learned · "
+            f"{summary['artists']} artists · completion rate "
+            f"{float(summary['completion_rate']) * 100:.0f}%"
+        )
+        detail = (
+            "Leans toward: " + " · ".join(highlights)
+            if highlights
+            else "Still learning from your plays and feedback."
+        )
+        reactions = profile["session_reactions"]
+        session_detail = (
+            f"Recent session: {int(reactions['completed_tracks'])} completed · "
+            f"{int(reactions['quick_skips'])} quick skips."
+        )
+        return f"{base}\n{detail}\n{session_detail} Your taste profile stays on this device."
 
     def recent_tracks(self, limit: int = 120) -> list[dict[str, Any]]:
         with self._lock:

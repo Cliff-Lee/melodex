@@ -15,6 +15,15 @@ class FakeJourneyState:
     def track_signals(self, _limit=5000):
         return [dict(row) for row in self._track_signals]
 
+    def recent_tracks(self, _limit=20):
+        return []
+
+    def taste_corrections(self, _limit=5000):
+        return []
+
+    def sessions(self, _limit=1):
+        return []
+
     def journey_recipes(self):
         return list(self._recipes)
 
@@ -179,6 +188,7 @@ def test_music_map_payload_uses_metadata_aware_library_rediscovery():
 
     assert nodes["t1"]["rediscovery"] > 0.45
     assert nodes["t1"]["rediscovery_reason"] == "deep cut from an album you enjoyed"
+    assert "listening history with Northbound" in nodes["t1"]["taste_reason"]
     workspace.deleteLater()
     app.processEvents()
 

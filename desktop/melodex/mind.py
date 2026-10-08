@@ -9,6 +9,7 @@ from typing import Any, Callable
 
 from .flow import FlowEngine
 from .rediscovery_signals import build_rediscovery_signals
+from .taste_model import TasteModel, build_local_taste_model, score_taste_match
 from .user_state import UserState
 
 
@@ -163,6 +164,7 @@ class MindEngine:
         artist_affinity: dict[str, float] | None = None,
         library_signal: dict[str, Any] | None = None,
         artist_memory: dict[str, Any] | None = None,
+        taste_model: TasteModel | None = None,
     ) -> tuple[float, str]:
         key = self.track_key(track)
         row = stats.get(key, {})
@@ -183,6 +185,11 @@ class MindEngine:
         )
         favorite_track = int(row.get("loves") or 0) > 0 or int(row.get("keeps") or 0) > 0
         adventure = max(0.0, min(1.0, float(adventure)))
+        taste_adjustment, taste_reason = (
+            score_taste_match(track, taste_model)
+            if taste_model is not None
+            else (0.0, "")
+        )
 
         # Recently heard tracks get a strong temporary penalty: familiarity is
         # valuable, but immediate repetition quickly creates habituation.
@@ -253,6 +260,10 @@ class MindEngine:
         if dislikes:
             score -= 20.0 * dislikes
             reason = "previously marked not for me"
+        else:
+            score += 0.85 * taste_adjustment
+            if taste_reason:
+                reason = f"{reason} · {taste_reason}" if reason else taste_reason
         score -= recent_penalty
         return score, reason
 
@@ -284,6 +295,11 @@ class MindEngine:
         scored: list[tuple[float, float, dict[str, Any], str]] = []
         artist_affinity = self._artist_affinity(stats)
         artist_memories = self._artist_memory_signals(stats, now)
+        taste_model = build_local_taste_model(
+            self.state,
+            adventure=adventure,
+            track_signals=list(stats.values()),
+        )
         library_signals = build_rediscovery_signals(pool, stats)
         for track in pool:
             artist = str(track.get("artist") or "").strip().casefold()
@@ -296,6 +312,7 @@ class MindEngine:
                 artist_affinity,
                 library_signals.get(self.track_key(track)),
                 artist_memories.get(artist),
+                taste_model,
             )
             # Tiny bounded jitter prevents every session from being identical
             # without turning selection into opaque random shuffle.

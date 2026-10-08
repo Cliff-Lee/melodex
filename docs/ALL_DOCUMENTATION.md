@@ -105,6 +105,12 @@ This page is intentionally exhaustive. For a shorter route by goal, use the [doc
 - [Large-library performance](LARGE_LIBRARY_PERFORMANCE.md)
 - [Startup performance](STARTUP_PERFORMANCE.md)
 
+## Product campaign notes
+
+- [P16 — The Living Queue](P16_LIVING_QUEUE.md)
+- [P17 — Rediscovery Engine](P17_REDISCOVERY_ENGINE.md)
+- [P18 — Private Taste Engine](P18_PRIVATE_TASTE_ENGINE.md)
+
 ## Build and release
 
 - [Build from source](BUILD_FROM_SOURCE.md)
