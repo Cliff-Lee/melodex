@@ -13,6 +13,53 @@ from pathlib import Path
 from typing import Any, Callable
 
 
+
+def stable_queue_identity(tracks: Any) -> tuple[tuple[str, str], ...] | None:
+    """Return stable provider-qualified identities, or None for an unsafe queue."""
+    if not isinstance(tracks, (list, tuple)) or not tracks:
+        return None
+    identity = []
+    for track in tracks:
+        if not isinstance(track, dict):
+            return None
+        provider_id = str(track.get("provider_id") or "").strip()
+        track_id = str(track.get("track_id") or "").strip()
+        if not provider_id or not track_id:
+            return None
+        identity.append((provider_id, track_id))
+    return tuple(identity)
+
+
+def handoff_queue_conflict(status: dict[str, Any], incoming_tracks: list[dict[str, Any]]) -> str:
+    """Protect active desktop playback and unrelated desktop queues during handoff."""
+    if bool(status.get("playing")):
+        return "desktop_playing"
+    incoming = stable_queue_identity(incoming_tracks)
+    if incoming is None:
+        return "invalid_tracks"
+    current_queue = list(status.get("queue") or [])
+    if current_queue:
+        current = stable_queue_identity(current_queue)
+        if current is None or current != incoming:
+            return "desktop_queue_occupied"
+    return ""
+
+
+def playback_session_matches(
+    status: dict[str, Any],
+    expected_queue: list[dict[str, Any]],
+    expected_index: int,
+) -> bool:
+    """Check the desktop queue and current index before stopping its playback."""
+    current = stable_queue_identity(list(status.get("queue") or []))
+    expected = stable_queue_identity(expected_queue)
+    try:
+        current_index = int(status.get("index", -1))
+    except (TypeError, ValueError):
+        return False
+    return current is not None and expected is not None and current == expected and current_index == int(expected_index)
+
+
 class ProviderBridge:
     """Authenticated bridge for providers plus optional playback/control actions.
 
@@ -209,7 +256,7 @@ class ProviderBridge:
                 if u.path in {"/health", "/openapi.json"}:
                     return True
                 auth = self.headers.get("Authorization", "")
-                query_token = q.get("token", [""])[0]
+                query_token = q.get("token", [""])[0] if u.path == "/v1/media" else ""
                 header_token = auth[7:] if auth.startswith("Bearer ") else ""
                 return bridge._authorized_token(header_token) or bridge._authorized_token(query_token)
 
@@ -437,6 +484,70 @@ class ProviderBridge:
                     if u.path == "/v1/unpair":
                         removed = bridge.revoke_paired_device(str(body.get("device_id") or ""))
                         return self._send(200, {"ok": removed})
+                    if u.path == "/v1/handoff":
+                        requested = [dict(x) for x in list(body.get("tracks") or []) if isinstance(x, dict)]
+                        if not requested:
+                            raise ValueError("tracks must contain at least one track")
+                        if any(str(track.get("source") or "").lower() != "bridge" for track in requested):
+                            raise ValueError("only Bridge tracks can be handed off to the desktop")
+                        requested_identity = stable_queue_identity(requested)
+                        if requested_identity is None:
+                            raise ValueError("each track must have a provider_id and track_id")
+                        resolution = dict(bridge.manager.resolve_playlist(requested) or {})
+                        tracks = [dict(x) for x in list(resolution.get("tracks") or []) if isinstance(x, dict)]
+                        if resolution.get("unresolved") or len(tracks) != len(requested):
+                            return self._send(409, {
+                                "ok": False,
+                                "reason": "unresolved_tracks",
+                                "error": "One or more Bridge tracks could not be resolved.",
+                            })
+                        if stable_queue_identity(tracks) != requested_identity:
+                            return self._send(409, {
+                                "ok": False,
+                                "reason": "unresolved_tracks",
+                                "error": "The Bridge returned different track identities; the queue was left unchanged.",
+                            })
+                        start = int(body.get("start", 0))
+                        if start < 0 or start >= len(tracks):
+                            raise ValueError("start must point to a track in the queue")
+                        position_ms = max(0, int(body.get("position_ms", 0)))
+                        autoplay = bool(body.get("autoplay", True))
+                        if not autoplay:
+                            raise ValueError("start playback on the phone before handing this session to the desktop")
+                        result = dict(bridge._control("handoff_to_desktop", {
+                            "tracks": tracks,
+                            "start": start,
+                            "position_ms": position_ms,
+                            "autoplay": autoplay,
+                        }) or {})
+                        if not result.get("ok"):
+                            reason = str(result.get("reason") or "handoff_refused")
+                            messages = {
+                                "desktop_playing": "Pause desktop playback before moving this phone queue.",
+                                "desktop_queue_occupied": "The desktop has a different queue. Clear it before moving this phone queue.",
+                            }
+                            return self._send(409, {
+                                "ok": False,
+                                "reason": reason,
+                                "error": messages.get(reason, "The desktop refused this handoff."),
+                            })
+                        return self._send(200, {"ok": True})
+                    if u.path == "/v1/handoff/stop":
+                        expected_queue = [dict(x) for x in list(body.get("expected_queue") or []) if isinstance(x, dict)]
+                        if stable_queue_identity(expected_queue) is None:
+                            raise ValueError("expected_queue must contain stable track identities")
+                        expected_index = int(body.get("expected_index", -1))
+                        if expected_index < 0 or expected_index >= len(expected_queue):
+                            raise ValueError("expected_index must point to a track in expected_queue")
+                        result = dict(bridge._control("stop_if_queue_matches", {
+                            "expected_queue": expected_queue,
+                            "expected_index": expected_index,
+                        }) or {})
+                        return self._send(200, {
+                            "ok": bool(result.get("ok")),
+                            "stopped": bool(result.get("stopped")),
+                            "reason": str(result.get("reason") or ""),
+                        })
                     if u.path == "/v1/play":
                         resolved = bridge.manager.resolve(body)
                         bridge._control("set_queue", {"tracks": [resolved], "start": 0, "autoplay": True})

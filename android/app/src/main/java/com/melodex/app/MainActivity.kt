@@ -39,6 +39,9 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.LifecycleOwner
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
@@ -47,11 +50,14 @@ import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.ListenableFuture
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.math.roundToLong
+import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
@@ -59,6 +65,10 @@ import java.net.URLEncoder
 
 
 private const val PRIVACY_POLICY_URL = "https://github.com/Cliff-Lee/melodex/blob/main/docs/PRIVACY.md"
+private const val BRIDGE_CONNECTION_POLL_INTERVAL_MS = 15_000L
+private const val BRIDGE_VERIFY_TIMEOUT_MS = 4_000
+private const val BRIDGE_HANDOFF_TIMEOUT_MS = 15_000L
+private const val BRIDGE_HANDOFF_POLL_INTERVAL_MS = 250L
 
 data class Track(
     val providerId: String,
@@ -68,10 +78,39 @@ data class Track(
     val album: String = "",
     val streamUrl: String = "",
     val artworkUri: String = "",
-    val durationMs: Long = 0L
+    val durationMs: Long = 0L,
+    val source: TrackSource = TrackSource.PHONE
 )
 
+enum class TrackSource { PHONE, BRIDGE }
+
+private fun Track.queueKey(): String = "$source|$providerId|$trackId"
+
+private fun JSONObject.matchesBridgeQueue(tracks: List<Track>, index: Int): Boolean {
+    val desktopQueue = optJSONArray("queue") ?: return false
+    if (desktopQueue.length() != tracks.size || optInt("index", -1) != index) return false
+    for (queueIndex in tracks.indices) {
+        val item = desktopQueue.optJSONObject(queueIndex) ?: return false
+        val expected = tracks[queueIndex]
+        if (
+            item.optString("provider_id") != expected.providerId ||
+            item.optString("track_id") != expected.trackId
+        ) return false
+    }
+    return true
+}
+
 private enum class MusicSource { PHONE, BRIDGE }
+
+private enum class BridgeConnectionState { UNPAIRED, CHECKING, CONNECTED, UNAVAILABLE }
+
+data class DesktopPlaybackSnapshot(
+    val isPlaying: Boolean,
+    val positionMs: Long,
+    val currentIndex: Int,
+    val currentTrack: Track?,
+    val queue: List<Track>
+)
 
 private enum class LocalSort(val label: String) {
     TITLE("Title"),
@@ -93,11 +132,11 @@ private val MelodexColorScheme = darkColorScheme(
 )
 
 class BridgeClient(var baseUrl: String, var token: String) {
-    private fun get(path: String): JSONObject {
+    private fun get(path: String, timeoutMs: Int = 8000, readTimeoutMs: Int = 15000): JSONObject {
         val conn = URL(baseUrl.trimEnd('/') + path).openConnection() as HttpURLConnection
         conn.requestMethod = "GET"
-        conn.connectTimeout = 8000
-        conn.readTimeout = 15000
+        conn.connectTimeout = timeoutMs
+        conn.readTimeout = readTimeoutMs
         if (token.isNotBlank()) conn.setRequestProperty("Authorization", "Bearer $token")
         conn.setRequestProperty("Accept", "application/json")
         val code = conn.responseCode
@@ -106,11 +145,11 @@ class BridgeClient(var baseUrl: String, var token: String) {
         return JSONObject(body)
     }
 
-    private fun post(path: String, body: JSONObject): JSONObject {
+    private fun post(path: String, body: JSONObject, timeoutMs: Int = 8000, readTimeoutMs: Int = 15000): JSONObject {
         val conn = URL(baseUrl.trimEnd('/') + path).openConnection() as HttpURLConnection
         conn.requestMethod = "POST"
-        conn.connectTimeout = 8000
-        conn.readTimeout = 15000
+        conn.connectTimeout = timeoutMs
+        conn.readTimeout = readTimeoutMs
         conn.doOutput = true
         conn.setRequestProperty("Accept", "application/json")
         conn.setRequestProperty("Content-Type", "application/json; charset=utf-8")
@@ -119,14 +158,22 @@ class BridgeClient(var baseUrl: String, var token: String) {
         val code = conn.responseCode
         val response = (if (code in 200..299) conn.inputStream else conn.errorStream)
             .bufferedReader().use { it.readText() }
-        if (code !in 200..299) throw IllegalStateException("Bridge error $code: $response")
+        if (code !in 200..299) {
+            val detail = runCatching { JSONObject(response).optString("error").takeIf { it.isNotBlank() } }.getOrNull()
+                ?: response
+            throw IllegalStateException("Bridge error $code: $detail")
+        }
         return JSONObject(response)
     }
 
     fun health(): Boolean = get("/health").optBoolean("ok", false)
 
     fun verify(): Boolean {
-        get("/v1/providers")
+        get(
+            "/v1/providers",
+            timeoutMs = BRIDGE_VERIFY_TIMEOUT_MS,
+            readTimeoutMs = BRIDGE_VERIFY_TIMEOUT_MS
+        )
         return true
     }
 
@@ -135,26 +182,117 @@ class BridgeClient(var baseUrl: String, var token: String) {
         JSONObject().put("code", code).put("device_name", deviceName)
     )
 
-    fun unpair(deviceId: String): Boolean = post(
+    fun unpair(deviceId: String, timeoutMs: Int = 8000): Boolean = post(
         "/v1/unpair",
-        JSONObject().put("device_id", deviceId)
+        JSONObject().put("device_id", deviceId),
+        timeoutMs = timeoutMs,
+        readTimeoutMs = timeoutMs
     ).optBoolean("ok", false)
+
+    fun status(): JSONObject = get(
+        "/v1/status",
+        timeoutMs = BRIDGE_VERIFY_TIMEOUT_MS,
+        readTimeoutMs = BRIDGE_VERIFY_TIMEOUT_MS
+    )
+
+    fun browse(providerId: String = "local", kind: String = "featured"): List<Track> {
+        val provider = URLEncoder.encode(providerId, "UTF-8")
+        val browseKind = URLEncoder.encode(kind, "UTF-8")
+        val json = get("/v1/browse?provider=$provider&kind=$browseKind")
+        return parseBridgeTrackArray(json.optJSONArray("items"))
+    }
+
+    fun playbackSnapshot(): DesktopPlaybackSnapshot {
+        val json = status()
+        val queue = parseBridgeTrackArray(json.optJSONArray("queue"))
+        val index = json.optInt("index", -1)
+        return DesktopPlaybackSnapshot(
+            isPlaying = json.optBoolean("playing", false),
+            positionMs = json.optLong("position_ms", 0L).coerceAtLeast(0L),
+            currentIndex = index,
+            currentTrack = parseBridgeTrack(json.optJSONObject("current_track")) ?: queue.getOrNull(index),
+            queue = queue
+        )
+    }
+
+    private fun parseBridgeTrack(item: JSONObject?, includeStreamUrl: Boolean = false): Track? {
+        if (item == null) return null
+        val providerId = item.optString("provider_id").takeIf { it.isNotBlank() } ?: return null
+        val trackId = item.optString("track_id").takeIf { it.isNotBlank() } ?: return null
+        return Track(
+            providerId = providerId,
+            trackId = trackId,
+            title = item.optString("title", "Unknown track"),
+            artist = item.optString("artist", "Unknown artist"),
+            album = item.optString("album"),
+            streamUrl = if (includeStreamUrl) item.optString("stream_url") else "",
+            durationMs = item.optLong("duration_ms", 0L).coerceAtLeast(0L),
+            source = TrackSource.BRIDGE
+        )
+    }
+
+    private fun parseBridgeTrackArray(items: JSONArray?): List<Track> {
+        if (items == null) return emptyList()
+        return buildList {
+            for (index in 0 until items.length()) {
+                parseBridgeTrack(items.optJSONObject(index))?.let { add(it) }
+            }
+        }
+    }
+
+    fun handoffToDesktop(
+        tracks: List<Track>,
+        start: Int,
+        positionMs: Long
+    ): JSONObject {
+        val queue = JSONArray()
+        tracks.forEach { track ->
+            queue.put(
+                JSONObject()
+                    .put("source", "bridge")
+                    .put("provider_id", track.providerId)
+                    .put("track_id", track.trackId)
+                    .put("title", track.title)
+                    .put("artist", track.artist)
+                    .put("album", track.album)
+            )
+        }
+        return post(
+            "/v1/handoff",
+            JSONObject()
+                .put("tracks", queue)
+                .put("start", start)
+                .put("position_ms", positionMs.coerceAtLeast(0L))
+                .put("autoplay", true),
+            timeoutMs = BRIDGE_HANDOFF_TIMEOUT_MS.toInt(),
+            readTimeoutMs = BRIDGE_HANDOFF_TIMEOUT_MS.toInt()
+        )
+    }
+
+    fun stopDesktopSessionIfMatches(tracks: List<Track>, index: Int): JSONObject {
+        val queue = JSONArray()
+        tracks.forEach { track ->
+            queue.put(
+                JSONObject()
+                    .put("provider_id", track.providerId)
+                    .put("track_id", track.trackId)
+            )
+        }
+        return post(
+            "/v1/handoff/stop",
+            JSONObject().put("expected_queue", queue).put("expected_index", index),
+            timeoutMs = BRIDGE_VERIFY_TIMEOUT_MS,
+            readTimeoutMs = BRIDGE_VERIFY_TIMEOUT_MS
+        )
+    }
 
     fun search(query: String): List<Track> {
         val q = URLEncoder.encode(query, "UTF-8")
         val json = get("/v1/search?q=$q&provider=all")
-        val arr = json.optJSONArray("items") ?: return emptyList()
         return buildList {
-            for (i in 0 until arr.length()) {
-                val x = arr.getJSONObject(i)
-                add(Track(
-                    providerId = x.optString("provider_id"),
-                    trackId = x.optString("track_id"),
-                    title = x.optString("title", "Unknown track"),
-                    artist = x.optString("artist", "Unknown artist"),
-                    album = x.optString("album"),
-                    streamUrl = x.optString("stream_url")
-                ))
+            val items = json.optJSONArray("items") ?: return@buildList
+            for (index in 0 until items.length()) {
+                parseBridgeTrack(items.optJSONObject(index), includeStreamUrl = true)?.let { add(it) }
             }
         }
     }
@@ -248,6 +386,26 @@ private fun PlayerConnectionScreen(error: String?, onRetry: () -> Unit) {
 fun MelodexApp(player: Player) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val lifecycleOwner = remember(context) { context as? LifecycleOwner }
+    var isAppForeground by remember(lifecycleOwner) {
+        mutableStateOf(lifecycleOwner?.lifecycle?.currentState?.isAtLeast(Lifecycle.State.STARTED) == true)
+    }
+    DisposableEffect(lifecycleOwner) {
+        val owner = lifecycleOwner
+        if (owner == null) {
+            onDispose { }
+        } else {
+            val observer = LifecycleEventObserver { _, event ->
+                when (event) {
+                    Lifecycle.Event.ON_START, Lifecycle.Event.ON_RESUME -> isAppForeground = true
+                    Lifecycle.Event.ON_STOP, Lifecycle.Event.ON_DESTROY -> isAppForeground = false
+                    else -> Unit
+                }
+            }
+            owner.lifecycle.addObserver(observer)
+            onDispose { owner.lifecycle.removeObserver(observer) }
+        }
+    }
     val audioPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         Manifest.permission.READ_MEDIA_AUDIO
     } else {
@@ -265,16 +423,32 @@ fun MelodexApp(player: Player) {
     var localSearch by remember { mutableStateOf("") }
     var localSort by remember { mutableStateOf(LocalSort.TITLE) }
     var sortMenuExpanded by remember { mutableStateOf(false) }
-    var localQueue by remember { mutableStateOf<List<Track>>(emptyList()) }
+    var phoneQueue by remember { mutableStateOf<List<Track>>(emptyList()) }
+    var queueIndex by remember { mutableStateOf(0) }
+    var queueRestored by remember { mutableStateOf(false) }
+    var restorePositionMs by remember { mutableStateOf(0L) }
+    var queueResolutionRequest by remember { mutableStateOf(0) }
     var queueDialogOpen by remember { mutableStateOf(false) }
+    var handoffInProgress by remember { mutableStateOf(false) }
+    var suppressQueueRestore by remember { mutableStateOf(false) }
     var bridgeUrl by remember { mutableStateOf("") }
     var token by remember { mutableStateOf("") }
+    var manualBridgeUrl by remember { mutableStateOf("") }
+    var manualBridgeToken by remember { mutableStateOf("") }
     var bridgeName by remember { mutableStateOf("") }
     var bridgeDeviceId by remember { mutableStateOf("") }
+    var bridgeReconnectVersion by remember { mutableStateOf(0) }
+    var bridgeConnectionState by remember { mutableStateOf(BridgeConnectionState.UNPAIRED) }
     var showAdvancedBridgeSetup by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
     var bridgeStatus by remember { mutableStateOf("Pairing is optional. Scan a desktop QR code to connect.") }
     var bridgeResults by remember { mutableStateOf<List<Track>>(emptyList()) }
+    var bridgeLibraryStatus by remember { mutableStateOf("Pair a desktop to browse its library. On this phone works without pairing.") }
+    var bridgeLibraryLoading by remember { mutableStateOf(false) }
+    var desktopPlayback by remember { mutableStateOf<DesktopPlaybackSnapshot?>(null) }
+    var desktopPlaybackMessage by remember { mutableStateOf("Pair a computer to view its playback queue.") }
+    var desktopPlaybackLoading by remember { mutableStateOf(false) }
+    var desktopQueueDialogOpen by remember { mutableStateOf(false) }
     var nowPlaying by remember { mutableStateOf<Track?>(null) }
     var playbackPositionMs by remember { mutableStateOf(0L) }
     var playbackDurationMs by remember { mutableStateOf(0L) }
@@ -294,6 +468,9 @@ fun MelodexApp(player: Player) {
             bridgeStatus = "QR scan cancelled."
         } else {
             scope.launch {
+                val previousUrl = bridgeUrl
+                val previousToken = token
+                val previousDeviceId = bridgeDeviceId
                 bridgeStatus = "Pairing with your computer…"
                 try {
                     val pairing = withContext(Dispatchers.IO) {
@@ -310,6 +487,13 @@ fun MelodexApp(player: Player) {
                         BridgeClient(pairing.baseUrl, bridgeToken).verify()
                     }
                     if (!connected) throw IllegalStateException("The Bridge did not accept this pairing.")
+                    if (previousUrl.isNotBlank() && previousToken.isNotBlank() && previousDeviceId.isNotBlank()) {
+                        withContext(Dispatchers.IO) {
+                            runCatching {
+                                BridgeClient(previousUrl, previousToken).unpair(previousDeviceId, timeoutMs = 1200)
+                            }
+                        }
+                    }
                     withContext(Dispatchers.IO) {
                         BridgeConnectionStore.save(
                             context.applicationContext,
@@ -318,9 +502,14 @@ fun MelodexApp(player: Player) {
                     }
                     bridgeUrl = pairing.baseUrl
                     token = bridgeToken
+                    manualBridgeUrl = pairing.baseUrl
+                    manualBridgeToken = bridgeToken
                     bridgeName = displayName
                     bridgeDeviceId = deviceId
+                    bridgeReconnectVersion += 1
+                    bridgeConnectionState = BridgeConnectionState.CONNECTED
                     bridgeResults = emptyList()
+                    bridgeLibraryStatus = "Connected. Browse the desktop library or search connected music."
                     bridgeStatus = "Connected to $displayName."
                     musicSource = MusicSource.BRIDGE
                 } catch (e: Exception) {
@@ -329,6 +518,7 @@ fun MelodexApp(player: Player) {
             }
         }
     }
+
     val cameraPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
@@ -354,7 +544,10 @@ fun MelodexApp(player: Player) {
             bridgeStatus = "Enter the Bridge address and token."
             return
         }
+        val isCurrentConnection = normalizedUrl == bridgeUrl && normalizedToken == token
+        val hasSavedConnection = bridgeUrl.isNotBlank() && token.isNotBlank()
         scope.launch {
+            if (isCurrentConnection || !hasSavedConnection) bridgeConnectionState = BridgeConnectionState.CHECKING
             bridgeStatus = "Connecting…"
             try {
                 val connected = withContext(Dispatchers.IO) {
@@ -369,10 +562,31 @@ fun MelodexApp(player: Player) {
                 }
                 bridgeUrl = normalizedUrl
                 token = normalizedToken
+                manualBridgeUrl = normalizedUrl
+                manualBridgeToken = normalizedToken
                 bridgeName = displayName
                 bridgeDeviceId = deviceId
+                bridgeReconnectVersion += 1
+                bridgeConnectionState = BridgeConnectionState.CONNECTED
+                if (!isCurrentConnection) bridgeResults = emptyList()
+                bridgeLibraryStatus = if (bridgeResults.isEmpty()) {
+                    "Connected. Browse the desktop library or search connected music."
+                } else {
+                    "${bridgeResults.size} results are ready."
+                }
                 bridgeStatus = "Connected to $displayName."
             } catch (e: Exception) {
+                if (isCurrentConnection) {
+                    bridgeConnectionState = BridgeConnectionState.UNAVAILABLE
+                } else if (!hasSavedConnection) {
+                    bridgeConnectionState = BridgeConnectionState.UNPAIRED
+                }
+                if (bridgeConnectionState == BridgeConnectionState.UNAVAILABLE) {
+                    bridgeResults = emptyList()
+                    bridgeLibraryStatus = "Desktop library unavailable. Switch to On this phone to keep listening."
+                } else if (bridgeConnectionState == BridgeConnectionState.UNPAIRED) {
+                    bridgeLibraryStatus = "Pair a desktop to browse its library. On this phone works without pairing."
+                }
                 bridgeStatus = e.message ?: "Connection failed."
             }
         }
@@ -398,9 +612,13 @@ fun MelodexApp(player: Player) {
             }
             bridgeUrl = ""
             token = ""
+            manualBridgeUrl = ""
+            manualBridgeToken = ""
             bridgeName = ""
             bridgeDeviceId = ""
+            bridgeConnectionState = BridgeConnectionState.UNPAIRED
             bridgeResults = emptyList()
+            bridgeLibraryStatus = "Pair a desktop to browse its library. On this phone works without pairing."
             showAdvancedBridgeSetup = false
             bridgeStatus = if (revoked) {
                 "Saved Bridge connection removed from this phone."
@@ -417,17 +635,103 @@ fun MelodexApp(player: Player) {
         if (saved != null) {
             bridgeUrl = saved.baseUrl
             token = saved.token
+            manualBridgeUrl = saved.baseUrl
+            manualBridgeToken = saved.token
             bridgeName = saved.displayName
             bridgeDeviceId = saved.deviceId
+            bridgeConnectionState = BridgeConnectionState.CHECKING
             bridgeStatus = "Checking the saved connection…"
-            bridgeStatus = try {
-                withContext(Dispatchers.IO) {
-                    BridgeClient(saved.baseUrl, saved.token).verify()
+        }
+    }
+
+    LaunchedEffect(bridgeUrl, token, isAppForeground) {
+        if (bridgeUrl.isBlank() || token.isBlank()) {
+            bridgeConnectionState = BridgeConnectionState.UNPAIRED
+            bridgeLibraryStatus = "Pair a desktop to browse its library. On this phone works without pairing."
+            return@LaunchedEffect
+        }
+        if (!isAppForeground) return@LaunchedEffect
+
+        while (true) {
+            val wasUnavailable = bridgeConnectionState == BridgeConnectionState.UNAVAILABLE
+            val wasChecking = bridgeConnectionState == BridgeConnectionState.CHECKING
+            try {
+                val connected = withContext(Dispatchers.IO) {
+                    BridgeClient(bridgeUrl, token).verify()
                 }
-                "Connected to ${saved.displayName}."
-            } catch (e: Exception) {
-                "Saved connection to ${saved.displayName} is unavailable: ${e.message ?: "check the local network"}."
+                if (!connected) throw IllegalStateException("The Bridge did not accept this connection.")
+                bridgeConnectionState = BridgeConnectionState.CONNECTED
+                if (wasUnavailable) {
+                    bridgeReconnectVersion += 1
+                    bridgeStatus = "Connection restored to ${bridgeName.ifBlank { "Melodex computer" }}."
+                    bridgeLibraryStatus = "Connection restored. Browse the desktop library or search connected music."
+                } else if (wasChecking) {
+                    bridgeStatus = "Connected to ${bridgeName.ifBlank { "Melodex computer" }}."
+                    if (bridgeResults.isEmpty()) {
+                        bridgeLibraryStatus = "Connected. Browse the desktop library or search connected music."
+                    }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                bridgeConnectionState = BridgeConnectionState.UNAVAILABLE
+                bridgeResults = emptyList()
+                bridgeLibraryStatus = "Desktop library unavailable. Switch to On this phone to keep listening."
+                bridgeStatus = "Can't reach ${bridgeName.ifBlank { "Melodex computer" }} at its saved LAN address. It may be offline or have a new address. Scan a new QR code to reconnect."
             }
+            delay(BRIDGE_CONNECTION_POLL_INTERVAL_MS)
+        }
+    }
+
+    suspend fun loadDesktopPlayback(showLoading: Boolean) {
+        if (bridgeConnectionState != BridgeConnectionState.CONNECTED) return
+        val baseUrl = bridgeUrl
+        val bridgeToken = token
+        if (showLoading) {
+            desktopPlaybackLoading = true
+            desktopPlaybackMessage = if (desktopPlayback == null) "Loading desktop playback…" else "Refreshing desktop playback…"
+        }
+        try {
+            val snapshot = withContext(Dispatchers.IO) {
+                BridgeClient(baseUrl, bridgeToken).playbackSnapshot()
+            }
+            if (baseUrl == bridgeUrl && bridgeToken == token && bridgeConnectionState == BridgeConnectionState.CONNECTED) {
+                desktopPlayback = snapshot
+                desktopPlaybackMessage = "Desktop playback is up to date."
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            if (baseUrl == bridgeUrl && bridgeToken == token && bridgeConnectionState == BridgeConnectionState.CONNECTED) {
+                desktopPlayback = null
+                desktopQueueDialogOpen = false
+                desktopPlaybackMessage = "Desktop playback status could not be loaded. Reconnect or refresh to try again."
+            }
+        } finally {
+            if (showLoading) desktopPlaybackLoading = false
+        }
+    }
+
+    LaunchedEffect(bridgeUrl, token, bridgeConnectionState, isAppForeground, musicSource) {
+        if (musicSource != MusicSource.BRIDGE || !isAppForeground) return@LaunchedEffect
+        if (bridgeConnectionState != BridgeConnectionState.CONNECTED) {
+            desktopPlayback = null
+            desktopQueueDialogOpen = false
+            desktopPlaybackLoading = false
+            desktopPlaybackMessage = when (bridgeConnectionState) {
+                BridgeConnectionState.UNPAIRED -> "Pair a computer to view its playback queue."
+                BridgeConnectionState.CHECKING -> "Checking the desktop connection…"
+                BridgeConnectionState.UNAVAILABLE -> "Desktop playback is unavailable. Phone playback and its queue still work."
+                BridgeConnectionState.CONNECTED -> "Connect to a desktop to view its playback queue."
+            }
+            return@LaunchedEffect
+        }
+
+        while (true) {
+            if (!desktopPlaybackLoading) {
+                loadDesktopPlayback(showLoading = desktopPlayback == null)
+            }
+            delay(BRIDGE_CONNECTION_POLL_INTERVAL_MS)
         }
     }
 
@@ -488,6 +792,519 @@ fun MelodexApp(player: Player) {
         }
     }
 
+    fun searchBridgeLibrary() {
+        val searchQuery = query.trim()
+        if (searchQuery.isBlank()) {
+            bridgeLibraryStatus = "Enter a search to find desktop music."
+            return
+        }
+        if (bridgeConnectionState != BridgeConnectionState.CONNECTED || bridgeLibraryLoading) return
+        val baseUrl = bridgeUrl
+        val bridgeToken = token
+        bridgeLibraryLoading = true
+        bridgeLibraryStatus = "Searching connected music…"
+        scope.launch {
+            try {
+                val results = withContext(Dispatchers.IO) {
+                    BridgeClient(baseUrl, bridgeToken).search(searchQuery)
+                }
+                if (baseUrl != bridgeUrl || bridgeToken != token || bridgeConnectionState != BridgeConnectionState.CONNECTED) {
+                    return@launch
+                }
+                bridgeResults = results
+                bridgeLibraryStatus = if (results.isEmpty()) {
+                    "No matches. Try another search or browse the desktop library."
+                } else {
+                    "${results.size} results from connected music sources."
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                if (baseUrl == bridgeUrl && bridgeToken == token && bridgeConnectionState == BridgeConnectionState.CONNECTED) {
+                    bridgeResults = emptyList()
+                    bridgeLibraryStatus = "Search failed. Check the desktop connection and try again."
+                }
+            } finally {
+                bridgeLibraryLoading = false
+            }
+        }
+    }
+
+    fun browseDesktopLibrary() {
+        if (bridgeConnectionState != BridgeConnectionState.CONNECTED || bridgeLibraryLoading) return
+        val baseUrl = bridgeUrl
+        val bridgeToken = token
+        bridgeLibraryLoading = true
+        bridgeLibraryStatus = "Loading desktop library…"
+        scope.launch {
+            try {
+                val results = withContext(Dispatchers.IO) {
+                    BridgeClient(baseUrl, bridgeToken).browse()
+                }
+                if (baseUrl != bridgeUrl || bridgeToken != token || bridgeConnectionState != BridgeConnectionState.CONNECTED) {
+                    return@launch
+                }
+                bridgeResults = results
+                bridgeLibraryStatus = if (results.isEmpty()) {
+                    "No desktop tracks found. Check the computer’s local library or search connected music."
+                } else {
+                    "${results.size} tracks from the desktop library."
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                if (baseUrl == bridgeUrl && bridgeToken == token && bridgeConnectionState == BridgeConnectionState.CONNECTED) {
+                    bridgeResults = emptyList()
+                    bridgeLibraryStatus = "The desktop library could not be loaded. Reconnect and try again."
+                }
+            } finally {
+                bridgeLibraryLoading = false
+            }
+        }
+    }
+
+    fun refreshDesktopPlayback() {
+        if (bridgeConnectionState != BridgeConnectionState.CONNECTED || desktopPlaybackLoading) return
+        scope.launch { loadDesktopPlayback(showLoading = true) }
+    }
+
+    fun savePhoneQueue(tracks: List<Track>, index: Int, positionMs: Long) {
+        if (tracks.isEmpty()) {
+            LocalQueueStore.clearAsync(context)
+            return
+        }
+        LocalQueueStore.saveAsync(
+            context,
+            tracks,
+            index.coerceIn(0, tracks.lastIndex),
+            positionMs.coerceAtLeast(0L)
+        )
+    }
+
+    fun playQueueTrack(index: Int, positionMs: Long = 0L, autoplay: Boolean = true) {
+        val queued = phoneQueue.getOrNull(index) ?: return
+        queueResolutionRequest += 1
+        val requestId = queueResolutionRequest
+        val targetPositionMs = positionMs.coerceAtLeast(0L)
+        queueIndex = index
+        restorePositionMs = targetPositionMs
+        savePhoneQueue(phoneQueue, index, targetPositionMs)
+
+        if (queued.source == TrackSource.PHONE) {
+            if (!autoplay) player.pause()
+            nowPlaying = queued
+            player.setMediaItem(trackToMediaItem(queued), targetPositionMs)
+            player.prepare()
+            if (autoplay) player.play() else player.pause()
+            return
+        }
+
+        player.pause()
+        player.clearMediaItems()
+        nowPlaying = null
+        val baseUrl = bridgeUrl
+        val bridgeToken = token
+        if (baseUrl.isBlank() || bridgeToken.isBlank()) {
+            bridgeStatus = "Connect to the Bridge to play this queued track."
+            return
+        }
+        bridgeStatus = "Resolving ${queued.title}…"
+        scope.launch {
+            try {
+                val resolved = withContext(Dispatchers.IO) {
+                    BridgeClient(baseUrl, bridgeToken).resolve(queued)
+                }
+                if (requestId != queueResolutionRequest) return@launch
+                if (resolved.streamUrl.isBlank()) {
+                    throw IllegalStateException("Source did not return a stream URL")
+                }
+                val resolvedIndex = phoneQueue.indexOfFirst { it.queueKey() == queued.queueKey() }
+                if (resolvedIndex < 0) return@launch
+                queueIndex = resolvedIndex
+                nowPlaying = resolved
+                player.setMediaItem(trackToMediaItem(resolved), targetPositionMs)
+                player.prepare()
+                if (autoplay) player.play() else player.pause()
+                bridgeStatus = if (autoplay) "Playing on this phone." else "Bridge track ready."
+            } catch (e: Exception) {
+                if (requestId == queueResolutionRequest) {
+                    bridgeStatus = e.message ?: "Playback failed."
+                }
+            }
+        }
+    }
+
+    fun startLocalQueue(track: Track, candidates: List<Track>) {
+        val queue = if (candidates.any { it.queueKey() == track.queueKey() }) candidates else listOf(track)
+        val startIndex = queue.indexOfFirst { it.queueKey() == track.queueKey() }.coerceAtLeast(0)
+        phoneQueue = queue
+        queueIndex = startIndex
+        nowPlaying = track
+        savePhoneQueue(queue, startIndex, 0L)
+        playQueueTrack(startIndex, 0L, true)
+    }
+
+    fun startBridgeQueue(track: Track) {
+        phoneQueue = listOf(track.copy(streamUrl = ""))
+        queueIndex = 0
+        playQueueTrack(0, 0L, true)
+    }
+
+    fun addToPhoneQueue(track: Track) {
+        if (phoneQueue.any { it.queueKey() == track.queueKey() }) {
+            if (track.source == TrackSource.PHONE) {
+                localStatus = "That track is already in the queue."
+            } else {
+                bridgeStatus = "That track is already in the queue."
+            }
+            return
+        }
+        val stableTrack = if (track.source == TrackSource.BRIDGE) track.copy(streamUrl = "") else track
+        val updatedQueue = phoneQueue + stableTrack
+        phoneQueue = updatedQueue
+        if (updatedQueue.size == 1) {
+            queueIndex = 0
+            savePhoneQueue(updatedQueue, 0, 0L)
+            playQueueTrack(0, 0L, true)
+        } else {
+            val positionMs = if (player.currentMediaItem != null) {
+                player.currentPosition.coerceAtLeast(0L)
+            } else {
+                restorePositionMs
+            }
+            queueIndex = queueIndex.coerceIn(0, updatedQueue.lastIndex)
+            savePhoneQueue(updatedQueue, queueIndex, positionMs)
+        }
+        if (track.source == TrackSource.PHONE) {
+            localStatus = "Added to queue: ${track.title}"
+        } else {
+            bridgeStatus = "Added to queue: ${track.title}"
+        }
+    }
+
+    fun removeFromPhoneQueue(index: Int) {
+        if (index !in phoneQueue.indices) return
+        val currentKey = phoneQueue.getOrNull(queueIndex)?.queueKey()
+        val removingCurrent = phoneQueue[index].queueKey() == currentKey
+        val wasPlaying = player.isPlaying
+        val updatedQueue = phoneQueue.toMutableList().also { it.removeAt(index) }
+        queueResolutionRequest += 1
+        if (updatedQueue.isEmpty()) {
+            phoneQueue = emptyList()
+            queueIndex = 0
+            restorePositionMs = 0L
+            nowPlaying = null
+            player.clearMediaItems()
+            LocalQueueStore.clearAsync(context)
+            return
+        }
+        phoneQueue = updatedQueue
+        val nextIndex = updatedQueue.indexOfFirst { it.queueKey() == currentKey }
+            .takeIf { it >= 0 }
+            ?: index.coerceIn(0, updatedQueue.lastIndex)
+        queueIndex = nextIndex
+        if (removingCurrent) {
+            playQueueTrack(nextIndex, 0L, wasPlaying)
+        } else {
+            val positionMs = if (player.currentMediaItem != null) {
+                player.currentPosition.coerceAtLeast(0L)
+            } else {
+                restorePositionMs
+            }
+            savePhoneQueue(updatedQueue, nextIndex, positionMs)
+        }
+    }
+
+    fun moveQueueItem(fromIndex: Int, toIndex: Int) {
+        if (fromIndex !in phoneQueue.indices || toIndex !in phoneQueue.indices || fromIndex == toIndex) return
+        val currentKey = phoneQueue.getOrNull(queueIndex)?.queueKey()
+        val updatedQueue = phoneQueue.toMutableList().also { tracks ->
+            val moved = tracks.removeAt(fromIndex)
+            tracks.add(toIndex, moved)
+        }
+        phoneQueue = updatedQueue
+        queueIndex = updatedQueue.indexOfFirst { it.queueKey() == currentKey }.coerceAtLeast(0)
+        val positionMs = if (player.currentMediaItem != null) {
+            player.currentPosition.coerceAtLeast(0L)
+        } else {
+            restorePositionMs
+        }
+        savePhoneQueue(updatedQueue, queueIndex, positionMs)
+    }
+
+    fun clearPhoneQueue() {
+        queueResolutionRequest += 1
+        player.clearMediaItems()
+        nowPlaying = null
+        phoneQueue = emptyList()
+        queueIndex = 0
+        restorePositionMs = 0L
+        LocalQueueStore.clearAsync(context)
+        queueDialogOpen = false
+    }
+
+    fun moveDesktopPlaybackToPhone() {
+        if (handoffInProgress || bridgeConnectionState != BridgeConnectionState.CONNECTED) return
+        scope.launch {
+            handoffInProgress = true
+            suppressQueueRestore = true
+            bridgeStatus = "Checking the desktop queue…"
+            try {
+                val baseUrl = bridgeUrl
+                val bridgeToken = token
+                val desktopStatus = withContext(Dispatchers.IO) {
+                    BridgeClient(baseUrl, bridgeToken).status()
+                }
+                val desktopQueue = mutableListOf<Track>()
+                val queueJson = desktopStatus.optJSONArray("queue")
+                if (queueJson != null) {
+                    for (index in 0 until queueJson.length()) {
+                        val item = queueJson.optJSONObject(index)
+                        if (item == null) {
+                            bridgeStatus = "The desktop queue could not be read safely."
+                            return@launch
+                        }
+                        desktopQueue += Track(
+                            providerId = item.optString("provider_id"),
+                            trackId = item.optString("track_id"),
+                            title = item.optString("title", "Unknown track"),
+                            artist = item.optString("artist", "Unknown artist"),
+                            album = item.optString("album"),
+                            durationMs = item.optLong("duration_ms", 0L).coerceAtLeast(0L),
+                            source = TrackSource.BRIDGE
+                        )
+                    }
+                }
+                if (desktopQueue.isEmpty()) {
+                    val current = desktopStatus.optJSONObject("current_track")
+                    if (current != null) {
+                        desktopQueue += Track(
+                            providerId = current.optString("provider_id"),
+                            trackId = current.optString("track_id"),
+                            title = current.optString("title", "Unknown track"),
+                            artist = current.optString("artist", "Unknown artist"),
+                            album = current.optString("album"),
+                            durationMs = current.optLong("duration_ms", 0L).coerceAtLeast(0L),
+                            source = TrackSource.BRIDGE
+                        )
+                    }
+                }
+                if (desktopQueue.isEmpty()) {
+                    bridgeStatus = "There is no desktop playback queue to move."
+                    return@launch
+                }
+                if (desktopQueue.any { it.providerId.isBlank() || it.trackId.isBlank() }) {
+                    bridgeStatus = "The desktop queue has a track without a stable Bridge identity."
+                    return@launch
+                }
+                val desktopIndex = desktopStatus.optInt("index", 0)
+                val start = if (desktopIndex < 0 && desktopQueue.size == 1) 0 else desktopIndex
+                if (start !in desktopQueue.indices) {
+                    bridgeStatus = "The desktop has no current queue position to move."
+                    return@launch
+                }
+                val desktopWasPlaying = desktopStatus.optBoolean("playing", false)
+                val positionMs = desktopStatus.optLong("position_ms", 0L).coerceAtLeast(0L)
+                val previousQueue = phoneQueue
+                val previousIndex = queueIndex
+                val previousPositionMs = if (player.currentMediaItem != null) {
+                    player.currentPosition.coerceAtLeast(0L)
+                } else {
+                    restorePositionMs
+                }
+                val previousWasPlaying = player.isPlaying
+                val transferKeys = desktopQueue.map { it.queueKey() }
+                phoneQueue = desktopQueue
+                queueIndex = start
+                bridgeStatus = if (desktopWasPlaying) {
+                    "Starting the desktop session on this phone…"
+                } else {
+                    "Loading the paused desktop queue on this phone…"
+                }
+                playQueueTrack(start, positionMs, desktopWasPlaying)
+                val phoneReady = withTimeoutOrNull(BRIDGE_HANDOFF_TIMEOUT_MS) {
+                    while (true) {
+                        val playbackReady = if (desktopWasPlaying) {
+                            player.isPlaying
+                        } else {
+                            player.playbackState == Player.STATE_READY
+                        }
+                        if (
+                            phoneQueue.map { it.queueKey() } == transferKeys &&
+                            nowPlaying?.queueKey() == desktopQueue[start].queueKey() &&
+                            player.currentMediaItem?.mediaId == desktopQueue[start].queueKey() &&
+                            playbackReady
+                        ) {
+                            return@withTimeoutOrNull true
+                        }
+                        delay(BRIDGE_HANDOFF_POLL_INTERVAL_MS)
+                    }
+                    false
+                } ?: false
+                if (!phoneReady) {
+                    if (phoneQueue.map { it.queueKey() } == transferKeys) {
+                        phoneQueue = previousQueue
+                        queueIndex = previousIndex
+                        restorePositionMs = previousPositionMs
+                        if (previousQueue.isNotEmpty()) {
+                            val previousStart = previousIndex.coerceIn(previousQueue.indices)
+                            val previousTrack = previousQueue[previousStart]
+                            playQueueTrack(previousStart, previousPositionMs, previousWasPlaying)
+                            withTimeoutOrNull(BRIDGE_HANDOFF_TIMEOUT_MS) {
+                                while (true) {
+                                    val playbackReady = if (previousWasPlaying) {
+                                        player.isPlaying
+                                    } else {
+                                        player.playbackState == Player.STATE_READY
+                                    }
+                                    if (
+                                        nowPlaying?.queueKey() == previousTrack.queueKey() &&
+                                        player.currentMediaItem?.mediaId == previousTrack.queueKey() &&
+                                        playbackReady
+                                    ) return@withTimeoutOrNull true
+                                    delay(BRIDGE_HANDOFF_POLL_INTERVAL_MS)
+                                }
+                                false
+                            }
+                        } else {
+                            player.clearMediaItems()
+                            nowPlaying = null
+                        }
+                    }
+                    bridgeStatus = "This phone couldn't start the desktop session, so desktop playback was left alone."
+                    return@launch
+                }
+                if (desktopWasPlaying && phoneQueue.map { it.queueKey() } == transferKeys) {
+                    val stopped = withContext(Dispatchers.IO) {
+                        BridgeClient(baseUrl, bridgeToken).stopDesktopSessionIfMatches(desktopQueue, start)
+                    }
+                    bridgeStatus = when {
+                        stopped.optBoolean("stopped") -> "Moved desktop playback to this phone."
+                        stopped.optString("reason") == "desktop_session_changed" ->
+                            "Playing this session here; the desktop changed sessions, so it was left alone."
+                        else -> "Playing here. The desktop was already stopped."
+                    }
+                } else {
+                    bridgeStatus = "Loaded the desktop queue on this phone, paused."
+                }
+            } catch (e: Exception) {
+                bridgeStatus = e.message ?: "Playback handoff failed."
+            } finally {
+                suppressQueueRestore = false
+                handoffInProgress = false
+            }
+        }
+    }
+
+    fun movePhoneQueueToDesktop() {
+        if (
+            handoffInProgress ||
+            bridgeConnectionState != BridgeConnectionState.CONNECTED ||
+            !player.isPlaying ||
+            phoneQueue.isEmpty() ||
+            phoneQueue.any {
+                it.source != TrackSource.BRIDGE || it.providerId.isBlank() || it.trackId.isBlank()
+            }
+        ) return
+        scope.launch {
+            handoffInProgress = true
+            val baseUrl = bridgeUrl
+            val bridgeToken = token
+            val transferQueue = phoneQueue.toList()
+            val start = queueIndex.coerceIn(transferQueue.indices)
+            val positionMs = player.currentPosition.coerceAtLeast(0L)
+            var handoffAccepted = false
+            bridgeStatus = "Sending this phone queue to the desktop…"
+            try {
+                val accepted = withContext(Dispatchers.IO) {
+                    BridgeClient(baseUrl, bridgeToken).handoffToDesktop(transferQueue, start, positionMs)
+                }
+                if (!accepted.optBoolean("ok")) {
+                    bridgeStatus = "The desktop refused this handoff."
+                    return@launch
+                }
+                handoffAccepted = true
+                val desktopStarted = withTimeoutOrNull(BRIDGE_HANDOFF_TIMEOUT_MS) {
+                    while (true) {
+                        val status = withContext(Dispatchers.IO) {
+                            BridgeClient(baseUrl, bridgeToken).status()
+                        }
+                        if (status.matchesBridgeQueue(transferQueue, start) && status.optBoolean("playing")) {
+                            return@withTimeoutOrNull true
+                        }
+                        delay(BRIDGE_HANDOFF_POLL_INTERVAL_MS)
+                    }
+                    false
+                } ?: false
+                if (!desktopStarted) {
+                    var desktopStopped = false
+                    try {
+                        desktopStopped = withContext(Dispatchers.IO) {
+                            BridgeClient(baseUrl, bridgeToken)
+                                .stopDesktopSessionIfMatches(transferQueue, start)
+                                .optBoolean("stopped")
+                        }
+                    } catch (_: Exception) {
+                        // Keep the phone queue playing if the guarded stop cannot be confirmed.
+                    }
+                    bridgeStatus = if (desktopStopped) {
+                        "The desktop did not start; this phone kept playing the queue."
+                    } else {
+                        "Could not confirm desktop playback. This phone kept playing."
+                    }
+                    return@launch
+                }
+                val phoneSessionStillMatches =
+                    player.isPlaying &&
+                        phoneQueue.map { it.queueKey() } == transferQueue.map { it.queueKey() } &&
+                        queueIndex == start &&
+                        player.currentMediaItem?.mediaId == transferQueue[start].queueKey()
+                if (phoneSessionStillMatches) {
+                    player.pause()
+                    clearPhoneQueue()
+                    bridgeStatus = "Moved playback to ${bridgeName.ifBlank { "the desktop" }}."
+                } else {
+                    try {
+                        withContext(Dispatchers.IO) {
+                            BridgeClient(baseUrl, bridgeToken)
+                                .stopDesktopSessionIfMatches(transferQueue, start)
+                        }
+                    } catch (_: Exception) {
+                        // The phone session changed; keep the phone's current state.
+                    }
+                    bridgeStatus = "The phone session changed during handoff, so it was left alone."
+                }
+            } catch (e: Exception) {
+                if (handoffAccepted) {
+                    try {
+                        withContext(Dispatchers.IO) {
+                            BridgeClient(baseUrl, bridgeToken).stopDesktopSessionIfMatches(transferQueue, start)
+                        }
+                    } catch (_: Exception) {
+                        // The request may be unavailable; its queue identity guard protects any retry.
+                    }
+                }
+                bridgeStatus = e.message ?: "Playback handoff failed. This phone kept playing."
+            } finally {
+                handoffInProgress = false
+            }
+        }
+    }
+
+    fun playNextQueueTrack() {
+        if (queueIndex + 1 < phoneQueue.size) {
+            playQueueTrack(queueIndex + 1, 0L, true)
+        }
+    }
+
+    fun playPreviousQueueTrack() {
+        if (queueIndex > 0) {
+            playQueueTrack(queueIndex - 1, 0L, true)
+        } else if (player.mediaItemCount > 0) {
+            player.seekTo(0L)
+        }
+    }
+
     val audioPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
@@ -503,32 +1320,41 @@ fun MelodexApp(player: Player) {
         if (hasAudioPermission) refreshLocalLibrary()
     }
 
-    LaunchedEffect(player, hasAudioPermission) {
-        if (!hasAudioPermission) return@LaunchedEffect
+    LaunchedEffect(player) {
         val savedQueue = withContext(Dispatchers.IO) { LocalQueueStore.load(context) }
         if (savedQueue != null) {
-            localQueue = savedQueue.tracks
-            nowPlaying = savedQueue.tracks.getOrNull(savedQueue.currentIndex)
-            if (player.mediaItemCount == 0) {
-                val durationMs = savedQueue.tracks
-                    .getOrNull(savedQueue.currentIndex)?.durationMs ?: 0L
-                val savedPositionMs = savedQueue.currentPositionMs.coerceAtLeast(0L)
-                val restorePositionMs = if (durationMs > 0L) {
-                    savedPositionMs.coerceAtMost((durationMs - 1_000L).coerceAtLeast(0L))
-                } else {
-                    savedPositionMs
-                }
-                player.setMediaItems(
-                    savedQueue.tracks.map(::trackToMediaItem),
-                    savedQueue.currentIndex,
-                    restorePositionMs
-                )
-                player.prepare()
+            phoneQueue = savedQueue.tracks
+            queueIndex = savedQueue.currentIndex
+            restorePositionMs = savedQueue.currentPositionMs
+            val restoredTrack = savedQueue.tracks.getOrNull(savedQueue.currentIndex)
+            if (restoredTrack?.source == TrackSource.PHONE) nowPlaying = restoredTrack
+        }
+        queueRestored = true
+    }
+
+    LaunchedEffect(player, queueRestored, hasAudioPermission, bridgeUrl, token, bridgeReconnectVersion, phoneQueue, queueIndex, suppressQueueRestore) {
+        if (suppressQueueRestore || !queueRestored || phoneQueue.isEmpty() || player.mediaItemCount > 0) return@LaunchedEffect
+        val queued = phoneQueue.getOrNull(queueIndex) ?: return@LaunchedEffect
+        if (queued.source == TrackSource.PHONE) {
+            if (!hasAudioPermission) return@LaunchedEffect
+            val durationMs = queued.durationMs
+            val positionMs = if (durationMs > 0L) {
+                restorePositionMs.coerceAtMost((durationMs - 1_000L).coerceAtLeast(0L))
+            } else {
+                restorePositionMs
             }
+            player.setMediaItem(trackToMediaItem(queued), positionMs)
+            player.prepare()
+        } else if (bridgeUrl.isNotBlank() && token.isNotBlank()) {
+            playQueueTrack(queueIndex, restorePositionMs, false)
         }
     }
 
-    val latestQueue = rememberUpdatedState(localQueue)
+    val latestQueue = rememberUpdatedState(phoneQueue)
+    val latestQueueIndex = rememberUpdatedState(queueIndex)
+    val latestPlayQueueTrack = rememberUpdatedState<(Int, Long, Boolean) -> Unit>(
+        { index, positionMs, autoplay -> playQueueTrack(index, positionMs, autoplay) }
+    )
     LaunchedEffect(player) {
         while (true) {
             playbackPositionMs = player.currentPosition.coerceAtLeast(0L)
@@ -540,10 +1366,23 @@ fun MelodexApp(player: Player) {
     DisposableEffect(player) {
         val listener = object : Player.Listener {
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-                if (mediaItem?.mediaId?.startsWith("local|") == true) {
-                    nowPlaying = latestQueue.value.getOrNull(player.currentMediaItemIndex)
-                } else if (mediaItem == null) {
+                if (mediaItem == null) {
                     nowPlaying = null
+                    return
+                }
+                val index = latestQueue.value.indexOfFirst { it.queueKey() == mediaItem.mediaId }
+                if (index >= 0) {
+                    queueIndex = index
+                    nowPlaying = latestQueue.value[index]
+                }
+            }
+
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_ENDED) {
+                    val nextIndex = latestQueueIndex.value + 1
+                    if (nextIndex < latestQueue.value.size) {
+                        latestPlayQueueTrack.value(nextIndex, 0L, true)
+                    }
                 }
             }
 
@@ -553,95 +1392,6 @@ fun MelodexApp(player: Player) {
         }
         player.addListener(listener)
         onDispose { player.removeListener(listener) }
-    }
-
-    fun startLocalQueue(track: Track, candidates: List<Track>) {
-        val queue = if (candidates.any { it.trackId == track.trackId }) candidates else listOf(track)
-        val startIndex = queue.indexOfFirst { it.trackId == track.trackId }.coerceAtLeast(0)
-        localQueue = queue
-        nowPlaying = track
-        player.setMediaItems(queue.map(::trackToMediaItem), startIndex, 0L)
-        player.prepare()
-        player.play()
-        LocalQueueStore.saveAsync(context, queue, startIndex, 0L)
-    }
-
-    fun addToLocalQueue(track: Track) {
-        if (localQueue.any { it.trackId == track.trackId }) {
-            localStatus = "That track is already in the queue."
-            return
-        }
-        val wasPlayingLocalQueue = player.hasOnlyLocalItems()
-        val updatedQueue = localQueue + track
-        localQueue = updatedQueue
-        val savedPositionMs = if (wasPlayingLocalQueue) player.currentPosition.coerceAtLeast(0L) else 0L
-        if (wasPlayingLocalQueue) {
-            val currentTrackId = player.currentMediaItem?.mediaId?.removePrefix("local|")
-            val currentIndex = updatedQueue.indexOfFirst { it.trackId == currentTrackId }.coerceAtLeast(0)
-            player.setMediaItems(
-                updatedQueue.map(::trackToMediaItem),
-                currentIndex,
-                savedPositionMs
-            )
-            player.prepare()
-        }
-        val savedIndex = if (wasPlayingLocalQueue) player.currentMediaItemIndex else 0
-        LocalQueueStore.saveAsync(
-            context, updatedQueue, savedIndex.coerceAtLeast(0), savedPositionMs
-        )
-        localStatus = "Added to queue: ${track.title}"
-    }
-
-    fun removeFromLocalQueue(index: Int) {
-        if (index !in localQueue.indices) return
-        val wasPlayingLocalQueue = player.hasOnlyLocalItems()
-        val currentTrackId = player.currentMediaItem?.mediaId?.removePrefix("local|")
-        val updatedQueue = localQueue.toMutableList().also { it.removeAt(index) }
-        localQueue = updatedQueue
-        var savedPositionMs = if (wasPlayingLocalQueue) player.currentPosition.coerceAtLeast(0L) else 0L
-        if (wasPlayingLocalQueue) {
-            if (updatedQueue.isEmpty()) {
-                player.clearMediaItems()
-                nowPlaying = null
-            } else {
-                val nextIndex = updatedQueue.indexOfFirst { it.trackId == currentTrackId }
-                    .takeIf { it >= 0 }
-                    ?: index.coerceIn(0, updatedQueue.lastIndex)
-                if (updatedQueue[nextIndex].trackId != currentTrackId) savedPositionMs = 0L
-                player.setMediaItems(
-                    updatedQueue.map(::trackToMediaItem), nextIndex, savedPositionMs
-                )
-                player.prepare()
-                nowPlaying = updatedQueue[nextIndex]
-            }
-        }
-        if (updatedQueue.isEmpty()) {
-            LocalQueueStore.clearAsync(context)
-        } else {
-            LocalQueueStore.saveAsync(
-                context,
-                updatedQueue,
-                player.currentMediaItemIndex.coerceAtLeast(0),
-                savedPositionMs
-            )
-        }
-    }
-
-    fun clearLocalQueue() {
-        if (player.hasOnlyLocalItems()) {
-            player.clearMediaItems()
-            nowPlaying = null
-        }
-        localQueue = emptyList()
-        LocalQueueStore.clearAsync(context)
-        queueDialogOpen = false
-    }
-
-    fun playBridgeTrack(track: Track) {
-        player.setMediaItem(trackToMediaItem(track))
-        player.prepare()
-        player.play()
-        nowPlaying = track
     }
 
     MaterialTheme(colorScheme = MelodexColorScheme) {
@@ -792,8 +1542,8 @@ fun MelodexApp(player: Player) {
                                 ) { Text("Play something") }
                                 OutlinedButton(
                                     onClick = { queueDialogOpen = true },
-                                    enabled = localQueue.isNotEmpty()
-                                ) { Text("Queue (${localQueue.size})") }
+                                    enabled = phoneQueue.isNotEmpty()
+                                ) { Text("Queue (${phoneQueue.size})") }
                             }
 
                             when {
@@ -838,7 +1588,7 @@ fun MelodexApp(player: Player) {
                                     TrackList(
                                         tracks = visibleLocalTracks,
                                         onSelect = { track -> startLocalQueue(track, visibleLocalTracks) },
-                                        onAddToQueue = ::addToLocalQueue,
+                                        onAddToQueue = ::addToPhoneQueue,
                                         showQueueAction = true,
                                         modifier = Modifier.weight(1f)
                                     )
@@ -865,7 +1615,20 @@ fun MelodexApp(player: Player) {
                                         style = MaterialTheme.typography.titleSmall
                                     )
                                     Text(
-                                        "This phone has its own player. Pair another phone separately to listen independently.",
+                                        when (bridgeConnectionState) {
+                                            BridgeConnectionState.UNPAIRED -> "Not paired"
+                                            BridgeConnectionState.CHECKING -> "Checking connection…"
+                                            BridgeConnectionState.CONNECTED -> "Connected"
+                                            BridgeConnectionState.UNAVAILABLE -> "Desktop unavailable"
+                                        },
+                                        style = MaterialTheme.typography.titleSmall
+                                    )
+                                    Text(
+                                        if (bridgeConnectionState == BridgeConnectionState.UNAVAILABLE) {
+                                            "The computer may be offline or have a new address. Scan a new QR code to reconnect."
+                                        } else {
+                                            "This phone has its own player. Pair another phone separately to listen independently."
+                                        },
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -874,8 +1637,16 @@ fun MelodexApp(player: Player) {
                                         Button(onClick = {
                                             connectBridge(bridgeUrl, token, bridgeName, bridgeDeviceId)
                                         }) { Text("Reconnect") }
-                                        TextButton(onClick = { forgetBridge() }) { Text("Forget on this phone") }
+                                        OutlinedButton(onClick = { startQrScan() }) { Text("Scan new QR code") }
                                     }
+                                    OutlinedButton(
+                                        onClick = { moveDesktopPlaybackToPhone() },
+                                        enabled = bridgeConnectionState == BridgeConnectionState.CONNECTED && !handoffInProgress,
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text(if (handoffInProgress) "Moving playback…" else "Move desktop playback to this phone")
+                                    }
+                                    TextButton(onClick = { forgetBridge() }) { Text("Forget on this phone") }
                                 } else {
                                     Text(
                                         "Pair this phone over local Wi-Fi. Each phone keeps its own player, so listening here will not interrupt another phone."
@@ -892,24 +1663,94 @@ fun MelodexApp(player: Player) {
                                 }
                                 if (showAdvancedBridgeSetup) {
                                     OutlinedTextField(
-                                        bridgeUrl,
-                                        { bridgeUrl = it },
+                                        manualBridgeUrl,
+                                        { manualBridgeUrl = it },
                                         label = { Text("Bridge URL") },
                                         placeholder = { Text("http://192.168.1.20:8766") },
                                         singleLine = true,
                                         modifier = Modifier.fillMaxWidth()
                                     )
                                     OutlinedTextField(
-                                        token,
-                                        { token = it },
+                                        manualBridgeToken,
+                                        { manualBridgeToken = it },
                                         label = { Text("Bridge token") },
                                         visualTransformation = PasswordVisualTransformation(),
                                         singleLine = true,
                                         modifier = Modifier.fillMaxWidth()
                                     )
                                     Button(onClick = {
-                                        connectBridge(bridgeUrl, token)
+                                        connectBridge(manualBridgeUrl, manualBridgeToken)
                                     }) { Text("Connect manually") }
+                                }
+                            }
+                        }
+
+                        if (bridgeUrl.isNotBlank() && token.isNotBlank()) {
+                            Card(Modifier.fillMaxWidth()) {
+                                Column(
+                                    Modifier.fillMaxWidth().padding(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text("Desktop playback", style = MaterialTheme.typography.titleSmall)
+                                    val snapshot = desktopPlayback
+                                    if (snapshot == null) {
+                                        Text(
+                                            desktopPlaybackMessage,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        if (desktopPlaybackLoading) {
+                                            CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                                        }
+                                        OutlinedButton(
+                                            onClick = { refreshDesktopPlayback() },
+                                            enabled = bridgeConnectionState == BridgeConnectionState.CONNECTED &&
+                                                !desktopPlaybackLoading
+                                        ) {
+                                            Text(if (desktopPlaybackLoading) "Refreshing…" else "Refresh status")
+                                        }
+                                    } else {
+                                        val currentTrack = snapshot.currentTrack
+                                        Text(
+                                            when {
+                                                currentTrack == null -> "Nothing is playing on the desktop."
+                                                snapshot.isPlaying -> "Playing on the desktop"
+                                                else -> "Paused on the desktop"
+                                            },
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        if (currentTrack != null) {
+                                            Text(
+                                                "${currentTrack.title} · ${currentTrack.artist}",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                        Text(
+                                            "Queue: ${snapshot.queue.size} tracks · Position ${snapshot.positionMs / 1000}s",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Text(
+                                            desktopPlaybackMessage,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            OutlinedButton(
+                                                onClick = { refreshDesktopPlayback() },
+                                                enabled = bridgeConnectionState == BridgeConnectionState.CONNECTED &&
+                                                    !desktopPlaybackLoading
+                                            ) {
+                                                Text(if (desktopPlaybackLoading) "Refreshing…" else "Refresh")
+                                            }
+                                            TextButton(
+                                                onClick = { desktopQueueDialogOpen = true }
+                                            ) { Text("View queue (${snapshot.queue.size})") }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -918,44 +1759,41 @@ fun MelodexApp(player: Player) {
                             OutlinedTextField(
                                 query,
                                 { query = it },
-                                label = { Text("Search connected music") },
+                                label = { Text("Search desktop music") },
                                 singleLine = true,
                                 modifier = Modifier.weight(1f)
                             )
                             Button(
-                                onClick = {
-                                    scope.launch {
-                                        bridgeStatus = "Searching…"
-                                        try {
-                                            bridgeResults = withContext(Dispatchers.IO) {
-                                                BridgeClient(bridgeUrl, token).search(query)
-                                            }
-                                            bridgeStatus = "${bridgeResults.size} results"
-                                        } catch (e: Exception) {
-                                            bridgeStatus = e.message ?: "Search failed"
-                                        }
-                                    }
-                                },
-                                enabled = bridgeUrl.isNotBlank() && token.isNotBlank() && query.isNotBlank()
+                                onClick = { searchBridgeLibrary() },
+                                enabled = bridgeConnectionState == BridgeConnectionState.CONNECTED &&
+                                    query.isNotBlank() && !bridgeLibraryLoading
                             ) { Text("Search") }
                         }
-                        TrackList(bridgeResults, onSelect = { track ->
-                            scope.launch {
-                                bridgeStatus = "Resolving…"
-                                try {
-                                    val resolved = withContext(Dispatchers.IO) {
-                                        BridgeClient(bridgeUrl, token).resolve(track)
-                                    }
-                                    if (resolved.streamUrl.isBlank()) {
-                                        throw IllegalStateException("Source did not return a stream URL")
-                                    }
-                                    playBridgeTrack(resolved)
-                                    bridgeStatus = "Playing"
-                                } catch (e: Exception) {
-                                    bridgeStatus = e.message ?: "Playback failed"
-                                }
-                            }
-                        }, modifier = Modifier.weight(1f))
+                        OutlinedButton(
+                            onClick = { browseDesktopLibrary() },
+                            enabled = bridgeConnectionState == BridgeConnectionState.CONNECTED && !bridgeLibraryLoading,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(if (bridgeLibraryLoading) "Loading…" else "Browse desktop library")
+                        }
+                        Text(
+                            bridgeLibraryStatus,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        if (phoneQueue.isNotEmpty()) {
+                            OutlinedButton(
+                                onClick = { queueDialogOpen = true },
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("Queue (${phoneQueue.size})") }
+                        }
+                        TrackList(
+                            bridgeResults,
+                            onSelect = ::startBridgeQueue,
+                            onAddToQueue = ::addToPhoneQueue,
+                            showQueueAction = true,
+                            modifier = Modifier.weight(1f)
+                        )
                     }
                 }
 
@@ -965,39 +1803,104 @@ fun MelodexApp(player: Player) {
                         isPlaying = playerIsPlaying,
                         positionMs = playbackPositionMs,
                         durationMs = playbackDurationMs,
-                        queueCount = if (musicSource == MusicSource.PHONE && localQueue.isNotEmpty()) localQueue.size else null,
+                        queueCount = phoneQueue.size.takeIf { it > 0 },
+                        onPrevious = ::playPreviousQueueTrack,
+                        onNext = ::playNextQueueTrack,
                         onPlayPause = { if (player.isPlaying) player.pause() else player.play() },
                         onRestart = { player.seekTo(0L) },
                         onSeek = { player.seekTo(it) },
-                        onQueue = { queueDialogOpen = true }
+                        onQueue = { queueDialogOpen = true },
+                        onMoveToDesktop = if (
+                            bridgeConnectionState == BridgeConnectionState.CONNECTED &&
+                            !handoffInProgress &&
+                            playerIsPlaying &&
+                            phoneQueue.isNotEmpty() &&
+                            phoneQueue.all {
+                                it.source == TrackSource.BRIDGE &&
+                                    it.providerId.isNotBlank() &&
+                                    it.trackId.isNotBlank()
+                            }
+                        ) {
+                            { movePhoneQueueToDesktop() }
+                        } else {
+                            null
+                        }
                     )
                 }
+            }
+        }
+
+        if (desktopQueueDialogOpen) {
+            val snapshot = desktopPlayback
+            if (snapshot != null) {
+                AlertDialog(
+                    onDismissRequest = { desktopQueueDialogOpen = false },
+                    title = { Text("Desktop queue (${snapshot.queue.size})") },
+                    text = {
+                        if (snapshot.queue.isEmpty()) {
+                            Text("The desktop queue is empty.")
+                        } else {
+                            LazyColumn(Modifier.heightIn(max = 420.dp)) {
+                                itemsIndexed(snapshot.queue, key = { index, track -> "${track.queueKey()}|$index" }) { index, track ->
+                                    val selected = index == snapshot.currentIndex
+                                    ListItem(
+                                        headlineContent = { Text(track.title) },
+                                        supportingContent = {
+                                            Text(
+                                                if (selected && snapshot.isPlaying) "Playing on desktop · ${track.artist}"
+                                                else if (selected) "Selected on desktop · ${track.artist}"
+                                                else track.artist
+                                            )
+                                        },
+                                        trailingContent = {
+                                            Text("${index + 1}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = { desktopQueueDialogOpen = false }) { Text("Close") }
+                    }
+                )
             }
         }
 
         if (queueDialogOpen) {
             AlertDialog(
                 onDismissRequest = { queueDialogOpen = false },
-                title = { Text("Play queue (${localQueue.size})") },
+                title = { Text("Play queue (${phoneQueue.size})") },
                 text = {
-                    if (localQueue.isEmpty()) {
-                        Text("Your queue is empty. Add a track from the phone library.")
+                    if (phoneQueue.isEmpty()) {
+                        Text("Add local or Bridge tracks to this phone’s queue.")
                     } else {
                         LazyColumn(Modifier.heightIn(max = 420.dp)) {
-                            itemsIndexed(localQueue, key = { index, track -> "${index}:${track.trackId}" }) { index, track ->
+                            itemsIndexed(phoneQueue, key = { _, track -> track.queueKey() }) { index, track ->
+                                val sourceLabel = if (track.source == TrackSource.BRIDGE) {
+                                    "Bridge · ${track.providerId}"
+                                } else {
+                                    "On this phone"
+                                }
                                 ListItem(
                                     leadingContent = { TrackArtwork(track, Modifier.size(48.dp)) },
                                     headlineContent = { Text(track.title) },
-                                    supportingContent = { Text("${track.artist}${if (track.album.isNotBlank()) " · ${track.album}" else ""}") },
+                                    supportingContent = { Text("$sourceLabel · ${track.artist}${if (track.album.isNotBlank()) " · ${track.album}" else ""}") },
                                     trailingContent = {
-                                        TextButton(onClick = { removeFromLocalQueue(index) }) { Text("Remove") }
+                                        Row {
+                                            TextButton(
+                                                enabled = index > 0,
+                                                onClick = { moveQueueItem(index, index - 1) }
+                                            ) { Text("↑") }
+                                            TextButton(
+                                                enabled = index < phoneQueue.lastIndex,
+                                                onClick = { moveQueueItem(index, index + 1) }
+                                            ) { Text("↓") }
+                                            TextButton(onClick = { removeFromPhoneQueue(index) }) { Text("Remove") }
+                                        }
                                     },
                                     modifier = Modifier.clickable {
-                                        player.setMediaItems(localQueue.map(::trackToMediaItem), index, 0L)
-                                        player.prepare()
-                                        player.play()
-                                        nowPlaying = track
-                                        LocalQueueStore.saveAsync(context, localQueue, index, 0L)
+                                        playQueueTrack(index, 0L, true)
                                         queueDialogOpen = false
                                     }
                                 )
@@ -1010,8 +1913,8 @@ fun MelodexApp(player: Player) {
                     TextButton(onClick = { queueDialogOpen = false }) { Text("Done") }
                 },
                 dismissButton = {
-                    if (localQueue.isNotEmpty()) {
-                        TextButton(onClick = ::clearLocalQueue) { Text("Clear queue") }
+                    if (phoneQueue.isNotEmpty()) {
+                        TextButton(onClick = ::clearPhoneQueue) { Text("Clear queue") }
                     }
                 }
             )
@@ -1026,14 +1929,17 @@ private fun NowPlayingCard(
     positionMs: Long,
     durationMs: Long,
     queueCount: Int?,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit,
     onPlayPause: () -> Unit,
     onRestart: () -> Unit,
     onSeek: (Long) -> Unit,
-    onQueue: () -> Unit
+    onQueue: () -> Unit,
+    onMoveToDesktop: (() -> Unit)? = null
 ) {
     val duration = durationMs.takeIf { it > 0L } ?: track.durationMs
-    var isSeeking by remember(track.providerId, track.trackId) { mutableStateOf(false) }
-    var seekFraction by remember(track.providerId, track.trackId) { mutableStateOf(0f) }
+    var isSeeking by remember(track.source, track.providerId, track.trackId) { mutableStateOf(false) }
+    var seekFraction by remember(track.source, track.providerId, track.trackId) { mutableStateOf(0f) }
     val playbackFraction = if (duration > 0L) {
         (positionMs.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
     } else {
@@ -1096,13 +2002,23 @@ private fun NowPlayingCard(
             }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = onPrevious) { Text("Prev") }
                 TextButton(onClick = onRestart) { Text("Restart") }
+                TextButton(onClick = onNext) { Text("Next") }
                 Spacer(Modifier.weight(1f))
                 if (queueCount != null) {
                     TextButton(onClick = onQueue) { Text("Queue ($queueCount)") }
                 }
                 Button(onClick = onPlayPause) {
                     Text(if (isPlaying) "Pause" else "Play")
+                }
+            }
+            onMoveToDesktop?.let { action ->
+                OutlinedButton(
+                    onClick = action,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Move this queue to desktop")
                 }
             }
         }
@@ -1143,7 +2059,7 @@ private fun TrackList(
 @Composable
 private fun TrackArtwork(track: Track, modifier: Modifier = Modifier) {
     val context = LocalContext.current
-    val bitmap by produceState<Bitmap?>(initialValue = null, key1 = track.trackId, key2 = track.streamUrl) {
+    val bitmap by produceState<Bitmap?>(initialValue = null, key1 = track.queueKey(), key2 = track.streamUrl) {
         value = withContext(Dispatchers.IO) { loadTrackArtwork(context, track) }
     }
     if (bitmap != null) {
@@ -1209,16 +2125,11 @@ private fun trackToMediaItem(track: Track): MediaItem {
         }
         .build()
     return MediaItem.Builder()
-        .setMediaId("${track.providerId}|${track.trackId}")
+        .setMediaId(track.queueKey())
         .setUri(track.streamUrl)
         .setMediaMetadata(metadata)
         .build()
 }
-
-private fun Player.hasOnlyLocalItems(): Boolean =
-    mediaItemCount > 0 && (0 until mediaItemCount).all {
-        getMediaItemAt(it).mediaId.startsWith("local|")
-    }
 
 private fun formatDuration(durationMs: Long): String {
     if (durationMs <= 0L) return ""

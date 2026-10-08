@@ -26,7 +26,7 @@ from .provider_manager import ProviderManager
 from .flow import FlowEngine
 from .user_state import UserState
 from .player import FlowPlayer
-from .bridge_server import ProviderBridge
+from .playback_handoff import ProviderBridge, handoff_queue_to_desktop, stop_playback_if_session_matches
 from .responsiveness import UiResponsivenessMonitor
 from .background_scheduler import BackgroundScheduler
 from .motion import MotionController, FAST_MOTION_MS, STANDARD_MOTION_MS
@@ -4593,6 +4593,8 @@ class MainWindow(QMainWindow):
                 result=self.player.status(); result["page"]=self.current_page; result["taste"]=self.state.taste_summary()
             elif action=="set_queue":
                 tracks=[dict(x) for x in list(args.get("tracks") or []) if isinstance(x,dict)]; self.player.set_queue(tracks,int(args.get("start",0)),bool(args.get("autoplay",True)),intent=str(args.get("intent") or "manual_queue")); result=self.player.status()
+            elif action=="handoff_to_desktop": result=handoff_queue_to_desktop(self.player,args,self._resume_checkpoint_when_ready)
+            elif action=="stop_if_queue_matches": result=stop_playback_if_session_matches(self.player,args)
             elif action=="append_queue":
                 tracks=[dict(x) for x in list(args.get("tracks") or []) if isinstance(x,dict)]; self.player.append_queue(tracks,bool(args.get("autoplay",False))); result=self.player.status()
             elif action=="play_pause":self.player.play_pause(); result=self.player.status()

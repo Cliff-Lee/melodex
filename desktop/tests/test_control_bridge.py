@@ -1,15 +1,21 @@
 from __future__ import annotations
 
 import json
+from concurrent.futures import ThreadPoolExecutor
 import os
 import stat
 import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
-from melodex.bridge_server import ProviderBridge
-from melodex.control_client import MelodexControlClient
+from melodex.bridge_server import (
+    ProviderBridge,
+    handoff_queue_conflict,
+    playback_session_matches,
+)
+from melodex.control_client import ControlError, MelodexControlClient
 
 
 @dataclass
@@ -97,15 +103,45 @@ class FakeController:
     def __init__(self):
         self.actions = []
         self.queue = []
+        self.index = -1
+        self.playing = False
+
+    def _status(self):
+        return {
+            "playing": self.playing,
+            "queue": list(self.queue),
+            "current_track": self.queue[self.index] if 0 <= self.index < len(self.queue) else None,
+            "index": self.index,
+            "position_ms": 0,
+        }
 
     def __call__(self, action, args):
         self.actions.append((action, dict(args)))
         if action == "status":
-            return {"playing": bool(self.queue), "queue": list(self.queue), "current_track": self.queue[0] if self.queue else None, "index": 0 if self.queue else -1}
+            return self._status()
         if action == "set_queue":
             self.queue = list(args.get("tracks") or [])
+            self.index = int(args.get("start", 0)) if self.queue else -1
+            self.playing = bool(args.get("autoplay", True))
         elif action == "append_queue":
             self.queue.extend(list(args.get("tracks") or []))
+        elif action == "handoff_to_desktop":
+            reason = handoff_queue_conflict(self._status(), list(args.get("tracks") or []))
+            if reason:
+                return {"ok": False, "reason": reason}
+            self.queue = list(args.get("tracks") or [])
+            self.index = int(args.get("start", 0)) if self.queue else -1
+            self.playing = bool(args.get("autoplay", True))
+            return {"ok": True}
+        elif action == "stop_if_queue_matches":
+            expected = list(args.get("expected_queue") or [])
+            expected_index = int(args.get("expected_index", -1))
+            if not playback_session_matches(self._status(), expected, expected_index):
+                return {"ok": False, "stopped": False, "reason": "desktop_session_changed"}
+            self.playing = False
+            return {"ok": True, "stopped": True, "reason": ""}
+        elif action == "stop":
+            self.playing = False
         return {"action": action}
 
 
@@ -146,6 +182,150 @@ def test_control_bridge_and_client(tmp_path: Path):
     finally:
         bridge.stop()
     assert not state.exists()
+
+
+def test_bridge_query_tokens_only_authorize_media_streams(tmp_path: Path):
+    media = tmp_path / "song.mp3"
+    media.write_bytes(b"track")
+
+    class LocalTrackManager(FakeManager):
+        def resolve(self, track):
+            if track.get("provider_id") == "local":
+                return {
+                    "provider_id": "local",
+                    "track_id": "song",
+                    "artist": "Local",
+                    "title": "Song",
+                    "local_path": str(self.media),
+                }
+            return super().resolve(track)
+
+    bridge = ProviderBridge(
+        LocalTrackManager(media),
+        "127.0.0.1",
+        0,
+        token="secret",
+        controller=FakeController(),
+        state_path=tmp_path / "bridge.json",
+    )
+    bridge.start()
+    try:
+        base_url = f"http://127.0.0.1:{bridge.port}"
+        status, health = _bridge_http(f"{base_url}/health")
+        assert status == 200
+        assert health["ok"] is True
+
+        for path in (
+            "/v1/providers",
+            "/v1/providers?token=secret",
+            "/v1/browse?provider=local&token=secret",
+            "/v1/status?token=secret",
+        ):
+            status, response = _bridge_http(f"{base_url}{path}")
+            assert status == 401
+            assert response["error"] == "unauthorized"
+
+        status, resolved = _bridge_http(
+            f"{base_url}/v1/resolve?provider=local&id=song",
+            token="secret",
+        )
+        assert status == 200
+        assert "local_path" not in resolved
+        media_url = resolved["stream_url"]
+        with urllib.request.urlopen(media_url, timeout=3) as response:
+            assert response.status == 200
+            assert response.read() == b"track"
+    finally:
+        bridge.stop()
+
+
+def test_bridge_handoff_is_guarded_and_stops_only_the_matching_desktop_session(tmp_path: Path):
+    media = tmp_path / "song.mp3"
+    media.write_bytes(b"track")
+    state = tmp_path / "bridge.json"
+    controller = FakeController()
+    bridge = ProviderBridge(
+        FakeManager(media),
+        "127.0.0.1",
+        0,
+        token="secret",
+        controller=controller,
+        state_path=state,
+    )
+    bridge.start()
+    try:
+        client = MelodexControlClient.from_state(state, timeout=3)
+        phone_track = {
+            "source": "bridge",
+            "provider_id": "web",
+            "track_id": "1",
+            "artist": "Example",
+            "title": "Song",
+        }
+
+        controller.queue = [{"provider_id": "local", "track_id": "other"}]
+        controller.index = 0
+        original_queue = list(controller.queue)
+        try:
+            client.handoff_to_desktop([phone_track])
+        except ControlError as exc:
+            assert "different queue" in str(exc)
+        else:
+            raise AssertionError("an unrelated desktop queue must be preserved")
+        assert controller.queue == original_queue
+        assert controller.playing is False
+
+        controller.playing = True
+        try:
+            client.handoff_to_desktop([phone_track])
+        except ControlError as exc:
+            assert "Pause desktop playback" in str(exc)
+        else:
+            raise AssertionError("active desktop playback must not be replaced")
+        assert controller.queue == original_queue
+        assert controller.playing is True
+
+        controller.queue = []
+        controller.index = -1
+        controller.playing = False
+        moved = client.handoff_to_desktop(
+            [phone_track],
+            start=0,
+            position_ms=42_000,
+            autoplay=True,
+        )
+        assert moved["ok"] is True
+        assert controller.queue[0]["provider_id"] == "web"
+        assert controller.queue[0]["track_id"] == "1"
+        assert controller.index == 0
+        assert controller.playing is True
+
+        expected = [{"provider_id": "web", "track_id": "1"}]
+        stopped = client.stop_desktop_if_session_matches(expected, 0)
+        assert stopped == {"ok": True, "stopped": True, "reason": ""}
+        assert controller.queue[0]["track_id"] == "1"
+        assert controller.playing is False
+
+        controller.queue = [{"provider_id": "local", "track_id": "new-session"}]
+        controller.index = 0
+        controller.playing = True
+        changed_session = client.stop_desktop_if_session_matches(expected, 0)
+        assert changed_session["stopped"] is False
+        assert changed_session["reason"] == "desktop_session_changed"
+        assert controller.queue[0]["track_id"] == "new-session"
+        assert controller.playing is True
+
+        phone_only = dict(phone_track, source="phone")
+        status, response = _bridge_http(
+            f"http://127.0.0.1:{bridge.port}/v1/handoff",
+            "POST",
+            {"tracks": [phone_only], "start": 0, "position_ms": 0, "autoplay": True},
+            token="secret",
+        )
+        assert status == 400
+        assert "only Bridge tracks" in response["error"]
+    finally:
+        bridge.stop()
 
 
 def test_client_follows_bridge_restart(tmp_path: Path):
@@ -277,5 +457,109 @@ def test_pairing_code_rejects_expired_code(tmp_path: Path):
         assert status == 401
         assert "expired" in response["error"]
         assert bridge.paired_devices() == []
+    finally:
+        bridge.stop()
+
+
+class IndependentStreamManager(FakeManager):
+    def __init__(self, media_by_id: dict[str, Path]):
+        super().__init__(next(iter(media_by_id.values())))
+        self.media_by_id = dict(media_by_id)
+
+    def resolve(self, track):
+        if track.get("provider_id") != "local":
+            return super().resolve(track)
+        track_id = str(track.get("track_id") or "")
+        media = self.media_by_id.get(track_id)
+        if media is None:
+            raise KeyError(track_id)
+        return {
+            "provider_id": "local",
+            "track_id": track_id,
+            "artist": "Phone client",
+            "title": track_id,
+            "local_path": str(media),
+        }
+
+
+def test_two_paired_phones_stream_independently_without_desktop_control(tmp_path: Path):
+    media_a = tmp_path / "phone-a.mp3"
+    media_b = tmp_path / "phone-b.mp3"
+    media_a.write_bytes(b"independent stream a")
+    media_b.write_bytes(b"independent stream b")
+    state = tmp_path / "bridge.json"
+    controller = FakeController()
+    controller.queue = [{"provider_id": "local", "track_id": "desktop-current"}]
+    original_desktop_queue = list(controller.queue)
+    bridge = ProviderBridge(
+        IndependentStreamManager({"phone-a": media_a, "phone-b": media_b}),
+        "127.0.0.1",
+        0,
+        token="desktop-token",
+        controller=controller,
+        state_path=state,
+    )
+    bridge.start()
+    try:
+        pair_url = f"http://127.0.0.1:{bridge.port}/v1/pair"
+        paired_devices = []
+        for device_name in ("Android phone A", "Android phone B"):
+            code = bridge.new_pairing_code()
+            status, paired = _bridge_http(
+                pair_url,
+                "POST",
+                {"code": code, "device_name": device_name},
+            )
+            assert status == 200
+            paired_devices.append(paired)
+
+        token_a = paired_devices[0]["token"]
+        token_b = paired_devices[1]["token"]
+        device_a = paired_devices[0]["device_id"]
+        assert token_a != token_b
+
+        stream_urls = []
+        for token, track_id in ((token_a, "phone-a"), (token_b, "phone-b")):
+            encoded_id = urllib.parse.quote(track_id)
+            status, resolved = _bridge_http(
+                f"http://127.0.0.1:{bridge.port}/v1/resolve"
+                f"?provider=local&id={encoded_id}",
+                token=token,
+            )
+            assert status == 200
+            stream_url = resolved["stream_url"]
+            stream_token = urllib.parse.parse_qs(
+                urllib.parse.urlparse(stream_url).query
+            )["token"][0]
+            assert stream_token == token
+            stream_urls.append(stream_url)
+
+        def read_stream(url: str) -> bytes:
+            with urllib.request.urlopen(url, timeout=3) as response:
+                assert response.status == 200
+                return response.read()
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            stream_a = pool.submit(read_stream, stream_urls[0])
+            stream_b = pool.submit(read_stream, stream_urls[1])
+            assert stream_a.result() == b"independent stream a"
+            assert stream_b.result() == b"independent stream b"
+
+        assert controller.queue == original_desktop_queue
+        assert controller.actions == []
+
+        status, result = _bridge_http(
+            f"http://127.0.0.1:{bridge.port}/v1/unpair",
+            "POST",
+            {"device_id": device_a},
+            token=token_a,
+        )
+        assert status == 200
+        assert result["ok"] is True
+        status, _ = _bridge_http(stream_urls[0])
+        assert status == 401
+        assert read_stream(stream_urls[1]) == b"independent stream b"
+        assert controller.queue == original_desktop_queue
+        assert controller.actions == []
     finally:
         bridge.stop()
