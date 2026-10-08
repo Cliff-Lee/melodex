@@ -74,7 +74,6 @@ class FlowPlayer(QObject):
         transition_submit=None,
         first_music_timeline=None,
         playback_refresh_submit=None,
-        playback_refresh_cancel=None,
     ):
         super().__init__(parent)
         self.resolver = resolver
@@ -82,7 +81,6 @@ class FlowPlayer(QObject):
         self.transition_for = transition_for
         self._transition_submit = transition_submit
         self._playback_refresh_submit = playback_refresh_submit
-        self._playback_refresh_cancel = playback_refresh_cancel
         self._first_music_timeline = first_music_timeline
         self._playback_recovery_generation = 0
         self._playback_recovery_attempts = 0
@@ -428,12 +426,6 @@ class FlowPlayer(QObject):
             if 0 <= deck < len(self.players):
                 self.players[deck].stop()
                 self.players[deck].setSource(QUrl())
-        if self._playback_refresh_cancel is not None:
-            try:
-                self._playback_refresh_cancel("playback-recovery")
-            except Exception:
-                pass
-
     def _recovery_request_is_current(
         self,
         generation: int,

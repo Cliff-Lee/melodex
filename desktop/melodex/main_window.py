@@ -284,7 +284,6 @@ class MainWindow(QMainWindow):
             transition_submit=self.background_scheduler.submit,
             first_music_timeline=self._first_music_timeline,
             playback_refresh_submit=self.background_scheduler.submit,
-            playback_refresh_cancel=self.background_scheduler.cancel_pending,
         )
         from .playback_feature import PlaybackFeature
 
