@@ -32,6 +32,28 @@ def _expired(value: Any, skew_seconds: int = 15) -> bool:
         return False
 
 
+def _qt_error_name(value: object) -> str:
+    known = (
+        "NoError",
+        "ResourceError",
+        "FormatError",
+        "NetworkError",
+        "AccessDeniedError",
+        "ServiceMissingError",
+    )
+    name = getattr(value, "name", None)
+    if name:
+        return str(name).rsplit(".", 1)[-1]
+    for candidate in known:
+        scope = getattr(QMediaPlayer, "Error", QMediaPlayer)
+        expected = getattr(scope, candidate, None)
+        if expected is None:
+            expected = getattr(QMediaPlayer, candidate, None)
+        if expected is not None and value == expected:
+            return candidate
+    return str(value or "").rsplit(".", 1)[-1]
+
+
 class FlowPlayer(QObject):
     trackChanged = Signal(dict)
     positionChanged = Signal(int, int)
@@ -41,6 +63,7 @@ class FlowPlayer(QObject):
     manualAdvanced = Signal(dict, dict, int, int)
     error = Signal(str)
     _transitionPlanReady = Signal(int, int, object)
+    _playbackRecoveryReady = Signal(int, int, int, int, object)
 
     def __init__(
         self,
@@ -50,13 +73,26 @@ class FlowPlayer(QObject):
         playback_refresher=None,
         transition_submit=None,
         first_music_timeline=None,
+        playback_refresh_submit=None,
+        playback_refresh_cancel=None,
     ):
         super().__init__(parent)
         self.resolver = resolver
         self.playback_refresher = playback_refresher
         self.transition_for = transition_for
         self._transition_submit = transition_submit
+        self._playback_refresh_submit = playback_refresh_submit
+        self._playback_refresh_cancel = playback_refresh_cancel
         self._first_music_timeline = first_music_timeline
+        self._playback_recovery_generation = 0
+        self._playback_recovery_attempts = 0
+        self._playback_recovery_pending = False
+        self._playback_recovery_request: dict[str, Any] | None = None
+        self._playback_recovery_candidate: dict[str, Any] | None = None
+        self._playback_recovery_position_ms = 0
+        self._playback_recovery_exhausted_reported = False
+        self._playback_recovery_max_attempts = 2
+        self._playback_recovery_delays_ms = (350, 1200)
         self._first_music_play_by_deck: dict[int, int] = {}
         self._first_music_position_base: dict[int, int] = {}
         self._first_music_output_recorded: set[int] = set()
@@ -102,9 +138,27 @@ class FlowPlayer(QObject):
             "active_deck_errors": 0,
             "incoming_deck_errors": 0,
             "inactive_deck_errors_ignored": 0,
+            "transient_source_errors": 0,
+            "permanent_source_errors": 0,
+            "unclassified_source_errors": 0,
+            "recovery_attempts": 0,
+            "recovery_successes": 0,
+            "recovery_refresh_failures": 0,
+            "recovery_source_rejections": 0,
+            "recovery_submit_rejected": 0,
+            "recovery_exhausted": 0,
+            "recovery_stale_results": 0,
+            "recovery_skipped_paused": 0,
+            "recovery_unavailable": 0,
         }
         self._last_seek_requested_ms = 0
         self._transitionPlanReady.connect(self._apply_transition_plan)
+        self._playbackRecoveryReady.connect(self._apply_playback_recovery)
+        self._playback_recovery_timer = QTimer(self)
+        self._playback_recovery_timer.setSingleShot(True)
+        self._playback_recovery_timer.timeout.connect(
+            self._start_playback_recovery
+        )
         self._timer = QTimer(self)
         self._timer.setInterval(100)
         self._timer.timeout.connect(self._tick)
@@ -125,6 +179,7 @@ class FlowPlayer(QObject):
         *,
         intent: str = "manual_queue",
     ) -> None:
+        self._invalidate_playback_recovery(reset_attempts=True)
         self._cancel_transition(stop_incoming=True, count_abort=True)
         self._stop_all_decks()
         self._playback_intent = _normalise_playback_intent(intent)
@@ -173,6 +228,7 @@ class FlowPlayer(QObject):
         index = int(index)
         if not (0 <= index < len(self.queue)):
             return False
+        self._invalidate_playback_recovery(reset_attempts=True)
         self._cancel_transition(stop_incoming=True, count_abort=True)
         self._stop_all_decks()
         return self._load_index(
@@ -192,6 +248,8 @@ class FlowPlayer(QObject):
         if not (0 <= index < len(self.queue)):
             return False
         position_changed = index != self.index
+        if index == self.index:
+            self._invalidate_playback_recovery(reset_attempts=True)
         self.queue[index] = dict(track)
         self.queueChanged.emit(self.queue)
         if autoplay:
@@ -264,6 +322,7 @@ class FlowPlayer(QObject):
         return updated
 
     def clear_queue(self) -> None:
+        self._invalidate_playback_recovery(reset_attempts=True)
         self._cancel_transition(stop_incoming=True, count_abort=True)
         self._stop_all_decks()
         self.queue = []
@@ -275,6 +334,7 @@ class FlowPlayer(QObject):
         self._emit_audio_processing_state()
 
     def stop(self) -> None:
+        self._invalidate_playback_recovery(reset_attempts=True)
         self._cancel_transition(stop_incoming=True, count_abort=True)
         self._stop_all_decks()
         self.playingChanged.emit(False)
@@ -351,6 +411,248 @@ class FlowPlayer(QObject):
         if self._playback_intent == "album":
             snapshot["album_order"] = album_order_diagnostics(self.queue)
         return snapshot
+
+    def _invalidate_playback_recovery(self, *, reset_attempts: bool) -> None:
+        self._playback_recovery_generation += 1
+        self._playback_recovery_timer.stop()
+        candidate = self._playback_recovery_candidate
+        self._playback_recovery_pending = False
+        self._playback_recovery_request = None
+        self._playback_recovery_candidate = None
+        if reset_attempts:
+            self._playback_recovery_attempts = 0
+            self._playback_recovery_position_ms = 0
+            self._playback_recovery_exhausted_reported = False
+        if candidate is not None:
+            deck = int(candidate.get("deck", -1))
+            if 0 <= deck < len(self.players):
+                self.players[deck].stop()
+                self.players[deck].setSource(QUrl())
+        if self._playback_refresh_cancel is not None:
+            try:
+                self._playback_refresh_cancel("playback-recovery")
+            except Exception:
+                pass
+
+    def _recovery_request_is_current(
+        self,
+        generation: int,
+        index: int,
+        deck: int,
+        attempt: int,
+    ) -> bool:
+        request = self._playback_recovery_request
+        return bool(
+            self._playback_recovery_pending
+            and request is not None
+            and int(generation) == self._playback_recovery_generation
+            and int(index) == self.index
+            and int(deck) == self.active
+            and 0 <= int(index) < len(self.queue)
+            and int(request.get("generation", -1)) == int(generation)
+            and int(request.get("index", -1)) == int(index)
+            and int(request.get("deck", -1)) == int(deck)
+            and int(request.get("attempt", -1)) == int(attempt)
+        )
+
+    def _queue_playback_recovery(
+        self,
+        generation: int,
+        index: int,
+        deck: int,
+    ) -> None:
+        if self._playback_recovery_pending:
+            return
+        if self._playback_recovery_attempts >= self._playback_recovery_max_attempts:
+            self._finish_playback_recovery()
+            return
+        if not (0 <= index < len(self.queue)):
+            return
+        attempt = self._playback_recovery_attempts + 1
+        self._playback_recovery_attempts = attempt
+        self._playback_recovery_pending = True
+        self._playback_recovery_candidate = None
+        self._playback_recovery_request = {
+            "generation": int(generation),
+            "index": int(index),
+            "deck": int(deck),
+            "attempt": int(attempt),
+            "track": dict(self.queue[index]),
+            "position_ms": int(self._playback_recovery_position_ms),
+        }
+        delay = self._playback_recovery_delays_ms[
+            min(attempt - 1, len(self._playback_recovery_delays_ms) - 1)
+        ]
+        self._playback_recovery_timer.start(max(0, int(delay)))
+
+    def _start_playback_recovery(self) -> None:
+        request = self._playback_recovery_request
+        if request is None:
+            return
+        generation = int(request["generation"])
+        index = int(request["index"])
+        deck = int(request["deck"])
+        attempt = int(request["attempt"])
+        if not self._recovery_request_is_current(
+            generation, index, deck, attempt
+        ):
+            self._runtime_metrics["recovery_stale_results"] += 1
+            return
+        if (
+            self.playback_refresher is None
+            or self._playback_refresh_submit is None
+        ):
+            self._playback_recovery_pending = False
+            self._playback_recovery_request = None
+            self._runtime_metrics["recovery_unavailable"] += 1
+            self._finish_playback_recovery()
+            return
+
+        track = dict(request["track"])
+
+        def work() -> None:
+            try:
+                refreshed = dict(self.playback_refresher(dict(track)))
+                payload = {"ok": True, "track": refreshed}
+            except Exception:
+                payload = {"ok": False}
+            self._playbackRecoveryReady.emit(
+                generation, index, deck, attempt, payload
+            )
+
+        try:
+            accepted = bool(
+                self._playback_refresh_submit(
+                    work,
+                    priority="foreground",
+                    name="playback-refresh",
+                    replace_key="playback-recovery",
+                )
+            )
+        except Exception:
+            accepted = False
+        if not accepted:
+            self._runtime_metrics["recovery_submit_rejected"] += 1
+            self._playback_recovery_pending = False
+            self._playback_recovery_request = None
+            self._retry_or_finish_playback_recovery(generation, index, deck)
+            return
+        self._runtime_metrics["recovery_attempts"] += 1
+
+    def _apply_playback_recovery(
+        self,
+        generation: int,
+        index: int,
+        deck: int,
+        attempt: int,
+        payload: object,
+    ) -> None:
+        if not self._recovery_request_is_current(
+            generation, index, deck, attempt
+        ):
+            self._runtime_metrics["recovery_stale_results"] += 1
+            return
+        self._playback_recovery_pending = False
+        self._playback_recovery_request = None
+        result = dict(payload or {}) if isinstance(payload, dict) else {}
+        if not result.get("ok"):
+            self._runtime_metrics["recovery_refresh_failures"] += 1
+            self._retry_or_finish_playback_recovery(
+                generation, index, deck
+            )
+            return
+
+        refreshed = result.get("track")
+        try:
+            track = dict(refreshed) if isinstance(refreshed, dict) else {}
+            url = self._media_url_for(track)
+            if url.isEmpty():
+                raise RuntimeError("Recovery source is empty")
+        except Exception:
+            self._runtime_metrics["recovery_source_rejections"] += 1
+            self._retry_or_finish_playback_recovery(
+                generation, index, deck
+            )
+            return
+
+        self._playback_recovery_candidate = {
+            "generation": int(generation),
+            "index": int(index),
+            "deck": int(deck),
+            "attempt": int(attempt),
+            "track": track,
+            "url": url,
+            "position_ms": int(self._playback_recovery_position_ms),
+        }
+        try:
+            self.players[deck].setSource(url)
+        except Exception:
+            self._playback_recovery_candidate = None
+            self._runtime_metrics["recovery_source_rejections"] += 1
+            self._retry_or_finish_playback_recovery(
+                generation, index, deck
+            )
+
+    def _retry_or_finish_playback_recovery(
+        self,
+        generation: int,
+        index: int,
+        deck: int,
+    ) -> None:
+        if generation != self._playback_recovery_generation:
+            self._runtime_metrics["recovery_stale_results"] += 1
+            return
+        if self._playback_recovery_attempts < self._playback_recovery_max_attempts:
+            self._queue_playback_recovery(generation, index, deck)
+        else:
+            self._finish_playback_recovery()
+
+    def _finish_playback_recovery(self) -> None:
+        self._playback_recovery_timer.stop()
+        self._playback_recovery_pending = False
+        self._playback_recovery_request = None
+        candidate = self._playback_recovery_candidate
+        self._playback_recovery_candidate = None
+        if candidate is not None:
+            deck = int(candidate.get("deck", -1))
+            if 0 <= deck < len(self.players):
+                self.players[deck].stop()
+                self.players[deck].setSource(QUrl())
+        if not self._playback_recovery_exhausted_reported:
+            self._playback_recovery_exhausted_reported = True
+            self._runtime_metrics["recovery_exhausted"] += 1
+            self.error.emit(
+                "Playback could not be resumed. The track remains in your queue."
+            )
+
+    def _complete_playback_recovery(self, deck: int) -> None:
+        candidate = self._playback_recovery_candidate
+        if candidate is None:
+            return
+        if (
+            int(candidate["generation"]) != self._playback_recovery_generation
+            or int(candidate["index"]) != self.index
+            or int(candidate["deck"]) != int(deck)
+            or int(deck) != self.active
+            or self.players[int(deck)].source() != candidate.get("url")
+        ):
+            self._runtime_metrics["recovery_stale_results"] += 1
+            self._playback_recovery_candidate = None
+            return
+        index = int(candidate["index"])
+        track = dict(candidate["track"])
+        self.queue[index] = track
+        self._playback_recovery_candidate = None
+        self._runtime_metrics["recovery_successes"] += 1
+        self.queueChanged.emit(self.queue)
+        player = self.players[deck]
+        position = max(0, int(candidate.get("position_ms", 0)))
+        if position:
+            player.setPosition(position)
+        self._playback_recovery_position_ms = position
+        player.play()
+        self.playingChanged.emit(True)
+        self.error.emit("Playback resumed after a temporary source interruption.")
 
     def _resolve_for_playback(self, index: int) -> dict[str, Any]:
         resolved = dict(self.resolver(dict(self.queue[index])))
@@ -455,6 +757,7 @@ class FlowPlayer(QObject):
         *,
         announce_queue: bool,
     ) -> bool:
+        self._invalidate_playback_recovery(reset_attempts=True)
         if not (0 <= index < len(self.queue)):
             return False
         if not (0 <= deck < len(self.players)):
@@ -477,6 +780,7 @@ class FlowPlayer(QObject):
         *,
         announce_queue: bool = False,
     ) -> bool:
+        self._invalidate_playback_recovery(reset_attempts=True)
         if not (0 <= index < len(self.queue)):
             return False
         deck = self.active if deck is None else int(deck)
@@ -507,6 +811,7 @@ class FlowPlayer(QObject):
             return False
 
     def play_pause(self) -> None:
+        self._invalidate_playback_recovery(reset_attempts=True)
         if self._crossfading:
             self._cancel_transition(stop_incoming=True, count_abort=True)
         player = self.players[self.active]
@@ -574,6 +879,7 @@ class FlowPlayer(QObject):
             )
 
     def seek(self, ms: int) -> None:
+        self._invalidate_playback_recovery(reset_attempts=True)
         target = max(0, int(ms))
         self._runtime_metrics["seek_requests"] += 1
         self._last_seek_requested_ms = target
@@ -757,6 +1063,56 @@ class FlowPlayer(QObject):
             return
 
         self._runtime_metrics["active_deck_errors"] += 1
+        error_name = _qt_error_name(_error)
+        current = (
+            self.queue[self.index]
+            if 0 <= self.index < len(self.queue)
+            else {}
+        )
+        local_source = bool(current.get("local_path"))
+        transient = error_name == "NetworkError" or (
+            error_name == "ResourceError" and not local_source
+        )
+        if transient:
+            self._runtime_metrics["transient_source_errors"] += 1
+            if (
+                self.players[deck].playbackState()
+                == QMediaPlayer.PausedState
+            ):
+                self._runtime_metrics["recovery_skipped_paused"] += 1
+                self.error.emit(detail)
+                return
+            if (
+                self.playback_refresher is None
+                or self._playback_refresh_submit is None
+            ):
+                self._runtime_metrics["recovery_unavailable"] += 1
+                self.error.emit(detail)
+                return
+            if self._playback_recovery_attempts == 0:
+                self._playback_recovery_position_ms = max(
+                    0, int(self.players[deck].position())
+                )
+                self.error.emit(
+                    "Connection interrupted. Trying to resume playback."
+                )
+            self._queue_playback_recovery(
+                self._playback_recovery_generation,
+                self.index,
+                deck,
+            )
+            return
+
+        if error_name in {
+            "FormatError",
+            "AccessDeniedError",
+            "ServiceMissingError",
+        } or (error_name == "ResourceError" and local_source):
+            self._runtime_metrics["permanent_source_errors"] += 1
+        else:
+            self._runtime_metrics["unclassified_source_errors"] += 1
+        if self._playback_recovery_pending or self._playback_recovery_candidate:
+            self._invalidate_playback_recovery(reset_attempts=False)
         self.error.emit(detail)
 
     def _on_media_status(self, deck: int, status: QMediaPlayer.MediaStatus) -> None:
@@ -764,6 +1120,7 @@ class FlowPlayer(QObject):
             QMediaPlayer.LoadedMedia,
             QMediaPlayer.BufferedMedia,
         }:
+            self._complete_playback_recovery(int(deck))
             play_id = self._first_music_play_by_deck.get(int(deck))
             if play_id is not None and self._first_music_timeline is not None:
                 self._first_music_timeline.mark(

@@ -1,6 +1,6 @@
 # P22 — Unkillable Playback
 
-**Status: in progress. Current slice: P22a.** P21 shipped Android 16 and Google Play preparation in v0.7.24. P23 remains the follow-up for broader reference-class playback qualification.
+**Status: in progress. Current slice: P22b.** P21 shipped Android 16 and Google Play preparation in v0.7.24. P23 remains the follow-up for broader reference-class playback qualification.
 
 ## Goal
 
@@ -24,8 +24,8 @@ P22 does not add a new provider, require an AI service, or begin iPhone developm
 
 ## Stages
 
-1. **P22a — Isolate playback failures by deck.** Distinguish the active player deck, a speculative incoming deck, and stale inactive-deck errors. A failed incoming track must abort its transition, restore the active deck's volume, preserve the queue position, and explain that current playback continues. Diagnostics stay free of track names, paths, URLs, and credentials. *(Current slice.)*
-2. **P22b — Classify and recover source failures.** Separate permanent media/permission failures from transient source failures. Add bounded retry and refresh behavior, ensure retries cannot loop, and preserve the queue until a replacement source is actually playable.
+1. **P22a — Isolate playback failures by deck.** Distinguish the active player deck, a speculative incoming deck, and stale inactive-deck errors. A failed incoming track must abort its transition, restore the active deck's volume, preserve the queue position, and explain that current playback continues. Diagnostics stay free of track names, paths, URLs, and credentials.
+2. **P22b — Classify and recover source failures.** Retry remote network/resource failures at most twice with increasing delays; do not automatically retry corrupt, unsupported, local resource, permission, or service failures. Run provider refreshes on the bounded background scheduler, discard results after a track or queue change, and preserve the current queue item until the refreshed source reaches a loaded or buffered media state. Keep retry counters and status messages free of track names, paths, URLs, and credentials. *(Current slice.)*
 3. **P22c — Protect playback through storage and network stalls.** Measure buffering and read-ahead, add bounded cache or retry behavior where measurements justify it, reconnect after NAS/network recovery, and cancel stale work. Never make a whole-library scan a prerequisite for resuming playback.
 4. **P22d — Handle interruptions and output changes.** Qualify sleep/wake, Bluetooth/headphone changes, Android audio focus, and service lifecycle transitions while preserving the user's explicit pause/stop intent.
 5. **P22e — Restore sessions safely.** Persist stable queue identities and a useful playback position. Resolve short-lived stream URLs again after restart rather than saving credentials or expired URLs.
