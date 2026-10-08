@@ -56,7 +56,7 @@ Melodex is intentionally developing in public. Some surfaces are implemented and
 | OpenAPI discovery | **Implemented** | `GET /openapi.json` |
 | OpenAI function schemas | **Implemented** | `GET /v1/openai/tools` and `melodex-openai-tools` |
 | MCP control | **Implemented** | Optional external-control path |
-| Android arbitrary downloaded plugins | **Not supported** | Android uses built-in functionality / Bridge model rather than executing downloaded plugin code |
+| Android providers | **Local audio + optional Bridge** | Android plays device-indexed audio and can connect to another Melodex; it does not execute downloaded provider code |
 | iOS app/plugin runtime | **Planned/design only** | Architecture documentation is not a claim of a shipped iOS app |
 
 ## “Verified” can mean different things

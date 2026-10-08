@@ -1,237 +1,148 @@
 # Install Melodex on Android
 
-## Important: how the Android version works
+## Two ways to listen
 
-The current Android app is a **Melodex Provider Bridge client**. It does not yet act as a full standalone desktop-style Melodex installation.
+- **On this phone:** play audio that Android has indexed on the device. No
+  computer or Bridge setup is needed.
+- **Connect a Melodex:** search and play sources configured on a Mac, Windows
+  PC, NAS, or home server through its Provider Bridge.
 
-That means the easiest setup is:
+Melodex does not run downloaded provider code on Android. Local playback opens
+the selected audio item through Android's media library. Bridge access is
+optional.
 
-**music/provider → Melodex on Mac/Windows/NAS → Provider Bridge → Android app**
+This release includes P19a, the first Android standalone-player slice. Choose **On this phone**, grant audio access when requested, then play an indexed track or use **Play something**. Provider Bridge remains an optional second path.
 
-Your phone searches and plays music that your computer's Melodex installation exposes to it.
-
-## What you need
-
-Before starting, have:
-
-- an Android phone/tablet;
-- Melodex installed on a Mac, Windows PC, NAS, or home server;
-- at least one working music source configured on that computer, usually **Local Files**;
-- both devices on the same trusted Wi-Fi/LAN for the easiest setup.
-
-## 1. Install Melodex on the computer first
-
-Follow one of these guides:
-
-- [Install on macOS](INSTALL_MACOS.md)
-- [Install on Windows](INSTALL_WINDOWS.md)
-
-Then open desktop Melodex and add some music:
-
-**Sources → Add local folder…**
-
-Confirm that the music plays on the computer before trying Android.
-
-## 2. Download the Android APK
+## 1. Download the Android APK
 
 On the Android device open:
 
 **https://github.com/Cliff-Lee/melodex/releases/latest**
 
-Download:
+Download **`Melodex-Android.apk`**.
 
-**`Melodex-Android.apk`**
+Do **not** download `Melodex-Android.aab`. An `.aab` is an app-store publishing
+bundle, not the file normal users install directly.
 
-Do **not** download `Melodex-Android.aab`. An `.aab` is an app-store publishing bundle, not the file normal users install directly.
+## 2. Allow installation of the APK
 
-## 3. Allow installation of the APK
-
-Android may say that your browser or file manager is not allowed to install unknown apps.
-
-The exact wording varies by Android manufacturer, but normally:
+Android may say that your browser or file manager is not allowed to install
+unknown apps. The exact wording varies by manufacturer, but normally:
 
 1. Tap the downloaded APK.
 2. When Android blocks it, choose **Settings**.
-3. Enable **Allow from this source** for the browser/file manager you used for the download.
-4. Go back.
-5. Tap the APK again.
-6. Choose **Install**.
-
-After installation you may disable **Allow from this source** again if you prefer.
+3. Enable **Allow from this source** for the browser/file manager you used.
+4. Go back, tap the APK again, then choose **Install**.
 
 Only install APKs downloaded from the official Melodex GitHub release page.
 
-## 4. Start the Provider Bridge on the computer
+## 3. Play music stored on the phone
 
-On the Mac/Windows computer:
+1. Open Melodex and choose **On this phone**.
+2. Tap **Allow music access**. Android will ask for permission to list audio
+   stored on the device.
+3. Tap **Play something** to start a randomly selected track, or tap a track to
+   choose it yourself.
+4. Use **Play / Pause** or **Restart** at the bottom.
+5. Use **Refresh** after adding music to the device.
+
+Melodex lists audio Android has indexed in its media library. If the list is
+empty, check that the files are stored on the device in a music folder, allow
+Melodex audio access in Android Settings, then return and tap **Refresh**.
+
+If you deny access, you can still use **Connect a Melodex**. To allow local
+music later, open **Settings → Apps → Melodex → Permissions → Music and audio**
+(the exact label varies by Android version).
+
+## 4. Optional: connect to another Melodex
+
+For this path, the phone and computer should be on the same trusted Wi-Fi/LAN.
+First confirm that the computer's Melodex can play the source you want to use.
+
+### Start the Provider Bridge
+
+On the Mac or Windows computer:
 
 1. Open Melodex.
 2. Open **Sources**.
 3. Click **Provider Bridge…**.
-4. Melodex asks:
-
-   **Allow phones/computers on your LAN to connect?**
-
-5. Choose **Yes**.
-6. Melodex starts the Bridge on port `8766`.
-7. Keep the displayed **Bearer token** available — you will enter it on Android.
+4. When asked **Allow phones/computers on your LAN to connect?**, choose **Yes**.
+5. Keep the displayed bearer token available. You will enter it on Android.
 
 The token is a password for this Bridge session. Do not post it publicly.
 
-## 5. Find the computer's local IP address
+### Find the computer's local IP address
 
-You need the computer's LAN address so the phone knows where to connect.
+On macOS, open **System Settings → Network → Wi-Fi → Details** and look for
+**IP Address**.
 
-### macOS
+On Windows, open **Settings → Network & internet → Wi-Fi/Ethernet → Properties**
+and look for **IPv4 address**. Or run `ipconfig` in Command Prompt.
 
-Open:
+For example, the address may look like `192.168.1.42` or `10.0.0.25`. Do not
+use `127.0.0.1` or `localhost` on the phone; those refer to the phone itself.
 
-**System Settings → Network → Wi-Fi → Details**
+### Connect and play
 
-Look for **IP Address**, for example:
+1. In Android Melodex, choose **Connect a Melodex**.
+2. For **Bridge URL**, enter `http://COMPUTER-IP:8766`, for example
+   `http://192.168.1.42:8766`.
+3. Enter the desktop Melodex bearer token and tap **Connect**.
+4. Search for a song, artist, or other term, then tap a result to play it.
 
-`192.168.1.42`
+The preview asks for the Bridge address and token manually. QR pairing and
+automatic LAN discovery are not available yet.
 
-### Windows
-
-Open:
-
-**Settings → Network & internet → Wi-Fi/Ethernet → Properties**
-
-Look for **IPv4 address**.
-
-Or open Command Prompt and run:
-
-```text
-ipconfig
-```
-
-Look for an IPv4 address similar to:
-
-`192.168.1.42`
-
-or
-
-`10.0.0.25`
-
-Do not use `127.0.0.1` or `localhost` on the phone — those refer to the phone itself.
-
-## 6. Connect Android to the Bridge
-
-Open Melodex on Android.
-
-You will see fields for **Bridge URL** and **Bridge token**.
-
-### Bridge URL
-
-Enter:
-
-`http://COMPUTER-IP:8766`
-
-For example:
-
-`http://192.168.1.42:8766`
-
-### Bridge token
-
-Paste/type the bearer token shown by desktop Melodex.
-
-Then tap **Connect**.
-
-A successful connection should show:
-
-**Connected.**
-
-## 7. Search and play
-
-1. Type a song, artist, or other search term into **Search your connected music**.
-2. Tap **Search**.
-3. Tap a result to start playback.
-4. Use **Play / Pause** and **Restart** at the bottom of the screen.
-
-The Android preview intentionally keeps the interface simple while the richer Flow/taste UI is developed.
-
-## 8. If Android cannot connect
+## 5. If Android cannot connect to the Bridge
 
 Work through these checks in order.
 
-### A. Confirm desktop playback works
+### Confirm desktop playback and network access
 
-If the computer cannot play/search the source, Android will not be able to either.
+If the computer cannot play/search the source, Android will not be able to
+either. Guest Wi-Fi networks often prevent devices from talking to each other;
+try a normal home/private LAN if possible.
 
-### B. Confirm both devices are on the same network
+### Check the Bridge URL
 
-Guest Wi-Fi networks often prevent devices from talking to each other. If you are on school/hotel/guest Wi-Fi, client isolation may block the Bridge even when both devices appear to be on the same Wi-Fi.
+It must look like `http://192.168.x.x:8766` or `http://10.x.x.x:8766`.
+Do not use `localhost`, `127.0.0.1`, the computer's public internet IP, or
+`https://` unless you have deliberately put the Bridge behind HTTPS yourself.
 
-Try a normal home/private LAN if possible.
+### Check the token and firewall
 
-### C. Check the Bridge URL
+Restarting the Bridge generates a new bearer token in the current preview. If
+the computer runs Windows, allow Melodex on **Private networks** when Windows
+Defender Firewall asks. If macOS asks whether Melodex may accept incoming
+connections, allow it on your trusted local network.
 
-It must look like:
+### Test the Bridge health page
 
-`http://192.168.x.x:8766`
+From the Android browser, while on the same LAN, open
+`http://COMPUTER-IP:8766/health`. A reachable Bridge returns a small healthy
+status response. If it does not load, check the network, Bridge, and firewall.
 
-or
-
-`http://10.x.x.x:8766`
-
-Do not use:
-
-- `localhost`;
-- `127.0.0.1`;
-- the computer's public internet IP;
-- `https://` unless you have deliberately put the Bridge behind HTTPS yourself.
-
-### D. Check the token
-
-The current preview generates a new bearer token when the Provider Bridge is restarted. If you closed/restarted Melodex or restarted the Bridge, copy the new token.
-
-### E. Check Windows Firewall
-
-If the computer runs Windows, allow Melodex on **Private networks** when Windows Defender Firewall asks.
-
-### F. Check macOS incoming connections
-
-If macOS asks whether Melodex may accept incoming network connections, allow it on your trusted local network.
-
-### G. Test the Bridge health page
-
-From the Android browser, while on the same LAN, try:
-
-`http://COMPUTER-IP:8766/health`
-
-For example:
-
-`http://192.168.1.42:8766/health`
-
-If the Bridge is reachable you should receive a small response indicating that the Melodex Provider Bridge is healthy.
-
-If this page does not load, the problem is network/Bridge/firewall related rather than the Android search UI.
-
-## 9. Security
+## 6. Security
 
 The Provider Bridge is intended for a **trusted local network**.
 
 - Treat the bearer token like a password.
 - Do not post screenshots containing the token.
 - Do not directly expose port `8766` to the public internet.
-- For remote access, use an HTTPS reverse proxy or trusted VPN rather than raw port forwarding.
+- For remote access, use an HTTPS reverse proxy or trusted VPN rather than raw
+  port forwarding.
 
-## 10. Updating Android
+## 7. Current preview limitations
 
-1. Download the new `Melodex-Android.apk` from the official GitHub Releases page.
-2. Open the APK.
-3. Android should offer to update the existing app.
-4. Confirm the update.
+Local library browsing currently shows title, artist, and album with basic
+playback controls. Background media-session controls, a persistent queue, local
+search, artwork, QR pairing, and Flow/taste features are later campaign work.
 
-## 11. Uninstalling Android
+## 8. Update or uninstall
 
-Use the normal Android path:
+To update, download the new `Melodex-Android.apk` from the official GitHub
+Releases page, open it, and confirm the update.
 
-**Settings → Apps → Melodex → Uninstall**
-
-## Current preview limitation
-
-The Android preview currently requires you to enter the Bridge address/token manually. A future goal is one-step pairing (for example QR-code pairing and automatic LAN discovery), which will remove most of the network setup above.
+To uninstall, use **Settings → Apps → Melodex → Uninstall**.
 
 For other problems see [Troubleshooting](TROUBLESHOOTING.md).

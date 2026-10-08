@@ -14,8 +14,8 @@ Additional project-maintained examples and community packages may be available t
 ## Can I add my own provider?
 Yes on desktop through MPP v1 `.mdxprovider` packages. See the Provider SDK.
 
-## Why does Android use a Bridge?
-Android intentionally avoids executing arbitrary downloaded provider code. The Bridge runs providers on a computer/NAS and exposes a narrow authenticated API to the phone.
+## Does Android need a computer or Bridge?
+No. Android can play audio indexed on the phone. Provider Bridge is optional and connects Android to sources configured on another Melodex installation. Android intentionally avoids executing arbitrary downloaded provider code.
 
 ## Is my listening history uploaded?
 No, unless you explicitly send relevant context to a configured external LLM as part of a prompt.

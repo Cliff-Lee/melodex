@@ -20,7 +20,7 @@ Then choose your platform:
 | Other glibc Linux desktops x86_64 | `Melodex-linux-x86_64.AppImage` | [Linux](INSTALL_LINUX.md) |
 | Android phone/tablet | `Melodex-Android.apk` | [Android](INSTALL_ANDROID.md) |
 
-> **Android works differently.** The Android app is currently a client for a Melodex Provider Bridge running on a Mac, Windows PC, NAS, or home server. For the easiest Android setup, install Melodex on the computer first, add your music there, then pair the phone with that computer.
+> **Android has two listening paths.** Choose **On this phone** to play audio stored locally without a computer. Choose **Connect a Melodex** to reach sources exposed by a desktop, NAS, or home server through Provider Bridge. This release includes the first local-playback preview; see the [Android guide](INSTALL_ANDROID.md) for its limits.
 
 Do **not** download these unless you know you need them:
 
