@@ -1,9 +1,9 @@
 # Next release — draft notes
 
-**Melodex v0.7.23 — Android Bridge discovery and listening tools.**
+**Melodex v0.7.23 — Android companion polish.**
 
 Current target version: **0.7.23**.
 
-P19 continues with Android listening tools and broader qualification. Use
-feedback from v0.7.22 devices to guide the next Bridge and playback work, while
-keeping local-phone playback independent of Provider Bridge.
+P20 integrates the supplied Android app icon and makes the companion's playback
+panel easier to use while browsing. Each phone keeps its own Android player
+and local queue, and pairs independently with a desktop Provider Bridge.
