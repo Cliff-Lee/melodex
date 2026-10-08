@@ -144,7 +144,7 @@ The local library still shows title, artist, and album with basic playback
 controls. A persistent queue, local search, artwork, QR pairing, and Flow/taste
 features are later campaign work.
 
-## 8. Update or uninstall
+## 9. Update or uninstall
 
 To update, download the new `Melodex-Android.apk` from the official GitHub
 Releases page, open it, and confirm the update.
