@@ -30,7 +30,7 @@ class PlaybackService : MediaSessionService() {
             setHandleAudioBecomingNoisy(true)
             addListener(object : Player.Listener {
                 override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-                    if (mediaItem?.mediaId?.startsWith("local|") == true) {
+                    if (mediaItem != null) {
                         LocalQueueStore.saveFromPlayer(this@PlaybackService, player)
                     }
                 }

@@ -68,8 +68,13 @@ data class Track(
     val album: String = "",
     val streamUrl: String = "",
     val artworkUri: String = "",
-    val durationMs: Long = 0L
+    val durationMs: Long = 0L,
+    val source: TrackSource = TrackSource.PHONE
 )
+
+internal enum class TrackSource { PHONE, BRIDGE }
+
+private fun Track.queueKey(): String = "$source|$providerId|$trackId"
 
 private enum class MusicSource { PHONE, BRIDGE }
 
@@ -153,7 +158,8 @@ class BridgeClient(var baseUrl: String, var token: String) {
                     title = x.optString("title", "Unknown track"),
                     artist = x.optString("artist", "Unknown artist"),
                     album = x.optString("album"),
-                    streamUrl = x.optString("stream_url")
+                    streamUrl = x.optString("stream_url"),
+                    source = TrackSource.BRIDGE
                 ))
             }
         }
@@ -265,12 +271,17 @@ fun MelodexApp(player: Player) {
     var localSearch by remember { mutableStateOf("") }
     var localSort by remember { mutableStateOf(LocalSort.TITLE) }
     var sortMenuExpanded by remember { mutableStateOf(false) }
-    var localQueue by remember { mutableStateOf<List<Track>>(emptyList()) }
+    var phoneQueue by remember { mutableStateOf<List<Track>>(emptyList()) }
+    var queueIndex by remember { mutableStateOf(0) }
+    var queueRestored by remember { mutableStateOf(false) }
+    var restorePositionMs by remember { mutableStateOf(0L) }
+    var queueResolutionRequest by remember { mutableStateOf(0) }
     var queueDialogOpen by remember { mutableStateOf(false) }
     var bridgeUrl by remember { mutableStateOf("") }
     var token by remember { mutableStateOf("") }
     var bridgeName by remember { mutableStateOf("") }
     var bridgeDeviceId by remember { mutableStateOf("") }
+    var bridgeReconnectVersion by remember { mutableStateOf(0) }
     var showAdvancedBridgeSetup by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
     var bridgeStatus by remember { mutableStateOf("Pairing is optional. Scan a desktop QR code to connect.") }
@@ -320,6 +331,7 @@ fun MelodexApp(player: Player) {
                     token = bridgeToken
                     bridgeName = displayName
                     bridgeDeviceId = deviceId
+                    bridgeReconnectVersion += 1
                     bridgeResults = emptyList()
                     bridgeStatus = "Connected to $displayName."
                     musicSource = MusicSource.BRIDGE
@@ -371,6 +383,7 @@ fun MelodexApp(player: Player) {
                 token = normalizedToken
                 bridgeName = displayName
                 bridgeDeviceId = deviceId
+                bridgeReconnectVersion += 1
                 bridgeStatus = "Connected to $displayName."
             } catch (e: Exception) {
                 bridgeStatus = e.message ?: "Connection failed."
@@ -488,6 +501,194 @@ fun MelodexApp(player: Player) {
         }
     }
 
+    fun savePhoneQueue(tracks: List<Track>, index: Int, positionMs: Long) {
+        if (tracks.isEmpty()) {
+            LocalQueueStore.clearAsync(context)
+            return
+        }
+        LocalQueueStore.saveAsync(
+            context,
+            tracks,
+            index.coerceIn(0, tracks.lastIndex),
+            positionMs.coerceAtLeast(0L)
+        )
+    }
+
+    fun playQueueTrack(index: Int, positionMs: Long = 0L, autoplay: Boolean = true) {
+        val queued = phoneQueue.getOrNull(index) ?: return
+        queueResolutionRequest += 1
+        val requestId = queueResolutionRequest
+        val targetPositionMs = positionMs.coerceAtLeast(0L)
+        queueIndex = index
+        restorePositionMs = targetPositionMs
+        savePhoneQueue(phoneQueue, index, targetPositionMs)
+
+        if (queued.source == TrackSource.PHONE) {
+            if (!autoplay) player.pause()
+            nowPlaying = queued
+            player.setMediaItem(trackToMediaItem(queued), targetPositionMs)
+            player.prepare()
+            if (autoplay) player.play() else player.pause()
+            return
+        }
+
+        player.clearMediaItems()
+        nowPlaying = null
+        val baseUrl = bridgeUrl
+        val bridgeToken = token
+        if (baseUrl.isBlank() || bridgeToken.isBlank()) {
+            bridgeStatus = "Connect to the Bridge to play this queued track."
+            return
+        }
+        bridgeStatus = "Resolving ${queued.title}…"
+        scope.launch {
+            try {
+                val resolved = withContext(Dispatchers.IO) {
+                    BridgeClient(baseUrl, bridgeToken).resolve(queued)
+                }
+                if (requestId != queueResolutionRequest) return@launch
+                if (resolved.streamUrl.isBlank()) {
+                    throw IllegalStateException("Source did not return a stream URL")
+                }
+                val resolvedIndex = phoneQueue.indexOfFirst { it.queueKey() == queued.queueKey() }
+                if (resolvedIndex < 0) return@launch
+                queueIndex = resolvedIndex
+                nowPlaying = resolved
+                player.setMediaItem(trackToMediaItem(resolved), targetPositionMs)
+                player.prepare()
+                if (autoplay) player.play() else player.pause()
+                bridgeStatus = if (autoplay) "Playing on this phone." else "Bridge track ready."
+            } catch (e: Exception) {
+                if (requestId == queueResolutionRequest) {
+                    bridgeStatus = e.message ?: "Playback failed."
+                }
+            }
+        }
+    }
+
+    fun startLocalQueue(track: Track, candidates: List<Track>) {
+        val queue = if (candidates.any { it.queueKey() == track.queueKey() }) candidates else listOf(track)
+        val startIndex = queue.indexOfFirst { it.queueKey() == track.queueKey() }.coerceAtLeast(0)
+        phoneQueue = queue
+        queueIndex = startIndex
+        nowPlaying = track
+        savePhoneQueue(queue, startIndex, 0L)
+        playQueueTrack(startIndex, 0L, true)
+    }
+
+    fun startBridgeQueue(track: Track) {
+        phoneQueue = listOf(track.copy(streamUrl = ""))
+        queueIndex = 0
+        playQueueTrack(0, 0L, true)
+    }
+
+    fun addToPhoneQueue(track: Track) {
+        if (phoneQueue.any { it.queueKey() == track.queueKey() }) {
+            if (track.source == TrackSource.PHONE) {
+                localStatus = "That track is already in the queue."
+            } else {
+                bridgeStatus = "That track is already in the queue."
+            }
+            return
+        }
+        val stableTrack = if (track.source == TrackSource.BRIDGE) track.copy(streamUrl = "") else track
+        val updatedQueue = phoneQueue + stableTrack
+        phoneQueue = updatedQueue
+        if (updatedQueue.size == 1) {
+            queueIndex = 0
+            savePhoneQueue(updatedQueue, 0, 0L)
+            playQueueTrack(0, 0L, true)
+        } else {
+            val positionMs = if (player.currentMediaItem != null) {
+                player.currentPosition.coerceAtLeast(0L)
+            } else {
+                restorePositionMs
+            }
+            queueIndex = queueIndex.coerceIn(0, updatedQueue.lastIndex)
+            savePhoneQueue(updatedQueue, queueIndex, positionMs)
+        }
+        if (track.source == TrackSource.PHONE) {
+            localStatus = "Added to queue: ${track.title}"
+        } else {
+            bridgeStatus = "Added to queue: ${track.title}"
+        }
+    }
+
+    fun removeFromPhoneQueue(index: Int) {
+        if (index !in phoneQueue.indices) return
+        val currentKey = phoneQueue.getOrNull(queueIndex)?.queueKey()
+        val removingCurrent = phoneQueue[index].queueKey() == currentKey
+        val wasPlaying = player.isPlaying
+        val updatedQueue = phoneQueue.toMutableList().also { it.removeAt(index) }
+        queueResolutionRequest += 1
+        if (updatedQueue.isEmpty()) {
+            phoneQueue = emptyList()
+            queueIndex = 0
+            restorePositionMs = 0L
+            nowPlaying = null
+            player.clearMediaItems()
+            LocalQueueStore.clearAsync(context)
+            return
+        }
+        phoneQueue = updatedQueue
+        val nextIndex = updatedQueue.indexOfFirst { it.queueKey() == currentKey }
+            .takeIf { it >= 0 }
+            ?: index.coerceIn(0, updatedQueue.lastIndex)
+        queueIndex = nextIndex
+        if (removingCurrent) {
+            playQueueTrack(nextIndex, 0L, wasPlaying)
+        } else {
+            val positionMs = if (player.currentMediaItem != null) {
+                player.currentPosition.coerceAtLeast(0L)
+            } else {
+                restorePositionMs
+            }
+            savePhoneQueue(updatedQueue, nextIndex, positionMs)
+        }
+    }
+
+    fun moveQueueItem(fromIndex: Int, toIndex: Int) {
+        if (fromIndex !in phoneQueue.indices || toIndex !in phoneQueue.indices || fromIndex == toIndex) return
+        val currentKey = phoneQueue.getOrNull(queueIndex)?.queueKey()
+        val updatedQueue = phoneQueue.toMutableList().also { tracks ->
+            val moved = tracks.removeAt(fromIndex)
+            tracks.add(toIndex, moved)
+        }
+        phoneQueue = updatedQueue
+        queueIndex = updatedQueue.indexOfFirst { it.queueKey() == currentKey }.coerceAtLeast(0)
+        val positionMs = if (player.currentMediaItem != null) {
+            player.currentPosition.coerceAtLeast(0L)
+        } else {
+            restorePositionMs
+        }
+        savePhoneQueue(updatedQueue, queueIndex, positionMs)
+    }
+
+    fun clearPhoneQueue() {
+        queueResolutionRequest += 1
+        player.clearMediaItems()
+        nowPlaying = null
+        phoneQueue = emptyList()
+        queueIndex = 0
+        restorePositionMs = 0L
+        LocalQueueStore.clearAsync(context)
+        queueDialogOpen = false
+    }
+
+    fun playNextQueueTrack() {
+        if (queueIndex + 1 < phoneQueue.size) {
+            playQueueTrack(queueIndex + 1, 0L, true)
+        }
+    }
+
+    fun playPreviousQueueTrack() {
+        if (queueIndex > 0) {
+            playQueueTrack(queueIndex - 1, 0L, true)
+        } else if (player.mediaItemCount > 0) {
+            player.seekTo(0L)
+        }
+    }
+
     val audioPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
@@ -503,32 +704,41 @@ fun MelodexApp(player: Player) {
         if (hasAudioPermission) refreshLocalLibrary()
     }
 
-    LaunchedEffect(player, hasAudioPermission) {
-        if (!hasAudioPermission) return@LaunchedEffect
+    LaunchedEffect(player) {
         val savedQueue = withContext(Dispatchers.IO) { LocalQueueStore.load(context) }
         if (savedQueue != null) {
-            localQueue = savedQueue.tracks
-            nowPlaying = savedQueue.tracks.getOrNull(savedQueue.currentIndex)
-            if (player.mediaItemCount == 0) {
-                val durationMs = savedQueue.tracks
-                    .getOrNull(savedQueue.currentIndex)?.durationMs ?: 0L
-                val savedPositionMs = savedQueue.currentPositionMs.coerceAtLeast(0L)
-                val restorePositionMs = if (durationMs > 0L) {
-                    savedPositionMs.coerceAtMost((durationMs - 1_000L).coerceAtLeast(0L))
-                } else {
-                    savedPositionMs
-                }
-                player.setMediaItems(
-                    savedQueue.tracks.map(::trackToMediaItem),
-                    savedQueue.currentIndex,
-                    restorePositionMs
-                )
-                player.prepare()
+            phoneQueue = savedQueue.tracks
+            queueIndex = savedQueue.currentIndex
+            restorePositionMs = savedQueue.currentPositionMs
+            val restoredTrack = savedQueue.tracks.getOrNull(savedQueue.currentIndex)
+            if (restoredTrack?.source == TrackSource.PHONE) nowPlaying = restoredTrack
+        }
+        queueRestored = true
+    }
+
+    LaunchedEffect(player, queueRestored, hasAudioPermission, bridgeUrl, token, bridgeReconnectVersion, phoneQueue, queueIndex) {
+        if (!queueRestored || phoneQueue.isEmpty() || player.mediaItemCount > 0) return@LaunchedEffect
+        val queued = phoneQueue.getOrNull(queueIndex) ?: return@LaunchedEffect
+        if (queued.source == TrackSource.PHONE) {
+            if (!hasAudioPermission) return@LaunchedEffect
+            val durationMs = queued.durationMs
+            val positionMs = if (durationMs > 0L) {
+                restorePositionMs.coerceAtMost((durationMs - 1_000L).coerceAtLeast(0L))
+            } else {
+                restorePositionMs
             }
+            player.setMediaItem(trackToMediaItem(queued), positionMs)
+            player.prepare()
+        } else if (bridgeUrl.isNotBlank() && token.isNotBlank()) {
+            playQueueTrack(queueIndex, restorePositionMs, false)
         }
     }
 
-    val latestQueue = rememberUpdatedState(localQueue)
+    val latestQueue = rememberUpdatedState(phoneQueue)
+    val latestQueueIndex = rememberUpdatedState(queueIndex)
+    val latestPlayQueueTrack = rememberUpdatedState<(Int, Long, Boolean) -> Unit>(
+        { index, positionMs, autoplay -> playQueueTrack(index, positionMs, autoplay) }
+    )
     LaunchedEffect(player) {
         while (true) {
             playbackPositionMs = player.currentPosition.coerceAtLeast(0L)
@@ -540,10 +750,23 @@ fun MelodexApp(player: Player) {
     DisposableEffect(player) {
         val listener = object : Player.Listener {
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-                if (mediaItem?.mediaId?.startsWith("local|") == true) {
-                    nowPlaying = latestQueue.value.getOrNull(player.currentMediaItemIndex)
-                } else if (mediaItem == null) {
+                if (mediaItem == null) {
                     nowPlaying = null
+                    return
+                }
+                val index = latestQueue.value.indexOfFirst { it.queueKey() == mediaItem.mediaId }
+                if (index >= 0) {
+                    queueIndex = index
+                    nowPlaying = latestQueue.value[index]
+                }
+            }
+
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_ENDED) {
+                    val nextIndex = latestQueueIndex.value + 1
+                    if (nextIndex < latestQueue.value.size) {
+                        latestPlayQueueTrack.value(nextIndex, 0L, true)
+                    }
                 }
             }
 
@@ -553,95 +776,6 @@ fun MelodexApp(player: Player) {
         }
         player.addListener(listener)
         onDispose { player.removeListener(listener) }
-    }
-
-    fun startLocalQueue(track: Track, candidates: List<Track>) {
-        val queue = if (candidates.any { it.trackId == track.trackId }) candidates else listOf(track)
-        val startIndex = queue.indexOfFirst { it.trackId == track.trackId }.coerceAtLeast(0)
-        localQueue = queue
-        nowPlaying = track
-        player.setMediaItems(queue.map(::trackToMediaItem), startIndex, 0L)
-        player.prepare()
-        player.play()
-        LocalQueueStore.saveAsync(context, queue, startIndex, 0L)
-    }
-
-    fun addToLocalQueue(track: Track) {
-        if (localQueue.any { it.trackId == track.trackId }) {
-            localStatus = "That track is already in the queue."
-            return
-        }
-        val wasPlayingLocalQueue = player.hasOnlyLocalItems()
-        val updatedQueue = localQueue + track
-        localQueue = updatedQueue
-        val savedPositionMs = if (wasPlayingLocalQueue) player.currentPosition.coerceAtLeast(0L) else 0L
-        if (wasPlayingLocalQueue) {
-            val currentTrackId = player.currentMediaItem?.mediaId?.removePrefix("local|")
-            val currentIndex = updatedQueue.indexOfFirst { it.trackId == currentTrackId }.coerceAtLeast(0)
-            player.setMediaItems(
-                updatedQueue.map(::trackToMediaItem),
-                currentIndex,
-                savedPositionMs
-            )
-            player.prepare()
-        }
-        val savedIndex = if (wasPlayingLocalQueue) player.currentMediaItemIndex else 0
-        LocalQueueStore.saveAsync(
-            context, updatedQueue, savedIndex.coerceAtLeast(0), savedPositionMs
-        )
-        localStatus = "Added to queue: ${track.title}"
-    }
-
-    fun removeFromLocalQueue(index: Int) {
-        if (index !in localQueue.indices) return
-        val wasPlayingLocalQueue = player.hasOnlyLocalItems()
-        val currentTrackId = player.currentMediaItem?.mediaId?.removePrefix("local|")
-        val updatedQueue = localQueue.toMutableList().also { it.removeAt(index) }
-        localQueue = updatedQueue
-        var savedPositionMs = if (wasPlayingLocalQueue) player.currentPosition.coerceAtLeast(0L) else 0L
-        if (wasPlayingLocalQueue) {
-            if (updatedQueue.isEmpty()) {
-                player.clearMediaItems()
-                nowPlaying = null
-            } else {
-                val nextIndex = updatedQueue.indexOfFirst { it.trackId == currentTrackId }
-                    .takeIf { it >= 0 }
-                    ?: index.coerceIn(0, updatedQueue.lastIndex)
-                if (updatedQueue[nextIndex].trackId != currentTrackId) savedPositionMs = 0L
-                player.setMediaItems(
-                    updatedQueue.map(::trackToMediaItem), nextIndex, savedPositionMs
-                )
-                player.prepare()
-                nowPlaying = updatedQueue[nextIndex]
-            }
-        }
-        if (updatedQueue.isEmpty()) {
-            LocalQueueStore.clearAsync(context)
-        } else {
-            LocalQueueStore.saveAsync(
-                context,
-                updatedQueue,
-                player.currentMediaItemIndex.coerceAtLeast(0),
-                savedPositionMs
-            )
-        }
-    }
-
-    fun clearLocalQueue() {
-        if (player.hasOnlyLocalItems()) {
-            player.clearMediaItems()
-            nowPlaying = null
-        }
-        localQueue = emptyList()
-        LocalQueueStore.clearAsync(context)
-        queueDialogOpen = false
-    }
-
-    fun playBridgeTrack(track: Track) {
-        player.setMediaItem(trackToMediaItem(track))
-        player.prepare()
-        player.play()
-        nowPlaying = track
     }
 
     MaterialTheme(colorScheme = MelodexColorScheme) {
@@ -792,8 +926,8 @@ fun MelodexApp(player: Player) {
                                 ) { Text("Play something") }
                                 OutlinedButton(
                                     onClick = { queueDialogOpen = true },
-                                    enabled = localQueue.isNotEmpty()
-                                ) { Text("Queue (${localQueue.size})") }
+                                    enabled = phoneQueue.isNotEmpty()
+                                ) { Text("Queue (${phoneQueue.size})") }
                             }
 
                             when {
@@ -838,7 +972,7 @@ fun MelodexApp(player: Player) {
                                     TrackList(
                                         tracks = visibleLocalTracks,
                                         onSelect = { track -> startLocalQueue(track, visibleLocalTracks) },
-                                        onAddToQueue = ::addToLocalQueue,
+                                        onAddToQueue = ::addToPhoneQueue,
                                         showQueueAction = true,
                                         modifier = Modifier.weight(1f)
                                     )
@@ -939,23 +1073,19 @@ fun MelodexApp(player: Player) {
                                 enabled = bridgeUrl.isNotBlank() && token.isNotBlank() && query.isNotBlank()
                             ) { Text("Search") }
                         }
-                        TrackList(bridgeResults, onSelect = { track ->
-                            scope.launch {
-                                bridgeStatus = "Resolving…"
-                                try {
-                                    val resolved = withContext(Dispatchers.IO) {
-                                        BridgeClient(bridgeUrl, token).resolve(track)
-                                    }
-                                    if (resolved.streamUrl.isBlank()) {
-                                        throw IllegalStateException("Source did not return a stream URL")
-                                    }
-                                    playBridgeTrack(resolved)
-                                    bridgeStatus = "Playing"
-                                } catch (e: Exception) {
-                                    bridgeStatus = e.message ?: "Playback failed"
-                                }
-                            }
-                        }, modifier = Modifier.weight(1f))
+                        if (phoneQueue.isNotEmpty()) {
+                            OutlinedButton(
+                                onClick = { queueDialogOpen = true },
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("Queue (${phoneQueue.size})") }
+                        }
+                        TrackList(
+                            bridgeResults,
+                            onSelect = ::startBridgeQueue,
+                            onAddToQueue = ::addToPhoneQueue,
+                            showQueueAction = true,
+                            modifier = Modifier.weight(1f)
+                        )
                     }
                 }
 
@@ -965,7 +1095,9 @@ fun MelodexApp(player: Player) {
                         isPlaying = playerIsPlaying,
                         positionMs = playbackPositionMs,
                         durationMs = playbackDurationMs,
-                        queueCount = if (musicSource == MusicSource.PHONE && localQueue.isNotEmpty()) localQueue.size else null,
+                        queueCount = phoneQueue.size.takeIf { it > 0 },
+                        onPrevious = ::playPreviousQueueTrack,
+                        onNext = ::playNextQueueTrack,
                         onPlayPause = { if (player.isPlaying) player.pause() else player.play() },
                         onRestart = { player.seekTo(0L) },
                         onSeek = { player.seekTo(it) },
@@ -978,26 +1110,37 @@ fun MelodexApp(player: Player) {
         if (queueDialogOpen) {
             AlertDialog(
                 onDismissRequest = { queueDialogOpen = false },
-                title = { Text("Play queue (${localQueue.size})") },
+                title = { Text("Play queue (${phoneQueue.size})") },
                 text = {
-                    if (localQueue.isEmpty()) {
-                        Text("Your queue is empty. Add a track from the phone library.")
+                    if (phoneQueue.isEmpty()) {
+                        Text("Add local or Bridge tracks to this phone’s queue.")
                     } else {
                         LazyColumn(Modifier.heightIn(max = 420.dp)) {
-                            itemsIndexed(localQueue, key = { index, track -> "${index}:${track.trackId}" }) { index, track ->
+                            itemsIndexed(phoneQueue, key = { _, track -> track.queueKey() }) { index, track ->
+                                val sourceLabel = if (track.source == TrackSource.BRIDGE) {
+                                    "Bridge · ${track.providerId}"
+                                } else {
+                                    "On this phone"
+                                }
                                 ListItem(
                                     leadingContent = { TrackArtwork(track, Modifier.size(48.dp)) },
                                     headlineContent = { Text(track.title) },
-                                    supportingContent = { Text("${track.artist}${if (track.album.isNotBlank()) " · ${track.album}" else ""}") },
+                                    supportingContent = { Text("$sourceLabel · ${track.artist}${if (track.album.isNotBlank()) " · ${track.album}" else ""}") },
                                     trailingContent = {
-                                        TextButton(onClick = { removeFromLocalQueue(index) }) { Text("Remove") }
+                                        Row {
+                                            TextButton(
+                                                enabled = index > 0,
+                                                onClick = { moveQueueItem(index, index - 1) }
+                                            ) { Text("↑") }
+                                            TextButton(
+                                                enabled = index < phoneQueue.lastIndex,
+                                                onClick = { moveQueueItem(index, index + 1) }
+                                            ) { Text("↓") }
+                                            TextButton(onClick = { removeFromPhoneQueue(index) }) { Text("Remove") }
+                                        }
                                     },
                                     modifier = Modifier.clickable {
-                                        player.setMediaItems(localQueue.map(::trackToMediaItem), index, 0L)
-                                        player.prepare()
-                                        player.play()
-                                        nowPlaying = track
-                                        LocalQueueStore.saveAsync(context, localQueue, index, 0L)
+                                        playQueueTrack(index, 0L, true)
                                         queueDialogOpen = false
                                     }
                                 )
@@ -1010,8 +1153,8 @@ fun MelodexApp(player: Player) {
                     TextButton(onClick = { queueDialogOpen = false }) { Text("Done") }
                 },
                 dismissButton = {
-                    if (localQueue.isNotEmpty()) {
-                        TextButton(onClick = ::clearLocalQueue) { Text("Clear queue") }
+                    if (phoneQueue.isNotEmpty()) {
+                        TextButton(onClick = ::clearPhoneQueue) { Text("Clear queue") }
                     }
                 }
             )
@@ -1026,14 +1169,16 @@ private fun NowPlayingCard(
     positionMs: Long,
     durationMs: Long,
     queueCount: Int?,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit,
     onPlayPause: () -> Unit,
     onRestart: () -> Unit,
     onSeek: (Long) -> Unit,
     onQueue: () -> Unit
 ) {
     val duration = durationMs.takeIf { it > 0L } ?: track.durationMs
-    var isSeeking by remember(track.providerId, track.trackId) { mutableStateOf(false) }
-    var seekFraction by remember(track.providerId, track.trackId) { mutableStateOf(0f) }
+    var isSeeking by remember(track.source, track.providerId, track.trackId) { mutableStateOf(false) }
+    var seekFraction by remember(track.source, track.providerId, track.trackId) { mutableStateOf(0f) }
     val playbackFraction = if (duration > 0L) {
         (positionMs.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
     } else {
@@ -1096,7 +1241,9 @@ private fun NowPlayingCard(
             }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = onPrevious) { Text("Prev") }
                 TextButton(onClick = onRestart) { Text("Restart") }
+                TextButton(onClick = onNext) { Text("Next") }
                 Spacer(Modifier.weight(1f))
                 if (queueCount != null) {
                     TextButton(onClick = onQueue) { Text("Queue ($queueCount)") }
@@ -1143,7 +1290,7 @@ private fun TrackList(
 @Composable
 private fun TrackArtwork(track: Track, modifier: Modifier = Modifier) {
     val context = LocalContext.current
-    val bitmap by produceState<Bitmap?>(initialValue = null, key1 = track.trackId, key2 = track.streamUrl) {
+    val bitmap by produceState<Bitmap?>(initialValue = null, key1 = track.queueKey(), key2 = track.streamUrl) {
         value = withContext(Dispatchers.IO) { loadTrackArtwork(context, track) }
     }
     if (bitmap != null) {
@@ -1209,16 +1356,11 @@ private fun trackToMediaItem(track: Track): MediaItem {
         }
         .build()
     return MediaItem.Builder()
-        .setMediaId("${track.providerId}|${track.trackId}")
+        .setMediaId(track.queueKey())
         .setUri(track.streamUrl)
         .setMediaMetadata(metadata)
         .build()
 }
-
-private fun Player.hasOnlyLocalItems(): Boolean =
-    mediaItemCount > 0 && (0 until mediaItemCount).all {
-        getMediaItemAt(it).mediaId.startsWith("local|")
-    }
 
 private fun formatDuration(durationMs: Long): String {
     if (durationMs <= 0L) return ""

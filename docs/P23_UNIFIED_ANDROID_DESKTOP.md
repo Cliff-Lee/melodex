@@ -1,6 +1,6 @@
 # P23 — Unified Android & Desktop Listening
 
-**Status: in progress. Current slice: P23a — independent stream qualification.**
+**Status: in progress. Current slice: P23b — unified phone queue.**
 
 ## Goal
 
@@ -19,7 +19,7 @@ Make Melodex one local-first listening system across desktop, NAS, and Android. 
 
 v0.7.25 already includes Android local MediaStore playback and queue restoration, a phone-owned playback service, optional QR pairing, per-device Bridge tokens and revocation, and Bridge search/resolve/playback from desktop providers.
 
-The current Bridge search path starts one track at a time. A phone cannot add Bridge tracks to its queue, and Bridge source identities are not restored after an Android process restart. Android CI currently compiles and packages the app; device playback checks remain owner-tested.
+At the P23a baseline, Bridge search started one track at a time and Bridge source identities were not restored after an Android process restart. P23b closes that gap in the phone queue. Android CI builds the app; device playback checks remain owner-tested.
 
 ## Stages
 
@@ -29,6 +29,14 @@ The current Bridge search path starts one track at a time. A phone cannot add Br
 4. **P23d — Add explicit playback handoff.** Let the listener move a selected session between desktop and phone only on request; never take over another phone or alter an unrelated queue.
 5. **P23e — Complete the companion experience.** Make desktop library discovery, remote playback, queue state, and connection errors coherent from Android, while retaining full local playback when the Bridge is unavailable.
 6. **P23f — Security and release qualification.** Verify device revocation, reconnect behavior, concurrent independent streams, local/Bridge queue restoration, network boundaries, Android builds, and owner device checks.
+
+## P23b acceptance
+
+- Local MediaStore and Bridge tracks share one phone-owned queue with add, remove, reorder, previous, next, and automatic advance.
+- Queue identity includes source and provider IDs, so a desktop provider named “local” cannot collide with this phone’s MediaStore item.
+- Bridge items persist only source/provider-qualified IDs and safe metadata. Expiring stream URLs and paired credentials are never written into queue storage.
+- On resume, a saved Bridge item is resolved again through the paired Bridge. Local items remain available without a Bridge connection.
+- Android CI confirms the application builds; process restart, audio focus, Bluetooth, and device playback remain owner checks.
 
 ## P23a acceptance
 
