@@ -1,6 +1,6 @@
 # P23 — Unified Android & Desktop Listening
 
-**Status: in progress. Current slice: P23b — unified phone queue.**
+**Status: in progress. Current slice: P23c — resilient home LAN pairing.**
 
 ## Goal
 
@@ -25,7 +25,7 @@ At the P23a baseline, Bridge search started one track at a time and Bridge sourc
 
 1. **P23a — Prove independent phone streams.** Add an automated two-device Bridge test: pair two phones, stream different desktop tracks concurrently, prove the desktop queue is unchanged, and verify revoking one phone leaves the other connected.
 2. **P23b — Unify the phone queue.** Let local and Bridge tracks share the phone-owned queue with add/remove/reorder and next/previous behavior. Preserve local playback while disconnected; store Bridge items by provider-qualified stable ID and resolve again on resume.
-3. **P23c — Make pairing resilient on a home LAN.** Improve connection state and recovery when the desktop restarts or its local address changes. Keep QR pairing as the clear trust step and retain advanced manual setup only as a fallback.
+3. **P23c — Make pairing resilient on a home LAN.** Show connection state, retry the saved LAN address while Android is foregrounded, and recover when the desktop restarts. If its address changes, offer QR re-pairing as the clear trust step and keep advanced manual setup as a fallback.
 4. **P23d — Add explicit playback handoff.** Let the listener move a selected session between desktop and phone only on request; never take over another phone or alter an unrelated queue.
 5. **P23e — Complete the companion experience.** Make desktop library discovery, remote playback, queue state, and connection errors coherent from Android, while retaining full local playback when the Bridge is unavailable.
 6. **P23f — Security and release qualification.** Verify device revocation, reconnect behavior, concurrent independent streams, local/Bridge queue restoration, network boundaries, Android builds, and owner device checks.
@@ -37,6 +37,16 @@ At the P23a baseline, Bridge search started one track at a time and Bridge sourc
 - Bridge items persist only source/provider-qualified IDs and safe metadata. Expiring stream URLs and paired credentials are never written into queue storage.
 - On resume, a saved Bridge item is resolved again through the paired Bridge. Local items remain available without a Bridge connection.
 - Android CI confirms the application builds; process restart, audio focus, Bluetooth, and device playback remain owner checks.
+
+## P23c acceptance
+
+- Android checks the saved Bridge address on startup and retries it every 15 seconds while the app is foregrounded. Each check has a bounded timeout so an offline desktop does not stall the UI or keep a long network request open.
+- A desktop restart at the same LAN address recovers automatically. The saved phone queue is retained, and a queued Bridge track can be resolved again after connectivity returns.
+- If the saved address no longer works, Android marks the desktop unavailable, explains that it may be offline or have a new address, and keeps a **Scan new QR code** action available while paired.
+- A successful QR re-pair saves the new address and token. Revoking the previous phone token is best effort, so an unreachable old address does not block recovery.
+- Advanced manual address/token entry remains available as a fallback. Phone-local playback and the phone-owned queue remain usable while the Bridge is unavailable.
+- Pairing and recovery stay on the trusted LAN without an external Melodex relay. Native iPhone support remains deferred.
+- Android CI validates the build; LAN restart, changed-address QR recovery, Bluetooth/audio focus, and device playback remain owner checks.
 
 ## P23a acceptance
 

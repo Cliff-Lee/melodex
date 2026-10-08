@@ -39,6 +39,9 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.LifecycleOwner
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
@@ -47,6 +50,7 @@ import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.ListenableFuture
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -59,6 +63,8 @@ import java.net.URLEncoder
 
 
 private const val PRIVACY_POLICY_URL = "https://github.com/Cliff-Lee/melodex/blob/main/docs/PRIVACY.md"
+private const val BRIDGE_CONNECTION_POLL_INTERVAL_MS = 15_000L
+private const val BRIDGE_VERIFY_TIMEOUT_MS = 4_000
 
 data class Track(
     val providerId: String,
@@ -77,6 +83,8 @@ enum class TrackSource { PHONE, BRIDGE }
 private fun Track.queueKey(): String = "$source|$providerId|$trackId"
 
 private enum class MusicSource { PHONE, BRIDGE }
+
+private enum class BridgeConnectionState { UNPAIRED, CHECKING, CONNECTED, UNAVAILABLE }
 
 private enum class LocalSort(val label: String) {
     TITLE("Title"),
@@ -98,11 +106,11 @@ private val MelodexColorScheme = darkColorScheme(
 )
 
 class BridgeClient(var baseUrl: String, var token: String) {
-    private fun get(path: String): JSONObject {
+    private fun get(path: String, timeoutMs: Int = 8000, readTimeoutMs: Int = 15000): JSONObject {
         val conn = URL(baseUrl.trimEnd('/') + path).openConnection() as HttpURLConnection
         conn.requestMethod = "GET"
-        conn.connectTimeout = 8000
-        conn.readTimeout = 15000
+        conn.connectTimeout = timeoutMs
+        conn.readTimeout = readTimeoutMs
         if (token.isNotBlank()) conn.setRequestProperty("Authorization", "Bearer $token")
         conn.setRequestProperty("Accept", "application/json")
         val code = conn.responseCode
@@ -111,11 +119,11 @@ class BridgeClient(var baseUrl: String, var token: String) {
         return JSONObject(body)
     }
 
-    private fun post(path: String, body: JSONObject): JSONObject {
+    private fun post(path: String, body: JSONObject, timeoutMs: Int = 8000, readTimeoutMs: Int = 15000): JSONObject {
         val conn = URL(baseUrl.trimEnd('/') + path).openConnection() as HttpURLConnection
         conn.requestMethod = "POST"
-        conn.connectTimeout = 8000
-        conn.readTimeout = 15000
+        conn.connectTimeout = timeoutMs
+        conn.readTimeout = readTimeoutMs
         conn.doOutput = true
         conn.setRequestProperty("Accept", "application/json")
         conn.setRequestProperty("Content-Type", "application/json; charset=utf-8")
@@ -131,7 +139,11 @@ class BridgeClient(var baseUrl: String, var token: String) {
     fun health(): Boolean = get("/health").optBoolean("ok", false)
 
     fun verify(): Boolean {
-        get("/v1/providers")
+        get(
+            "/v1/providers",
+            timeoutMs = BRIDGE_VERIFY_TIMEOUT_MS,
+            readTimeoutMs = BRIDGE_VERIFY_TIMEOUT_MS
+        )
         return true
     }
 
@@ -140,9 +152,11 @@ class BridgeClient(var baseUrl: String, var token: String) {
         JSONObject().put("code", code).put("device_name", deviceName)
     )
 
-    fun unpair(deviceId: String): Boolean = post(
+    fun unpair(deviceId: String, timeoutMs: Int = 8000): Boolean = post(
         "/v1/unpair",
-        JSONObject().put("device_id", deviceId)
+        JSONObject().put("device_id", deviceId),
+        timeoutMs = timeoutMs,
+        readTimeoutMs = timeoutMs
     ).optBoolean("ok", false)
 
     fun search(query: String): List<Track> {
@@ -254,6 +268,26 @@ private fun PlayerConnectionScreen(error: String?, onRetry: () -> Unit) {
 fun MelodexApp(player: Player) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val lifecycleOwner = remember(context) { context as? LifecycleOwner }
+    var isAppForeground by remember(lifecycleOwner) {
+        mutableStateOf(lifecycleOwner?.lifecycle?.currentState?.isAtLeast(Lifecycle.State.STARTED) == true)
+    }
+    DisposableEffect(lifecycleOwner) {
+        val owner = lifecycleOwner
+        if (owner == null) {
+            onDispose { }
+        } else {
+            val observer = LifecycleEventObserver { _, event ->
+                when (event) {
+                    Lifecycle.Event.ON_START, Lifecycle.Event.ON_RESUME -> isAppForeground = true
+                    Lifecycle.Event.ON_STOP, Lifecycle.Event.ON_DESTROY -> isAppForeground = false
+                    else -> Unit
+                }
+            }
+            owner.lifecycle.addObserver(observer)
+            onDispose { owner.lifecycle.removeObserver(observer) }
+        }
+    }
     val audioPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         Manifest.permission.READ_MEDIA_AUDIO
     } else {
@@ -279,9 +313,12 @@ fun MelodexApp(player: Player) {
     var queueDialogOpen by remember { mutableStateOf(false) }
     var bridgeUrl by remember { mutableStateOf("") }
     var token by remember { mutableStateOf("") }
+    var manualBridgeUrl by remember { mutableStateOf("") }
+    var manualBridgeToken by remember { mutableStateOf("") }
     var bridgeName by remember { mutableStateOf("") }
     var bridgeDeviceId by remember { mutableStateOf("") }
     var bridgeReconnectVersion by remember { mutableStateOf(0) }
+    var bridgeConnectionState by remember { mutableStateOf(BridgeConnectionState.UNPAIRED) }
     var showAdvancedBridgeSetup by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
     var bridgeStatus by remember { mutableStateOf("Pairing is optional. Scan a desktop QR code to connect.") }
@@ -305,6 +342,9 @@ fun MelodexApp(player: Player) {
             bridgeStatus = "QR scan cancelled."
         } else {
             scope.launch {
+                val previousUrl = bridgeUrl
+                val previousToken = token
+                val previousDeviceId = bridgeDeviceId
                 bridgeStatus = "Pairing with your computer…"
                 try {
                     val pairing = withContext(Dispatchers.IO) {
@@ -321,6 +361,13 @@ fun MelodexApp(player: Player) {
                         BridgeClient(pairing.baseUrl, bridgeToken).verify()
                     }
                     if (!connected) throw IllegalStateException("The Bridge did not accept this pairing.")
+                    if (previousUrl.isNotBlank() && previousToken.isNotBlank() && previousDeviceId.isNotBlank()) {
+                        withContext(Dispatchers.IO) {
+                            runCatching {
+                                BridgeClient(previousUrl, previousToken).unpair(previousDeviceId, timeoutMs = 1200)
+                            }
+                        }
+                    }
                     withContext(Dispatchers.IO) {
                         BridgeConnectionStore.save(
                             context.applicationContext,
@@ -329,9 +376,12 @@ fun MelodexApp(player: Player) {
                     }
                     bridgeUrl = pairing.baseUrl
                     token = bridgeToken
+                    manualBridgeUrl = pairing.baseUrl
+                    manualBridgeToken = bridgeToken
                     bridgeName = displayName
                     bridgeDeviceId = deviceId
                     bridgeReconnectVersion += 1
+                    bridgeConnectionState = BridgeConnectionState.CONNECTED
                     bridgeResults = emptyList()
                     bridgeStatus = "Connected to $displayName."
                     musicSource = MusicSource.BRIDGE
@@ -341,6 +391,7 @@ fun MelodexApp(player: Player) {
             }
         }
     }
+
     val cameraPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
@@ -366,7 +417,10 @@ fun MelodexApp(player: Player) {
             bridgeStatus = "Enter the Bridge address and token."
             return
         }
+        val isCurrentConnection = normalizedUrl == bridgeUrl && normalizedToken == token
+        val hasSavedConnection = bridgeUrl.isNotBlank() && token.isNotBlank()
         scope.launch {
+            if (isCurrentConnection || !hasSavedConnection) bridgeConnectionState = BridgeConnectionState.CHECKING
             bridgeStatus = "Connecting…"
             try {
                 val connected = withContext(Dispatchers.IO) {
@@ -381,11 +435,19 @@ fun MelodexApp(player: Player) {
                 }
                 bridgeUrl = normalizedUrl
                 token = normalizedToken
+                manualBridgeUrl = normalizedUrl
+                manualBridgeToken = normalizedToken
                 bridgeName = displayName
                 bridgeDeviceId = deviceId
                 bridgeReconnectVersion += 1
+                bridgeConnectionState = BridgeConnectionState.CONNECTED
                 bridgeStatus = "Connected to $displayName."
             } catch (e: Exception) {
+                if (isCurrentConnection) {
+                    bridgeConnectionState = BridgeConnectionState.UNAVAILABLE
+                } else if (!hasSavedConnection) {
+                    bridgeConnectionState = BridgeConnectionState.UNPAIRED
+                }
                 bridgeStatus = e.message ?: "Connection failed."
             }
         }
@@ -411,8 +473,11 @@ fun MelodexApp(player: Player) {
             }
             bridgeUrl = ""
             token = ""
+            manualBridgeUrl = ""
+            manualBridgeToken = ""
             bridgeName = ""
             bridgeDeviceId = ""
+            bridgeConnectionState = BridgeConnectionState.UNPAIRED
             bridgeResults = emptyList()
             showAdvancedBridgeSetup = false
             bridgeStatus = if (revoked) {
@@ -430,17 +495,45 @@ fun MelodexApp(player: Player) {
         if (saved != null) {
             bridgeUrl = saved.baseUrl
             token = saved.token
+            manualBridgeUrl = saved.baseUrl
+            manualBridgeToken = saved.token
             bridgeName = saved.displayName
             bridgeDeviceId = saved.deviceId
+            bridgeConnectionState = BridgeConnectionState.CHECKING
             bridgeStatus = "Checking the saved connection…"
-            bridgeStatus = try {
-                withContext(Dispatchers.IO) {
-                    BridgeClient(saved.baseUrl, saved.token).verify()
+        }
+    }
+
+    LaunchedEffect(bridgeUrl, token, isAppForeground) {
+        if (bridgeUrl.isBlank() || token.isBlank()) {
+            bridgeConnectionState = BridgeConnectionState.UNPAIRED
+            return@LaunchedEffect
+        }
+        if (!isAppForeground) return@LaunchedEffect
+
+        while (true) {
+            val wasUnavailable = bridgeConnectionState == BridgeConnectionState.UNAVAILABLE
+            val wasChecking = bridgeConnectionState == BridgeConnectionState.CHECKING
+            try {
+                val connected = withContext(Dispatchers.IO) {
+                    BridgeClient(bridgeUrl, token).verify()
                 }
-                "Connected to ${saved.displayName}."
-            } catch (e: Exception) {
-                "Saved connection to ${saved.displayName} is unavailable: ${e.message ?: "check the local network"}."
+                if (!connected) throw IllegalStateException("The Bridge did not accept this connection.")
+                bridgeConnectionState = BridgeConnectionState.CONNECTED
+                if (wasUnavailable) {
+                    bridgeReconnectVersion += 1
+                    bridgeStatus = "Connection restored to ${bridgeName.ifBlank { "Melodex computer" }}."
+                } else if (wasChecking) {
+                    bridgeStatus = "Connected to ${bridgeName.ifBlank { "Melodex computer" }}."
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                bridgeConnectionState = BridgeConnectionState.UNAVAILABLE
+                bridgeResults = emptyList()
+                bridgeStatus = "Can't reach ${bridgeName.ifBlank { "Melodex computer" }} at its saved LAN address. It may be offline or have a new address. Scan a new QR code to reconnect."
             }
+            delay(BRIDGE_CONNECTION_POLL_INTERVAL_MS)
         }
     }
 
@@ -1000,7 +1093,20 @@ fun MelodexApp(player: Player) {
                                         style = MaterialTheme.typography.titleSmall
                                     )
                                     Text(
-                                        "This phone has its own player. Pair another phone separately to listen independently.",
+                                        when (bridgeConnectionState) {
+                                            BridgeConnectionState.UNPAIRED -> "Not paired"
+                                            BridgeConnectionState.CHECKING -> "Checking connection…"
+                                            BridgeConnectionState.CONNECTED -> "Connected"
+                                            BridgeConnectionState.UNAVAILABLE -> "Desktop unavailable"
+                                        },
+                                        style = MaterialTheme.typography.titleSmall
+                                    )
+                                    Text(
+                                        if (bridgeConnectionState == BridgeConnectionState.UNAVAILABLE) {
+                                            "The computer may be offline or have a new address. Scan a new QR code to reconnect."
+                                        } else {
+                                            "This phone has its own player. Pair another phone separately to listen independently."
+                                        },
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -1009,8 +1115,9 @@ fun MelodexApp(player: Player) {
                                         Button(onClick = {
                                             connectBridge(bridgeUrl, token, bridgeName, bridgeDeviceId)
                                         }) { Text("Reconnect") }
-                                        TextButton(onClick = { forgetBridge() }) { Text("Forget on this phone") }
+                                        OutlinedButton(onClick = { startQrScan() }) { Text("Scan new QR code") }
                                     }
+                                    TextButton(onClick = { forgetBridge() }) { Text("Forget on this phone") }
                                 } else {
                                     Text(
                                         "Pair this phone over local Wi-Fi. Each phone keeps its own player, so listening here will not interrupt another phone."
@@ -1027,23 +1134,23 @@ fun MelodexApp(player: Player) {
                                 }
                                 if (showAdvancedBridgeSetup) {
                                     OutlinedTextField(
-                                        bridgeUrl,
-                                        { bridgeUrl = it },
+                                        manualBridgeUrl,
+                                        { manualBridgeUrl = it },
                                         label = { Text("Bridge URL") },
                                         placeholder = { Text("http://192.168.1.20:8766") },
                                         singleLine = true,
                                         modifier = Modifier.fillMaxWidth()
                                     )
                                     OutlinedTextField(
-                                        token,
-                                        { token = it },
+                                        manualBridgeToken,
+                                        { manualBridgeToken = it },
                                         label = { Text("Bridge token") },
                                         visualTransformation = PasswordVisualTransformation(),
                                         singleLine = true,
                                         modifier = Modifier.fillMaxWidth()
                                     )
                                     Button(onClick = {
-                                        connectBridge(bridgeUrl, token)
+                                        connectBridge(manualBridgeUrl, manualBridgeToken)
                                     }) { Text("Connect manually") }
                                 }
                             }
@@ -1071,7 +1178,7 @@ fun MelodexApp(player: Player) {
                                         }
                                     }
                                 },
-                                enabled = bridgeUrl.isNotBlank() && token.isNotBlank() && query.isNotBlank()
+                                enabled = bridgeConnectionState == BridgeConnectionState.CONNECTED && query.isNotBlank()
                             ) { Text("Search") }
                         }
                         if (phoneQueue.isNotEmpty()) {
