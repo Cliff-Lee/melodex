@@ -267,6 +267,24 @@ def test_gateway_allows_regional_archive_cdn_under_archive_wildcard():
     finally:
         gateway.close()
 
+def test_gateway_unregisters_only_its_own_loopback_resource():
+    gateway = PlaybackGateway()
+    try:
+        url = gateway.register(
+            {
+                "url": "https://example.test/audio",
+                "headers": {"Authorization": "Bearer private-test"},
+            }
+        )
+        foreign = url.replace("127.0.0.1", "127.0.0.2")
+
+        assert gateway.unregister(foreign) is False
+        assert gateway.unregister(url) is True
+        assert gateway.unregister(url) is False
+    finally:
+        gateway.close()
+
+
 def test_gateway_supplies_descriptive_user_agent_when_provider_omits_one():
     upstream = ThreadingHTTPServer(("127.0.0.1", 0), _UserAgentHandler)
     thread = threading.Thread(target=upstream.serve_forever, daemon=True)
