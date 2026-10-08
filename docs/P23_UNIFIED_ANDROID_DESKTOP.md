@@ -1,6 +1,6 @@
 # P23 — Unified Android & Desktop Listening
 
-**Status: in progress. Current slice: P23d — explicit playback handoff.**
+**Status: in progress. Current slice: P23e — complete the companion experience.**
 
 ## Goal
 
@@ -56,6 +56,14 @@ At the P23a baseline, Bridge search started one track at a time and Bridge sourc
 - The desktop refuses phone handoff while it is playing or when its paused queue contains a different session. It resolves all incoming Bridge identities before changing the queue.
 - Phone-only MediaStore queues are excluded from desktop handoff. The handoff does not control another paired phone.
 - Automated tests cover the desktop queue guards and guarded stop. Android CI validates the build; physical playback and LAN handoff remain owner checks. Native iPhone support remains deferred.
+
+## P23e acceptance
+
+- Android can browse the desktop’s local library through the paired Bridge and search connected music sources. Tracks enter the phone-owned queue by provider-qualified IDs and resolve again when playback starts.
+- A desktop playback panel shows the current track, playing or paused state, queue count, and a read-only view of the desktop queue. Android refreshes that snapshot while the Bridge screen is open.
+- Pairing, checking, connected, and unavailable states explain whether desktop browsing is available. The **On this phone** player and its queue remain available when the Bridge is offline.
+- Browse and playback status use stable track metadata; stream URLs and paired credentials are not added to phone queue storage.
+- Android CI validates the build. Desktop discovery over LAN, remote queue accuracy, process restart, and device playback remain owner checks. Native iPhone support remains deferred.
 
 ## P23a acceptance
 

@@ -104,6 +104,14 @@ private enum class MusicSource { PHONE, BRIDGE }
 
 private enum class BridgeConnectionState { UNPAIRED, CHECKING, CONNECTED, UNAVAILABLE }
 
+data class DesktopPlaybackSnapshot(
+    val isPlaying: Boolean,
+    val positionMs: Long,
+    val currentIndex: Int,
+    val currentTrack: Track?,
+    val queue: List<Track>
+)
+
 private enum class LocalSort(val label: String) {
     TITLE("Title"),
     ARTIST("Artist"),
@@ -187,6 +195,51 @@ class BridgeClient(var baseUrl: String, var token: String) {
         readTimeoutMs = BRIDGE_VERIFY_TIMEOUT_MS
     )
 
+    fun browse(providerId: String = "local", kind: String = "featured"): List<Track> {
+        val provider = URLEncoder.encode(providerId, "UTF-8")
+        val browseKind = URLEncoder.encode(kind, "UTF-8")
+        val json = get("/v1/browse?provider=$provider&kind=$browseKind")
+        return parseBridgeTrackArray(json.optJSONArray("items"))
+    }
+
+    fun playbackSnapshot(): DesktopPlaybackSnapshot {
+        val json = status()
+        val queue = parseBridgeTrackArray(json.optJSONArray("queue"))
+        val index = json.optInt("index", -1)
+        return DesktopPlaybackSnapshot(
+            isPlaying = json.optBoolean("playing", false),
+            positionMs = json.optLong("position_ms", 0L).coerceAtLeast(0L),
+            currentIndex = index,
+            currentTrack = parseBridgeTrack(json.optJSONObject("current_track")) ?: queue.getOrNull(index),
+            queue = queue
+        )
+    }
+
+    private fun parseBridgeTrack(item: JSONObject?, includeStreamUrl: Boolean = false): Track? {
+        if (item == null) return null
+        val providerId = item.optString("provider_id").takeIf { it.isNotBlank() } ?: return null
+        val trackId = item.optString("track_id").takeIf { it.isNotBlank() } ?: return null
+        return Track(
+            providerId = providerId,
+            trackId = trackId,
+            title = item.optString("title", "Unknown track"),
+            artist = item.optString("artist", "Unknown artist"),
+            album = item.optString("album"),
+            streamUrl = if (includeStreamUrl) item.optString("stream_url") else "",
+            durationMs = item.optLong("duration_ms", 0L).coerceAtLeast(0L),
+            source = TrackSource.BRIDGE
+        )
+    }
+
+    private fun parseBridgeTrackArray(items: JSONArray?): List<Track> {
+        if (items == null) return emptyList()
+        return buildList {
+            for (index in 0 until items.length()) {
+                parseBridgeTrack(items.optJSONObject(index))?.let { add(it) }
+            }
+        }
+    }
+
     fun handoffToDesktop(
         tracks: List<Track>,
         start: Int,
@@ -236,19 +289,10 @@ class BridgeClient(var baseUrl: String, var token: String) {
     fun search(query: String): List<Track> {
         val q = URLEncoder.encode(query, "UTF-8")
         val json = get("/v1/search?q=$q&provider=all")
-        val arr = json.optJSONArray("items") ?: return emptyList()
         return buildList {
-            for (i in 0 until arr.length()) {
-                val x = arr.getJSONObject(i)
-                add(Track(
-                    providerId = x.optString("provider_id"),
-                    trackId = x.optString("track_id"),
-                    title = x.optString("title", "Unknown track"),
-                    artist = x.optString("artist", "Unknown artist"),
-                    album = x.optString("album"),
-                    streamUrl = x.optString("stream_url"),
-                    source = TrackSource.BRIDGE
-                ))
+            val items = json.optJSONArray("items") ?: return@buildList
+            for (index in 0 until items.length()) {
+                parseBridgeTrack(items.optJSONObject(index), includeStreamUrl = true)?.let { add(it) }
             }
         }
     }
@@ -399,6 +443,12 @@ fun MelodexApp(player: Player) {
     var query by remember { mutableStateOf("") }
     var bridgeStatus by remember { mutableStateOf("Pairing is optional. Scan a desktop QR code to connect.") }
     var bridgeResults by remember { mutableStateOf<List<Track>>(emptyList()) }
+    var bridgeLibraryStatus by remember { mutableStateOf("Pair a desktop to browse its library. On this phone works without pairing.") }
+    var bridgeLibraryLoading by remember { mutableStateOf(false) }
+    var desktopPlayback by remember { mutableStateOf<DesktopPlaybackSnapshot?>(null) }
+    var desktopPlaybackMessage by remember { mutableStateOf("Pair a computer to view its playback queue.") }
+    var desktopPlaybackLoading by remember { mutableStateOf(false) }
+    var desktopQueueDialogOpen by remember { mutableStateOf(false) }
     var nowPlaying by remember { mutableStateOf<Track?>(null) }
     var playbackPositionMs by remember { mutableStateOf(0L) }
     var playbackDurationMs by remember { mutableStateOf(0L) }
@@ -459,6 +509,7 @@ fun MelodexApp(player: Player) {
                     bridgeReconnectVersion += 1
                     bridgeConnectionState = BridgeConnectionState.CONNECTED
                     bridgeResults = emptyList()
+                    bridgeLibraryStatus = "Connected. Browse the desktop library or search connected music."
                     bridgeStatus = "Connected to $displayName."
                     musicSource = MusicSource.BRIDGE
                 } catch (e: Exception) {
@@ -517,12 +568,24 @@ fun MelodexApp(player: Player) {
                 bridgeDeviceId = deviceId
                 bridgeReconnectVersion += 1
                 bridgeConnectionState = BridgeConnectionState.CONNECTED
+                if (!isCurrentConnection) bridgeResults = emptyList()
+                bridgeLibraryStatus = if (bridgeResults.isEmpty()) {
+                    "Connected. Browse the desktop library or search connected music."
+                } else {
+                    "${bridgeResults.size} results are ready."
+                }
                 bridgeStatus = "Connected to $displayName."
             } catch (e: Exception) {
                 if (isCurrentConnection) {
                     bridgeConnectionState = BridgeConnectionState.UNAVAILABLE
                 } else if (!hasSavedConnection) {
                     bridgeConnectionState = BridgeConnectionState.UNPAIRED
+                }
+                if (bridgeConnectionState == BridgeConnectionState.UNAVAILABLE) {
+                    bridgeResults = emptyList()
+                    bridgeLibraryStatus = "Desktop library unavailable. Switch to On this phone to keep listening."
+                } else if (bridgeConnectionState == BridgeConnectionState.UNPAIRED) {
+                    bridgeLibraryStatus = "Pair a desktop to browse its library. On this phone works without pairing."
                 }
                 bridgeStatus = e.message ?: "Connection failed."
             }
@@ -555,6 +618,7 @@ fun MelodexApp(player: Player) {
             bridgeDeviceId = ""
             bridgeConnectionState = BridgeConnectionState.UNPAIRED
             bridgeResults = emptyList()
+            bridgeLibraryStatus = "Pair a desktop to browse its library. On this phone works without pairing."
             showAdvancedBridgeSetup = false
             bridgeStatus = if (revoked) {
                 "Saved Bridge connection removed from this phone."
@@ -583,6 +647,7 @@ fun MelodexApp(player: Player) {
     LaunchedEffect(bridgeUrl, token, isAppForeground) {
         if (bridgeUrl.isBlank() || token.isBlank()) {
             bridgeConnectionState = BridgeConnectionState.UNPAIRED
+            bridgeLibraryStatus = "Pair a desktop to browse its library. On this phone works without pairing."
             return@LaunchedEffect
         }
         if (!isAppForeground) return@LaunchedEffect
@@ -599,15 +664,43 @@ fun MelodexApp(player: Player) {
                 if (wasUnavailable) {
                     bridgeReconnectVersion += 1
                     bridgeStatus = "Connection restored to ${bridgeName.ifBlank { "Melodex computer" }}."
+                    bridgeLibraryStatus = "Connection restored. Browse the desktop library or search connected music."
                 } else if (wasChecking) {
                     bridgeStatus = "Connected to ${bridgeName.ifBlank { "Melodex computer" }}."
+                    if (bridgeResults.isEmpty()) {
+                        bridgeLibraryStatus = "Connected. Browse the desktop library or search connected music."
+                    }
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
                 bridgeConnectionState = BridgeConnectionState.UNAVAILABLE
                 bridgeResults = emptyList()
+                bridgeLibraryStatus = "Desktop library unavailable. Switch to On this phone to keep listening."
                 bridgeStatus = "Can't reach ${bridgeName.ifBlank { "Melodex computer" }} at its saved LAN address. It may be offline or have a new address. Scan a new QR code to reconnect."
+            }
+            delay(BRIDGE_CONNECTION_POLL_INTERVAL_MS)
+        }
+    }
+
+    LaunchedEffect(bridgeUrl, token, bridgeConnectionState, isAppForeground, musicSource) {
+        if (musicSource != MusicSource.BRIDGE || !isAppForeground) return@LaunchedEffect
+        if (bridgeConnectionState != BridgeConnectionState.CONNECTED) {
+            desktopPlayback = null
+            desktopQueueDialogOpen = false
+            desktopPlaybackLoading = false
+            desktopPlaybackMessage = when (bridgeConnectionState) {
+                BridgeConnectionState.UNPAIRED -> "Pair a computer to view its playback queue."
+                BridgeConnectionState.CHECKING -> "Checking the desktop connection…"
+                BridgeConnectionState.UNAVAILABLE -> "Desktop playback is unavailable. Phone playback and its queue still work."
+                BridgeConnectionState.CONNECTED -> "Connect to a desktop to view its playback queue."
+            }
+            return@LaunchedEffect
+        }
+
+        while (true) {
+            if (!desktopPlaybackLoading) {
+                loadDesktopPlayback(showLoading = desktopPlayback == null)
             }
             delay(BRIDGE_CONNECTION_POLL_INTERVAL_MS)
         }
@@ -668,6 +761,111 @@ fun MelodexApp(player: Player) {
                 localLoading = false
             }
         }
+    }
+
+    fun searchBridgeLibrary() {
+        val searchQuery = query.trim()
+        if (searchQuery.isBlank()) {
+            bridgeLibraryStatus = "Enter a search to find desktop music."
+            return
+        }
+        if (bridgeConnectionState != BridgeConnectionState.CONNECTED || bridgeLibraryLoading) return
+        val baseUrl = bridgeUrl
+        val bridgeToken = token
+        bridgeLibraryLoading = true
+        bridgeLibraryStatus = "Searching connected music…"
+        scope.launch {
+            try {
+                val results = withContext(Dispatchers.IO) {
+                    BridgeClient(baseUrl, bridgeToken).search(searchQuery)
+                }
+                if (baseUrl != bridgeUrl || bridgeToken != token || bridgeConnectionState != BridgeConnectionState.CONNECTED) {
+                    return@launch
+                }
+                bridgeResults = results
+                bridgeLibraryStatus = if (results.isEmpty()) {
+                    "No matches. Try another search or browse the desktop library."
+                } else {
+                    "${results.size} results from connected music sources."
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                if (baseUrl == bridgeUrl && bridgeToken == token && bridgeConnectionState == BridgeConnectionState.CONNECTED) {
+                    bridgeResults = emptyList()
+                    bridgeLibraryStatus = "Search failed. Check the desktop connection and try again."
+                }
+            } finally {
+                bridgeLibraryLoading = false
+            }
+        }
+    }
+
+    fun browseDesktopLibrary() {
+        if (bridgeConnectionState != BridgeConnectionState.CONNECTED || bridgeLibraryLoading) return
+        val baseUrl = bridgeUrl
+        val bridgeToken = token
+        bridgeLibraryLoading = true
+        bridgeLibraryStatus = "Loading desktop library…"
+        scope.launch {
+            try {
+                val results = withContext(Dispatchers.IO) {
+                    BridgeClient(baseUrl, bridgeToken).browse()
+                }
+                if (baseUrl != bridgeUrl || bridgeToken != token || bridgeConnectionState != BridgeConnectionState.CONNECTED) {
+                    return@launch
+                }
+                bridgeResults = results
+                bridgeLibraryStatus = if (results.isEmpty()) {
+                    "No desktop tracks found. Check the computer’s local library or search connected music."
+                } else {
+                    "${results.size} tracks from the desktop library."
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                if (baseUrl == bridgeUrl && bridgeToken == token && bridgeConnectionState == BridgeConnectionState.CONNECTED) {
+                    bridgeResults = emptyList()
+                    bridgeLibraryStatus = "The desktop library could not be loaded. Reconnect and try again."
+                }
+            } finally {
+                bridgeLibraryLoading = false
+            }
+        }
+    }
+
+    suspend fun loadDesktopPlayback(showLoading: Boolean) {
+        if (bridgeConnectionState != BridgeConnectionState.CONNECTED) return
+        val baseUrl = bridgeUrl
+        val bridgeToken = token
+        if (showLoading) {
+            desktopPlaybackLoading = true
+            desktopPlaybackMessage = if (desktopPlayback == null) "Loading desktop playback…" else "Refreshing desktop playback…"
+        }
+        try {
+            val snapshot = withContext(Dispatchers.IO) {
+                BridgeClient(baseUrl, bridgeToken).playbackSnapshot()
+            }
+            if (baseUrl == bridgeUrl && bridgeToken == token && bridgeConnectionState == BridgeConnectionState.CONNECTED) {
+                desktopPlayback = snapshot
+                desktopPlaybackMessage = "Desktop playback is up to date."
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            if (baseUrl == bridgeUrl && bridgeToken == token && bridgeConnectionState == BridgeConnectionState.CONNECTED) {
+                desktopPlayback = null
+                desktopQueueDialogOpen = false
+                desktopPlaybackMessage = "Desktop playback status could not be loaded. Reconnect or refresh to try again."
+            }
+        } finally {
+            if (showLoading) desktopPlaybackLoading = false
+        }
+    }
+
+    fun refreshDesktopPlayback() {
+        if (bridgeConnectionState != BridgeConnectionState.CONNECTED || desktopPlaybackLoading) return
+        scope.launch { loadDesktopPlayback(showLoading = true) }
     }
 
     fun savePhoneQueue(tracks: List<Track>, index: Int, positionMs: Long) {
@@ -1487,31 +1685,102 @@ fun MelodexApp(player: Player) {
                             }
                         }
 
+                        if (bridgeUrl.isNotBlank() && token.isNotBlank()) {
+                            Card(Modifier.fillMaxWidth()) {
+                                Column(
+                                    Modifier.fillMaxWidth().padding(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text("Desktop playback", style = MaterialTheme.typography.titleSmall)
+                                    val snapshot = desktopPlayback
+                                    if (snapshot == null) {
+                                        Text(
+                                            desktopPlaybackMessage,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        if (desktopPlaybackLoading) {
+                                            CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                                        }
+                                        OutlinedButton(
+                                            onClick = { refreshDesktopPlayback() },
+                                            enabled = bridgeConnectionState == BridgeConnectionState.CONNECTED &&
+                                                !desktopPlaybackLoading
+                                        ) {
+                                            Text(if (desktopPlaybackLoading) "Refreshing…" else "Refresh status")
+                                        }
+                                    } else {
+                                        val currentTrack = snapshot.currentTrack
+                                        Text(
+                                            when {
+                                                currentTrack == null -> "Nothing is playing on the desktop."
+                                                snapshot.isPlaying -> "Playing on the desktop"
+                                                else -> "Paused on the desktop"
+                                            },
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        if (currentTrack != null) {
+                                            Text(
+                                                "${currentTrack.title} · ${currentTrack.artist}",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                        Text(
+                                            "Queue: ${snapshot.queue.size} tracks · Position ${snapshot.positionMs / 1000}s",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Text(
+                                            desktopPlaybackMessage,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            OutlinedButton(
+                                                onClick = { refreshDesktopPlayback() },
+                                                enabled = bridgeConnectionState == BridgeConnectionState.CONNECTED &&
+                                                    !desktopPlaybackLoading
+                                            ) {
+                                                Text(if (desktopPlaybackLoading) "Refreshing…" else "Refresh")
+                                            }
+                                            TextButton(
+                                                onClick = { desktopQueueDialogOpen = true }
+                                            ) { Text("View queue (${snapshot.queue.size})") }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                             OutlinedTextField(
                                 query,
                                 { query = it },
-                                label = { Text("Search connected music") },
+                                label = { Text("Search desktop music") },
                                 singleLine = true,
                                 modifier = Modifier.weight(1f)
                             )
                             Button(
-                                onClick = {
-                                    scope.launch {
-                                        bridgeStatus = "Searching…"
-                                        try {
-                                            bridgeResults = withContext(Dispatchers.IO) {
-                                                BridgeClient(bridgeUrl, token).search(query)
-                                            }
-                                            bridgeStatus = "${bridgeResults.size} results"
-                                        } catch (e: Exception) {
-                                            bridgeStatus = e.message ?: "Search failed"
-                                        }
-                                    }
-                                },
-                                enabled = bridgeConnectionState == BridgeConnectionState.CONNECTED && query.isNotBlank()
+                                onClick = { searchBridgeLibrary() },
+                                enabled = bridgeConnectionState == BridgeConnectionState.CONNECTED &&
+                                    query.isNotBlank() && !bridgeLibraryLoading
                             ) { Text("Search") }
                         }
+                        OutlinedButton(
+                            onClick = { browseDesktopLibrary() },
+                            enabled = bridgeConnectionState == BridgeConnectionState.CONNECTED && !bridgeLibraryLoading,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(if (bridgeLibraryLoading) "Loading…" else "Browse desktop library")
+                        }
+                        Text(
+                            bridgeLibraryStatus,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                         if (phoneQueue.isNotEmpty()) {
                             OutlinedButton(
                                 onClick = { queueDialogOpen = true },
@@ -1558,6 +1827,43 @@ fun MelodexApp(player: Player) {
                         }
                     )
                 }
+            }
+        }
+
+        if (desktopQueueDialogOpen) {
+            val snapshot = desktopPlayback
+            if (snapshot != null) {
+                AlertDialog(
+                    onDismissRequest = { desktopQueueDialogOpen = false },
+                    title = { Text("Desktop queue (${snapshot.queue.size})") },
+                    text = {
+                        if (snapshot.queue.isEmpty()) {
+                            Text("The desktop queue is empty.")
+                        } else {
+                            LazyColumn(Modifier.heightIn(max = 420.dp)) {
+                                itemsIndexed(snapshot.queue, key = { index, track -> "${track.queueKey()}|$index" }) { index, track ->
+                                    val selected = index == snapshot.currentIndex
+                                    ListItem(
+                                        headlineContent = { Text(track.title) },
+                                        supportingContent = {
+                                            Text(
+                                                if (selected && snapshot.isPlaying) "Playing on desktop · ${track.artist}"
+                                                else if (selected) "Selected on desktop · ${track.artist}"
+                                                else track.artist
+                                            )
+                                        },
+                                        trailingContent = {
+                                            Text("${index + 1}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = { desktopQueueDialogOpen = false }) { Text("Close") }
+                    }
+                )
             }
         }
 
