@@ -140,9 +140,12 @@ play/pause buttons are supported, and unplugging headphones pauses playback.
 
 ## 8. Current preview limitations
 
-The local library still shows title, artist, and album with basic playback
-controls. A persistent queue, local search, artwork, QR pairing, and Flow/taste
-features are later campaign work.
+The published v0.7.21 APK includes P19a: the phone library and direct track
+playback. P19b and P19c are development work and are not included in that
+release. P19c adds local search and sorting, album thumbnails, richer metadata,
+clearer empty/error states, and a queue saved across app restarts; those
+features still need physical-device verification before release. QR pairing
+and Flow/taste remain later campaign work.
 
 ## 9. Update or uninstall
 
