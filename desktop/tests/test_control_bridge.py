@@ -184,6 +184,61 @@ def test_control_bridge_and_client(tmp_path: Path):
     assert not state.exists()
 
 
+def test_bridge_query_tokens_only_authorize_media_streams(tmp_path: Path):
+    media = tmp_path / "song.mp3"
+    media.write_bytes(b"track")
+
+    class LocalTrackManager(FakeManager):
+        def resolve(self, track):
+            if track.get("provider_id") == "local":
+                return {
+                    "provider_id": "local",
+                    "track_id": "song",
+                    "artist": "Local",
+                    "title": "Song",
+                    "local_path": str(self.media),
+                }
+            return super().resolve(track)
+
+    bridge = ProviderBridge(
+        LocalTrackManager(media),
+        "127.0.0.1",
+        0,
+        token="secret",
+        controller=FakeController(),
+        state_path=tmp_path / "bridge.json",
+    )
+    bridge.start()
+    try:
+        base_url = f"http://127.0.0.1:{bridge.port}"
+        status, health = _bridge_http(f"{base_url}/health")
+        assert status == 200
+        assert health["ok"] is True
+
+        for path in (
+            "/v1/providers",
+            "/v1/providers?token=secret",
+            "/v1/browse?provider=local&token=secret",
+            "/v1/status?token=secret",
+        ):
+            status, response = _bridge_http(f"{base_url}{path}")
+            assert status == 401
+            assert response["error"] == "unauthorized"
+
+        status, resolved = _bridge_http(
+            f"{base_url}/v1/resolve?provider=local&id=song",
+            token="secret",
+        )
+        assert status == 200
+        assert "local_path" not in resolved
+        media_url = resolved["stream_url"]
+        with urllib.request.urlopen(media_url, timeout=3) as response:
+            assert response.status == 200
+            assert response.read() == b"track"
+    finally:
+        bridge.stop()
+
+
 def test_bridge_handoff_is_guarded_and_stops_only_the_matching_desktop_session(tmp_path: Path):
     media = tmp_path / "song.mp3"
     media.write_bytes(b"track")

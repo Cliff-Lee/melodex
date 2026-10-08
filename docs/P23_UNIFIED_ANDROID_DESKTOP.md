@@ -1,6 +1,6 @@
 # P23 — Unified Android & Desktop Listening
 
-**Status: in progress. Current slice: P23e — complete the companion experience.**
+**Status: in progress. Current slice: P23f — security and release qualification.**
 
 ## Goal
 
@@ -64,6 +64,14 @@ At the P23a baseline, Bridge search started one track at a time and Bridge sourc
 - Pairing, checking, connected, and unavailable states explain whether desktop browsing is available. The **On this phone** player and its queue remain available when the Bridge is offline.
 - Browse and playback status use stable track metadata; stream URLs and paired credentials are not added to phone queue storage.
 - Android CI validates the build. Desktop discovery over LAN, remote queue accuracy, process restart, and device playback remain owner checks. Native iPhone support remains deferred.
+
+## P23f acceptance
+
+- Paired-device tokens are stored as hashes with private file permissions, and revoking a device invalidates both Bridge requests and its active media stream.
+- Pairing codes are short-lived and single-use. Control, library, and playback-status routes require an Authorization bearer token; query-string tokens are accepted only on `/v1/media` for direct audio playback.
+- The desktop starts its Bridge on loopback. Enabling LAN access requires explicit confirmation, and the Bridge dialog can restore loopback-only access. Public track responses omit local filesystem paths.
+- Automated tests cover unauthorized query-token access, media streaming, token revocation, expired pairing codes, independent paired-phone streams, Bridge restart, handoff guards, and session-safe stop behavior.
+- Android, Python qualification, desktop, and Linux package workflows pass on the same draft PR head. Phone playback, process restart, Bluetooth/audio focus, changed-address recovery, and browse/queue accuracy remain owner device checks. Native iPhone support remains deferred.
 
 ## P23a acceptance
 

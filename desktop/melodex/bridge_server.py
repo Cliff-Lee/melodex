@@ -256,7 +256,7 @@ class ProviderBridge:
                 if u.path in {"/health", "/openapi.json"}:
                     return True
                 auth = self.headers.get("Authorization", "")
-                query_token = q.get("token", [""])[0]
+                query_token = q.get("token", [""])[0] if u.path == "/v1/media" else ""
                 header_token = auth[7:] if auth.startswith("Bearer ") else ""
                 return bridge._authorized_token(header_token) or bridge._authorized_token(query_token)
 
