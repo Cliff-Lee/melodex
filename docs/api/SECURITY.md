@@ -10,7 +10,7 @@ External devices should only be allowed when LAN access is intentional.
 
 Treat Bridge and MCP bearer tokens as passwords.
 
-QR pairing uses a one-time code that expires after two minutes. Each paired phone receives a separate token. The phone encrypts its saved Bridge token with Android Keystore; the desktop stores only the token digest in a user-only file and supports revocation per phone.
+QR pairing uses a one-time code that expires after two minutes. Each paired phone receives a separate token. The phone encrypts its saved Bridge token with Android Keystore; the desktop stores only the token digest in a file with user-only permissions where supported and supports revocation per phone.
 
 Do not include tokens in logs, screenshots, issue reports or model prompts.
 
