@@ -1,6 +1,6 @@
 # P22 — Unkillable Playback
 
-**Status: release candidate v0.7.25. P22f qualification is recorded below.** P21 shipped Android 16 and Google Play preparation in v0.7.24. P23 remains the follow-up for broader reference-class playback qualification.
+**Status: release candidate v0.7.25. P22f qualification is recorded below.** P21 shipped Android 16 and Google Play preparation in v0.7.24. P23 builds on this baseline with unified Android and desktop listening; see docs/P23_UNIFIED_ANDROID_DESKTOP.md.
 
 ## Goal
 

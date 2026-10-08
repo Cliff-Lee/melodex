@@ -1,0 +1,39 @@
+# P23 — Unified Android & Desktop Listening
+
+**Status: in progress. Current slice: P23a — independent stream qualification.**
+
+## Goal
+
+Make Melodex one local-first listening system across desktop, NAS, and Android. Android must work as a useful player on its own and gain an optional desktop companion mode when paired.
+
+## Product contract
+
+- **On this phone:** Android plays its MediaStore library using its own Media3 session, queue, and controls. It remains useful without a desktop connection.
+- **Connect a Melodex:** a phone can browse and stream supported desktop sources over the trusted local network. Playback remains on that phone.
+- **Multiple phones:** each paired phone has its own player and can request different music from the same desktop. Phone playback must not replace or pause the desktop queue.
+- **Local first:** pairing uses the desktop QR code and a short-lived code on the same LAN. No external Melodex relay, cloud account, or subscription is required; remote providers may still use their source network.
+- **Security:** pairing is explicit, each phone has its own revocable token, and tokens stay encrypted on Android. Queues and checkpoints must use stable identities; never persist expiring stream URLs or credentials.
+- Native iPhone support remains deferred. Google Play publication is outside this campaign.
+
+## Released baseline and gaps
+
+v0.7.25 already includes Android local MediaStore playback and queue restoration, a phone-owned playback service, optional QR pairing, per-device Bridge tokens and revocation, and Bridge search/resolve/playback from desktop providers.
+
+The current Bridge search path starts one track at a time. A phone cannot add Bridge tracks to its queue, and Bridge source identities are not restored after an Android process restart. Android CI currently compiles and packages the app; device playback checks remain owner-tested.
+
+## Stages
+
+1. **P23a — Prove independent phone streams.** Add an automated two-device Bridge test: pair two phones, stream different desktop tracks concurrently, prove the desktop queue is unchanged, and verify revoking one phone leaves the other connected.
+2. **P23b — Unify the phone queue.** Let local and Bridge tracks share the phone-owned queue with add/remove/reorder and next/previous behavior. Preserve local playback while disconnected; store Bridge items by provider-qualified stable ID and resolve again on resume.
+3. **P23c — Make pairing resilient on a home LAN.** Improve connection state and recovery when the desktop restarts or its local address changes. Keep QR pairing as the clear trust step and retain advanced manual setup only as a fallback.
+4. **P23d — Add explicit playback handoff.** Let the listener move a selected session between desktop and phone only on request; never take over another phone or alter an unrelated queue.
+5. **P23e — Complete the companion experience.** Make desktop library discovery, remote playback, queue state, and connection errors coherent from Android, while retaining full local playback when the Bridge is unavailable.
+6. **P23f — Security and release qualification.** Verify device revocation, reconnect behavior, concurrent independent streams, local/Bridge queue restoration, network boundaries, Android builds, and owner device checks.
+
+## P23a acceptance
+
+- Two paired device tokens can resolve and stream different desktop tracks at the same time.
+- The Bridge does not call desktop playback controls to serve a phone stream; the desktop queue remains unchanged.
+- Revoking one paired phone invalidates its stream token while another paired phone continues to stream.
+- Pairing and desktop-local media streaming do not depend on an external Melodex service.
+- Android device playback, Bluetooth/audio-focus, and process-restart checks are recorded as owner tests, separate from CI build evidence.

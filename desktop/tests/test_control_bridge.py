@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+from concurrent.futures import ThreadPoolExecutor
 import os
 import stat
 import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
@@ -277,5 +279,109 @@ def test_pairing_code_rejects_expired_code(tmp_path: Path):
         assert status == 401
         assert "expired" in response["error"]
         assert bridge.paired_devices() == []
+    finally:
+        bridge.stop()
+
+
+class IndependentStreamManager(FakeManager):
+    def __init__(self, media_by_id: dict[str, Path]):
+        super().__init__(next(iter(media_by_id.values())))
+        self.media_by_id = dict(media_by_id)
+
+    def resolve(self, track):
+        if track.get("provider_id") != "local":
+            return super().resolve(track)
+        track_id = str(track.get("track_id") or "")
+        media = self.media_by_id.get(track_id)
+        if media is None:
+            raise KeyError(track_id)
+        return {
+            "provider_id": "local",
+            "track_id": track_id,
+            "artist": "Phone client",
+            "title": track_id,
+            "local_path": str(media),
+        }
+
+
+def test_two_paired_phones_stream_independently_without_desktop_control(tmp_path: Path):
+    media_a = tmp_path / "phone-a.mp3"
+    media_b = tmp_path / "phone-b.mp3"
+    media_a.write_bytes(b"independent stream a")
+    media_b.write_bytes(b"independent stream b")
+    state = tmp_path / "bridge.json"
+    controller = FakeController()
+    controller.queue = [{"provider_id": "local", "track_id": "desktop-current"}]
+    original_desktop_queue = list(controller.queue)
+    bridge = ProviderBridge(
+        IndependentStreamManager({"phone-a": media_a, "phone-b": media_b}),
+        "127.0.0.1",
+        0,
+        token="desktop-token",
+        controller=controller,
+        state_path=state,
+    )
+    bridge.start()
+    try:
+        pair_url = f"http://127.0.0.1:{bridge.port}/v1/pair"
+        paired_devices = []
+        for device_name in ("Android phone A", "Android phone B"):
+            code = bridge.new_pairing_code()
+            status, paired = _bridge_http(
+                pair_url,
+                "POST",
+                {"code": code, "device_name": device_name},
+            )
+            assert status == 200
+            paired_devices.append(paired)
+
+        token_a = paired_devices[0]["token"]
+        token_b = paired_devices[1]["token"]
+        device_a = paired_devices[0]["device_id"]
+        assert token_a != token_b
+
+        stream_urls = []
+        for token, track_id in ((token_a, "phone-a"), (token_b, "phone-b")):
+            encoded_id = urllib.parse.quote(track_id)
+            status, resolved = _bridge_http(
+                f"http://127.0.0.1:{bridge.port}/v1/resolve"
+                f"?provider=local&id={encoded_id}",
+                token=token,
+            )
+            assert status == 200
+            stream_url = resolved["stream_url"]
+            stream_token = urllib.parse.parse_qs(
+                urllib.parse.urlparse(stream_url).query
+            )["token"][0]
+            assert stream_token == token
+            stream_urls.append(stream_url)
+
+        def read_stream(url: str) -> bytes:
+            with urllib.request.urlopen(url, timeout=3) as response:
+                assert response.status == 200
+                return response.read()
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            stream_a = pool.submit(read_stream, stream_urls[0])
+            stream_b = pool.submit(read_stream, stream_urls[1])
+            assert stream_a.result() == b"independent stream a"
+            assert stream_b.result() == b"independent stream b"
+
+        assert controller.queue == original_desktop_queue
+        assert controller.actions == []
+
+        status, result = _bridge_http(
+            f"http://127.0.0.1:{bridge.port}/v1/unpair",
+            "POST",
+            {"device_id": device_a},
+            token=token_a,
+        )
+        assert status == 200
+        assert result["ok"] is True
+        status, _ = _bridge_http(stream_urls[0])
+        assert status == 401
+        assert read_stream(stream_urls[1]) == b"independent stream b"
+        assert controller.queue == original_desktop_queue
+        assert controller.actions == []
     finally:
         bridge.stop()
