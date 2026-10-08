@@ -1,5 +1,5 @@
 #define MyAppName "Melodex"
-#define MyAppVersion "0.7.23"
+#define MyAppVersion "0.7.24"
 #define MyAppPublisher "Melodex contributors"
 #define MyAppExeName "Melodex.exe"
 

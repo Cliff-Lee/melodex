@@ -2,6 +2,7 @@ package com.melodex.app
 
 import android.Manifest
 import android.content.Context
+import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
@@ -56,6 +57,8 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
 
+
+private const val PRIVACY_POLICY_URL = "https://github.com/Cliff-Lee/melodex/blob/main/docs/PRIVACY.md"
 
 data class Track(
     val providerId: String,
@@ -644,6 +647,18 @@ fun MelodexApp(player: Player) {
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
+                        }
+                    },
+                    actions = {
+                        val context = LocalContext.current
+                        TextButton(
+                            onClick = {
+                                context.startActivity(
+                                    Intent(Intent.ACTION_VIEW, Uri.parse(PRIVACY_POLICY_URL))
+                                )
+                            }
+                        ) {
+                            Text("Privacy policy")
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
