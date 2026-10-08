@@ -222,9 +222,9 @@ fun MelodexApp(player: Player) {
     val visibleLocalTracks = remember(localTracks, localSearch, localSort) {
         val needle = localSearch.trim()
         val comparator: Comparator<Track> = when (localSort) {
-            LocalSort.TITLE -> compareBy(String.CASE_INSENSITIVE_ORDER) { it.title }.thenBy { it.artist }
-            LocalSort.ARTIST -> compareBy(String.CASE_INSENSITIVE_ORDER) { it.artist }.thenBy { it.title }
-            LocalSort.ALBUM -> compareBy(String.CASE_INSENSITIVE_ORDER) { it.album.ifBlank { it.title } }.thenBy { it.title }
+            LocalSort.TITLE -> compareBy<Track, String>(String.CASE_INSENSITIVE_ORDER) { track -> track.title }.thenBy { it.artist }
+            LocalSort.ARTIST -> compareBy<Track, String>(String.CASE_INSENSITIVE_ORDER) { track -> track.artist }.thenBy { it.title }
+            LocalSort.ALBUM -> compareBy<Track, String>(String.CASE_INSENSITIVE_ORDER) { track -> track.album.ifBlank { track.title } }.thenBy { it.title }
         }
         localTracks
             .filter { track ->
