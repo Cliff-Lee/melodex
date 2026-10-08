@@ -72,7 +72,7 @@ data class Track(
     val source: TrackSource = TrackSource.PHONE
 )
 
-internal enum class TrackSource { PHONE, BRIDGE }
+enum class TrackSource { PHONE, BRIDGE }
 
 private fun Track.queueKey(): String = "$source|$providerId|$trackId"
 
