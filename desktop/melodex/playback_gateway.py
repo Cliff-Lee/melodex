@@ -135,6 +135,25 @@ class PlaybackGateway:
             self._resources[token] = dict(resource)
         return f"http://127.0.0.1:{self.port}/play/{token}"
 
+    def unregister(self, playback_url: str) -> bool:
+        try:
+            parsed = urlparse(str(playback_url or ""))
+            port = parsed.port
+        except (TypeError, ValueError):
+            return False
+        if parsed.scheme != "http" or parsed.hostname != "127.0.0.1":
+            return False
+        if not parsed.path.startswith("/play/"):
+            return False
+        token = parsed.path[len("/play/") :].split("/", 1)[0]
+        if not token:
+            return False
+        with self._lock:
+            server = self._server
+            if server is None or port != int(server.server_address[1]):
+                return False
+            return self._resources.pop(token, None) is not None
+
     def _request_upstream(
         self,
         method: str,
