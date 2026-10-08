@@ -54,6 +54,11 @@ def test_local_playback_queue_survives_restart_without_stream_credentials(
         {"provider_id": "radio", "track_id": "radio:1", "stream_url": "https://secret.example"},
     ]
     first.save_playback_queue(queue, 1)
+    stored_queue = first._conn.execute(
+        "SELECT tracks_json FROM playback_queue WHERE id=1"
+    ).fetchone()[0]
+    assert "stream_url" not in stored_queue
+    assert "secret.example" not in stored_queue
     first.close()
 
     restored = UserState(db)
@@ -61,8 +66,9 @@ def test_local_playback_queue_survives_restart_without_stream_credentials(
         snapshot = restored.playback_queue()
         assert snapshot is not None
         assert [row["track_id"] for row in snapshot["tracks"]] == [
-            "/music/a.flac", "/music/b.flac"
+            "/music/a.flac", "/music/b.flac", "radio:1"
         ]
+        assert snapshot["tracks"][2]["provider_id"] == "radio"
         assert snapshot["queue_index"] == 1
         assert all("stream_url" not in row for row in snapshot["tracks"])
     finally:
