@@ -1,6 +1,7 @@
 package com.melodex.app
 
 import androidx.media3.common.AudioAttributes
+import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaSession
@@ -17,8 +18,10 @@ class PlaybackService : MediaSessionService() {
             setAudioAttributes(AudioAttributes.DEFAULT, true)
             setHandleAudioBecomingNoisy(true)
             addListener(object : Player.Listener {
-                override fun onEvents(player: Player, events: Player.Events) {
-                    LocalQueueStore.saveFromPlayer(this@PlaybackService, player)
+                override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                    if (mediaItem?.mediaId?.startsWith("local|") == true) {
+                        LocalQueueStore.saveFromPlayer(this@PlaybackService, player)
+                    }
                 }
             })
         }
