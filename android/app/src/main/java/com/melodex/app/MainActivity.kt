@@ -19,8 +19,10 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.layout.*
@@ -33,6 +35,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
@@ -44,8 +47,10 @@ import com.google.common.util.concurrent.ListenableFuture
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.math.roundToLong
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
@@ -70,6 +75,19 @@ private enum class LocalSort(val label: String) {
     ARTIST("Artist"),
     ALBUM("Album")
 }
+
+private val MelodexColorScheme = darkColorScheme(
+    primary = Color(0xFF89D8FF),
+    onPrimary = Color(0xFF07131E),
+    secondary = Color(0xFFC49BFF),
+    tertiary = Color(0xFF8B9BFF),
+    background = Color(0xFF080B20),
+    onBackground = Color(0xFFEAF0FF),
+    surface = Color(0xFF11182D),
+    onSurface = Color(0xFFEAF0FF),
+    surfaceVariant = Color(0xFF202A43),
+    onSurfaceVariant = Color(0xFFB4C1D8)
+)
 
 class BridgeClient(var baseUrl: String, var token: String) {
     private fun get(path: String): JSONObject {
@@ -199,7 +217,7 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun PlayerConnectionScreen(error: String?, onRetry: () -> Unit) {
-    MaterialTheme(colorScheme = darkColorScheme()) {
+    MaterialTheme(colorScheme = MelodexColorScheme) {
         Surface(Modifier.fillMaxSize()) {
             Column(
                 Modifier.fillMaxSize().padding(24.dp),
@@ -255,6 +273,9 @@ fun MelodexApp(player: Player) {
     var bridgeStatus by remember { mutableStateOf("Pairing is optional. Scan a desktop QR code to connect.") }
     var bridgeResults by remember { mutableStateOf<List<Track>>(emptyList()) }
     var nowPlaying by remember { mutableStateOf<Track?>(null) }
+    var playbackPositionMs by remember { mutableStateOf(0L) }
+    var playbackDurationMs by remember { mutableStateOf(0L) }
+    var playerIsPlaying by remember { mutableStateOf(player.isPlaying) }
 
     val scanOptions = remember {
         ScanOptions().apply {
@@ -497,12 +518,26 @@ fun MelodexApp(player: Player) {
     }
 
     val latestQueue = rememberUpdatedState(localQueue)
+    LaunchedEffect(player) {
+        while (true) {
+            playbackPositionMs = player.currentPosition.coerceAtLeast(0L)
+            playbackDurationMs = player.duration.takeIf { it > 0L } ?: 0L
+            playerIsPlaying = player.isPlaying
+            delay(500L)
+        }
+    }
     DisposableEffect(player) {
         val listener = object : Player.Listener {
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 if (mediaItem?.mediaId?.startsWith("local|") == true) {
                     nowPlaying = latestQueue.value.getOrNull(player.currentMediaItemIndex)
+                } else if (mediaItem == null) {
+                    nowPlaying = null
                 }
+            }
+
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                playerIsPlaying = isPlaying
             }
         }
         player.addListener(listener)
@@ -586,8 +621,37 @@ fun MelodexApp(player: Player) {
         nowPlaying = track
     }
 
-    MaterialTheme(colorScheme = darkColorScheme()) {
-        Scaffold(topBar = { TopAppBar(title = { Text("Melodex") }) }) { pad ->
+    MaterialTheme(colorScheme = MelodexColorScheme) {
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                Modifier.size(36.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text("♫", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.titleLarge)
+                            }
+                            Spacer(Modifier.width(10.dp))
+                            Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
+                                Text("Melodex", style = MaterialTheme.typography.titleMedium)
+                                Text(
+                                    "YOUR MUSIC, IN REACH",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.background
+                    )
+                )
+            }
+        ) { pad ->
             Column(
                 Modifier.padding(pad).padding(16.dp).fillMaxSize(),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -614,8 +678,13 @@ fun MelodexApp(player: Player) {
                 }
 
                 Text(
-                    if (musicSource == MusicSource.PHONE) "Play music on this phone" else "Connect to another Melodex",
+                    if (musicSource == MusicSource.PHONE) "Play from this phone" else "Browse and play from your Melodex Bridge",
                     style = MaterialTheme.typography.titleMedium
+                )
+                Text(
+                    "Playback and controls stay on this phone.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
                 if (musicSource == MusicSource.PHONE) {
@@ -760,6 +829,11 @@ fun MelodexApp(player: Player) {
                                         "Paired with ${bridgeName.ifBlank { "Melodex computer" }}",
                                         style = MaterialTheme.typography.titleSmall
                                     )
+                                    Text(
+                                        "This phone has its own player. Pair another phone separately to listen independently.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
                                     Text(bridgeStatus, style = MaterialTheme.typography.bodySmall)
                                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                         Button(onClick = {
@@ -769,8 +843,7 @@ fun MelodexApp(player: Player) {
                                     }
                                 } else {
                                     Text(
-                                        "Connect to another Melodex on your local Wi-Fi. Pairing is optional; "
-                                            + "music stored on this phone works without a computer."
+                                        "Pair this phone over local Wi-Fi. Each phone keeps its own player, so listening here will not interrupt another phone."
                                     )
                                     Button(
                                         onClick = { startQrScan() },
@@ -851,14 +924,18 @@ fun MelodexApp(player: Player) {
                     }
                 }
 
-                nowPlaying?.let {
-                    Text("Now playing: ${it.artist} — ${it.title}", style = MaterialTheme.typography.titleSmall)
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { if (player.isPlaying) player.pause() else player.play() }) {
-                        Text("Play / Pause")
-                    }
-                    OutlinedButton(onClick = { player.seekTo(0) }) { Text("Restart") }
+                nowPlaying?.let { track ->
+                    NowPlayingCard(
+                        track = track,
+                        isPlaying = playerIsPlaying,
+                        positionMs = playbackPositionMs,
+                        durationMs = playbackDurationMs,
+                        queueCount = if (musicSource == MusicSource.PHONE && localQueue.isNotEmpty()) localQueue.size else null,
+                        onPlayPause = { if (player.isPlaying) player.pause() else player.play() },
+                        onRestart = { player.seekTo(0L) },
+                        onSeek = { player.seekTo(it) },
+                        onQueue = { queueDialogOpen = true }
+                    )
                 }
             }
         }
@@ -903,6 +980,96 @@ fun MelodexApp(player: Player) {
                     }
                 }
             )
+        }
+    }
+}
+
+@Composable
+private fun NowPlayingCard(
+    track: Track,
+    isPlaying: Boolean,
+    positionMs: Long,
+    durationMs: Long,
+    queueCount: Int?,
+    onPlayPause: () -> Unit,
+    onRestart: () -> Unit,
+    onSeek: (Long) -> Unit,
+    onQueue: () -> Unit
+) {
+    val duration = durationMs.takeIf { it > 0L } ?: track.durationMs
+    var isSeeking by remember(track.providerId, track.trackId) { mutableStateOf(false) }
+    var seekFraction by remember(track.providerId, track.trackId) { mutableStateOf(0f) }
+    val playbackFraction = if (duration > 0L) {
+        (positionMs.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
+    } else {
+        0f
+    }
+    val shownFraction = if (isSeeking) seekFraction else playbackFraction
+
+    Card(
+        Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TrackArtwork(track, Modifier.size(56.dp))
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        "NOW PLAYING",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        track.title.ifBlank { "Unknown track" },
+                        style = MaterialTheme.typography.titleSmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        track.artist.ifBlank { "Unknown artist" },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+
+            if (duration > 0L) {
+                Slider(
+                    value = shownFraction,
+                    onValueChange = {
+                        seekFraction = it
+                        isSeeking = true
+                    },
+                    onValueChangeFinished = {
+                        if (isSeeking) onSeek((seekFraction * duration).roundToLong())
+                        isSeeking = false
+                    },
+                    valueRange = 0f..1f,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    val shownPosition = if (isSeeking) (seekFraction * duration).roundToLong() else positionMs
+                    Text(formatDuration(shownPosition), style = MaterialTheme.typography.labelSmall)
+                    Text(formatDuration(duration), style = MaterialTheme.typography.labelSmall)
+                }
+            }
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = onRestart) { Text("Restart") }
+                Spacer(Modifier.weight(1f))
+                if (queueCount != null) {
+                    TextButton(onClick = onQueue) { Text("Queue ($queueCount)") }
+                }
+                Button(onClick = onPlayPause) {
+                    Text(if (isPlaying) "Pause" else "Play")
+                }
+            }
         }
     }
 }

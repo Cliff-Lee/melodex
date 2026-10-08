@@ -11,7 +11,7 @@ Melodex does not run downloaded provider code on Android. Local playback opens
 the selected audio item through Android's media library. Bridge access is
 optional.
 
-The v0.7.22 release includes P19a–P19d: local playback, background controls, local library search and queue, and optional QR pairing with a desktop Bridge. Choose **On this phone** to play without a computer, or **Connect a Melodex** to pair over your local network.
+The v0.7.23 release adds the Melodex Android app icon, a seekable now-playing panel, and clearer phone-to-phone playback behavior on top of P19a–P19d. Choose **On this phone** to play without a computer, or **Connect a Melodex** to pair over your local network.
 
 ## 1. Download the Android APK
 
@@ -43,7 +43,7 @@ Only install APKs downloaded from the official Melodex GitHub release page.
    stored on the device.
 3. Tap **Play something** to start a randomly selected track, or tap a track to
    choose it yourself.
-4. Use **Play / Pause** or **Restart** at the bottom.
+4. Use the player panel at the bottom to play or pause, restart, seek, or open your queue.
 5. Use **Refresh** after adding music to the device.
 
 Melodex lists audio Android has indexed in its media library. If the list is
@@ -54,7 +54,13 @@ If you deny access, you can still use **Connect a Melodex**. To allow local
 music later, open **Settings → Apps → Melodex → Permissions → Music and audio**
 (the exact label varies by Android version).
 
-## 4. Optional: connect to another Melodex
+## 4. Use Melodex on more than one phone
+
+Each phone keeps its own Android player and local queue. Pair each phone separately with the Bridge; starting, pausing, or seeking on one phone does not control another.
+
+To check this build, pair two phones, start playback on both, then pause or seek on one. The other phone should keep playing. You can also check that each phone’s local queue remains independent.
+
+## 5. Optional: connect to another Melodex
 
 For this path, the phone and computer should be on the same trusted Wi-Fi/LAN.
 First confirm that the computer's Melodex can play the source you want to use.
@@ -91,7 +97,7 @@ The Bridge URL usually looks like `http://192.168.1.42:8766` or
 phone; those refer to the phone itself. Treat the session token like a
 password. It changes when the desktop Bridge restarts.
 
-## 5. If Android cannot connect to the Bridge
+## 6. If Android cannot connect to the Bridge
 
 Work through these checks in order.
 
@@ -120,7 +126,7 @@ From the Android browser, while on the same LAN, open
 `http://COMPUTER-IP:8766/health`. A reachable Bridge returns a small healthy
 status response. If it does not load, check the network, Bridge, and firewall.
 
-## 6. Security
+## 7. Security
 
 The Provider Bridge is intended for a **trusted local network**.
 
