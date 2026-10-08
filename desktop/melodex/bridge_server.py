@@ -283,7 +283,7 @@ class ProviderBridge:
                 tid = str(resolved.get("track_id") or "")
                 authorization = self.headers.get("Authorization", "")
                 access_token = authorization[7:] if authorization.startswith("Bearer ") else ""
-                if not access_token:
+                if not bridge._authorized_token(access_token):
                     _, query = self._query()
                     access_token = query.get("token", [""])[0]
                 media_q = urllib.parse.urlencode({"provider": pid, "id": tid, "token": access_token})
