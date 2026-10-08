@@ -480,6 +480,10 @@ class FlowPlayer(QObject):
         self._buffer_notice_timer.stop()
         self._end_buffer_stall()
         self._position_stall_monitor_active = False
+        self._last_progress_position_ms = max(
+            0, int(self.players[self.active].position())
+        )
+        self._last_progress_at = time.monotonic()
         if self._playback_refresh_cancel is not None:
             try:
                 self._playback_refresh_cancel("playback-recovery")
@@ -1459,11 +1463,7 @@ class FlowPlayer(QObject):
             QMediaPlayer.BufferedMedia,
         }:
             self._complete_playback_recovery(deck)
-            if (
-                deck == self.active
-                and self.players[deck].playbackState()
-                == QMediaPlayer.PlayingState
-            ):
+            if deck == self.active:
                 self._end_buffer_stall()
             play_id = self._first_music_play_by_deck.get(deck)
             if play_id is not None and self._first_music_timeline is not None:

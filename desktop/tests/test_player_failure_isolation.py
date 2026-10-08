@@ -151,6 +151,7 @@ def test_transient_source_refresh_runs_in_background_and_keeps_queue_until_ready
         {"track_id": "current", "stream_url": "https://stream.example/expired.mp3"}
     ]
     player.index = 0
+    player._playback_should_play = True
     errors = []
     player.error.connect(errors.append)
 
@@ -228,6 +229,7 @@ def test_recovery_is_bounded_to_two_refresh_attempts():
         {"track_id": "current", "stream_url": "https://stream.example/old"}
     ]
     player.index = 0
+    player._playback_should_play = True
     errors = []
     player.error.connect(errors.append)
 
@@ -271,6 +273,7 @@ def test_stale_refresh_result_cannot_replace_a_new_queue():
         {"track_id": "old", "stream_url": "https://stream.example/old.mp3"}
     ]
     player.index = 0
+    player._playback_should_play = True
     player._on_player_error(0, _network_error(), "network unavailable")
     _process_events(app)
     assert len(jobs) == 1
