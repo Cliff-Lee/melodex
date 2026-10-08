@@ -532,6 +532,7 @@ fun MelodexApp(player: Player) {
             return
         }
 
+        player.pause()
         player.clearMediaItems()
         nowPlaying = null
         val baseUrl = bridgeUrl

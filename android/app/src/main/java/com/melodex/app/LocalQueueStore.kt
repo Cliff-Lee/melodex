@@ -84,7 +84,11 @@ internal object LocalQueueStore {
                         artist = cursor.getString(cursor.getColumnIndexOrThrow("artist")).ifBlank { "Unknown artist" },
                         album = cursor.getString(cursor.getColumnIndexOrThrow("album")),
                         streamUrl = if (source == TrackSource.PHONE) uri else "",
-                        artworkUri = cursor.getString(cursor.getColumnIndexOrThrow("artwork_uri")),
+                        artworkUri = if (source == TrackSource.PHONE) {
+                            cursor.getString(cursor.getColumnIndexOrThrow("artwork_uri"))
+                        } else {
+                            ""
+                        },
                         durationMs = cursor.getLong(cursor.getColumnIndexOrThrow("duration_ms")).coerceAtLeast(0L),
                         source = source
                     )
@@ -154,7 +158,7 @@ internal object LocalQueueStore {
                         put("title", track.title)
                         put("artist", track.artist)
                         put("album", track.album)
-                        put("artwork_uri", track.artworkUri)
+                        put("artwork_uri", if (track.source == TrackSource.PHONE) track.artworkUri else "")
                         put("duration_ms", track.durationMs.coerceAtLeast(0L))
                     }
                     db.insertOrThrow(TABLE, null, values)
