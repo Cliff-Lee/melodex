@@ -24,10 +24,10 @@ internal object LocalQueueStore {
     }
 
     private class QueueDatabase(context: Context) :
-        SQLiteOpenHelper(context, DATABASE, null, 1) {
+        SQLiteOpenHelper(context, "local_playback_queue.db", null, 1) {
         override fun onCreate(db: SQLiteDatabase) {
             db.execSQL(
-                """CREATE TABLE $TABLE (
+                """CREATE TABLE queue_items (
                     position INTEGER PRIMARY KEY NOT NULL,
                     track_id TEXT NOT NULL,
                     uri TEXT NOT NULL,
@@ -41,7 +41,7 @@ internal object LocalQueueStore {
         }
 
         override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-            db.execSQL("DROP TABLE IF EXISTS $TABLE")
+            db.execSQL("DROP TABLE IF EXISTS queue_items")
             onCreate(db)
         }
     }
