@@ -1,4 +1,5 @@
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
@@ -83,6 +84,15 @@ class _UserAgentHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+def _wait_for_gateway_idle(gateway):
+    for _ in range(100):
+        snapshot = gateway.diagnostics_snapshot()
+        if snapshot["active_requests"] == 0:
+            return snapshot
+        time.sleep(0.005)
+    raise AssertionError("gateway request did not finish")
+
+
 def test_gateway_forwards_headers_cookies_and_range():
     upstream = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
     thread = threading.Thread(target=upstream.serve_forever, daemon=True)
@@ -101,7 +111,7 @@ def test_gateway_forwards_headers_cookies_and_range():
         assert response.status_code == 206
         assert response.content == b"2345"
         assert response.headers["Content-Range"] == "bytes 2-5/16"
-        assert gateway.diagnostics_snapshot() == {
+        assert _wait_for_gateway_idle(gateway) == {
             "requests": 1,
             "active_requests": 0,
             "bytes_served": 4,
@@ -128,7 +138,7 @@ def test_gateway_diagnostics_count_failed_request_without_resource_metadata():
             timeout=3,
         )
         assert response.status_code == 404
-        assert gateway.diagnostics_snapshot() == {
+        assert _wait_for_gateway_idle(gateway) == {
             "requests": 1,
             "active_requests": 0,
             "bytes_served": 0,
