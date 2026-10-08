@@ -112,6 +112,7 @@ This page is intentionally exhaustive. For a shorter route by goal, use the [doc
 - [P18 — Private Taste Engine](P18_PRIVATE_TASTE_ENGINE.md)
 - [P19 — Android Standalone Player](P19_ANDROID_STANDALONE.md)
 - [P21 — Android 16 and Google Play preparation](P21_ANDROID_PLAY_READINESS.md)
+- [P22 — Unkillable Playback](P22_UNKILLABLE_PLAYBACK.md)
 
 ## Build and release
 

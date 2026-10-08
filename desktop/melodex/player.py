@@ -98,6 +98,10 @@ class FlowPlayer(QObject):
             "transition_plan_stale": 0,
             "transition_plan_failures": 0,
             "transition_plan_submit_rejected": 0,
+            "playback_errors": 0,
+            "active_deck_errors": 0,
+            "incoming_deck_errors": 0,
+            "inactive_deck_errors_ignored": 0,
         }
         self._last_seek_requested_ms = 0
         self._transitionPlanReady.connect(self._apply_transition_plan)
@@ -106,7 +110,9 @@ class FlowPlayer(QObject):
         self._timer.timeout.connect(self._tick)
         self._timer.start()
         for deck, player in enumerate(self.players):
-            player.errorOccurred.connect(lambda _error, msg: self.error.emit(str(msg)))
+            player.errorOccurred.connect(
+                lambda error, msg, deck=deck: self._on_player_error(deck, error, msg)
+            )
             player.mediaStatusChanged.connect(
                 lambda status, deck=deck: self._on_media_status(deck, status)
             )
@@ -729,6 +735,29 @@ class FlowPlayer(QObject):
                 == QMediaPlayer.PlayingState
             )
         return committed
+
+    def _on_player_error(self, deck: int, _error: object, message: object) -> None:
+        """Keep failures on a speculative deck from disrupting active playback."""
+        deck = int(deck)
+        if not (0 <= deck < len(self.players)):
+            return
+
+        detail = str(message or "").strip() or "Playback failed"
+        self._runtime_metrics["playback_errors"] += 1
+        if deck != self.active:
+            if self._crossfading and deck == self._crossfade_deck:
+                self._runtime_metrics["incoming_deck_errors"] += 1
+                self._cancel_transition(stop_incoming=False, count_abort=True)
+                self.error.emit(
+                    "Next track could not be prepared; current track continues. "
+                    + detail
+                )
+            else:
+                self._runtime_metrics["inactive_deck_errors_ignored"] += 1
+            return
+
+        self._runtime_metrics["active_deck_errors"] += 1
+        self.error.emit(detail)
 
     def _on_media_status(self, deck: int, status: QMediaPlayer.MediaStatus) -> None:
         if status in {
