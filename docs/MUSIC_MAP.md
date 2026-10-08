@@ -176,7 +176,7 @@ Normal browsing shows only:
 
 **Plan a route…** reveals Pathfinder start/destination controls.
 
-**Journey options…** is a further disclosure inside the route planner for presets, semantic stages and live steering. Those controls are intentionally absent during ordinary map browsing.
+**Journey options…** is a further disclosure inside the route planner for starting shapes, semantic directions, the ordered journey timeline and live steering. Those controls are intentionally absent during ordinary map browsing.
 
 Global **Power tools** does not force any of these spatial panels open.
 
@@ -269,6 +269,10 @@ Pathfinder is deterministic and local. Finding a route does not contact MusicBra
 
 Journey Designer adds ordered waypoints and semantic constraints on top of Pathfinder.
 
+The composer shows a **Start → stages → Destination** route shape. Drag a track from Music Map onto either endpoint or into the timeline as an exact waypoint. You can also click an endpoint to use the currently selected track. Click a direction to add it at the end, or drag it into a particular position. Drag existing stages to reorder them; Move up / Move down remain available for keyboard and precise control. Hover a direction to see what its label means.
+
+Stages are optional. With an empty timeline, **Build journey** finds a direct route from Start to Destination.
+
 It uses the same **start**, **destination** and routing mode as Pathfinder, but the route can be required to pass through stages such as:
 
 - **Calm**
@@ -300,9 +304,12 @@ Energetic
 Destination
 ```
 
-The included first preset is:
+Starting shapes include:
 
-**Calm → Darker → Forgotten → Energetic**
+- **Gentle → darker → energy**
+- **Calm → rhythm → energy**
+- **Familiar → rediscovery → bright**
+- **Surprising → darker → bright**
 
 ### How semantic stages are scored
 

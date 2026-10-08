@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import melodex.providers.local_files as local_files
+from melodex.library_scan import ScanControl
 from melodex.providers.local_files import LocalFilesProvider
 
 
@@ -40,6 +41,85 @@ def test_p10j_real_filesystem_uses_scandir_fast_path(monkeypatch, tmp_path: Path
     assert snapshot["metrics"]["scandir_enabled"] is True
     assert snapshot["metrics"]["scandir_directories"] >= 2
     assert snapshot["metrics"]["stat_failures"] == 0
+
+
+def test_first_music_pass_finds_another_branch_before_deep_dfs_album(
+    tmp_path: Path,
+):
+    root = tmp_path / "music"
+    deep_album = root / "Artist A" / "Album A" / "Disc 1" / "Session"
+    broad_album = root / "Artist B" / "Album B"
+    deep_album.mkdir(parents=True)
+    broad_album.mkdir(parents=True)
+    (deep_album / "deep-first.flac").write_bytes(b"a")
+    (broad_album / "breadth-first.flac").write_bytes(b"b")
+
+    yielded = list(
+        local_files._scandir_walk(
+            root,
+            first_playable_target=1,
+            breadth_directory_limit=32,
+            breadth_frontier_limit=32,
+        )
+    )
+    first_audio = next(
+        Path(base) / name
+        for base, files in yielded
+        for name, _stat, _elapsed in files
+        if Path(name).suffix.lower() == ".flac"
+    )
+
+    assert first_audio.name == "breadth-first.flac"
+
+
+def test_first_music_breadth_frontier_is_bounded(tmp_path: Path):
+    root = tmp_path / "music"
+    root.mkdir()
+    for index in range(40):
+        (root / f"folder-{index:03d}").mkdir()
+
+    yielded = list(
+        local_files._scandir_walk(
+            root,
+            first_playable_target=1,
+            breadth_directory_limit=64,
+            breadth_frontier_limit=5,
+        )
+    )
+    assert len(yielded) == 41
+
+
+def test_scan_intent_prioritizes_selected_subtree_before_background_walk(
+    tmp_path: Path,
+):
+    root = tmp_path / "music"
+    selected = root / "Artist Z" / "Album"
+    background = root / "Artist A" / "Album"
+    selected.mkdir(parents=True)
+    background.mkdir(parents=True)
+    (selected / "wanted.flac").write_bytes(b"wanted")
+    (background / "later.flac").write_bytes(b"later")
+    control = ScanControl()
+    control.prioritize(selected)
+
+    yielded = list(
+        local_files._scandir_walk(
+            root,
+            control=control,
+            first_playable_target=1,
+            breadth_directory_limit=32,
+        )
+    )
+    first_audio = next(
+        Path(base) / name
+        for base, files in yielded
+        for name, _stat, _elapsed in files
+        if Path(name).suffix.lower() == ".flac"
+    )
+
+    assert first_audio == selected / "wanted.flac"
+    visited = [base for base, _files in yielded]
+    assert len(visited) == len(set(visited))
 
 
 def test_p10j_custom_walk_preserves_legacy_probe_path(monkeypatch, tmp_path: Path):

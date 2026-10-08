@@ -1,9 +1,13 @@
 # Next release — draft notes
 
-**Melodex v0.7.16 release candidate.**
+**Melodex v0.7.19 — Journey Composer and Living Queue tester release.**
 
-Current target version: **0.7.16**.
+Current target version: **0.7.19**.
 
-This release completes the Campaign V feedback follow-up: a less cluttered Album Wall with warm cover reuse and album-order playback, denser Profile Pulse contours, removal of Sonic Weather and Minimal, album-cover Music Map nodes with hover details and zoom controls, and photo credits shown on hover. Changed screens are being captured at 1024×768, 1280×800, and 1440×900; release gates must pass before publication.
+This release combines P15's graphical Journey Composer with P16's queue
+editing, live journey steering, protected tracks, route undo, and explanations
+for suggested tracks.
 
-See `docs/releases/v0.7.16.md` for the release notes.
+Test drag-and-drop route building, queue edits during playback, each steering
+direction, protected-track behavior, route undo, and the active-playback
+checklist in `docs/P16_LIVING_QUEUE.md`.

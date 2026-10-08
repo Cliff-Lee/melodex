@@ -7,6 +7,9 @@ def _node(
     ref,
     vector,
     *,
+    artist="Artist",
+    x=0.0,
+    y=0.0,
     energy=0.5,
     mode="minor",
     taste=0.0,
@@ -16,10 +19,10 @@ def _node(
     return {
         "ref": ref,
         "title": ref,
-        "artist": "Artist",
+        "artist": artist,
         "album": "Album",
-        "x": 0.0,
-        "y": 0.0,
+        "x": x,
+        "y": y,
         "route_vector": list(vector),
         "energy": energy,
         "bpm": 120.0,
@@ -137,3 +140,80 @@ def test_journey_designer_fails_honestly_when_forgotten_stage_is_absent():
     assert result["found"] is False
     assert result["failed_stage"]["constraint"] == "forgotten"
     assert "Could not find a routable Forgotten waypoint" in result["reason"]
+
+
+def test_similar_stage_chooses_reachable_track_near_reference():
+    nodes = [
+        _node("current", [-2.0] * 8),
+        _node("reference", [1.0] * 8),
+        _node("near", [0.9] * 8),
+        _node("far", [-0.5] * 8),
+        _node("end", [2.0] * 8),
+    ]
+    result = build_music_journey(
+        _model(nodes),
+        {"edges": []},
+        "current",
+        "end",
+        [
+            {
+                "type": "similar",
+                "target_ref": "reference",
+                "label": "More like reference",
+            }
+        ],
+        mode="sonic",
+    )
+
+    assert result["found"] is True
+    assert result["stages"][0]["type"] == "similar"
+    assert result["stages"][0]["target_ref"] == "reference"
+    assert result["stages"][0]["ref"] == "near"
+    assert result["stages"][0]["score"] > 0.9
+
+
+def test_artist_stage_routes_to_a_track_by_the_requested_artist():
+    nodes = [
+        _node("current", [-2.0] * 8),
+        _node("artist-near", [-0.3] * 8, artist="Target Artist"),
+        _node("artist-far", [0.2] * 8, artist="target artist"),
+        _node("other", [0.1] * 8, artist="Other Artist"),
+        _node("end", [2.0] * 8),
+    ]
+    result = build_music_journey(
+        _model(nodes),
+        {"edges": []},
+        "current",
+        "end",
+        [{"type": "artist", "artist": " target   artist "}],
+        mode="sonic",
+    )
+
+    assert result["found"] is True
+    assert result["stages"][0]["type"] == "artist"
+    assert result["stages"][0]["artist"] == "target   artist"
+    assert result["stages"][0]["ref"] in {"artist-near", "artist-far"}
+    assert result["stages"][0]["score"] == 1.0
+
+
+def test_map_region_stage_chooses_a_reachable_track_near_the_target_area():
+    nodes = [
+        _node("current", [-1.0] * 8, x=-0.9, y=-0.9),
+        _node("reference", [0.0] * 8, x=0.0, y=0.0),
+        _node("near", [0.1] * 8, x=0.1, y=0.1),
+        _node("far", [0.2] * 8, x=0.9, y=0.9),
+        _node("end", [1.0] * 8, x=1.0, y=1.0),
+    ]
+    result = build_music_journey(
+        _model(nodes),
+        {"edges": []},
+        "current",
+        "end",
+        [{"type": "region", "target_ref": "reference"}],
+        mode="sonic",
+    )
+
+    assert result["found"] is True
+    assert result["stages"][0]["type"] == "region"
+    assert result["stages"][0]["ref"] == "near"
+    assert result["stages"][0]["score"] > 0.7

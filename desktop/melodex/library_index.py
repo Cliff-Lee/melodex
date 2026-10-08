@@ -252,6 +252,31 @@ class LocalLibraryIndex:
                     tracks.append(value)
         return tracks
 
+    def load_first_track(self, roots: list[Path]) -> dict[str, Any] | None:
+        """Read one cached row for immediate playback without full hydration."""
+        if not roots:
+            return None
+        ids = [_root_id(root) for root in roots]
+        placeholders = ",".join("?" for _ in ids)
+        with self._connect() as db:
+            row = db.execute(
+                f"""
+                SELECT metadata_json
+                FROM tracks
+                WHERE root_id IN ({placeholders})
+                ORDER BY root_id, relative_path
+                LIMIT 1
+                """,
+                tuple(ids),
+            ).fetchone()
+        if row is None:
+            return None
+        try:
+            value = json.loads(str(row["metadata_json"]))
+        except Exception:
+            return None
+        return value if isinstance(value, dict) else None
+
     def load_scan_cache(
         self,
         roots: list[Path],

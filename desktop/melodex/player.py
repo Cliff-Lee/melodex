@@ -49,12 +49,17 @@ class FlowPlayer(QObject):
         parent=None,
         playback_refresher=None,
         transition_submit=None,
+        first_music_timeline=None,
     ):
         super().__init__(parent)
         self.resolver = resolver
         self.playback_refresher = playback_refresher
         self.transition_for = transition_for
         self._transition_submit = transition_submit
+        self._first_music_timeline = first_music_timeline
+        self._first_music_play_by_deck: dict[int, int] = {}
+        self._first_music_position_base: dict[int, int] = {}
+        self._first_music_output_recorded: set[int] = set()
         self.gateway = PlaybackGateway()
         self.players = [QMediaPlayer(self), QMediaPlayer(self)]
         self.outputs = [QAudioOutput(self), QAudioOutput(self)]
@@ -121,6 +126,12 @@ class FlowPlayer(QObject):
         self.queue = [dict(item) for item in tracks]
         self.index = max(0, min(len(self.queue) - 1, start)) if self.queue else -1
         self.queueChanged.emit(self.queue)
+        if self.queue and self._first_music_timeline is not None:
+            source_id = self._first_music_timeline.active_source_id
+            if source_id is not None:
+                self._first_music_timeline.mark(
+                    "first_queue_ready", source_id=source_id
+                )
         if autoplay and self.index >= 0:
             self._load_index(self.index, play=True)
         else:
@@ -185,8 +196,42 @@ class FlowPlayer(QObject):
                 True,
                 announce_queue=position_changed,
             )
+        if index == self.index:
+            self.trackChanged.emit(dict(self.queue[index]))
         if index in {self.index, self.index + 1}:
             self._schedule_transition_plan()
+        return True
+
+    def remove_queue_item(self, index: int) -> bool:
+        """Remove an upcoming track without restarting the active track."""
+        index = int(index)
+        minimum = max(0, self.index + 1)
+        if not (minimum <= index < len(self.queue)):
+            return False
+        if self._crossfading and index == self.index + 1:
+            self._cancel_transition(stop_incoming=True, count_abort=True)
+        del self.queue[index]
+        self.queueChanged.emit(self.queue)
+        self._schedule_transition_plan()
+        return True
+
+    def move_queue_item(self, source: int, target: int) -> bool:
+        """Move an upcoming track while leaving playback position untouched."""
+        source, target = int(source), int(target)
+        minimum = max(0, self.index + 1)
+        if not (
+            minimum <= source < len(self.queue)
+            and minimum <= target < len(self.queue)
+        ):
+            return False
+        if source == target:
+            return False
+        if self._crossfading:
+            self._cancel_transition(stop_incoming=True, count_abort=True)
+        track = self.queue.pop(source)
+        self.queue.insert(target, track)
+        self.queueChanged.emit(self.queue)
+        self._schedule_transition_plan()
         return True
 
     def merge_queue_items(
@@ -431,8 +476,16 @@ class FlowPlayer(QObject):
         deck = self.active if deck is None else int(deck)
         player = self.players[deck]
         try:
+            if play and self._first_music_timeline is not None:
+                self._first_music_play_by_deck[deck] = (
+                    self._first_music_timeline.begin_play()
+                )
+                self._first_music_output_recorded.intersection_update(
+                    self._first_music_play_by_deck.values()
+                )
             resolved = self._resolve_for_playback(index)
             player.setSource(self._media_url_for(resolved))
+            self._first_music_position_base[deck] = int(player.position())
             if not self._commit_track(index, deck, announce_queue=announce_queue):
                 return False
             if play:
@@ -458,6 +511,15 @@ class FlowPlayer(QObject):
             if player.source().isEmpty() and self.index >= 0:
                 self._load_index(self.index, True)
             else:
+                if self._first_music_timeline is not None:
+                    play_id = self._first_music_timeline.begin_play()
+                    self._first_music_play_by_deck[self.active] = play_id
+                    self._first_music_output_recorded.intersection_update(
+                        self._first_music_play_by_deck.values()
+                    )
+                    self._first_music_position_base[self.active] = int(
+                        player.position()
+                    )
                 player.play()
                 self.playingChanged.emit(True)
 
@@ -669,6 +731,17 @@ class FlowPlayer(QObject):
         return committed
 
     def _on_media_status(self, deck: int, status: QMediaPlayer.MediaStatus) -> None:
+        if status in {
+            QMediaPlayer.LoadedMedia,
+            QMediaPlayer.BufferedMedia,
+        }:
+            play_id = self._first_music_play_by_deck.get(int(deck))
+            if play_id is not None and self._first_music_timeline is not None:
+                self._first_music_timeline.mark(
+                    "decoder_started",
+                    play_id=play_id,
+                    source_id=self._first_music_timeline.source_for_play(play_id),
+                )
         if status != QMediaPlayer.EndOfMedia:
             return
 
@@ -704,6 +777,20 @@ class FlowPlayer(QObject):
         self._runtime_metrics["ticks"] += 1
         player = self.players[self.active]
         duration, pos = player.duration(), player.position()
+        play_id = self._first_music_play_by_deck.get(self.active)
+        if (
+            play_id is not None
+            and play_id not in self._first_music_output_recorded
+            and pos > self._first_music_position_base.get(self.active, 0)
+            and player.playbackState() == QMediaPlayer.PlayingState
+            and self._first_music_timeline is not None
+        ):
+            self._first_music_output_recorded.add(play_id)
+            self._first_music_timeline.mark(
+                "first_audio_output",
+                play_id=play_id,
+                source_id=self._first_music_timeline.source_for_play(play_id),
+            )
         if duration > 0:
             self.positionChanged.emit(pos, duration)
 

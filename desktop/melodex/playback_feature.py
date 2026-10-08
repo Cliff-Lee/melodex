@@ -7,6 +7,7 @@ from typing import Any, Callable
 from PySide6.QtCore import QObject, QPoint, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap, QPolygon
 from PySide6.QtWidgets import (
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QHBoxLayout,
@@ -15,6 +16,7 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QMessageBox,
+    QMenu,
     QPushButton,
     QTabWidget,
     QTextEdit,
@@ -23,6 +25,7 @@ from PySide6.QtWidgets import (
 )
 
 from .motion import FAST_MOTION_MS, STANDARD_MOTION_MS
+from .living_queue import LivingQueue, queue_track_key
 from .playback_state import PlaybackSessionState
 from .seek_control import SeekInteraction, SeekSlider
 from .user_state import UserState
@@ -57,6 +60,13 @@ class PlaybackFeature(QObject):
     appendQueueRequested = Signal(object, bool)
     jumpQueueRequested = Signal(int)
     replaceQueueItemRequested = Signal(int, object, bool)
+    removeQueueItemRequested = Signal(int)
+    moveQueueItemRequested = Signal(int, int)
+    replaceUpcomingRequested = Signal(object)
+    moreLikeRequested = Signal(object, int)
+    towardArtistRequested = Signal(object)
+    towardRegionRequested = Signal(object)
+    steerJourneyRequested = Signal(str)
     currentTrackChanged = Signal(object)
     pluginDirectoryRequested = Signal(str)
     knowledgeChanged = Signal()
@@ -102,6 +112,8 @@ class PlaybackFeature(QObject):
         self.page_titles = page_titles
 
         self._playback_state = PlaybackSessionState()
+        self.living_queue = LivingQueue()
+        self._queue_reasons: dict[tuple[str, ...], str] = {}
         self._visual_context_sequence = 0
         self._visual_neighbour_tracks: dict[int, dict[str, Any]] = {}
         self._visual_neighbour_artwork: dict[int, str] = {}
@@ -109,6 +121,9 @@ class PlaybackFeature(QObject):
         self._prefetched_track_assets: dict[str, dict[str, Any]] = {}
         self._prefetch_sequence = 0
         self._prefetch_delay_ms = 350
+        self._play_history_generation = 0
+        self._history_recorded_generation = 0
+        self._history_completed_before_write: set[int] = set()
         self._seek_interaction = SeekInteraction()
         self._audio_processing = {
             "intent": "manual_queue",
@@ -241,7 +256,121 @@ class PlaybackFeature(QObject):
         layout.addLayout(head)
         self.queue_list = QListWidget()
         self.queue_list.itemDoubleClicked.connect(self._queue_jump)
+        self.queue_list.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.queue_list.customContextMenuRequested.connect(
+            self._queue_context_menu
+        )
         layout.addWidget(self.queue_list, 1)
+        self.queue_reason_label = QLabel("Select an upcoming track to see why it was chosen.")
+        self.queue_reason_label.setWordWrap(True)
+        self.queue_reason_label.setObjectName("queueReasonLabel")
+        layout.addWidget(self.queue_reason_label)
+        edit_row = QHBoxLayout()
+        self.queue_keep_button = QPushButton("Keep")
+        self.queue_keep_button.clicked.connect(self._queue_toggle_keep)
+        set_help(
+            self.queue_keep_button,
+            "Keep this track",
+            "Keep this track in the journey when Melodex changes the route. "
+            "You can still move it yourself.",
+        )
+        self.queue_remove_button = QPushButton("Remove")
+        self.queue_remove_button.clicked.connect(self._queue_remove_selected)
+        set_help(
+            self.queue_remove_button,
+            "Remove from queue",
+            "Remove the selected upcoming track. The track currently playing stays in place.",
+        )
+        self.queue_up_button = QPushButton("↑")
+        self.queue_up_button.setAccessibleName("Move earlier")
+        self.queue_up_button.clicked.connect(
+            lambda: self._queue_move_selected(-1)
+        )
+        set_help(
+            self.queue_up_button,
+            "Move earlier",
+            "Move the selected track earlier in the upcoming queue.",
+        )
+        self.queue_down_button = QPushButton("↓")
+        self.queue_down_button.setAccessibleName("Move later")
+        self.queue_down_button.clicked.connect(
+            lambda: self._queue_move_selected(1)
+        )
+        set_help(
+            self.queue_down_button,
+            "Move later",
+            "Move the selected track later in the upcoming queue.",
+        )
+        for button in (
+            self.queue_keep_button,
+            self.queue_remove_button,
+            self.queue_up_button,
+            self.queue_down_button,
+        ):
+            edit_row.addWidget(button)
+        layout.addLayout(edit_row)
+        safety_row = QHBoxLayout()
+        self.queue_lock_button = QPushButton("Lock next 3")
+        self.queue_lock_button.clicked.connect(self._queue_lock_next)
+        set_help(
+            self.queue_lock_button,
+            "Lock next three tracks",
+            "Keep the next three upcoming tracks fixed through automatic journey changes. "
+            "Unlock individual tracks from their row menu.",
+        )
+        self.queue_undo_button = QPushButton("Undo route change")
+        self.queue_undo_button.clicked.connect(self._queue_undo_replan)
+        set_help(
+            self.queue_undo_button,
+            "Undo route change",
+            "Restore the generated tracks from before the latest automatic route change. "
+            "Your current track and protected choices stay in place.",
+        )
+        safety_row.addWidget(self.queue_lock_button)
+        safety_row.addWidget(self.queue_undo_button)
+        layout.addLayout(safety_row)
+        steering_row = QHBoxLayout()
+        self.queue_steering = QComboBox()
+        self.queue_steering.addItem("Guide next…", "")
+        for key, label in (
+            ("calmer", "Calmer"),
+            ("more_energy", "More energy"),
+            ("darker", "Darker"),
+            ("brighter", "Brighter"),
+            ("more_rhythmic", "More rhythmic"),
+            ("more_familiar", "More familiar"),
+            ("more_surprising", "More surprising"),
+            ("rediscover", "Rediscover"),
+        ):
+            self.queue_steering.addItem(label, key)
+        self.queue_steer_button = QPushButton("Steer")
+        self.queue_steer_button.clicked.connect(self._queue_apply_steer)
+        set_help(
+            self.queue_steering,
+            "Steer the next part",
+            "Choose a direction and Melodex will adapt the remaining live journey. "
+            "Your kept tracks stay in the queue.",
+        )
+        set_help(
+            self.queue_steer_button,
+            "Apply direction",
+            "Replan the remaining live journey using the selected direction.",
+        )
+        steering_row.addWidget(self.queue_steering, 1)
+        steering_row.addWidget(self.queue_steer_button)
+        layout.addLayout(steering_row)
+        self.queue_more_like_button = QPushButton("More like selected track")
+        self.queue_more_like_button.clicked.connect(
+            self._queue_more_like_selected
+        )
+        set_help(
+            self.queue_more_like_button,
+            "More like this",
+            "Find a nearby track like this one and adapt the rest of the live journey.",
+        )
+        layout.addWidget(self.queue_more_like_button)
+        self.queue_list.currentRowChanged.connect(self._update_queue_edit_buttons)
+        self._update_queue_edit_buttons()
         panel.hide()
         return panel
 
@@ -452,6 +581,50 @@ class PlaybackFeature(QObject):
         self.play_button.setAccessibleName("Pause" if self._playing else "Play")
         if self.now_playing_built and hasattr(self, "living_canvas"):
             self.living_canvas.set_playing(self._playing)
+        if (
+            self._playing
+            and self._current_track
+            and self._play_history_generation
+            != self._history_recorded_generation
+        ):
+            self._history_recorded_generation = self._play_history_generation
+            self._schedule_play_history(
+                dict(self._current_track), self._play_history_generation
+            )
+
+    def _schedule_play_history(
+        self, track: dict[str, Any], history_generation: int
+    ) -> None:
+        """Write play history after FlowPlayer has acknowledged playback."""
+        def history_recorded(result: object) -> None:
+            history_id = max(0, int(result or 0))
+            if not history_id:
+                return
+            completed_before_write = (
+                history_generation in self._history_completed_before_write
+            )
+            self._history_completed_before_write.discard(history_generation)
+            if (
+                not completed_before_write
+                and history_generation == self._play_history_generation
+            ):
+                self._playback_state.set_current_history_id(history_id)
+            if completed_before_write:
+                self._run_async(
+                    lambda: self.state.mark_completed(history_id),
+                    lambda _result: None,
+                    lambda _error: None,
+                    priority="background",
+                    task_name="playback-completion-history",
+                )
+
+        self._run_async(
+            lambda: self.state.record_play(dict(track)),
+            history_recorded,
+            lambda _error: None,
+            priority="background",
+            task_name="playback-start-history",
+        )
 
     def _render_current_track_summary(self) -> None:
         track = dict(self._current_track or {})
@@ -682,12 +855,21 @@ class PlaybackFeature(QObject):
         if (
             self._current_track
             and self._current_track_started
+            and self._history_recorded_generation == self._play_history_generation
             and time.time() - self._current_track_started < 30
         ):
-            self.state.record_skip(self._current_track)
+            previous_track = dict(self._current_track)
+            self._run_async(
+                lambda: self.state.record_skip(previous_track),
+                lambda _result: None,
+                lambda _error: None,
+                priority="background",
+                task_name="playback-skip-history",
+            )
+        self._play_history_generation += 1
         self._playback_state.start_track(
             t,
-            history_id=self.state.record_play(t),
+            history_id=0,
             started_at=time.time(),
         )
         token = UserState.track_key(self._current_track)
@@ -990,8 +1172,21 @@ class PlaybackFeature(QObject):
             self.rich_now.set_position(pos)
         if dur > 0 and self._seek_interaction.follow_player_position(pos, dur):
             self.seek.setValue(int(1000 * pos / dur))
-        if dur > 0 and pos >= dur - 1500 and self._current_history_id:
-            self.state.mark_completed(self._playback_state.mark_current_track_completed())
+        if dur > 0 and pos >= dur - 1500:
+            history_id = self._current_history_id
+            if history_id:
+                completed_id = self._playback_state.mark_current_track_completed()
+                self._run_async(
+                    lambda: self.state.mark_completed(completed_id),
+                    lambda _result: None,
+                    lambda _error: None,
+                    priority="background",
+                    task_name="playback-completion-history",
+                )
+            elif self._play_history_generation:
+                self._history_completed_before_write.add(
+                    self._play_history_generation
+                )
 
     def _seek_started(self) -> None:
         self._seek_interaction.begin()
@@ -1295,22 +1490,250 @@ class PlaybackFeature(QObject):
         self._status(f"Resolver match applied · {mode}", 4000)
 
     def on_queue_changed(self, tracks, index=-1):
+        incoming = [track for track in list(tracks or []) if isinstance(track, dict)]
+        previous = self._queue
+        append_only = bool(previous) and len(incoming) > len(previous) and all(
+            queue_track_key(old) == queue_track_key(new)
+            for old, new in zip(previous, incoming)
+        )
         self._playback_state.update_queue(
-            [track for track in list(tracks or []) if isinstance(track, dict)],
+            incoming,
             index,
         )
+        self.living_queue.sync_from_tracks(
+            self._queue,
+            self._queue_index,
+            new_origin="manual" if append_only else "route",
+        )
+        selected = self.queue_list.currentRow()
         self.queue_list.clear()
         for i, t in enumerate(self._queue):
+            entry = self.living_queue.entries[i]
+            markers = []
+            if entry.pinned:
+                markers.append("Kept")
+            if entry.locked:
+                markers.append("Locked")
             prefix = "▶ " if i == self._queue_index else ""
+            if markers:
+                prefix += " · ".join(markers) + " · "
             item = QListWidgetItem(prefix + _track_text(t))
             item.setData(Qt.UserRole, i)
+            if entry.pinned or entry.locked:
+                item.setToolTip(
+                    "This track is protected from automatic journey changes."
+                )
+            explanation = self._queue_reasons.get(queue_track_key(t), "")
+            if explanation:
+                item.setToolTip(
+                    (item.toolTip() + "\n" if item.toolTip() else "")
+                    + "Why this track: "
+                    + explanation
+                )
             self.queue_list.addItem(item)
+        if self._queue:
+            restored_row = (
+                selected
+                if 0 <= selected < len(self._queue)
+                else self._queue_index
+            )
+            if 0 <= restored_row < len(self._queue):
+                self.queue_list.setCurrentRow(restored_row)
+        self._update_queue_edit_buttons()
         if hasattr(self, "living_canvas") and self.living_canvas.active_mode == "constellation":
             self.living_canvas.refresh_context()
         self._schedule_next_track_prefetch()
 
+    def apply_journey_replan(self, tracks):
+        """Apply a route tail without dropping choices protected by the user."""
+        self.living_queue.sync_from_tracks(self._queue, self._queue_index)
+        self.living_queue.replace_generated_tail(
+            [track for track in list(tracks or []) if isinstance(track, dict)]
+        )
+        start = max(0, self._queue_index + 1)
+        self.replaceUpcomingRequested.emit(self.living_queue.tracks()[start:])
+
+    def set_queue_track_reasons(self, reasons) -> None:
+        self._queue_reasons = {
+            tuple(key): str(value)
+            for key, value in dict(reasons or {}).items()
+            if isinstance(key, (tuple, list)) and str(value or "").strip()
+        }
+        for index, entry in enumerate(self.living_queue.entries):
+            item = self.queue_list.item(index)
+            if item is None:
+                continue
+            parts = []
+            if entry.pinned or entry.locked:
+                parts.append("This track is protected from automatic journey changes.")
+            explanation = self._queue_reasons.get(queue_track_key(entry.track), "")
+            if explanation:
+                parts.append("Why this track: " + explanation)
+            item.setToolTip("\n".join(parts))
+        self._update_queue_edit_buttons()
+
     def _queue_jump(self, item):
         self.jumpQueueRequested.emit(int(item.data(Qt.UserRole)))
+
+    def _queue_context_menu(self, position):
+        item = self.queue_list.itemAt(position)
+        if item is None:
+            return
+        self.queue_list.setCurrentItem(item)
+        index = int(item.data(Qt.UserRole))
+        entry = self.living_queue.entries[index]
+        menu = QMenu(self.queue_list)
+        keep = menu.addAction(
+            "Remove from journey" if entry.pinned else "Keep in journey"
+        )
+        lock = menu.addAction("Unlock track" if entry.locked else "Lock track")
+        more_like = menu.addAction("More like this after it")
+        toward_artist = menu.addAction("Head toward this artist")
+        toward_region = menu.addAction("Explore this map area")
+        remove = menu.addAction("Remove from queue")
+        menu.addSeparator()
+        earlier = menu.addAction("Move earlier")
+        later = menu.addAction("Move later")
+        upcoming = index > self._queue_index
+        keep.setEnabled(upcoming)
+        lock.setEnabled(upcoming)
+        more_like.setEnabled(index >= self._queue_index)
+        toward_artist.setEnabled(index >= self._queue_index)
+        toward_region.setEnabled(index >= self._queue_index)
+        remove.setEnabled(self.living_queue.can_remove(index))
+        earlier.setEnabled(self.living_queue.can_move(index, index - 1))
+        later.setEnabled(self.living_queue.can_move(index, index + 1))
+        chosen = menu.exec(self.queue_list.mapToGlobal(position))
+        if chosen is keep:
+            self._queue_toggle_keep()
+        elif chosen is lock:
+            self._queue_toggle_lock()
+        elif chosen is more_like:
+            self._queue_more_like_selected()
+        elif chosen is toward_artist:
+            self._queue_toward_artist_selected()
+        elif chosen is toward_region:
+            self._queue_toward_region_selected()
+        elif chosen is remove:
+            self._queue_remove_selected()
+        elif chosen is earlier:
+            self._queue_move_selected(-1)
+        elif chosen is later:
+            self._queue_move_selected(1)
+
+    def _update_queue_edit_buttons(self, _row=-1):
+        if not hasattr(self, "queue_keep_button"):
+            return
+        index = self.queue_list.currentRow()
+        upcoming = index > self._queue_index and index >= 0
+        pinned = (
+            upcoming
+            and index < len(self.living_queue.entries)
+            and self.living_queue.entries[index].pinned
+        )
+        self.queue_keep_button.setText("Unkeep" if pinned else "Keep")
+        self.queue_keep_button.setEnabled(upcoming)
+        self.queue_lock_button.setEnabled(
+            any(index > self._queue_index for index in range(len(self._queue)))
+        )
+        self.queue_undo_button.setEnabled(self.living_queue.can_undo_replan)
+        self.queue_remove_button.setEnabled(self.living_queue.can_remove(index))
+        self.queue_up_button.setEnabled(self.living_queue.can_move(index, index - 1))
+        self.queue_down_button.setEnabled(self.living_queue.can_move(index, index + 1))
+        self.queue_more_like_button.setEnabled(
+            0 <= index < len(self.living_queue.entries)
+        )
+        reason = ""
+        if 0 <= index < len(self.living_queue.entries):
+            reason = self._queue_reasons.get(
+                queue_track_key(self.living_queue.entries[index].track), ""
+            )
+        self.queue_reason_label.setText(
+            f"Why this track: {reason}"
+            if reason
+            else "Select an upcoming track to see why it was chosen."
+        )
+
+    def _queue_toggle_keep(self):
+        index = self.queue_list.currentRow()
+        if index <= self._queue_index or index >= len(self.living_queue.entries):
+            return
+        entry = self.living_queue.entries[index]
+        if self.living_queue.pin(index, not entry.pinned):
+            self.on_queue_changed(self._queue, self._queue_index)
+            self.queue_list.setCurrentRow(index)
+
+    def _queue_toggle_lock(self):
+        index = self.queue_list.currentRow()
+        if index <= self._queue_index or index >= len(self.living_queue.entries):
+            return
+        entry = self.living_queue.entries[index]
+        if self.living_queue.set_locked(index, not entry.locked):
+            self.on_queue_changed(self._queue, self._queue_index)
+            self.queue_list.setCurrentRow(index)
+
+    def _queue_lock_next(self):
+        changed = self.living_queue.lock_next(3)
+        if changed:
+            selected = self.queue_list.currentRow()
+            self.on_queue_changed(self._queue, self._queue_index)
+            if selected >= 0:
+                self.queue_list.setCurrentRow(selected)
+
+    def _queue_undo_replan(self):
+        if not self.living_queue.undo_replan():
+            return
+        start = max(0, self._queue_index + 1)
+        self.replaceUpcomingRequested.emit(self.living_queue.tracks()[start:])
+        self._update_queue_edit_buttons()
+
+    def _queue_remove_selected(self):
+        index = self.queue_list.currentRow()
+        if self.living_queue.can_remove(index):
+            self.removeQueueItemRequested.emit(index)
+
+    def _queue_move_selected(self, direction: int):
+        source = self.queue_list.currentRow()
+        target = source + int(direction)
+        if self.living_queue.can_move(source, target):
+            self.moveQueueItemRequested.emit(source, target)
+
+    def _queue_more_like_selected(self):
+        index = self.queue_list.currentRow()
+        if not (0 <= index < len(self.living_queue.entries)):
+            return
+        self.moreLikeRequested.emit(
+            dict(self.living_queue.entries[index].track),
+            index,
+        )
+
+    def keep_queue_track(self, index: int) -> None:
+        index = int(index)
+        if self.living_queue.pin(index, True):
+            self.on_queue_changed(self._queue, self._queue_index)
+            self.queue_list.setCurrentRow(index)
+
+    def _queue_apply_steer(self):
+        steering = str(self.queue_steering.currentData() or "")
+        if not steering:
+            self._status("Choose a direction for the live journey first", 3000)
+            return
+        self.steerJourneyRequested.emit(steering)
+        self.queue_steering.setCurrentIndex(0)
+
+    def _queue_toward_artist_selected(self):
+        index = self.queue_list.currentRow()
+        if 0 <= index < len(self.living_queue.entries):
+            self.towardArtistRequested.emit(
+                dict(self.living_queue.entries[index].track)
+            )
+
+    def _queue_toward_region_selected(self):
+        index = self.queue_list.currentRow()
+        if 0 <= index < len(self.living_queue.entries):
+            self.towardRegionRequested.emit(
+                dict(self.living_queue.entries[index].track)
+            )
 
     # ------------------------------- LLM
 

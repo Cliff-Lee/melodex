@@ -171,6 +171,15 @@ def test_playback_feature_owns_persistent_surfaces_and_lazy_now_playing(tmp_path
     assert feature.queue_index() == -1
     assert feature.player_bar.objectName() == "playerBar"
     assert feature.queue_panel.objectName() == "queuePanel"
+    assert feature.queue_keep_button.text() == "Keep"
+    assert feature.queue_remove_button.text() == "Remove"
+    assert feature.queue_up_button.accessibleName() == "Move earlier"
+    assert feature.queue_down_button.accessibleName() == "Move later"
+    assert feature.queue_lock_button.text() == "Lock next 3"
+    assert feature.queue_undo_button.text() == "Undo route change"
+    assert feature.queue_reason_label.objectName() == "queueReasonLabel"
+    assert feature.queue_steering.count() == 9
+    assert feature.queue_more_like_button.text() == "More like selected track"
     assert feature.now_playing_built is False
     assert not hasattr(feature, "rich_now")
     assert not hasattr(feature, "player")
@@ -182,6 +191,112 @@ def test_playback_feature_owns_persistent_surfaces_and_lazy_now_playing(tmp_path
     assert feature.now_views.tabText(0) == "Now Playing"
     assert feature.now_views.tabText(1) == "Visuals"
     assert "now_playing" in feature.page_titles
+
+    feature.deleteLater()
+    app.processEvents()
+
+
+def test_journey_replan_preserves_pinned_queue_entry(tmp_path):
+    app, feature, _state, _statuses = _feature(tmp_path)
+    current, kept, old = (_track(name, i) for i, name in enumerate(
+        ("Current", "Keep", "Old"), start=1
+    ))
+    replanned = []
+    feature.replaceUpcomingRequested.connect(
+        lambda tracks: replanned.append([dict(track) for track in tracks])
+    )
+    feature.on_queue_changed([current, kept, old], index=0)
+    assert feature.living_queue.pin(1) is True
+
+    feature.apply_journey_replan([_track("New A", 4), _track("New B", 5)])
+
+    assert [track["title"] for track in replanned[-1]] == [
+        "Keep",
+        "New A",
+        "New B",
+    ]
+    assert feature.living_queue.entries[1].pinned is True
+
+    feature.deleteLater()
+    app.processEvents()
+
+
+def test_queue_surface_requests_live_steer_and_more_like(tmp_path):
+    app, feature, _state, _statuses = _feature(tmp_path)
+    current, upcoming = _track("Current", 1), _track("Upcoming", 2)
+    feature.on_queue_changed([current, upcoming], index=0)
+    more_like = []
+    toward_artist = []
+    steering = []
+    feature.moreLikeRequested.connect(
+        lambda track, index: more_like.append((dict(track), index))
+    )
+    feature.towardArtistRequested.connect(
+        lambda track: toward_artist.append(dict(track))
+    )
+    feature.steerJourneyRequested.connect(steering.append)
+
+    feature.queue_list.setCurrentRow(1)
+    feature._queue_more_like_selected()
+    feature._queue_toward_artist_selected()
+    feature.queue_steering.setCurrentIndex(
+        feature.queue_steering.findData("more_surprising")
+    )
+    feature._queue_apply_steer()
+
+    assert more_like == [(upcoming, 1)]
+    assert toward_artist == [upcoming]
+    assert feature.living_queue.entries[1].pinned is False
+    assert steering == ["more_surprising"]
+    assert feature.queue_steering.currentIndex() == 0
+
+    feature.deleteLater()
+    app.processEvents()
+
+
+def test_lock_and_undo_protect_route_tail_and_restore_generated_tracks(tmp_path):
+    app, feature, _state, _statuses = _feature(tmp_path)
+    current, kept, old = (_track(name, i) for i, name in enumerate(
+        ("Current", "Kept", "Old"), start=1
+    ))
+    replacements = []
+    feature.replaceUpcomingRequested.connect(
+        lambda tracks: feature.on_queue_changed([current, *tracks], index=0)
+    )
+    feature.replaceUpcomingRequested.connect(
+        lambda tracks: replacements.append([dict(track) for track in tracks])
+    )
+    feature.on_queue_changed([current, kept, old], index=0)
+
+    feature.queue_list.setCurrentRow(1)
+    feature._queue_toggle_lock()
+    feature.apply_journey_replan([_track("New", 4)])
+    assert [track["title"] for track in replacements[-1]] == ["Kept", "New"]
+    assert feature.living_queue.entries[1].locked is True
+    assert feature.queue_undo_button.isEnabled() is True
+
+    feature._queue_undo_replan()
+    assert [track["title"] for track in replacements[-1]] == ["Kept", "Old"]
+    assert feature.living_queue.entries[1].locked is True
+    assert feature.living_queue.can_undo_replan is False
+
+    feature.deleteLater()
+    app.processEvents()
+
+
+def test_selected_queue_track_displays_route_reason(tmp_path):
+    app, feature, _state, _statuses = _feature(tmp_path)
+    current, upcoming = _track("Current", 1), _track("Similar", 2)
+    feature.on_queue_changed([current, upcoming], index=0)
+    feature.set_queue_track_reasons(
+        {("track_id", "t2"): "More like this · similarity 91%"}
+    )
+
+    feature.queue_list.setCurrentRow(1)
+    assert feature.queue_reason_label.text() == (
+        "Why this track: More like this · similarity 91%"
+    )
+    assert "Why this track: More like this" in feature.queue_list.item(1).toolTip()
 
     feature.deleteLater()
     app.processEvents()
@@ -285,15 +400,38 @@ def test_track_change_updates_owned_state_and_emits_snapshot(tmp_path):
     app.processEvents()
 
     assert feature.current_track() == track
-    assert state.plays == [track]
+    assert state.plays == []
     assert changed == [track]
     assert feature.now_title.text() == "Current"
     assert "Artist" in feature.now_meta.text()
     assert feature.current_position_ms() == 0
 
+    # Merely selecting a provisional track is not listening history. The write
+    # begins only after FlowPlayer acknowledges the playback request.
+    feature.on_playing_changed(True)
+    assert state.plays == [track]
+    assert feature.current_history_id() == 1
+
     feature.merge_current_track({"title": "Corrected"})
     assert feature.current_track()["title"] == "Corrected"
     assert feature.now_title.text() == "Corrected"
+
+    feature.deleteLater()
+    app.processEvents()
+
+
+def test_provisional_track_selection_does_not_record_until_play(tmp_path):
+    app, feature, state, _statuses = _feature(tmp_path)
+
+    feature.on_track_changed(_track("Ready", 3))
+
+    assert state.plays == []
+    assert feature.current_history_id() == 0
+
+    feature.on_playing_changed(True)
+
+    assert len(state.plays) == 1
+    assert feature.current_history_id() == 1
 
     feature.deleteLater()
     app.processEvents()

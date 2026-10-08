@@ -41,3 +41,14 @@ def test_track_change_resets_progress_and_completion_clears_history_id():
 
     assert state.mark_current_track_completed() == 9
     assert state.snapshot().current_history_id == 0
+
+
+def test_history_id_can_be_attached_after_async_persistence():
+    state = PlaybackSessionState()
+    state.start_track({"title": "One"}, history_id=0, started_at=1.0)
+
+    state.set_current_history_id(17)
+
+    assert state.snapshot().current_history_id == 17
+    state.set_current_history_id(-1)
+    assert state.snapshot().current_history_id == 0

@@ -39,7 +39,13 @@ SUPERSEDED_PROVIDER_REPLACEMENTS = {
 
 
 class ProviderManager:
-    def __init__(self, data_dir: Path, *, startup_timeline=None):
+    def __init__(
+        self,
+        data_dir: Path,
+        *,
+        startup_timeline=None,
+        defer_optional_plugins: bool = False,
+    ):
         self.data_dir = Path(data_dir)
         self._startup_timeline = startup_timeline
         self.settings_path = self.data_dir / "sources.json"
@@ -51,10 +57,6 @@ class ProviderManager:
         self._installations = self._load_installations()
         self._local_metadata_overrides = self._load_local_metadata_overrides()
         self._startup_mark("providers:settings_ready")
-
-        bundled_ids = set(ensure_bundled_providers(self.installer, self.settings))
-        self._record_bundled_installations(bundled_ids)
-        self._startup_mark("providers:bundled_ready")
 
         local_roots = [Path(x) for x in self.settings.get("local_roots", [])]
         self.library_index = LocalLibraryIndex(
@@ -82,12 +84,38 @@ class ProviderManager:
         }
         self._quarantined_legacy_providers: list[dict[str, str]] = []
         self._superseded_providers: list[dict[str, str]] = []
+        self._bundled_provider_ids: set[str] = set()
+        self.optional_plugins_loaded = False
+
+        self.resolver = UniversalResolver(self)
+        self.capabilities = CapabilityBroker(
+            self.data_dir,
+            config_broker=self.plugin_config,
+            defer_installed=defer_optional_plugins,
+        )
+        self._startup_mark("providers:capabilities_ready")
+        self._registry: PluginRegistryClient | None = None
+        self._plugin_health_cache: dict[str, dict[str, Any]] = {}
+
+        if not defer_optional_plugins:
+            self.apply_optional_plugins_snapshot(
+                self.load_optional_plugins_snapshot()
+            )
+        self._startup_mark("providers:ready")
+
+    def load_optional_plugins_snapshot(self) -> dict[str, Any]:
+        """Load bundled and installed optional integrations off the UI thread."""
+        bundled_ids = set(ensure_bundled_providers(self.installer, self.settings))
+        self._record_bundled_installations(bundled_ids)
+        providers: dict[str, MusicProvider] = {}
+        quarantined: list[dict[str, str]] = []
+        superseded: list[dict[str, str]] = []
         for provider in self.installer.load_installed():
             replacement = SUPERSEDED_PROVIDER_REPLACEMENTS.get(
                 str(provider.info.id or "")
             )
             if replacement and replacement in bundled_ids:
-                self._superseded_providers.append(
+                superseded.append(
                     {
                         "id": str(provider.info.id or ""),
                         "name": str(provider.info.name or provider.info.id or ""),
@@ -99,7 +127,7 @@ class ProviderManager:
                     close()
                 continue
             if self._is_legacy_private_provider(provider):
-                self._quarantined_legacy_providers.append(
+                quarantined.append(
                     {
                         "id": str(provider.info.id or ""),
                         "name": str(provider.info.name or provider.info.id or ""),
@@ -117,17 +145,33 @@ class ProviderManager:
                         fields,
                     )
                 )
-            self.providers[provider.info.id] = provider
-        self._startup_mark("providers:installed_ready")
+            providers[provider.info.id] = provider
+        extensions = self.capabilities.load_installed_snapshot()
+        return {
+            "bundled_ids": bundled_ids,
+            "providers": providers,
+            "extensions": extensions,
+            "quarantined": quarantined,
+            "superseded": superseded,
+        }
 
-        self.resolver = UniversalResolver(self)
-        self.capabilities = CapabilityBroker(
-            self.data_dir, config_broker=self.plugin_config
+    def apply_optional_plugins_snapshot(self, snapshot: dict[str, Any]) -> None:
+        """Register a completed optional integration snapshot on the UI thread."""
+        for provider_id, provider in dict(snapshot.get("providers") or {}).items():
+            self.providers[str(provider_id)] = provider
+        self._bundled_provider_ids = set(snapshot.get("bundled_ids") or set())
+        self._quarantined_legacy_providers = [
+            dict(row) for row in list(snapshot.get("quarantined") or [])
+        ]
+        self._superseded_providers = [
+            dict(row) for row in list(snapshot.get("superseded") or [])
+        ]
+        self.capabilities.register_installed(
+            list(snapshot.get("extensions") or [])
         )
-        self._startup_mark("providers:capabilities_ready")
-        self._registry: PluginRegistryClient | None = None
-        self._plugin_health_cache: dict[str, dict[str, Any]] = {}
-        self._startup_mark("providers:ready")
+        self.optional_plugins_loaded = True
+        self._startup_mark("providers:installed_ready")
+        self._startup_mark("providers:bundled_ready")
 
     def _startup_mark(self, phase: str) -> None:
         timeline = getattr(self, "_startup_timeline", None)
@@ -332,10 +376,18 @@ class ProviderManager:
         provider = self.providers["local"]
         assert isinstance(provider, LocalFilesProvider)
         provider.configure_roots(clean)
-        provider.set_cached_loader(None)
         self.settings["local_roots"] = [str(x) for x in clean]
         self.library_index.sync_roots(clean)
         self._local_index_summary=self.library_index.summary(clean)
+        if not provider.catalog_loaded:
+            if int(self._local_index_summary.get("track_count") or 0):
+                provider.set_cached_loader(
+                    lambda selected=tuple(clean): self.library_index.load_tracks(
+                        [Path(root) for root in selected]
+                    )
+                )
+            else:
+                provider.set_cached_loader(None)
         self.save()
         return clean
 
@@ -355,19 +407,77 @@ class ProviderManager:
     def local_catalog_count(self) -> int:
         provider=self.providers.get("local")
         if isinstance(provider,LocalFilesProvider) and provider.catalog_loaded:
-            return len(provider.tracks)
+            return provider.track_count
         return int(dict(getattr(self,"_local_index_summary",{}) or {}).get("track_count") or 0)
+
+    def local_catalog_is_loaded(self) -> bool:
+        provider = self.providers.get("local")
+        return bool(
+            isinstance(provider, LocalFilesProvider) and provider.catalog_loaded
+        )
 
     def load_indexed_local_tracks(
         self,
         roots: list[Path] | None = None,
+        *,
+        source_availability: dict[str, str] | None = None,
     ) -> list[dict[str, Any]]:
         selected = self.local_roots() if roots is None else [Path(x) for x in roots]
         provider = self.providers["local"]
         assert isinstance(provider, LocalFilesProvider)
         return provider.prepare_cached_tracks(
-            self.library_index.load_tracks(selected)
+            self.library_index.load_tracks(selected),
+            source_availability=source_availability,
         )
+
+    def first_indexed_local_track(
+        self,
+        roots: list[Path] | None = None,
+        *,
+        source_availability: dict[str, str] | None = None,
+    ) -> dict[str, Any] | None:
+        """Fetch one local cached row for playback without hydrating the library."""
+        selected = self.local_roots() if roots is None else [Path(x) for x in roots]
+        provider = self.providers["local"]
+        assert isinstance(provider, LocalFilesProvider)
+        track = self.library_index.load_first_track(selected)
+        if track is None:
+            return None
+        prepared = provider.prepare_cached_tracks(
+            [track], source_availability=source_availability
+        )
+        return prepared[0] if prepared else None
+
+    def hydrate_local_catalog_cache(
+        self, tracks: list[dict[str, Any]], roots: list[Path]
+    ) -> bool:
+        """Install a background-hydrated SQLite snapshot if still current.
+
+        The UI can render counts and recent playback before full track rows are
+        hydrated. This avoids making first navigation synchronously decode the
+        entire persistent catalog.
+        """
+        selected = [Path(root) for root in roots]
+        if selected != self.local_roots():
+            return False
+        provider = self.providers["local"]
+        if not isinstance(provider, LocalFilesProvider) or provider.catalog_loaded:
+            return False
+        provider.load_cached_tracks(tracks, prepared=True)
+        return True
+
+    def set_local_source_availability(
+        self,
+        root: str | Path,
+        status: str,
+        *,
+        update_tracks: bool = True,
+    ) -> None:
+        provider = self.providers["local"]
+        if isinstance(provider, LocalFilesProvider):
+            provider.set_source_availability(
+                root, status, update_tracks=update_tracks
+            )
 
     def persist_local_scan_snapshot(
         self,
@@ -565,7 +675,7 @@ class ProviderManager:
         return self.resolver.set_provider_order(provider_ids)
 
     def is_bundled_provider(self, provider_id: str) -> bool:
-        return any(pid == str(provider_id or "") for pid, _, _ in bundled_packages())
+        return str(provider_id or "") in self._bundled_provider_ids
 
     def remove_provider(self, provider_id: str) -> bool:
         plugin_id = str(provider_id or "").strip()

@@ -10,6 +10,14 @@ ROOT = Path(__file__).resolve().parents[1]
 DESKTOP = ROOT / "desktop"
 
 FLUID_GATE_TESTS = [
+    "desktop/tests/test_first_music_metrics.py",
+    "desktop/tests/test_first_music_qualification.py",
+    "desktop/tests/test_library_scan_status.py",
+    "desktop/tests/test_library_streaming_scan.py",
+    "desktop/tests/test_p13g_warm_cache.py",
+    "desktop/tests/test_p13h_first_run.py",
+    "desktop/tests/test_first_play_policy.py",
+    "desktop/tests/test_p13l_deferred_plugins.py",
     "desktop/tests/test_background_scheduler.py",
     "desktop/tests/test_responsiveness.py",
     "desktop/tests/test_responsiveness_gate.py",
@@ -25,9 +33,11 @@ FLUID_GATE_TESTS = [
     "desktop/tests/test_startup_metrics.py::test_async_jobs_share_process_lived_ui_dispatcher",
     "desktop/tests/test_startup_metrics.py::test_async_completion_after_window_close_is_harmless",
     "desktop/tests/test_gui_redesign.py::test_slow_source_config_check_keeps_qt_event_loop_responsive",
+    "desktop/tests/test_gui_redesign.py::test_first_provisional_track_can_be_play_requested_before_catalog_commit",
     "desktop/tests/test_sources_feature.py::test_sources_feature_renders_providers_extensions_and_health",
     "desktop/tests/test_sources_feature.py::test_sources_feature_routes_primary_actions_through_policy",
     "desktop/tests/test_sources_feature.py::test_sources_feature_owns_install_remove_and_health_workflows",
+    "desktop/tests/test_sources_feature.py::test_sources_feature_waits_for_deferred_plugin_snapshot",
     "desktop/tests/test_sources_feature.py::test_sources_feature_config_refresh_updates_owned_state",
     "desktop/tests/test_journey_workspace.py::test_journey_workspace_owns_default_state_and_lazy_music_map",
     "desktop/tests/test_journey_workspace.py::test_journey_workspace_requests_playback_semantically",

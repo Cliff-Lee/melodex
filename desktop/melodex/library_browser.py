@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from collections import OrderedDict, defaultdict
+import os
 import threading
 import time
+from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import (
@@ -303,11 +305,47 @@ class TrackListModel(QAbstractListModel):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._tracks: list[dict[str, Any]] = []
+        self._row_by_track_key: dict[str, int] = {}
 
     def set_tracks(self, tracks: list[dict[str, Any]]) -> None:
         self.beginResetModel()
         self._tracks = list(tracks)
+        self._row_by_track_key = {
+            _track_key(track): index
+            for index, track in enumerate(self._tracks)
+            if isinstance(track, dict)
+        }
         self.endResetModel()
+
+    def upsert_tracks(self, tracks: list[dict[str, Any]]) -> None:
+        additions: list[dict[str, Any]] = []
+        changed_rows: list[int] = []
+        for raw in tracks:
+            if not isinstance(raw, dict):
+                continue
+            track = dict(raw)
+            key = _track_key(track)
+            row = self._row_by_track_key.get(key)
+            if row is None:
+                self._row_by_track_key[key] = len(self._tracks) + len(additions)
+                additions.append(track)
+            elif row >= len(self._tracks):
+                additions[row - len(self._tracks)] = track
+            else:
+                self._tracks[row] = track
+                changed_rows.append(row)
+        if additions:
+            start = len(self._tracks)
+            self.beginInsertRows(QModelIndex(), start, start + len(additions) - 1)
+            self._tracks.extend(additions)
+            self.endInsertRows()
+        for row in changed_rows:
+            index = self.index(row, 0)
+            self.dataChanged.emit(
+                index,
+                index,
+                [int(Qt.DisplayRole), int(Qt.ToolTipRole), self.TrackRole],
+            )
 
     def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:
         return 0 if parent.isValid() else len(self._tracks)
@@ -381,8 +419,19 @@ class TrackRow(QFrame):
             badge.setObjectName("warningPill")
             outer.addWidget(badge)
 
+        availability = str(track.get("availability") or "").strip().lower()
+        if availability in {"unavailable", "degraded"}:
+            badge = QLabel(
+                "Unavailable" if availability == "unavailable" else "Source degraded"
+            )
+            badge.setObjectName("warningPill")
+            outer.addWidget(badge)
+
         play = QPushButton("▶")
         play.setObjectName("miniButton")
+        play.setEnabled(availability != "unavailable")
+        if availability == "unavailable":
+            play.setToolTip("This source was unavailable during the last connection check.")
         queue = QPushButton("+ Queue")
         queue.setObjectName("miniButton")
         edit = QPushButton("Edit")
@@ -434,10 +483,13 @@ class LibraryBrowser(QWidget):
     artistPhotoFileRequested = Signal(object)
     scanPauseRequested = Signal()
     scanCancelRequested = Signal()
+    directoryPriorityRequested = Signal(object)
+    shuffleDiscoveredRequested = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.catalog: list[dict[str, Any]] = []
+        self._catalog_row_by_track_key: dict[str, int] = {}
         self._catalog_revision: int | None = None
         self.albums: list[dict[str, Any]] = []
         self.cards: dict[str, AlbumCard] = {}
@@ -565,6 +617,14 @@ class LibraryBrowser(QWidget):
         moments = QPushButton("Moments")
         moments.setObjectName("quietButton")
         moments.clicked.connect(self.momentsRequested)
+        shuffle = QPushButton("Shuffle found tracks")
+        shuffle.setObjectName("quietButton")
+        shuffle.clicked.connect(self.shuffleDiscoveredRequested)
+        set_help(
+            shuffle,
+            "Shuffle found tracks",
+            "Starts with playable tracks Melodex has found so far. New tracks join the end of the queue as indexing continues.",
+        )
         self.images_button = QPushButton("Find missing artwork")
         self.images_button.setObjectName("quietButton")
         self.images_button.clicked.connect(self._request_online_artwork)
@@ -597,6 +657,7 @@ class LibraryBrowser(QWidget):
         actions.addWidget(rescan)
         actions.addWidget(wall)
         actions.addWidget(moments)
+        actions.addWidget(shuffle)
         actions.addWidget(self.images_button)
         actions.addStretch(1)
         outer.addWidget(self.library_action_controls)
@@ -788,10 +849,32 @@ class LibraryBrowser(QWidget):
             "Choose a folder that already contains your music. Melodex will index it where it is.",
             "Add my music",
         )
+        self._cache_restore_active = False
         self.empty.actionRequested.connect(self.addFolderRequested)
         self.stack.addWidget(self.empty)
         self.library_top_controls.hide()
         self.library_action_controls.hide()
+
+    def set_cache_restoring(self, restoring: bool, *, failed: bool = False) -> None:
+        self._cache_restore_active = bool(restoring)
+        if restoring:
+            self.empty.set_content(
+                "Restoring your music…",
+                "Your cached library is opening. Playback and the rest of Melodex remain available.",
+                None,
+            )
+        elif failed:
+            self.empty.set_content(
+                "Cached music could not be opened",
+                "Melodex kept the saved library data and will try again when you browse your music.",
+                "Add my music",
+            )
+        else:
+            self.empty.set_content(
+                "No music added yet",
+                "Choose a folder that already contains your music. Melodex will index it where it is.",
+                "Add my music",
+            )
 
     def eventFilter(self, watched, event):
         if event.type() == QEvent.Resize:
@@ -877,6 +960,12 @@ class LibraryBrowser(QWidget):
 
         copy_started = time.perf_counter()
         self.catalog = [dict(item) for item in catalog if isinstance(item, dict)]
+        for button in self.view_buttons.values():
+            button.setEnabled(bool(self.catalog))
+            button.setToolTip("")
+        self._catalog_row_by_track_key = {
+            _track_key(track): index for index, track in enumerate(self.catalog)
+        }
         self._catalog_revision = int(revision) if revision is not None else None
         metrics["copy_catalog_seconds"] = round(
             time.perf_counter() - copy_started,
@@ -1018,6 +1107,70 @@ class LibraryBrowser(QWidget):
             0,
             lambda values=scroll_snapshot: self._restore_scroll_positions(values),
         )
+
+    def append_discovered_tracks(self, tracks: list[dict[str, Any]]) -> int:
+        """Incrementally expose newly indexed tracks without resetting the model."""
+        incoming = [dict(item) for item in tracks if isinstance(item, dict)]
+        if not incoming:
+            return 0
+        was_empty = not self.catalog
+        changed: list[dict[str, Any]] = []
+        added = 0
+        for track in incoming:
+            key = _track_key(track)
+            row = self._catalog_row_by_track_key.get(key)
+            if row is None:
+                self._catalog_row_by_track_key[key] = len(self.catalog)
+                self.catalog.append(track)
+                added += 1
+            else:
+                self.catalog[row] = track
+            self._track_search_text[key] = _norm(
+                f"{track.get('artist','')} {track.get('title','')} "
+                f"{track.get('album','')} {track.get('genre','')}"
+            )
+            changed.append(track)
+        self._catalog_revision = None
+        # A search or view change can build a fresh sorted list from the
+        # current progressive catalog. Arrival itself remains append-only.
+        self._sorted_catalog = []
+        if was_empty:
+            self.library_top_controls.show()
+            self.library_action_controls.show()
+            for name in ("albums", "artists"):
+                button = self.view_buttons.get(name)
+                if button is not None:
+                    button.setEnabled(False)
+                    button.setToolTip(
+                        "Available after Melodex finishes grouping the discovered tracks."
+                    )
+            self.set_view("tracks")
+        elif self.current_view() == "tracks":
+            query = _norm(self.search.text())
+            visible = [
+                track
+                for track in changed
+                if not query
+                or query in self._track_search_text.get(_track_key(track), "")
+            ]
+            visible_keys = {_track_key(existing) for existing in self._visible_tracks}
+            for track in visible:
+                key = _track_key(track)
+                if key not in visible_keys:
+                    self._visible_tracks.append(track)
+                    visible_keys.add(key)
+            self.track_model.upsert_tracks(visible)
+            self._schedule_track_hydration()
+        if self.last_catalog_metrics:
+            self.last_catalog_metrics["track_count"] = len(self.catalog)
+            self.last_catalog_metrics["progressive"] = True
+        else:
+            self.last_catalog_metrics = {
+                "track_count": len(self.catalog),
+                "progressive": True,
+                "main_thread": threading.current_thread() is threading.main_thread(),
+            }
+        return added
 
     def _restore_scroll_positions(self, values: dict[str, int]) -> None:
         bars = {
@@ -1644,6 +1797,28 @@ class LibraryBrowser(QWidget):
         self._apply_filter(query)
 
         if query:
+            # Search known progressive rows first, then ask the active scan to
+            # spend its next directory visits around those results.
+            directories: list[str] = []
+            seen_directories: set[str] = set()
+            for track in self.catalog[:1000]:
+                key = _track_key(track)
+                if query not in self._track_search_text.get(key, ""):
+                    continue
+                local_path = str(track.get("local_path") or "").strip()
+                if not local_path:
+                    continue
+                directory = str(Path(local_path).parent)
+                normalized = os.path.normcase(os.path.abspath(directory))
+                if normalized not in seen_directories:
+                    seen_directories.add(normalized)
+                    directories.append(directory)
+                if len(directories) >= 8:
+                    break
+            if directories:
+                self.directoryPriorityRequested.emit(directories)
+
+        if query:
             bar = self._scroll_bar_for_view(view)
             if bar is not None:
                 bar.setValue(0)
@@ -2058,6 +2233,13 @@ class LibraryBrowser(QWidget):
         name = str(artist.get("name") or "")
         if not name:
             return
+        directories = list(dict.fromkeys(
+            str(Path(str(track.get("local_path") or "")).parent)
+            for track in list(artist.get("tracks") or [])
+            if isinstance(track, dict) and str(track.get("local_path") or "").strip()
+        ))[:12]
+        if directories:
+            self.directoryPriorityRequested.emit(directories)
         self.search.setText(name)
         self.set_view("albums")
 

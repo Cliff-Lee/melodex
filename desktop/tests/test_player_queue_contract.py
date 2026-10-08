@@ -33,6 +33,28 @@ def _player():
     return player, loaded
 
 
+class _PositionProbe:
+    def __init__(self, position_ms):
+        self.position_ms = int(position_ms)
+
+    def position(self):
+        return self.position_ms
+
+    def duration(self):
+        return 240_000
+
+    def playbackState(self):
+        from PySide6.QtMultimedia import QMediaPlayer
+
+        return QMediaPlayer.PlaybackState.PlayingState
+
+    def isSeekable(self):
+        return True
+
+    def stop(self):
+        pass
+
+
 def test_jump_to_uses_public_queue_contract():
     player, loaded = _player()
     player.set_queue([{"track_id": "a"}, {"track_id": "b"}], 0, False)
@@ -103,6 +125,58 @@ def test_append_queue_owns_empty_and_nonempty_cases():
     player.append_queue([{"track_id": "b"}], autoplay=False)
 
     assert [row["track_id"] for row in player.queue_snapshot()] == ["a", "b"]
+
+    player.close()
+
+
+def test_remove_upcoming_item_keeps_current_track_and_position():
+    player, loaded = _player()
+    player.set_queue(
+        [{"track_id": name} for name in ("current", "remove", "next")],
+        0,
+        False,
+    )
+    active = player.active
+    position = _PositionProbe(42_375)
+    player.players[active] = position
+    changes = []
+    player.queueChanged.connect(lambda queue: changes.append([dict(x) for x in queue]))
+    changes.clear()
+
+    assert player.remove_queue_item(1) is True
+    assert player.index == 0
+    assert player.queue[player.index]["track_id"] == "current"
+    assert [row["track_id"] for row in player.queue] == ["current", "next"]
+    assert position.position() == 42_375
+    assert loaded == []
+    assert len(changes) == 1
+    assert player.remove_queue_item(0) is False
+
+    player.close()
+
+
+def test_move_upcoming_item_preserves_playback_and_rejects_current_track():
+    player, loaded = _player()
+    player.set_queue(
+        [{"track_id": name} for name in ("current", "a", "b", "c")],
+        0,
+        False,
+    )
+    active = player.active
+    position = _PositionProbe(89_250)
+    player.players[active] = position
+
+    assert player.move_queue_item(3, 1) is True
+    assert [row["track_id"] for row in player.queue] == [
+        "current",
+        "c",
+        "a",
+        "b",
+    ]
+    assert player.index == 0
+    assert position.position() == 89_250
+    assert loaded == []
+    assert player.move_queue_item(1, 0) is False
 
     player.close()
 

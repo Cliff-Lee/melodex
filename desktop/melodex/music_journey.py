@@ -51,6 +51,21 @@ def _progress_score(
     return _clamp(math.exp(-0.58 * _distance(nv, target)))
 
 
+def _track_similarity(a: dict[str, Any], b: dict[str, Any]) -> float:
+    av, bv = _vector(a), _vector(b)
+    if not av or len(av) != len(bv):
+        return 0.0
+    return _clamp(math.exp(-0.58 * _distance(av, bv)))
+
+
+def _map_region_score(a: dict[str, Any], b: dict[str, Any]) -> float:
+    distance = math.hypot(
+        float(a.get("x") or 0.0) - float(b.get("x") or 0.0),
+        float(a.get("y") or 0.0) - float(b.get("y") or 0.0),
+    )
+    return _clamp(math.exp(-2.0 * distance))
+
+
 def stage_score(node: dict[str, Any], constraint: str) -> tuple[float, str]:
     """Return transparent 0..1 satisfaction score for a journey stage."""
 
@@ -152,6 +167,24 @@ def _normalise_stage(stage: Any) -> dict[str, Any]:
             "ref": str(stage.get("ref") or ""),
             "label": str(stage.get("label") or "Track waypoint"),
         }
+    if kind == "similar":
+        return {
+            "type": "similar",
+            "target_ref": str(stage.get("target_ref") or ""),
+            "label": str(stage.get("label") or "More like this"),
+        }
+    if kind == "artist":
+        return {
+            "type": "artist",
+            "artist": str(stage.get("artist") or "").strip(),
+            "label": str(stage.get("label") or "Toward this artist"),
+        }
+    if kind == "region":
+        return {
+            "type": "region",
+            "target_ref": str(stage.get("target_ref") or ""),
+            "label": str(stage.get("label") or "Toward this map area"),
+        }
     key = str(stage.get("constraint") or "").strip().lower()
     return {
         "type": "constraint",
@@ -228,6 +261,68 @@ def build_music_journey(
                     "explicit track waypoint",
                 )
             ]
+        elif stage["type"] == "similar":
+            target_ref = str(stage.get("target_ref") or "")
+            target_node = nodes.get(target_ref)
+            ranked = []
+            if target_node is not None:
+                for ref, node in nodes.items():
+                    if ref in used_refs or ref in {end_ref, target_ref} or ref in forbidden:
+                        continue
+                    similarity = _track_similarity(node, target_node)
+                    progress = _progress_score(node, start_node, end_node, fraction)
+                    priority = 0.82 * similarity + 0.18 * progress
+                    target_name = (
+                        f"{target_node.get('artist') or 'Unknown artist'} — "
+                        f"{target_node.get('title') or 'Unknown track'}"
+                    )
+                    explanation = (
+                        f"similarity {similarity:.0%} to {target_name}"
+                    )
+                    ranked.append((priority, ref, similarity, explanation))
+            ranked.sort(key=lambda row: (-row[0], row[1]))
+            candidates = ranked[: max(1, min(24, int(candidates_per_stage)))]
+        elif stage["type"] == "artist":
+            target_artist = " ".join(
+                str(stage.get("artist") or "").strip().casefold().split()
+            )
+            ranked = []
+            for ref, node in nodes.items():
+                artist = " ".join(
+                    str(node.get("artist") or "").strip().casefold().split()
+                )
+                if (
+                    not target_artist
+                    or artist != target_artist
+                    or ref in used_refs
+                    or ref in {end_ref}
+                    or ref in forbidden
+                ):
+                    continue
+                progress = _progress_score(node, start_node, end_node, fraction)
+                explanation = f"artist match: {node.get('artist') or target_artist}"
+                ranked.append((0.76 + 0.24 * progress, ref, 1.0, explanation))
+            ranked.sort(key=lambda row: (-row[0], row[1]))
+            candidates = ranked[: max(1, min(24, int(candidates_per_stage)))]
+        elif stage["type"] == "region":
+            target_ref = str(stage.get("target_ref") or "")
+            target_node = nodes.get(target_ref)
+            ranked = []
+            if target_node is not None:
+                for ref, node in nodes.items():
+                    if ref in used_refs or ref in {end_ref, target_ref} or ref in forbidden:
+                        continue
+                    proximity = _map_region_score(node, target_node)
+                    progress = _progress_score(node, start_node, end_node, fraction)
+                    priority = 0.82 * proximity + 0.18 * progress
+                    target_name = (
+                        f"{target_node.get('artist') or 'Unknown artist'} — "
+                        f"{target_node.get('title') or 'Unknown track'}"
+                    )
+                    explanation = f"map proximity {proximity:.0%} to {target_name}"
+                    ranked.append((priority, ref, proximity, explanation))
+            ranked.sort(key=lambda row: (-row[0], row[1]))
+            candidates = ranked[: max(1, min(24, int(candidates_per_stage)))]
         else:
             constraint = str(stage.get("constraint") or "")
             ranked: list[tuple[float, str, float, str]] = []
@@ -248,6 +343,10 @@ def build_music_journey(
             if candidate_ref in used_refs and candidate_ref != current_ref:
                 continue
             if stage["type"] == "constraint" and satisfaction < 0.30:
+                continue
+            if stage["type"] == "similar" and satisfaction < 0.30:
+                continue
+            if stage["type"] == "region" and satisfaction < 0.15:
                 continue
             segment = network.find(
                 current_ref,
