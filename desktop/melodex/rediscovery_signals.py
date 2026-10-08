@@ -55,6 +55,24 @@ def _clamp(value: float) -> float:
     return max(0.0, min(1.0, float(value)))
 
 
+def _album_track_quality(row: dict[str, Any]) -> float:
+    plays = max(0, int(row.get("plays") or 0))
+    if not plays:
+        return 0.0
+    loves = max(0, int(row.get("loves") or 0))
+    keeps = max(0, int(row.get("keeps") or 0))
+    completes = max(0, int(row.get("completes") or 0))
+    skips = max(0, int(row.get("skips") or 0))
+    dislikes = max(0, int(row.get("dislikes") or 0))
+    if loves or keeps:
+        quality = 0.92
+    else:
+        completion = _clamp(completes / plays)
+        skip_rate = _clamp(skips / plays)
+        quality = 0.68 * completion + 0.32 * (1.0 - skip_rate)
+    return _clamp(quality - min(0.35, 0.18 * dislikes))
+
+
 def build_rediscovery_signals(
     catalog: list[dict[str, Any]],
     track_signals: dict[str, dict[str, Any]],
@@ -92,10 +110,15 @@ def build_rediscovery_signals(
         declared_totals[key] = _declared_track_total(track)
 
     album_played: dict[str, int] = {}
+    album_quality: dict[str, float] = {}
     for album, keys in albums.items():
         album_played[album] = sum(
             max(0, int((track_signals.get(key) or {}).get("plays") or 0)) > 0
             for key in keys
+        )
+        album_quality[album] = max(
+            (_album_track_quality(track_signals.get(key) or {}) for key in keys),
+            default=0.0,
         )
 
     artist_played: dict[str, int] = {}
@@ -129,6 +152,8 @@ def build_rediscovery_signals(
             1.0 - played_in_album / album_count
             if album_count >= 3 else 0.0
         )
+        album_familiarity = _clamp(math.log1p(played_in_album) / math.log(4.0))
+        album_memory = album_quality.get(album, 0.0) * album_familiarity
 
         number = track_numbers.get(key, 0)
         total = max(
@@ -139,6 +164,8 @@ def build_rediscovery_signals(
         deep_cut = 0.0
         if number >= 3 and total >= 5:
             deep_cut = _clamp((number - 2) / max(1, total - 2))
+        played = max(0, int((track_signals.get(key) or {}).get("plays") or 0))
+        hidden_gem = deep_cut * album_memory if played == 0 else 0.0
 
         artist_tracks = max(1, len(artists.get(artist, ()))) if artist else 1
         played_artist_tracks = artist_played.get(artist, 0) if artist else 0
@@ -150,8 +177,11 @@ def build_rediscovery_signals(
             0.48 * deep_cut
             + 0.32 * album_gap
             + 0.20 * artist_signal
+            + 0.35 * hidden_gem
         )
-        if deep_cut >= 0.55:
+        if hidden_gem >= 0.45:
+            reason = "deep cut from an album you enjoyed"
+        elif deep_cut >= 0.55:
             reason = "deep cut in your library"
         elif played_in_album and album_gap >= 0.5:
             reason = "unheard part of an album you know"
@@ -166,6 +196,9 @@ def build_rediscovery_signals(
             "library_score": library_score,
             "deep_cut": deep_cut,
             "album_gap": _clamp(album_gap),
+            "album_quality": album_quality.get(album, 0.0),
+            "album_memory": _clamp(album_memory),
+            "hidden_gem": _clamp(hidden_gem),
             "artist_familiarity": artist_signal,
             "album_track_count": album_count,
             "album_played_tracks": played_in_album,

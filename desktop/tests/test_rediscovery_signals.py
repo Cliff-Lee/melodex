@@ -69,6 +69,31 @@ def test_metadata_sparse_catalog_keeps_a_neutral_fallback():
     assert signal["reason"] == ""
 
 
+def test_unplayed_deep_cuts_from_a_liked_album_rank_as_hidden_gems():
+    known_album = [_album_track(number, album="Night Drive") for number in range(1, 9)]
+    unknown_album = [
+        _album_track(number, artist="Side Project", album="Quiet Signals")
+        for number in range(1, 9)
+    ]
+    favorite = known_album[0]
+    history = {
+        UserState.track_key(favorite): {
+            "artist": "Northbound",
+            "plays": 8,
+            "completes": 7,
+            "loves": 1,
+        }
+    }
+
+    signals = build_rediscovery_signals(known_album + unknown_album, history)
+    liked_deep_cut = signals[UserState.track_key(known_album[-1])]
+    other_deep_cut = signals[UserState.track_key(unknown_album[-1])]
+
+    assert liked_deep_cut["hidden_gem"] > 0.45
+    assert liked_deep_cut["library_score"] > other_deep_cut["library_score"]
+    assert liked_deep_cut["reason"] == "deep cut from an album you enjoyed"
+
+
 def test_rediscover_mode_uses_metadata_fallback_without_play_history():
     track = _album_track(8)
     mind = MindEngine(None, None)

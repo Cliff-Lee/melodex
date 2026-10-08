@@ -54,6 +54,18 @@ The focused P17b checks cover old versus recent favourites and an unheard track
 from a neglected favourite artist. Artist memory is computed from local
 UserState and affects the Rediscover route only.
 
+## P17c progress
+
+The signal builder now rates album memory from completed, loved, and kept
+tracks, then connects that evidence to unplayed deep cuts on the same album.
+Those tracks receive a hidden-gem boost and a reason that says which album
+signal helped. Album familiarity and track order are both required; a lone
+track with missing order metadata does not get called a deep cut.
+
+The focused P17c test compares a deep cut from an album with a loved track
+against an equally deep cut from an album with no listening evidence. Sparse
+metadata continues to use the neutral fallback.
+
 ## Completion gates
 
 P17 is complete when a fresh install can start a useful rediscovery route, a
