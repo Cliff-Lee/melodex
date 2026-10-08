@@ -83,7 +83,7 @@ internal fun queryLocalAudioTracks(
 
     return tracks
         .distinctBy(Track::trackId)
-        .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.title }.thenBy { it.artist })
+        .sortedWith(compareBy<Track, String>(String.CASE_INSENSITIVE_ORDER) { track -> track.title }.thenBy { it.artist })
 }
 
 private fun cleanAudioMetadata(value: String?, fallback: String): String =
