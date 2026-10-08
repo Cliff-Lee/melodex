@@ -4735,6 +4735,26 @@ class MainWindow(QMainWindow):
         code_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
         dialog_layout.addWidget(code_status)
 
+        manual_details = QLabel()
+        manual_details.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        manual_details.hide()
+        manual_button = QPushButton("Show advanced manual setup")
+        def toggle_manual_details():
+            if manual_details.isVisible():
+                manual_details.hide()
+                manual_button.setText("Show advanced manual setup")
+            else:
+                manual_details.setText(
+                    f"Bridge URL: {bridge_url}\\n"
+                    f"Bridge token: {self.bridge.token}\\n"
+                    "Treat the token like a password. It changes when the Bridge restarts."
+                )
+                manual_details.show()
+                manual_button.setText("Hide advanced manual setup")
+        manual_button.clicked.connect(toggle_manual_details)
+        dialog_layout.addWidget(manual_button)
+        dialog_layout.addWidget(manual_details)
+
         refresh_button = QPushButton("Refresh QR code")
         dialog_layout.addWidget(refresh_button)
 
