@@ -101,11 +101,41 @@ def test_gateway_forwards_headers_cookies_and_range():
         assert response.status_code == 206
         assert response.content == b"2345"
         assert response.headers["Content-Range"] == "bytes 2-5/16"
+        assert gateway.diagnostics_snapshot() == {
+            "requests": 1,
+            "active_requests": 0,
+            "bytes_served": 4,
+            "failures": 0,
+        }
     finally:
         gateway.close()
         upstream.shutdown()
         upstream.server_close()
 
+
+
+def test_gateway_diagnostics_count_failed_request_without_resource_metadata():
+    gateway = PlaybackGateway()
+    try:
+        gateway.register(
+            {
+                "url": "http://127.0.0.1:1/audio",
+                "_playback_allowed_hosts": ["127.0.0.1"],
+            }
+        )
+        response = requests.get(
+            f"http://127.0.0.1:{gateway.port}/not-a-playback-resource",
+            timeout=3,
+        )
+        assert response.status_code == 404
+        assert gateway.diagnostics_snapshot() == {
+            "requests": 1,
+            "active_requests": 0,
+            "bytes_served": 0,
+            "failures": 1,
+        }
+    finally:
+        gateway.close()
 
 def test_gateway_rejects_external_resource_with_no_declared_hosts():
     gateway = PlaybackGateway()

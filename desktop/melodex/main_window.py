@@ -283,7 +283,7 @@ class MainWindow(QMainWindow):
             playback_refresher=self.providers.refresh_playback,
             transition_submit=self.background_scheduler.submit,
             first_music_timeline=self._first_music_timeline,
-            playback_refresh_submit=self.background_scheduler.submit,
+            playback_refresh_scheduler=self.background_scheduler,
         )
         from .playback_feature import PlaybackFeature
 
@@ -330,9 +330,8 @@ class MainWindow(QMainWindow):
                 intent="manual_queue",
             )
         self.player.queueChanged.connect(self._persist_playback_queue_async)
-        self.player.error.connect(
-            lambda message: self.statusBar().showMessage(message, 7000)
-        )
+        self.player.error.connect(lambda message: self.statusBar().showMessage(message, 7000))
+        self.player.playbackNotice.connect(self.statusBar().showMessage)
         self.playback_feature.previousRequested.connect(self.player.previous)
         self.playback_feature.playPauseRequested.connect(self.player.play_pause)
         self.playback_feature.nextRequested.connect(self.player.next)

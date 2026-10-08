@@ -85,6 +85,12 @@ class PlaybackGateway:
     def __init__(self) -> None:
         self._resources: dict[str, dict[str, Any]] = {}
         self._lock = threading.RLock()
+        self._metrics = {
+            "requests": 0,
+            "active_requests": 0,
+            "bytes_served": 0,
+            "failures": 0,
+        }
         self._server: ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
 
@@ -188,32 +194,52 @@ class PlaybackGateway:
             f"Playback resource exceeded {_MAX_REDIRECTS} redirects"
         )
 
-    def _serve(self, handler: BaseHTTPRequestHandler, head_only: bool) -> None:
-        requests_api = _requests_api()
-        prefix = "/play/"
-        if not handler.path.startswith(prefix):
-            handler.send_error(404)
-            return
-        token = handler.path[len(prefix) :].split("?", 1)[0]
+    def _metric(self, name: str, amount: int = 1) -> None:
         with self._lock:
-            resource = dict(self._resources.get(token) or {})
-        if not resource:
-            handler.send_error(404)
-            return
+            self._metrics[name] += int(amount)
 
-        url = str(resource.get("stream_url") or resource.get("url") or "")
-        headers = {str(k): str(v) for k, v in dict(resource.get("headers") or {}).items()}
-        headers.setdefault("User-Agent", _DEFAULT_USER_AGENT)
-        cookies = dict(resource.get("cookies") or {})
-        if cookies and "Cookie" not in headers:
-            headers["Cookie"] = "; ".join(f"{k}={v}" for k, v in cookies.items())
-        incoming_range = handler.headers.get("Range")
-        if incoming_range and "Range" not in headers:
-            headers["Range"] = incoming_range
+    def diagnostics_snapshot(self) -> dict[str, int]:
+        """Return metadata-free request and transfer counters."""
+        with self._lock:
+            return {name: int(value) for name, value in self._metrics.items()}
 
-        timeout = float(resource.get("request_timeout_seconds") or 30.0)
-        allowed = _allowed_hosts(resource)
+    def _serve(self, handler: BaseHTTPRequestHandler, head_only: bool) -> None:
+        self._metric("requests")
+        self._metric("active_requests")
+        failed = False
+        response = None
         try:
+            requests_api = _requests_api()
+            prefix = "/play/"
+            if not handler.path.startswith(prefix):
+                failed = True
+                handler.send_error(404)
+                return
+            token = handler.path[len(prefix) :].split("?", 1)[0]
+            with self._lock:
+                resource = dict(self._resources.get(token) or {})
+            if not resource:
+                failed = True
+                handler.send_error(404)
+                return
+
+            url = str(resource.get("stream_url") or resource.get("url") or "")
+            headers = {
+                str(k): str(v)
+                for k, v in dict(resource.get("headers") or {}).items()
+            }
+            headers.setdefault("User-Agent", _DEFAULT_USER_AGENT)
+            cookies = dict(resource.get("cookies") or {})
+            if cookies and "Cookie" not in headers:
+                headers["Cookie"] = "; ".join(
+                    f"{k}={v}" for k, v in cookies.items()
+                )
+            incoming_range = handler.headers.get("Range")
+            if incoming_range and "Range" not in headers:
+                headers["Range"] = incoming_range
+
+            timeout = float(resource.get("request_timeout_seconds") or 30.0)
+            allowed = _allowed_hosts(resource)
             response = self._request_upstream(
                 "HEAD" if head_only else "GET",
                 url,
@@ -222,6 +248,8 @@ class PlaybackGateway:
                 timeout,
                 stream=not head_only,
             )
+            if int(response.status_code) >= 400:
+                failed = True
             handler.send_response(response.status_code)
             for name, value in response.headers.items():
                 if name.casefold() in _FORWARD_RESPONSE_HEADERS:
@@ -232,13 +260,24 @@ class PlaybackGateway:
                     for chunk in response.iter_content(chunk_size=64 * 1024):
                         if chunk:
                             handler.wfile.write(chunk)
+                            self._metric("bytes_served", len(chunk))
                 except (BrokenPipeError, ConnectionResetError):
-                    pass
-            response.close()
+                    failed = True
         except PermissionError as exc:
+            failed = True
             handler.send_error(502, str(exc))
-        except requests_api.RequestException as exc:
+        except Exception as exc:
+            failed = True
             handler.send_error(502, f"Upstream playback request failed: {exc}")
+        finally:
+            if response is not None:
+                try:
+                    response.close()
+                except Exception:
+                    pass
+            if failed:
+                self._metric("failures")
+            self._metric("active_requests", -1)
 
     def close(self) -> None:
         if self._server:

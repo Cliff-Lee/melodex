@@ -7,13 +7,13 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 _APP = None
 
 
-def _player(*, playback_refresher=None, submit=None):
+def _player(*, playback_refresher=None, submit=None, scheduler=None):
     import pytest
 
     try:
         from PySide6.QtWidgets import QApplication
         from melodex.player import FlowPlayer
-    except ImportError as exc:
+    except (ImportError, OSError) as exc:
         pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
 
     global _APP
@@ -21,6 +21,7 @@ def _player(*, playback_refresher=None, submit=None):
     player = FlowPlayer(
         lambda track: dict(track),
         playback_refresher=playback_refresher,
+        playback_refresh_scheduler=scheduler,
         playback_refresh_submit=submit,
     )
     player._timer.stop()
@@ -177,7 +178,7 @@ def test_transient_source_refresh_runs_in_background_and_keeps_queue_until_ready
     player.close()
 
 
-def test_permanent_and_local_resource_failures_do_not_schedule_refresh():
+def test_permanent_source_failures_do_not_schedule_refresh():
     jobs = []
 
     def submit(callback, **_kwargs):
@@ -199,8 +200,7 @@ def test_permanent_and_local_resource_failures_do_not_schedule_refresh():
     error_scope = getattr(QMediaPlayer, "Error", QMediaPlayer)
     player.error.connect(errors.append)
     player._on_player_error(0, error_scope.FormatError, "unsupported media")
-    player.queue[0] = {"track_id": "local", "local_path": "/music/missing.flac"}
-    player._on_player_error(0, error_scope.ResourceError, "file unavailable")
+    player._on_player_error(0, error_scope.AccessDeniedError, "access denied")
 
     assert jobs == []
     assert len(errors) == 2
@@ -284,4 +284,166 @@ def test_stale_refresh_result_cannot_replace_a_new_queue():
 
     assert player.current_track()["track_id"] == "new"
     assert player.diagnostics_snapshot()["recovery_stale_results"] == 1
+    player.close()
+
+
+class _FakeScheduler:
+    def __init__(self):
+        self.jobs = []
+        self.cancelled = []
+
+    def submit(self, callback, **_kwargs):
+        self.jobs.append(callback)
+        return True
+
+    def cancel_pending(self, replace_key):
+        self.cancelled.append(replace_key)
+
+
+def test_local_resource_error_probes_in_background_and_reopens_same_queue_item(tmp_path):
+    from PySide6.QtMultimedia import QMediaPlayer
+
+    scheduler = _FakeScheduler()
+    player = _player(scheduler=scheduler)
+    app = _APP
+    assert app is not None
+    player._local_reconnect_delays_ms = (0, 0, 0)
+    player._playback_should_play = False
+    local_path = tmp_path / "returning.wav"
+    original = {"track_id": "local", "local_path": str(local_path)}
+    reopened = []
+    player._set_local_recovery_source = (
+        lambda deck, url: reopened.append((deck, url))
+    )
+    player.queue = [dict(original)]
+    player.index = 0
+    errors = []
+    player.error.connect(errors.append)
+
+    error_scope = getattr(QMediaPlayer, "Error", QMediaPlayer)
+    player._on_player_error(0, error_scope.ResourceError, "file unavailable")
+    assert scheduler.jobs == []
+    assert errors == [
+        "Storage is unavailable. Checking again in the background."
+    ]
+    _process_events(app)
+    assert len(scheduler.jobs) == 1
+
+    _run_in_worker(scheduler.jobs.pop(0))
+    _process_events(app)
+    assert player.diagnostics_snapshot()["local_reconnect_probe_failures"] == 1
+    assert player.current_track() == original
+    assert len(scheduler.jobs) == 1
+
+    local_path.write_bytes(b"available")
+    _run_in_worker(scheduler.jobs.pop(0))
+    _process_events(app)
+
+    assert reopened
+    assert reopened[0][0] == 0
+    assert reopened[0][1].toLocalFile() == str(local_path)
+    assert player._playback_recovery_candidate["resume_after_recovery"] is False
+    player._complete_playback_recovery(0)
+    assert player.current_track() == original
+    assert player.diagnostics_snapshot()["local_reconnect_successes"] == 1
+    assert player.diagnostics_snapshot()["local_reconnect_attempts"] == 2
+    player.close()
+
+
+def test_local_reconnect_cancels_pending_work_and_fences_late_results(tmp_path):
+    from PySide6.QtMultimedia import QMediaPlayer
+
+    scheduler = _FakeScheduler()
+    player = _player(scheduler=scheduler)
+    app = _APP
+    assert app is not None
+    player._local_reconnect_delays_ms = (0, 0, 0)
+    player.queue = [
+        {"track_id": "old", "local_path": str(tmp_path / "missing.wav")}
+    ]
+    player.index = 0
+    error_scope = getattr(QMediaPlayer, "Error", QMediaPlayer)
+
+    player._on_player_error(0, error_scope.ResourceError, "file unavailable")
+    _process_events(app)
+    assert len(scheduler.jobs) == 1
+    job = scheduler.jobs.pop(0)
+
+    player.set_queue([{"track_id": "new"}], autoplay=False)
+    assert "playback-recovery" in scheduler.cancelled
+    _run_in_worker(job)
+    _process_events(app)
+
+    assert player.current_track()["track_id"] == "new"
+    assert player._playback_recovery_candidate is None
+    assert player.diagnostics_snapshot()["recovery_stale_results"] == 1
+    player.close()
+
+
+def test_buffer_progress_and_stall_diagnostics_are_metadata_free():
+    import time
+
+    from PySide6.QtMultimedia import QMediaPlayer
+
+    player = _player()
+    notices = []
+    player.playbackNotice.connect(lambda message, timeout: notices.append((message, timeout)))
+    player._on_buffer_progress(0, 0.42)
+    player._last_progress_at = time.monotonic() - 2
+    player._monitor_position_progress(
+        0, 0, QMediaPlayer.PlayingState
+    )
+    assert player.diagnostics_snapshot()["buffer_stall_active"] is True
+    player._show_buffering_notice()
+    player._monitor_position_progress(
+        0, 1, QMediaPlayer.PlayingState
+    )
+
+    snapshot = player.diagnostics_snapshot()
+    assert notices == [("Buffering audio…", 0), ("", 0)]
+    assert snapshot["buffer_progress_events"] == 1
+    assert snapshot["active_buffer_progress_permille"] == 420
+    assert snapshot["buffer_progress_min_permille"] == 420
+    assert snapshot["buffer_stall_no_progress_events"] == 1
+    assert snapshot["buffer_stall_notices"] == 1
+    assert snapshot["buffer_stall_active"] is False
+    assert snapshot["buffer_stall_ms_total"] >= 0
+    assert all("local_path" not in key for key in snapshot)
+    player.close()
+
+
+
+
+def test_local_reconnect_is_bounded_and_keeps_track_queued(tmp_path):
+    from PySide6.QtMultimedia import QMediaPlayer
+
+    scheduler = _FakeScheduler()
+    player = _player(scheduler=scheduler)
+    app = _APP
+    assert app is not None
+    player._local_reconnect_delays_ms = (0, 0, 0)
+    player._playback_should_play = False
+    track = {"track_id": "missing", "local_path": str(tmp_path / "missing.wav")}
+    player.queue = [dict(track)]
+    player.index = 0
+    errors = []
+    player.error.connect(errors.append)
+    error_scope = getattr(QMediaPlayer, "Error", QMediaPlayer)
+
+    player._on_player_error(0, error_scope.ResourceError, "file unavailable")
+    for expected in (1, 2, 3):
+        _process_events(app)
+        assert len(scheduler.jobs) == 1
+        _run_in_worker(scheduler.jobs.pop(0))
+        _process_events(app)
+        assert player.diagnostics_snapshot()["local_reconnect_attempts"] == expected
+
+    assert scheduler.jobs == []
+    assert player.current_track() == track
+    assert errors[-1] == (
+        "Storage is still unavailable. The track remains in your queue."
+    )
+    snapshot = player.diagnostics_snapshot()
+    assert snapshot["local_reconnect_probe_failures"] == 3
+    assert snapshot["local_reconnect_exhausted"] == 1
     player.close()
