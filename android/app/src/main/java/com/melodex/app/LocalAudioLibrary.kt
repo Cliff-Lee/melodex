@@ -16,10 +16,12 @@ internal fun queryLocalAudioTracks(
     context: Context,
     limitPerVolume: Int? = null
 ): List<Track> {
-    val volumes = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-        MediaStore.getExternalVolumeNames(context)
+    val collections: List<Uri> = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        MediaStore.getExternalVolumeNames(context).map { volumeName ->
+            MediaStore.Audio.Media.getContentUri(volumeName)
+        }
     } else {
-        setOf(MediaStore.VOLUME_EXTERNAL)
+        listOf(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI)
     }
     val projection = arrayOf(
         MediaStore.Audio.Media._ID,
@@ -31,8 +33,7 @@ internal fun queryLocalAudioTracks(
     )
     val tracks = mutableListOf<Track>()
 
-    volumes.forEach { volumeName ->
-        val collection = MediaStore.Audio.Media.getContentUri(volumeName)
+    collections.forEach { collection ->
         val queryArgs = Bundle().apply {
             putStringArray(
                 ContentResolver.QUERY_ARG_SORT_COLUMNS,
