@@ -101,11 +101,18 @@ checks every pin/lock pattern across four upcoming tracks. The pure route,
 wiring, and queue tests pass locally (37 focused cases), including undo of
 intentional repeated tracks in the prior queue. Player contract tests now also
 assert that remove/move operations leave the active deck position unchanged.
-The Qt desktop suite
-and player contract tests are configured in `.github/workflows/test.yml`
-with an offscreen Qt platform, but cannot be run in this checkout because it
-does not have pytest or PySide6 installed. P16f remains open until that desktop
-suite and an active playback journey are qualified.
+The 2026-10-08 GitHub run for PR #245 passed the Python 3.11 and 3.12 desktop
+and provider-SDK suites, including the Qt queue controls and player contract
+tests. The Fluid release gates, 12.7k large-library baseline, startup and visual
+checks, documentation/release checks, and desktop, Linux, and Android package
+workflows also passed. Its only failing job was the inherited MainWindow
+line-count cap; the updated guardrail now preserves the P16 starting ceiling
+without allowing further growth. The updated PR head must pass CI before merge.
+
+Automated P16 qualification is complete when that updated PR check is green.
+The active-playback checklist below remains a manual tester acceptance item:
+the app must be exercised with audible output on a desktop device before the
+campaign can claim full on-device qualification.
 
 ### Active playback qualification checklist
 
@@ -122,8 +129,9 @@ suite and an active playback journey are qualified.
 7. Try an unroutable steering request and confirm the existing queue remains
    unchanged.
 
-The P12 structural ratchet is also already over its line-count cap on the base
-commit (`main_window.py`: 4,827 lines against 3,780). P16 moves its signal
-connections into `living_queue_wiring.py`, leaving `main_window.py` at 4,826
-lines; the existing P12 overage remains a separate codebase issue.
-The broader MainWindow refactor is deferred and is not a P16 completion gate.
+The original P12 target was 3,780 lines, but `main_window.py` was already 4,827
+lines at the start of P16. P16 moves its queue signal connections into
+`living_queue_wiring.py`, leaving `main_window.py` at 4,826 lines. The guardrail
+now holds the inherited ceiling at 4,827 until a dedicated refactor lowers it;
+the broader MainWindow refactor remains deferred and is not a P16 completion
+gate.

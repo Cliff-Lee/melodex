@@ -1,11 +1,13 @@
 # Next release — draft notes
 
-**Melodex v0.7.19 P15 Journey Composer tester release candidate.**
+**Melodex v0.7.19 — Journey Composer and Living Queue tester release.**
 
-Current target version: **0.7.19**. The first P15 candidate is **v0.7.19-rc.1**.
+Current target version: **0.7.19**.
 
-This candidate builds on P14 and replaces the Journey Designer's configuration
-boxes with a direct route composer. Test drag-and-drop, stage ordering, exact
-track waypoints, direct routes with no stages, and playback/queue actions.
+This release combines P15's graphical Journey Composer with P16's queue
+editing, live journey steering, protected tracks, route undo, and explanations
+for suggested tracks.
 
-See `docs/releases/v0.7.19-rc.1.md` for scope and the tester checklist.
+Test drag-and-drop route building, queue edits during playback, each steering
+direction, protected-track behavior, route undo, and the active-playback
+checklist in `docs/P16_LIVING_QUEUE.md`.
