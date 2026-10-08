@@ -41,6 +41,8 @@ import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.ListenableFuture
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanOptions
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -83,7 +85,39 @@ class BridgeClient(var baseUrl: String, var token: String) {
         return JSONObject(body)
     }
 
+    private fun post(path: String, body: JSONObject): JSONObject {
+        val conn = URL(baseUrl.trimEnd('/') + path).openConnection() as HttpURLConnection
+        conn.requestMethod = "POST"
+        conn.connectTimeout = 8000
+        conn.readTimeout = 15000
+        conn.doOutput = true
+        conn.setRequestProperty("Accept", "application/json")
+        conn.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+        if (token.isNotBlank()) conn.setRequestProperty("Authorization", "Bearer $token")
+        conn.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+        val code = conn.responseCode
+        val response = (if (code in 200..299) conn.inputStream else conn.errorStream)
+            .bufferedReader().use { it.readText() }
+        if (code !in 200..299) throw IllegalStateException("Bridge error $code: $response")
+        return JSONObject(response)
+    }
+
     fun health(): Boolean = get("/health").optBoolean("ok", false)
+
+    fun verify(): Boolean {
+        get("/v1/providers")
+        return true
+    }
+
+    fun pair(code: String, deviceName: String): JSONObject = post(
+        "/v1/pair",
+        JSONObject().put("code", code).put("device_name", deviceName)
+    )
+
+    fun unpair(deviceId: String): Boolean = post(
+        "/v1/unpair",
+        JSONObject().put("device_id", deviceId)
+    ).optBoolean("ok", false)
 
     fun search(query: String): List<Track> {
         val q = URLEncoder.encode(query, "UTF-8")
