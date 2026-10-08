@@ -510,10 +510,18 @@ fun MelodexApp(player: Player) {
             localQueue = savedQueue.tracks
             nowPlaying = savedQueue.tracks.getOrNull(savedQueue.currentIndex)
             if (player.mediaItemCount == 0) {
+                val durationMs = savedQueue.tracks
+                    .getOrNull(savedQueue.currentIndex)?.durationMs ?: 0L
+                val savedPositionMs = savedQueue.currentPositionMs.coerceAtLeast(0L)
+                val restorePositionMs = if (durationMs > 0L) {
+                    savedPositionMs.coerceAtMost((durationMs - 1_000L).coerceAtLeast(0L))
+                } else {
+                    savedPositionMs
+                }
                 player.setMediaItems(
                     savedQueue.tracks.map(::trackToMediaItem),
                     savedQueue.currentIndex,
-                    0L
+                    restorePositionMs
                 )
                 player.prepare()
             }
@@ -555,7 +563,7 @@ fun MelodexApp(player: Player) {
         player.setMediaItems(queue.map(::trackToMediaItem), startIndex, 0L)
         player.prepare()
         player.play()
-        LocalQueueStore.saveAsync(context, queue, startIndex)
+        LocalQueueStore.saveAsync(context, queue, startIndex, 0L)
     }
 
     fun addToLocalQueue(track: Track) {
@@ -566,18 +574,21 @@ fun MelodexApp(player: Player) {
         val wasPlayingLocalQueue = player.hasOnlyLocalItems()
         val updatedQueue = localQueue + track
         localQueue = updatedQueue
+        val savedPositionMs = if (wasPlayingLocalQueue) player.currentPosition.coerceAtLeast(0L) else 0L
         if (wasPlayingLocalQueue) {
             val currentTrackId = player.currentMediaItem?.mediaId?.removePrefix("local|")
             val currentIndex = updatedQueue.indexOfFirst { it.trackId == currentTrackId }.coerceAtLeast(0)
             player.setMediaItems(
                 updatedQueue.map(::trackToMediaItem),
                 currentIndex,
-                player.currentPosition
+                savedPositionMs
             )
             player.prepare()
         }
         val savedIndex = if (wasPlayingLocalQueue) player.currentMediaItemIndex else 0
-        LocalQueueStore.saveAsync(context, updatedQueue, savedIndex.coerceAtLeast(0))
+        LocalQueueStore.saveAsync(
+            context, updatedQueue, savedIndex.coerceAtLeast(0), savedPositionMs
+        )
         localStatus = "Added to queue: ${track.title}"
     }
 
@@ -587,6 +598,7 @@ fun MelodexApp(player: Player) {
         val currentTrackId = player.currentMediaItem?.mediaId?.removePrefix("local|")
         val updatedQueue = localQueue.toMutableList().also { it.removeAt(index) }
         localQueue = updatedQueue
+        var savedPositionMs = if (wasPlayingLocalQueue) player.currentPosition.coerceAtLeast(0L) else 0L
         if (wasPlayingLocalQueue) {
             if (updatedQueue.isEmpty()) {
                 player.clearMediaItems()
@@ -595,7 +607,10 @@ fun MelodexApp(player: Player) {
                 val nextIndex = updatedQueue.indexOfFirst { it.trackId == currentTrackId }
                     .takeIf { it >= 0 }
                     ?: index.coerceIn(0, updatedQueue.lastIndex)
-                player.setMediaItems(updatedQueue.map(::trackToMediaItem), nextIndex, player.currentPosition)
+                if (updatedQueue[nextIndex].trackId != currentTrackId) savedPositionMs = 0L
+                player.setMediaItems(
+                    updatedQueue.map(::trackToMediaItem), nextIndex, savedPositionMs
+                )
                 player.prepare()
                 nowPlaying = updatedQueue[nextIndex]
             }
@@ -603,7 +618,12 @@ fun MelodexApp(player: Player) {
         if (updatedQueue.isEmpty()) {
             LocalQueueStore.clearAsync(context)
         } else {
-            LocalQueueStore.saveAsync(context, updatedQueue, player.currentMediaItemIndex.coerceAtLeast(0))
+            LocalQueueStore.saveAsync(
+                context,
+                updatedQueue,
+                player.currentMediaItemIndex.coerceAtLeast(0),
+                savedPositionMs
+            )
         }
     }
 
@@ -977,7 +997,7 @@ fun MelodexApp(player: Player) {
                                         player.prepare()
                                         player.play()
                                         nowPlaying = track
-                                        LocalQueueStore.saveAsync(context, localQueue, index)
+                                        LocalQueueStore.saveAsync(context, localQueue, index, 0L)
                                         queueDialogOpen = false
                                     }
                                 )

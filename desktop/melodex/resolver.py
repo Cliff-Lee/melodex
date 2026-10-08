@@ -423,12 +423,18 @@ class UniversalResolver:
             }
             return target
         if pid and pid in self.manager.providers and (
-            target.get("track_id") or target.get("local_path") or target.get("stream_url")
+            target.get("track_id") or target.get("id") or target.get("local_path") or target.get("stream_url")
         ) and _provider_supports(self.manager.providers[pid], "playback"):
             try:
                 direct = dict(self.manager.providers[pid].resolve(target))
                 if _playable(direct):
                     direct.setdefault("provider_id", pid)
+                    for identity_key in ("track_id", "id"):
+                        if (
+                            direct.get(identity_key) in (None, "")
+                            and target.get(identity_key) not in (None, "")
+                        ):
+                            direct[identity_key] = target[identity_key]
                     direct["_resolution"] = {
                         "mode": "direct",
                         "provider_id": pid,
