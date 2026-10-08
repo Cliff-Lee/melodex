@@ -118,6 +118,7 @@ This page is intentionally exhaustive. For a shorter route by goal, use the [doc
 - [Build from source](BUILD_FROM_SOURCE.md)
 - [Releases, `main`, and version numbers](RELEASES_AND_MAIN.md)
 - [Releasing](RELEASING.md)
+- [Melodex v0.7.24 release notes](releases/v0.7.24.md)
 - [Melodex v0.7.23 release notes](releases/v0.7.23.md)
 - [Melodex v0.7.21 release notes](releases/v0.7.21.md)
 - [Melodex v0.7.20 release notes](releases/v0.7.20.md)

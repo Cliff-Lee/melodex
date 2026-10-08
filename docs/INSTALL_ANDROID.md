@@ -11,7 +11,7 @@ Melodex does not run downloaded provider code on Android. Local playback opens
 the selected audio item through Android's media library. Bridge access is
 optional.
 
-The v0.7.23 release adds the Melodex Android app icon, a seekable now-playing panel, and clearer phone-to-phone playback behavior on top of P19a–P19d. Choose **On this phone** to play without a computer, or **Connect a Melodex** to pair over your local network.
+The v0.7.24 release targets Android 16 (API 36) and adds an in-app privacy-policy link. It retains P20's branded icon, seekable now-playing controls, and independent phone playback on top of P19a–P19d. Choose **On this phone** to play without a computer, or **Connect a Melodex** to pair over your local network.
 
 ## 1. Download the Android APK
 
@@ -144,8 +144,9 @@ play/pause buttons are supported, and unplugging headphones pauses playback.
 
 ## 9. Current preview limitations
 
-The v0.7.23 release includes P19a–P19d: local playback, background controls,
-local search and queue, and QR pairing with per-phone credentials and
+The v0.7.24 release targets Android 16 and includes an in-app privacy-policy
+link. The v0.7.23 release includes P19a–P19d: local playback, background
+controls, local search and queue, and QR pairing with per-phone credentials and
 revocation. P20 adds the Android icon, seekable now-playing controls, and
 independent playback on each phone. Automatic local-network discovery and
 Flow/taste tools remain later campaign work. Physical-device verification is

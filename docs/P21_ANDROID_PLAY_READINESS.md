@@ -64,7 +64,7 @@ unsigned and is not a Play upload artifact.
 
 ## Verification
 
-- python scripts/version_check.py matches version 0.7.24.dev0 across desktop,
+- python scripts/version_check.py matches version 0.7.24 across desktop,
   Windows installer, and Android (versionCode 724).
 - Android CI builds assembleDebug and bundleRelease with compile and target
   API 36.
