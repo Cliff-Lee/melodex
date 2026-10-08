@@ -88,3 +88,63 @@ def test_rediscover_mode_uses_metadata_fallback_without_play_history():
 
     assert score == pytest.approx(0.6)
     assert reason == "deep cut in your library"
+
+
+def test_forgotten_favourite_stays_eligible_after_a_long_gap():
+    now = 1_800_000_000.0
+    track = _album_track(1)
+    key = UserState.track_key(track)
+    old_favourite = {
+        "artist": "Northbound",
+        "plays": 12,
+        "completes": 10,
+        "loves": 1,
+        "keeps": 1,
+        "last_played": now - 500 * 86400,
+    }
+    recent_favourite = dict(
+        old_favourite,
+        last_played=now - 2 * 86400,
+    )
+    mind = MindEngine(None, None)
+
+    old_score, old_reason = mind.score(
+        track, {key: old_favourite}, "rediscover", 0.35, now, {}, {}
+    )
+    recent_score, recent_reason = mind.score(
+        track, {key: recent_favourite}, "rediscover", 0.35, now, {}, {}
+    )
+
+    assert old_score > recent_score
+    assert old_reason == "older favourite"
+    assert recent_reason == "heard recently"
+
+
+def test_unplayed_tracks_can_return_with_a_neglected_favourite_artist():
+    now = 1_800_000_000.0
+    history_track = _album_track(1, album="Older Album")
+    history = {
+        UserState.track_key(history_track): {
+            "artist": "Northbound",
+            "plays": 9,
+            "completes": 8,
+            "loves": 1,
+            "last_played": now - 300 * 86400,
+        }
+    }
+    mind = MindEngine(None, None)
+    artist_memory = mind._artist_memory_signals(history, now)["northbound"]
+    candidate = _album_track(8, album="New Album")
+    unfamiliar = _album_track(8, artist="Unknown Act", album="Other Album")
+
+    known_score, known_reason = mind.score(
+        candidate, {}, "rediscover", 0.35, now, {}, {}, artist_memory
+    )
+    unfamiliar_score, _ = mind.score(
+        unfamiliar, {}, "rediscover", 0.35, now, {}, {}, {}
+    )
+
+    assert artist_memory["favorite_artist"] is True
+    assert artist_memory["rediscovery"] > 0.0
+    assert known_score > unfamiliar_score
+    assert known_reason == "from a favourite artist you haven't heard lately"

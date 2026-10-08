@@ -41,6 +41,19 @@ existing Mind and Music Map tests. Signals are calculated in memory from the
 current catalog and local UserState; there is no schema migration or network
 dependency.
 
+## P17b progress
+
+Rediscover now keeps a well-liked track eligible after a longer absence, with
+recently played tracks still receiving a strong repetition penalty. It also
+aggregates plays, completions, skips, loves, keeps, and last-played time by
+artist. An unplayed track can therefore surface as a return to a favourite
+artist that has been quiet for a while. The recommendation reason distinguishes
+that path from a previously played favourite and from a metadata-only deep cut.
+
+The focused P17b checks cover old versus recent favourites and an unheard track
+from a neglected favourite artist. Artist memory is computed from local
+UserState and affects the Rediscover route only.
+
 ## Completion gates
 
 P17 is complete when a fresh install can start a useful rediscovery route, a
