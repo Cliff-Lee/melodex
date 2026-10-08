@@ -116,7 +116,7 @@ The desktop app starts a loopback-only authenticated control bridge for local in
 
 If you explicitly enable LAN access, devices that can reach the Bridge and possess an authorized bearer token can access the exposed API/source operations.
 
-The desktop pairing QR contains a one-time code that expires after two minutes. Pairing does not use an external account or rendezvous server. The code, phone name and Bridge address are exchanged with the desktop over the local Bridge HTTP connection, so pair only on a trusted LAN. Android requests camera access only when you scan a code; the QR is decoded on the phone and the image is not sent or saved by Melodex.
+The desktop pairing QR contains a one-time code that expires after two minutes. Pairing does not use an external account or rendezvous server. The code, phone name and Bridge address are exchanged with the desktop over the local Bridge HTTP connection, and the device token is returned in that response. Pair only on a trusted LAN. Android requests camera access only when you scan a code; the QR is decoded on the phone and the image is not sent or saved by Melodex.
 
 Each paired phone receives a separate token. Android encrypts its saved token with Android Keystore. The desktop stores only the paired-token digest in a file with user-only permissions (`0600`) where the operating system supports them. You can revoke a phone in the desktop pairing dialog or from that phone while it can reach the Bridge.
 
