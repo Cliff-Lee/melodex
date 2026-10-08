@@ -304,10 +304,10 @@ class _FakeScheduler:
 
 
 def test_local_resource_error_probes_in_background_and_reopens_same_queue_item(tmp_path):
-    from PySide6.QtMultimedia import QMediaPlayer
 
     scheduler = _FakeScheduler()
     player = _player(scheduler=scheduler)
+    from PySide6.QtMultimedia import QMediaPlayer
     app = _APP
     assert app is not None
     player._local_reconnect_delays_ms = (0, 0, 0)
@@ -354,10 +354,10 @@ def test_local_resource_error_probes_in_background_and_reopens_same_queue_item(t
 
 
 def test_local_reconnect_cancels_pending_work_and_fences_late_results(tmp_path):
-    from PySide6.QtMultimedia import QMediaPlayer
 
     scheduler = _FakeScheduler()
     player = _player(scheduler=scheduler)
+    from PySide6.QtMultimedia import QMediaPlayer
     app = _APP
     assert app is not None
     player._local_reconnect_delays_ms = (0, 0, 0)
@@ -386,9 +386,9 @@ def test_local_reconnect_cancels_pending_work_and_fences_late_results(tmp_path):
 def test_buffer_progress_and_stall_diagnostics_are_metadata_free():
     import time
 
-    from PySide6.QtMultimedia import QMediaPlayer
 
     player = _player()
+    from PySide6.QtMultimedia import QMediaPlayer
     notices = []
     player.playbackNotice.connect(lambda message, timeout: notices.append((message, timeout)))
     player._on_buffer_progress(0, 0.42)
@@ -418,10 +418,10 @@ def test_buffer_progress_and_stall_diagnostics_are_metadata_free():
 
 
 def test_local_reconnect_is_bounded_and_keeps_track_queued(tmp_path):
-    from PySide6.QtMultimedia import QMediaPlayer
 
     scheduler = _FakeScheduler()
     player = _player(scheduler=scheduler)
+    from PySide6.QtMultimedia import QMediaPlayer
     app = _APP
     assert app is not None
     player._local_reconnect_delays_ms = (0, 0, 0)
