@@ -128,9 +128,6 @@ def _process_events(app):
 def test_transient_source_refresh_runs_in_background_and_keeps_queue_until_ready():
     import threading
 
-    from PySide6.QtWidgets import QApplication
-
-    app = QApplication.instance() or QApplication([])
     ui_thread = threading.get_ident()
     refresh_threads = []
     jobs = []
@@ -144,6 +141,8 @@ def test_transient_source_refresh_runs_in_background_and_keeps_queue_until_ready
         return True
 
     player = _player(playback_refresher=refresh, submit=submit)
+    app = _APP
+    assert app is not None
     player.players[0].errorOccurred.disconnect()
     player.players[0].mediaStatusChanged.disconnect()
     player._playback_recovery_delays_ms = (0, 0)
@@ -179,8 +178,6 @@ def test_transient_source_refresh_runs_in_background_and_keeps_queue_until_ready
 
 
 def test_permanent_and_local_resource_failures_do_not_schedule_refresh():
-    from PySide6.QtMultimedia import QMediaPlayer
-
     jobs = []
 
     def submit(callback, **_kwargs):
@@ -191,6 +188,8 @@ def test_permanent_and_local_resource_failures_do_not_schedule_refresh():
         playback_refresher=lambda track: dict(track),
         submit=submit,
     )
+    from PySide6.QtMultimedia import QMediaPlayer
+
     player.queue = [
         {"track_id": "corrupt", "stream_url": "https://stream.example/audio"}
     ]
@@ -212,9 +211,6 @@ def test_permanent_and_local_resource_failures_do_not_schedule_refresh():
 
 
 def test_recovery_is_bounded_to_two_refresh_attempts():
-    from PySide6.QtWidgets import QApplication
-
-    app = QApplication.instance() or QApplication([])
     jobs = []
 
     def submit(callback, **_kwargs):
@@ -225,6 +221,8 @@ def test_recovery_is_bounded_to_two_refresh_attempts():
         playback_refresher=lambda _track: {"track_id": "current"},
         submit=submit,
     )
+    app = _APP
+    assert app is not None
     player._playback_recovery_delays_ms = (0, 0)
     player.queue = [
         {"track_id": "current", "stream_url": "https://stream.example/old"}
@@ -253,9 +251,6 @@ def test_recovery_is_bounded_to_two_refresh_attempts():
 
 
 def test_stale_refresh_result_cannot_replace_a_new_queue():
-    from PySide6.QtWidgets import QApplication
-
-    app = QApplication.instance() or QApplication([])
     jobs = []
 
     def submit(callback, **_kwargs):
@@ -269,6 +264,8 @@ def test_stale_refresh_result_cannot_replace_a_new_queue():
         },
         submit=submit,
     )
+    app = _APP
+    assert app is not None
     player._playback_recovery_delays_ms = (0, 0)
     player.queue = [
         {"track_id": "old", "stream_url": "https://stream.example/old.mp3"}
