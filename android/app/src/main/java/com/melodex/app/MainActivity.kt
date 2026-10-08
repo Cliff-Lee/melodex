@@ -281,7 +281,7 @@ fun MelodexApp(player: Player) {
                     }
                     val bridgeToken = enrolled.getString("token")
                     val deviceId = enrolled.getString("device_id")
-                    val displayName = enrolled.optString("device_name", pairing.displayName)
+                    val displayName = pairing.displayName
                     val connected = withContext(Dispatchers.IO) {
                         BridgeClient(pairing.baseUrl, bridgeToken).verify()
                     }
