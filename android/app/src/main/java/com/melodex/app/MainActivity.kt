@@ -2,6 +2,7 @@ package com.melodex.app
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.content.ComponentName
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -21,7 +22,11 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
-import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.common.MediaMetadata
+import androidx.media3.common.Player
+import androidx.media3.session.MediaController
+import androidx.media3.session.SessionToken
+import com.google.common.util.concurrent.ListenableFuture
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -91,23 +96,79 @@ class BridgeClient(var baseUrl: String, var token: String) {
 }
 
 class MainActivity : ComponentActivity() {
-    private lateinit var player: ExoPlayer
+    private var controllerFuture: ListenableFuture<MediaController>? = null
+    private val controllerState = mutableStateOf<MediaController?>(null)
+    private val connectionError = mutableStateOf<String?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        player = ExoPlayer.Builder(this).build()
-        setContent { MelodexApp(player) }
+        setContent {
+            val controller = controllerState.value
+            if (controller == null) {
+                PlayerConnectionScreen(connectionError.value, ::connectToPlaybackService)
+            } else {
+                MelodexApp(controller)
+            }
+        }
     }
 
-    override fun onDestroy() {
-        if (::player.isInitialized) player.release()
-        super.onDestroy()
+    override fun onStart() {
+        super.onStart()
+        connectToPlaybackService()
+    }
+
+    override fun onStop() {
+        val future = controllerFuture
+        controllerFuture = null
+        controllerState.value = null
+        if (future != null) MediaController.releaseFuture(future)
+        super.onStop()
+    }
+
+    private fun connectToPlaybackService() {
+        connectionError.value = null
+        val token = SessionToken(this, ComponentName(this, PlaybackService::class.java))
+        val future = MediaController.Builder(this, token).buildAsync()
+        controllerFuture = future
+        future.addListener({
+            if (controllerFuture !== future) return@addListener
+            try {
+                controllerState.value = future.get()
+            } catch (e: Exception) {
+                connectionError.value = e.cause?.message ?: e.message ?: "Could not connect to the playback service."
+            }
+        }, ContextCompat.getMainExecutor(this))
+    }
+}
+
+@Composable
+private fun PlayerConnectionScreen(error: String?, onRetry: () -> Unit) {
+    MaterialTheme(colorScheme = darkColorScheme()) {
+        Surface(Modifier.fillMaxSize()) {
+            Column(
+                Modifier.fillMaxSize().padding(24.dp),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                if (error == null) {
+                    CircularProgressIndicator()
+                    Spacer(Modifier.height(16.dp))
+                    Text("Starting playback…")
+                } else {
+                    Text("Melodex could not start its playback service.")
+                    Spacer(Modifier.height(8.dp))
+                    Text(error, style = MaterialTheme.typography.bodySmall)
+                    Spacer(Modifier.height(16.dp))
+                    Button(onClick = onRetry) { Text("Try again") }
+                }
+            }
+        }
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MelodexApp(player: ExoPlayer) {
+fun MelodexApp(player: Player) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val audioPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -163,7 +224,17 @@ fun MelodexApp(player: ExoPlayer) {
     }
 
     fun play(track: Track) {
-        player.setMediaItem(MediaItem.fromUri(track.streamUrl))
+        val mediaItem = MediaItem.Builder()
+            .setUri(track.streamUrl)
+            .setMediaMetadata(
+                MediaMetadata.Builder()
+                    .setTitle(track.title)
+                    .setArtist(track.artist)
+                    .setAlbumTitle(track.album)
+                    .build()
+            )
+            .build()
+        player.setMediaItem(mediaItem)
         player.prepare()
         player.play()
         nowPlaying = track
