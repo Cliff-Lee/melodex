@@ -67,6 +67,51 @@ def openapi_document() -> dict[str, Any]:
                     "responses": {"200": {"description": "OpenAPI 3.1 document"}},
                 }
             },
+            "/v1/pair": {
+                "post": {
+                    "operationId": "melodexPairDevice",
+                    "tags": ["system"],
+                    "security": [],
+                    "description": "Redeem a single-use local QR pairing code. The code expires after two minutes.",
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": ["code"],
+                                    "properties": {
+                                        "code": {"type": "string"},
+                                        "device_name": {"type": "string", "maxLength": 80},
+                                    },
+                                    "additionalProperties": False,
+                                }
+                            }
+                        },
+                    },
+                    "responses": {"200": {"description": "Device token issued"}, "400": error, "401": error},
+                }
+            },
+            "/v1/unpair": {
+                "post": {
+                    "operationId": "melodexUnpairDevice",
+                    "tags": ["system"],
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": ["device_id"],
+                                    "properties": {"device_id": {"type": "string"}},
+                                    "additionalProperties": False,
+                                }
+                            }
+                        },
+                    },
+                    "responses": {"200": {"description": "Device token revoked"}, "401": error},
+                }
+            },
             "/v1/extensions": {
                 "get": {
                     "operationId": "melodexExtensions",
