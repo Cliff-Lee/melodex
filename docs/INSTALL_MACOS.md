@@ -108,21 +108,12 @@ Your Mac can act as a Provider Bridge for the Android app.
 1. Put the Mac and Android phone on the same trusted Wi-Fi network.
 2. In desktop Melodex open **Sources → Provider Bridge…**.
 3. When asked whether phones/computers on your LAN may connect, choose **Yes**.
-4. Melodex starts the Bridge on port `8766` and shows a bearer token.
-5. Find the Mac's local IP address:
-   - **System Settings → Network → Wi-Fi → Details**, then look for **IP Address**.
-6. On Android, enter a Bridge URL in this form:
+4. In Android Melodex choose **Connect a Melodex → Scan desktop QR code** and scan the code shown on the Mac.
+5. Allow camera access when Android asks.
 
-   `http://MAC-IP-ADDRESS:8766`
+The code expires after two minutes and works once. The phone receives its own saved connection; you can revoke it from the desktop **Paired phones** list.
 
-   Example:
-
-   `http://192.168.1.42:8766`
-
-7. Enter the bearer token shown by desktop Melodex.
-8. Tap **Connect**.
-
-Treat the token like a password. The current preview creates a new token when the Bridge is restarted.
+For manual setup, open **Show advanced manual setup** in the desktop pairing dialog, then use **Advanced setup** in Android. The dialog shows the Bridge URL and session token. Treat the token like a password; it changes when the Bridge restarts.
 
 See the full [Android guide](INSTALL_ANDROID.md).
 
