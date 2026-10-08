@@ -92,7 +92,7 @@ Request:
 {"code": "one-time-code", "device_name": "Android phone"}
 ```
 
-Success returns a device-specific bearer token and device ID. Android stores the token encrypted with Android Keystore. The desktop stores only its SHA-256 digest in `bridge.paired-devices.json`, with user-only file permissions. The raw token is returned only during pairing.
+Success returns a device-specific bearer token and device ID. Android stores the token encrypted with Android Keystore. The desktop stores only its SHA-256 digest in `bridge.paired-devices.json`, with user-only permissions where the operating system supports them. The raw token is returned only during pairing.
 
 ### `POST /v1/unpair`
 
