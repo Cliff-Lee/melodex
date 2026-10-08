@@ -331,7 +331,7 @@ class MainWindow(QMainWindow):
             )
         self.player.queueChanged.connect(self._persist_playback_queue_async)
         self.player.error.connect(lambda message: self.statusBar().showMessage(message, 7000))
-        self.player.playbackNotice.connect(self.statusBar().showMessage)
+        self.player.playbackNotice.connect(lambda *notice: self.statusBar().showMessage(*notice))
         self.playback_feature.previousRequested.connect(self.player.previous)
         self.playback_feature.playPauseRequested.connect(self.player.play_pause)
         self.playback_feature.nextRequested.connect(self.player.next)
