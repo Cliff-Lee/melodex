@@ -4689,6 +4689,17 @@ class MainWindow(QMainWindow):
         self.bridge=ProviderBridge(self.providers,host,port,token=token,controller=self._control_request,state_path=self.data_dir/"bridge.json"); self.bridge.start()
 
     def _bridge_lan_address(self) -> str:
+        # A UDP connect only selects the route; it sends no packet to this reserved address.
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+                probe.connect(("192.0.2.1", 9))
+                address = str(probe.getsockname()[0])
+                parsed = ipaddress.ip_address(address)
+                if parsed.is_private and not parsed.is_loopback:
+                    return address
+        except OSError:
+            pass
+
         candidates: list[str] = []
         try:
             for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
