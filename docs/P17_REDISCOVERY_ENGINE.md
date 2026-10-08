@@ -94,6 +94,19 @@ The map derives signals from the bounded local catalog and UserState snapshot
 inside its existing background task. It adds no scan to startup or the playback
 path, and introduces no schema or network dependency.
 
+## P17f progress
+
+The qualification suite now checks the full rediscovery path from local history
+into Music Map nodes and route reasons, plus the map's user-visible explanation.
+Memory replay tests verify original order, removal of history-only fields, and
+the 200-track bound. Existing checks cover metadata-only fresh installs, sparse
+tags, mature history, deterministic large-library selection, Qt visual output,
+and the 12.7k-track responsiveness gates.
+
+P17f is complete when the current PR head passes Tests, desktop, and Linux
+package workflows. A stable release still follows the repository's release
+readiness and desktop qualification gates.
+
 ## Completion gates
 
 P17 is complete when a fresh install can start a useful rediscovery route, a

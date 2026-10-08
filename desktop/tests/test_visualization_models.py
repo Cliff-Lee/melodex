@@ -153,3 +153,27 @@ def test_visual_memory_keeps_private_ordered_history_refs_for_replay():
     ]
     assert all("_history_id" not in track and "_played_at" not in track for track in queue)
     assert len(tracks_for_memory_mark(marks[0], {12: rows[0], 13: rows[1]}, limit=1)) == 1
+
+
+def test_visual_memory_replay_caps_broad_periods_at_200_tracks():
+    from melodex.visualization_models import MemoryMark
+
+    mark = MemoryMark(
+        "2026",
+        "251 plays",
+        251,
+        210,
+        0.5,
+        0.5,
+        history_ids=tuple(range(1, 252)),
+    )
+    history = {
+        index: {"_history_id": index, "title": f"Track {index}"}
+        for index in range(1, 252)
+    }
+
+    tracks = tracks_for_memory_mark(mark, history, limit=250)
+
+    assert len(tracks) == 200
+    assert tracks[0]["title"] == "Track 1"
+    assert tracks[-1]["title"] == "Track 200"

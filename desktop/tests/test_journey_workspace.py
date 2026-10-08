@@ -9,7 +9,11 @@ class FakeJourneyState:
     def __init__(self):
         self._recipes = []
         self._runs = []
+        self._track_signals = []
         self.events = []
+
+    def track_signals(self, _limit=5000):
+        return [dict(row) for row in self._track_signals]
 
     def journey_recipes(self):
         return list(self._recipes)
@@ -54,7 +58,13 @@ class FakeProviders:
         return [dict(track) for track in self._catalog]
 
 
-def _workspace(*, catalog=None, current=None):
+def _workspace(
+    *,
+    catalog=None,
+    current=None,
+    local_intel_service=None,
+    knowledge_service=None,
+):
     try:
         from PySide6.QtWidgets import QApplication
         from melodex.journey_workspace import JourneyWorkspace
@@ -81,8 +91,8 @@ def _workspace(*, catalog=None, current=None):
         providers,
         state,
         SimpleNamespace(analysis_available=True),
-        local_intelligence=lambda: SimpleNamespace(),
-        knowledge=lambda: SimpleNamespace(),
+        local_intelligence=lambda: local_intel_service or SimpleNamespace(),
+        knowledge=lambda: knowledge_service or SimpleNamespace(),
         metadata=lambda: SimpleNamespace(),
         run_async=run_async,
         current_track=lambda: current_box["track"],
@@ -92,6 +102,85 @@ def _workspace(*, catalog=None, current=None):
         lambda message, timeout: statuses.append((message, timeout))
     )
     return app, workspace, state, statuses, current_box
+
+
+def test_music_map_payload_uses_metadata_aware_library_rediscovery():
+    from melodex.user_state import UserState
+
+    favorite = {
+        "provider_id": "local",
+        "track_id": "favorite",
+        "rel": "local:northbound/night-drive/1",
+        "artist": "Northbound",
+        "album_artist": "Northbound",
+        "album": "Night Drive",
+        "title": "Opening Light",
+        "track_no": "1/8",
+    }
+    hidden_gem = {
+        "provider_id": "local",
+        "track_id": "hidden-gem",
+        "rel": "local:northbound/night-drive/8",
+        "artist": "Northbound",
+        "album_artist": "Northbound",
+        "album": "Night Drive",
+        "title": "Last Signal",
+        "track_no": "8/8",
+    }
+    catalog = [favorite, hidden_gem]
+    analysis = {
+        "bpm": 120,
+        "energy": 0.5,
+        "spectral_centroid": 1400,
+        "onset_density": 0.1,
+        "intro_mixability": 0.5,
+        "outro_mixability": 0.5,
+        "key_pc": 3,
+        "key_mode": "minor",
+        "key_confidence": 0.8,
+    }
+    profiles = [
+        {
+            "ref": f"t{index}",
+            "title": track["title"],
+            "artist": track["artist"],
+            "album": track["album"],
+            "analysis": dict(analysis),
+            "taste": {},
+        }
+        for index, track in enumerate(catalog)
+    ]
+    local_intelligence = SimpleNamespace(
+        build_snapshot=lambda *_args, **_kwargs: (
+            profiles,
+            [],
+            {f"t{index}": dict(track) for index, track in enumerate(catalog)},
+            len(profiles),
+        )
+    )
+    knowledge = SimpleNamespace(snapshot=lambda _ref_map: {})
+    app, workspace, state, _statuses, _current = _workspace(
+        catalog=catalog,
+        local_intel_service=local_intelligence,
+        knowledge_service=knowledge,
+    )
+    state._track_signals = [
+        {
+            "track_key": UserState.track_key(favorite),
+            "artist": "Northbound",
+            "plays": 8,
+            "completes": 7,
+            "loves": 1,
+        }
+    ]
+
+    payload = workspace._build_music_map_payload()
+    nodes = {row["ref"]: row for row in payload["model"]["nodes"]}
+
+    assert nodes["t1"]["rediscovery"] > 0.45
+    assert nodes["t1"]["rediscovery_reason"] == "deep cut from an album you enjoyed"
+    workspace.deleteLater()
+    app.processEvents()
 
 
 def test_journey_workspace_owns_default_state_and_lazy_music_map():

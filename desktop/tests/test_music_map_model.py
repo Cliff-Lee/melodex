@@ -136,6 +136,7 @@ def test_music_map_uses_library_rediscovery_and_carries_its_reason():
         centroid=1400,
         onset=0.10,
     )
+    profile["local_path"] = "/private/music/hidden-gem.flac"
     reason = "deep cut from an album you enjoyed"
     profile["library_rediscovery"] = {
         "library_score": 0.82,
@@ -147,6 +148,7 @@ def test_music_map_uses_library_rediscovery_and_carries_its_reason():
 
     assert node["rediscovery"] == 0.82
     assert node["rediscovery_reason"] == reason
+    assert "local_path" not in node
 
 
 def test_music_map_large_library_selection_is_deterministic():
