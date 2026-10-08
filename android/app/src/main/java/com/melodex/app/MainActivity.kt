@@ -358,6 +358,7 @@ fun MelodexApp(player: Player) {
     fun removeFromLocalQueue(index: Int) {
         if (index !in localQueue.indices) return
         val wasPlayingLocalQueue = player.hasOnlyLocalItems()
+        val currentTrackId = player.currentMediaItem?.mediaId?.removePrefix("local|")
         val updatedQueue = localQueue.toMutableList().also { it.removeAt(index) }
         localQueue = updatedQueue
         if (wasPlayingLocalQueue) {
@@ -365,9 +366,12 @@ fun MelodexApp(player: Player) {
                 player.clearMediaItems()
                 nowPlaying = null
             } else {
-                val nextIndex = player.currentMediaItemIndex.coerceIn(0, updatedQueue.lastIndex)
+                val nextIndex = updatedQueue.indexOfFirst { it.trackId == currentTrackId }
+                    .takeIf { it >= 0 }
+                    ?: index.coerceIn(0, updatedQueue.lastIndex)
                 player.setMediaItems(updatedQueue.map(::trackToMediaItem), nextIndex, player.currentPosition)
                 player.prepare()
+                nowPlaying = updatedQueue[nextIndex]
             }
         }
         if (updatedQueue.isEmpty()) {
