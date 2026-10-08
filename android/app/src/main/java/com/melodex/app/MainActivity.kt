@@ -248,10 +248,164 @@ fun MelodexApp(player: Player) {
     var queueDialogOpen by remember { mutableStateOf(false) }
     var bridgeUrl by remember { mutableStateOf("") }
     var token by remember { mutableStateOf("") }
+    var bridgeName by remember { mutableStateOf("") }
+    var bridgeDeviceId by remember { mutableStateOf("") }
+    var showAdvancedBridgeSetup by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
-    var bridgeStatus by remember { mutableStateOf("Enter your Bridge address and token to connect.") }
+    var bridgeStatus by remember { mutableStateOf("Pairing is optional. Scan a desktop QR code to connect.") }
     var bridgeResults by remember { mutableStateOf<List<Track>>(emptyList()) }
     var nowPlaying by remember { mutableStateOf<Track?>(null) }
+
+    val scanOptions = remember {
+        ScanOptions().apply {
+            setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+            setPrompt("Scan the QR code shown by your Melodex computer")
+            setBeepEnabled(false)
+            setOrientationLocked(false)
+        }
+    }
+    val scanQrLauncher = rememberLauncherForActivityResult(ScanContract()) { result ->
+        val rawCode = result.contents
+        if (rawCode.isNullOrBlank()) {
+            bridgeStatus = "QR scan cancelled."
+        } else {
+            scope.launch {
+                bridgeStatus = "Pairing with your computer…"
+                try {
+                    val pairing = withContext(Dispatchers.IO) {
+                        BridgePairingPayloadParser.parse(rawCode)
+                    }
+                    val deviceName = "Android ${Build.MODEL}".trim()
+                    val enrolled = withContext(Dispatchers.IO) {
+                        BridgeClient(pairing.baseUrl, "").pair(pairing.code, deviceName)
+                    }
+                    val bridgeToken = enrolled.getString("token")
+                    val deviceId = enrolled.getString("device_id")
+                    val displayName = enrolled.optString("device_name", pairing.displayName)
+                    val connected = withContext(Dispatchers.IO) {
+                        BridgeClient(pairing.baseUrl, bridgeToken).verify()
+                    }
+                    if (!connected) throw IllegalStateException("The Bridge did not accept this pairing.")
+                    withContext(Dispatchers.IO) {
+                        BridgeConnectionStore.save(
+                            context.applicationContext,
+                            StoredBridgeConnection(pairing.baseUrl, bridgeToken, displayName, deviceId)
+                        )
+                    }
+                    bridgeUrl = pairing.baseUrl
+                    token = bridgeToken
+                    bridgeName = displayName
+                    bridgeDeviceId = deviceId
+                    bridgeResults = emptyList()
+                    bridgeStatus = "Connected to $displayName."
+                    musicSource = MusicSource.BRIDGE
+                } catch (e: Exception) {
+                    bridgeStatus = e.message ?: "Could not pair with that Bridge."
+                }
+            }
+        }
+    }
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            scanQrLauncher.launch(scanOptions)
+        } else {
+            bridgeStatus = "Camera access is needed to scan a pairing code."
+        }
+    }
+
+    fun startQrScan() {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+            scanQrLauncher.launch(scanOptions)
+        } else {
+            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+        }
+    }
+
+    fun connectBridge(url: String, bridgeToken: String, displayName: String = "Melodex computer", deviceId: String = "") {
+        val normalizedUrl = url.trim().trimEnd('/')
+        val normalizedToken = bridgeToken.trim()
+        if (normalizedUrl.isBlank() || normalizedToken.isBlank()) {
+            bridgeStatus = "Enter the Bridge address and token."
+            return
+        }
+        scope.launch {
+            bridgeStatus = "Connecting…"
+            try {
+                val connected = withContext(Dispatchers.IO) {
+                    BridgeClient(normalizedUrl, normalizedToken).verify()
+                }
+                if (!connected) throw IllegalStateException("The Bridge did not accept this token.")
+                withContext(Dispatchers.IO) {
+                    BridgeConnectionStore.save(
+                        context.applicationContext,
+                        StoredBridgeConnection(normalizedUrl, normalizedToken, displayName, deviceId)
+                    )
+                }
+                bridgeUrl = normalizedUrl
+                token = normalizedToken
+                bridgeName = displayName
+                bridgeDeviceId = deviceId
+                bridgeStatus = "Connected to $displayName."
+            } catch (e: Exception) {
+                bridgeStatus = e.message ?: "Connection failed."
+            }
+        }
+    }
+
+    fun forgetBridge() {
+        val currentUrl = bridgeUrl
+        val currentToken = token
+        val currentDeviceId = bridgeDeviceId
+        scope.launch {
+            var revoked = currentDeviceId.isBlank()
+            if (currentDeviceId.isNotBlank()) {
+                try {
+                    revoked = withContext(Dispatchers.IO) {
+                        BridgeClient(currentUrl, currentToken).unpair(currentDeviceId)
+                    }
+                } catch (_: Exception) {
+                    revoked = false
+                }
+            }
+            withContext(Dispatchers.IO) {
+                BridgeConnectionStore.clear(context.applicationContext)
+            }
+            bridgeUrl = ""
+            token = ""
+            bridgeName = ""
+            bridgeDeviceId = ""
+            bridgeResults = emptyList()
+            showAdvancedBridgeSetup = false
+            bridgeStatus = if (revoked) {
+                "Saved Bridge connection removed from this phone."
+            } else {
+                "Removed from this phone. If the computer is offline, revoke this phone in its Bridge settings."
+            }
+        }
+    }
+
+    LaunchedEffect(context) {
+        val saved = withContext(Dispatchers.IO) {
+            BridgeConnectionStore.load(context.applicationContext)
+        }
+        if (saved != null) {
+            bridgeUrl = saved.baseUrl
+            token = saved.token
+            bridgeName = saved.displayName
+            bridgeDeviceId = saved.deviceId
+            bridgeStatus = "Checking the saved connection…"
+            bridgeStatus = try {
+                withContext(Dispatchers.IO) {
+                    BridgeClient(saved.baseUrl, saved.token).verify()
+                }
+                "Connected to ${saved.displayName}."
+            } catch (e: Exception) {
+                "Saved connection to ${saved.displayName} is unavailable: ${e.message ?: "check the local network"}."
+            }
+        }
+    }
 
     val visibleLocalTracks = remember(localTracks, localSearch, localSort) {
         val needle = localSearch.trim()
