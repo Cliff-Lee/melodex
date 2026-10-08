@@ -26,6 +26,16 @@ data class BridgePairingPayload(
 )
 
 object BridgePairingPayloadParser {
+    private fun isLocalHost(host: String): Boolean {
+        if (host.endsWith(".local")) return true
+        val octets = host.split(".").map { it.toIntOrNull() ?: return false }
+        if (octets.size != 4 || octets.any { it !in 0..255 }) return false
+        return octets[0] == 10 ||
+            (octets[0] == 192 && octets[1] == 168) ||
+            (octets[0] == 172 && octets[1] in 16..31) ||
+            (octets[0] == 169 && octets[1] == 254)
+    }
+
     fun parse(raw: String): BridgePairingPayload {
         val json = JSONObject(raw)
         require(json.optString("type") == "melodex-bridge-pairing") {
@@ -48,6 +58,7 @@ object BridgePairingPayloadParser {
                 host != "::" &&
                 host != "::1" &&
                 !host.startsWith("127.") &&
+                isLocalHost(host) &&
                 uri.userInfo == null &&
                 uri.query == null &&
                 uri.fragment == null &&
