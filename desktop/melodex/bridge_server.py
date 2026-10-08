@@ -45,6 +45,7 @@ class ProviderBridge:
         self._paired_devices = self._load_paired_devices()
         self._pairing_code = ""
         self._pairing_expires_at = 0.0
+        self._pairing_lock = threading.Lock()
         self._server: ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
 
@@ -114,20 +115,22 @@ class ProviderBridge:
         return count
 
     def new_pairing_code(self, ttl_seconds: int = 120) -> str:
-        self._pairing_code = secrets.token_urlsafe(18)
-        self._pairing_expires_at = time.monotonic() + max(1, min(int(ttl_seconds), 300))
-        return self._pairing_code
+        with self._pairing_lock:
+            self._pairing_code = secrets.token_urlsafe(18)
+            self._pairing_expires_at = time.monotonic() + max(1, min(int(ttl_seconds), 300))
+            return self._pairing_code
 
     def _pair_device(self, code: str, device_name: str) -> dict[str, Any]:
         supplied = str(code or "")
-        if (
-            not self._pairing_code
-            or time.monotonic() >= self._pairing_expires_at
-            or not secrets.compare_digest(supplied, self._pairing_code)
-        ):
-            raise PermissionError("Pairing code is invalid or expired. Refresh the QR code on the computer.")
-        self._pairing_code = ""
-        self._pairing_expires_at = 0.0
+        with self._pairing_lock:
+            if (
+                not self._pairing_code
+                or time.monotonic() >= self._pairing_expires_at
+                or not secrets.compare_digest(supplied, self._pairing_code)
+            ):
+                raise PermissionError("Pairing code is invalid or expired. Refresh the QR code on the computer.")
+            self._pairing_code = ""
+            self._pairing_expires_at = 0.0
         name = "".join(char for char in str(device_name or "") if char.isprintable()).strip()[:80]
         name = name or "Android device"
         token = secrets.token_urlsafe(32)
@@ -426,6 +429,9 @@ class ProviderBridge:
                     return self._send(401, {"error": "unauthorized"})
                 try:
                     body = self._json_body()
+                    if u.path == "/v1/unpair":
+                        removed = bridge.revoke_paired_device(str(body.get("device_id") or ""))
+                        return self._send(200, {"ok": removed})
                     if u.path == "/v1/play":
                         resolved = bridge.manager.resolve(body)
                         bridge._control("set_queue", {"tracks": [resolved], "start": 0, "autoplay": True})
