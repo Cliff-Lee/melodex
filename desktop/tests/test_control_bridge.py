@@ -238,6 +238,12 @@ def test_paired_device_token_persists_and_can_be_revoked(tmp_path: Path):
     try:
         status, _ = _bridge_http(f"http://127.0.0.1:{second.port}/v1/providers", token=token)
         assert status == 200
+        status, resolved_after_restart = _bridge_http(
+            f"http://127.0.0.1:{second.port}/v1/resolve?provider=local&id=song",
+            token=token,
+        )
+        assert status == 200
+        media_url = resolved_after_restart["stream_url"]
 
         status, response = _bridge_http(
             f"http://127.0.0.1:{second.port}/v1/unpair",
