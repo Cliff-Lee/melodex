@@ -55,7 +55,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.math.roundToLong
+import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
@@ -65,6 +67,8 @@ import java.net.URLEncoder
 private const val PRIVACY_POLICY_URL = "https://github.com/Cliff-Lee/melodex/blob/main/docs/PRIVACY.md"
 private const val BRIDGE_CONNECTION_POLL_INTERVAL_MS = 15_000L
 private const val BRIDGE_VERIFY_TIMEOUT_MS = 4_000
+private const val BRIDGE_HANDOFF_TIMEOUT_MS = 15_000L
+private const val BRIDGE_HANDOFF_POLL_INTERVAL_MS = 250L
 
 data class Track(
     val providerId: String,
@@ -81,6 +85,20 @@ data class Track(
 enum class TrackSource { PHONE, BRIDGE }
 
 private fun Track.queueKey(): String = "$source|$providerId|$trackId"
+
+private fun JSONObject.matchesBridgeQueue(tracks: List<Track>, index: Int): Boolean {
+    val desktopQueue = optJSONArray("queue") ?: return false
+    if (desktopQueue.length() != tracks.size || optInt("index", -1) != index) return false
+    for (queueIndex in tracks.indices) {
+        val item = desktopQueue.optJSONObject(queueIndex) ?: return false
+        val expected = tracks[queueIndex]
+        if (
+            item.optString("provider_id") != expected.providerId ||
+            item.optString("track_id") != expected.trackId
+        ) return false
+    }
+    return true
+}
 
 private enum class MusicSource { PHONE, BRIDGE }
 
@@ -132,7 +150,11 @@ class BridgeClient(var baseUrl: String, var token: String) {
         val code = conn.responseCode
         val response = (if (code in 200..299) conn.inputStream else conn.errorStream)
             .bufferedReader().use { it.readText() }
-        if (code !in 200..299) throw IllegalStateException("Bridge error $code: $response")
+        if (code !in 200..299) {
+            val detail = runCatching { JSONObject(response).optString("error").takeIf { it.isNotBlank() } }.getOrNull()
+                ?: response
+            throw IllegalStateException("Bridge error $code: $detail")
+        }
         return JSONObject(response)
     }
 
@@ -158,6 +180,58 @@ class BridgeClient(var baseUrl: String, var token: String) {
         timeoutMs = timeoutMs,
         readTimeoutMs = timeoutMs
     ).optBoolean("ok", false)
+
+    fun status(): JSONObject = get(
+        "/v1/status",
+        timeoutMs = BRIDGE_VERIFY_TIMEOUT_MS,
+        readTimeoutMs = BRIDGE_VERIFY_TIMEOUT_MS
+    )
+
+    fun handoffToDesktop(
+        tracks: List<Track>,
+        start: Int,
+        positionMs: Long
+    ): JSONObject {
+        val queue = JSONArray()
+        tracks.forEach { track ->
+            queue.put(
+                JSONObject()
+                    .put("source", "bridge")
+                    .put("provider_id", track.providerId)
+                    .put("track_id", track.trackId)
+                    .put("title", track.title)
+                    .put("artist", track.artist)
+                    .put("album", track.album)
+            )
+        }
+        return post(
+            "/v1/handoff",
+            JSONObject()
+                .put("tracks", queue)
+                .put("start", start)
+                .put("position_ms", positionMs.coerceAtLeast(0L))
+                .put("autoplay", true),
+            timeoutMs = BRIDGE_HANDOFF_TIMEOUT_MS.toInt(),
+            readTimeoutMs = BRIDGE_HANDOFF_TIMEOUT_MS.toInt()
+        )
+    }
+
+    fun stopDesktopSessionIfMatches(tracks: List<Track>, index: Int): JSONObject {
+        val queue = JSONArray()
+        tracks.forEach { track ->
+            queue.put(
+                JSONObject()
+                    .put("provider_id", track.providerId)
+                    .put("track_id", track.trackId)
+            )
+        }
+        return post(
+            "/v1/handoff/stop",
+            JSONObject().put("expected_queue", queue).put("expected_index", index),
+            timeoutMs = BRIDGE_VERIFY_TIMEOUT_MS,
+            readTimeoutMs = BRIDGE_VERIFY_TIMEOUT_MS
+        )
+    }
 
     fun search(query: String): List<Track> {
         val q = URLEncoder.encode(query, "UTF-8")
@@ -311,6 +385,8 @@ fun MelodexApp(player: Player) {
     var restorePositionMs by remember { mutableStateOf(0L) }
     var queueResolutionRequest by remember { mutableStateOf(0) }
     var queueDialogOpen by remember { mutableStateOf(false) }
+    var handoffInProgress by remember { mutableStateOf(false) }
+    var suppressQueueRestore by remember { mutableStateOf(false) }
     var bridgeUrl by remember { mutableStateOf("") }
     var token by remember { mutableStateOf("") }
     var manualBridgeUrl by remember { mutableStateOf("") }
@@ -769,6 +845,254 @@ fun MelodexApp(player: Player) {
         queueDialogOpen = false
     }
 
+    fun moveDesktopPlaybackToPhone() {
+        if (handoffInProgress || bridgeConnectionState != BridgeConnectionState.CONNECTED) return
+        scope.launch {
+            handoffInProgress = true
+            suppressQueueRestore = true
+            bridgeStatus = "Checking the desktop queue…"
+            try {
+                val baseUrl = bridgeUrl
+                val bridgeToken = token
+                val desktopStatus = withContext(Dispatchers.IO) {
+                    BridgeClient(baseUrl, bridgeToken).status()
+                }
+                val desktopQueue = mutableListOf<Track>()
+                val queueJson = desktopStatus.optJSONArray("queue")
+                if (queueJson != null) {
+                    for (index in 0 until queueJson.length()) {
+                        val item = queueJson.optJSONObject(index)
+                        if (item == null) {
+                            bridgeStatus = "The desktop queue could not be read safely."
+                            return@launch
+                        }
+                        desktopQueue += Track(
+                            providerId = item.optString("provider_id"),
+                            trackId = item.optString("track_id"),
+                            title = item.optString("title", "Unknown track"),
+                            artist = item.optString("artist", "Unknown artist"),
+                            album = item.optString("album"),
+                            durationMs = item.optLong("duration_ms", 0L).coerceAtLeast(0L),
+                            source = TrackSource.BRIDGE
+                        )
+                    }
+                }
+                if (desktopQueue.isEmpty()) {
+                    val current = desktopStatus.optJSONObject("current_track")
+                    if (current != null) {
+                        desktopQueue += Track(
+                            providerId = current.optString("provider_id"),
+                            trackId = current.optString("track_id"),
+                            title = current.optString("title", "Unknown track"),
+                            artist = current.optString("artist", "Unknown artist"),
+                            album = current.optString("album"),
+                            durationMs = current.optLong("duration_ms", 0L).coerceAtLeast(0L),
+                            source = TrackSource.BRIDGE
+                        )
+                    }
+                }
+                if (desktopQueue.isEmpty()) {
+                    bridgeStatus = "There is no desktop playback queue to move."
+                    return@launch
+                }
+                if (desktopQueue.any { it.providerId.isBlank() || it.trackId.isBlank() }) {
+                    bridgeStatus = "The desktop queue has a track without a stable Bridge identity."
+                    return@launch
+                }
+                val desktopIndex = desktopStatus.optInt("index", 0)
+                val start = if (desktopIndex < 0 && desktopQueue.size == 1) 0 else desktopIndex
+                if (start !in desktopQueue.indices) {
+                    bridgeStatus = "The desktop has no current queue position to move."
+                    return@launch
+                }
+                val desktopWasPlaying = desktopStatus.optBoolean("playing", false)
+                val positionMs = desktopStatus.optLong("position_ms", 0L).coerceAtLeast(0L)
+                val previousQueue = phoneQueue
+                val previousIndex = queueIndex
+                val previousPositionMs = if (player.currentMediaItem != null) {
+                    player.currentPosition.coerceAtLeast(0L)
+                } else {
+                    restorePositionMs
+                }
+                val previousWasPlaying = player.isPlaying
+                val transferKeys = desktopQueue.map { it.queueKey() }
+                phoneQueue = desktopQueue
+                queueIndex = start
+                bridgeStatus = if (desktopWasPlaying) {
+                    "Starting the desktop session on this phone…"
+                } else {
+                    "Loading the paused desktop queue on this phone…"
+                }
+                playQueueTrack(start, positionMs, desktopWasPlaying)
+                val phoneReady = withTimeoutOrNull(BRIDGE_HANDOFF_TIMEOUT_MS) {
+                    while (true) {
+                        val playbackReady = if (desktopWasPlaying) {
+                            player.isPlaying
+                        } else {
+                            player.playbackState == Player.STATE_READY
+                        }
+                        if (
+                            phoneQueue.map { it.queueKey() } == transferKeys &&
+                            nowPlaying?.queueKey() == desktopQueue[start].queueKey() &&
+                            player.currentMediaItem?.mediaId == desktopQueue[start].queueKey() &&
+                            playbackReady
+                        ) {
+                            return@withTimeoutOrNull true
+                        }
+                        delay(BRIDGE_HANDOFF_POLL_INTERVAL_MS)
+                    }
+                    false
+                } ?: false
+                if (!phoneReady) {
+                    if (phoneQueue.map { it.queueKey() } == transferKeys) {
+                        phoneQueue = previousQueue
+                        queueIndex = previousIndex
+                        restorePositionMs = previousPositionMs
+                        if (previousQueue.isNotEmpty()) {
+                            val previousStart = previousIndex.coerceIn(previousQueue.indices)
+                            val previousTrack = previousQueue[previousStart]
+                            playQueueTrack(previousStart, previousPositionMs, previousWasPlaying)
+                            withTimeoutOrNull(BRIDGE_HANDOFF_TIMEOUT_MS) {
+                                while (true) {
+                                    val playbackReady = if (previousWasPlaying) {
+                                        player.isPlaying
+                                    } else {
+                                        player.playbackState == Player.STATE_READY
+                                    }
+                                    if (
+                                        nowPlaying?.queueKey() == previousTrack.queueKey() &&
+                                        player.currentMediaItem?.mediaId == previousTrack.queueKey() &&
+                                        playbackReady
+                                    ) return@withTimeoutOrNull true
+                                    delay(BRIDGE_HANDOFF_POLL_INTERVAL_MS)
+                                }
+                                false
+                            }
+                        } else {
+                            player.clearMediaItems()
+                            nowPlaying = null
+                        }
+                    }
+                    bridgeStatus = "This phone couldn't start the desktop session, so desktop playback was left alone."
+                    return@launch
+                }
+                if (desktopWasPlaying && phoneQueue.map { it.queueKey() } == transferKeys) {
+                    val stopped = withContext(Dispatchers.IO) {
+                        BridgeClient(baseUrl, bridgeToken).stopDesktopSessionIfMatches(desktopQueue, start)
+                    }
+                    bridgeStatus = when {
+                        stopped.optBoolean("stopped") -> "Moved desktop playback to this phone."
+                        stopped.optString("reason") == "desktop_session_changed" ->
+                            "Playing this session here; the desktop changed sessions, so it was left alone."
+                        else -> "Playing here. The desktop was already stopped."
+                    }
+                } else {
+                    bridgeStatus = "Loaded the desktop queue on this phone, paused."
+                }
+            } catch (e: Exception) {
+                bridgeStatus = e.message ?: "Playback handoff failed."
+            } finally {
+                suppressQueueRestore = false
+                handoffInProgress = false
+            }
+        }
+    }
+
+    fun movePhoneQueueToDesktop() {
+        if (
+            handoffInProgress ||
+            bridgeConnectionState != BridgeConnectionState.CONNECTED ||
+            !player.isPlaying ||
+            phoneQueue.isEmpty() ||
+            phoneQueue.any {
+                it.source != TrackSource.BRIDGE || it.providerId.isBlank() || it.trackId.isBlank()
+            }
+        ) return
+        scope.launch {
+            handoffInProgress = true
+            val baseUrl = bridgeUrl
+            val bridgeToken = token
+            val transferQueue = phoneQueue.toList()
+            val start = queueIndex.coerceIn(transferQueue.indices)
+            val positionMs = player.currentPosition.coerceAtLeast(0L)
+            var handoffAccepted = false
+            bridgeStatus = "Sending this phone queue to the desktop…"
+            try {
+                val accepted = withContext(Dispatchers.IO) {
+                    BridgeClient(baseUrl, bridgeToken).handoffToDesktop(transferQueue, start, positionMs)
+                }
+                if (!accepted.optBoolean("ok")) {
+                    bridgeStatus = "The desktop refused this handoff."
+                    return@launch
+                }
+                handoffAccepted = true
+                val desktopStarted = withTimeoutOrNull(BRIDGE_HANDOFF_TIMEOUT_MS) {
+                    while (true) {
+                        val status = withContext(Dispatchers.IO) {
+                            BridgeClient(baseUrl, bridgeToken).status()
+                        }
+                        if (status.matchesBridgeQueue(transferQueue, start) && status.optBoolean("playing")) {
+                            return@withTimeoutOrNull true
+                        }
+                        delay(BRIDGE_HANDOFF_POLL_INTERVAL_MS)
+                    }
+                    false
+                } ?: false
+                if (!desktopStarted) {
+                    var desktopStopped = false
+                    try {
+                        desktopStopped = withContext(Dispatchers.IO) {
+                            BridgeClient(baseUrl, bridgeToken)
+                                .stopDesktopSessionIfMatches(transferQueue, start)
+                                .optBoolean("stopped")
+                        }
+                    } catch (_: Exception) {
+                        // Keep the phone queue playing if the guarded stop cannot be confirmed.
+                    }
+                    bridgeStatus = if (desktopStopped) {
+                        "The desktop did not start; this phone kept playing the queue."
+                    } else {
+                        "Could not confirm desktop playback. This phone kept playing."
+                    }
+                    return@launch
+                }
+                val phoneSessionStillMatches =
+                    player.isPlaying &&
+                        phoneQueue.map { it.queueKey() } == transferQueue.map { it.queueKey() } &&
+                        queueIndex == start &&
+                        player.currentMediaItem?.mediaId == transferQueue[start].queueKey()
+                if (phoneSessionStillMatches) {
+                    player.pause()
+                    clearPhoneQueue()
+                    bridgeStatus = "Moved playback to ${bridgeName.ifBlank { "the desktop" }}."
+                } else {
+                    try {
+                        withContext(Dispatchers.IO) {
+                            BridgeClient(baseUrl, bridgeToken)
+                                .stopDesktopSessionIfMatches(transferQueue, start)
+                        }
+                    } catch (_: Exception) {
+                        // The phone session changed; keep the phone's current state.
+                    }
+                    bridgeStatus = "The phone session changed during handoff, so it was left alone."
+                }
+            } catch (e: Exception) {
+                if (handoffAccepted) {
+                    try {
+                        withContext(Dispatchers.IO) {
+                            BridgeClient(baseUrl, bridgeToken).stopDesktopSessionIfMatches(transferQueue, start)
+                        }
+                    } catch (_: Exception) {
+                        // The request may be unavailable; its queue identity guard protects any retry.
+                    }
+                }
+                bridgeStatus = e.message ?: "Playback handoff failed. This phone kept playing."
+            } finally {
+                handoffInProgress = false
+            }
+        }
+    }
+
     fun playNextQueueTrack() {
         if (queueIndex + 1 < phoneQueue.size) {
             playQueueTrack(queueIndex + 1, 0L, true)
@@ -810,8 +1134,8 @@ fun MelodexApp(player: Player) {
         queueRestored = true
     }
 
-    LaunchedEffect(player, queueRestored, hasAudioPermission, bridgeUrl, token, bridgeReconnectVersion, phoneQueue, queueIndex) {
-        if (!queueRestored || phoneQueue.isEmpty() || player.mediaItemCount > 0) return@LaunchedEffect
+    LaunchedEffect(player, queueRestored, hasAudioPermission, bridgeUrl, token, bridgeReconnectVersion, phoneQueue, queueIndex, suppressQueueRestore) {
+        if (suppressQueueRestore || !queueRestored || phoneQueue.isEmpty() || player.mediaItemCount > 0) return@LaunchedEffect
         val queued = phoneQueue.getOrNull(queueIndex) ?: return@LaunchedEffect
         if (queued.source == TrackSource.PHONE) {
             if (!hasAudioPermission) return@LaunchedEffect
@@ -1117,6 +1441,13 @@ fun MelodexApp(player: Player) {
                                         }) { Text("Reconnect") }
                                         OutlinedButton(onClick = { startQrScan() }) { Text("Scan new QR code") }
                                     }
+                                    OutlinedButton(
+                                        onClick = { moveDesktopPlaybackToPhone() },
+                                        enabled = bridgeConnectionState == BridgeConnectionState.CONNECTED && !handoffInProgress,
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text(if (handoffInProgress) "Moving playback…" else "Move desktop playback to this phone")
+                                    }
                                     TextButton(onClick = { forgetBridge() }) { Text("Forget on this phone") }
                                 } else {
                                     Text(
@@ -1209,7 +1540,22 @@ fun MelodexApp(player: Player) {
                         onPlayPause = { if (player.isPlaying) player.pause() else player.play() },
                         onRestart = { player.seekTo(0L) },
                         onSeek = { player.seekTo(it) },
-                        onQueue = { queueDialogOpen = true }
+                        onQueue = { queueDialogOpen = true },
+                        onMoveToDesktop = if (
+                            bridgeConnectionState == BridgeConnectionState.CONNECTED &&
+                            !handoffInProgress &&
+                            playerIsPlaying &&
+                            phoneQueue.isNotEmpty() &&
+                            phoneQueue.all {
+                                it.source == TrackSource.BRIDGE &&
+                                    it.providerId.isNotBlank() &&
+                                    it.trackId.isNotBlank()
+                            }
+                        ) {
+                            { movePhoneQueueToDesktop() }
+                        } else {
+                            null
+                        }
                     )
                 }
             }
@@ -1282,7 +1628,8 @@ private fun NowPlayingCard(
     onPlayPause: () -> Unit,
     onRestart: () -> Unit,
     onSeek: (Long) -> Unit,
-    onQueue: () -> Unit
+    onQueue: () -> Unit,
+    onMoveToDesktop: (() -> Unit)? = null
 ) {
     val duration = durationMs.takeIf { it > 0L } ?: track.durationMs
     var isSeeking by remember(track.source, track.providerId, track.trackId) { mutableStateOf(false) }
@@ -1358,6 +1705,14 @@ private fun NowPlayingCard(
                 }
                 Button(onClick = onPlayPause) {
                     Text(if (isPlaying) "Pause" else "Play")
+                }
+            }
+            onMoveToDesktop?.let { action ->
+                OutlinedButton(
+                    onClick = action,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Move this queue to desktop")
                 }
             }
         }

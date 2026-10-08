@@ -26,7 +26,7 @@ from .provider_manager import ProviderManager
 from .flow import FlowEngine
 from .user_state import UserState
 from .player import FlowPlayer
-from .bridge_server import ProviderBridge
+from .bridge_server import ProviderBridge, handoff_queue_conflict, playback_session_matches
 from .responsiveness import UiResponsivenessMonitor
 from .background_scheduler import BackgroundScheduler
 from .motion import MotionController, FAST_MOTION_MS, STANDARD_MOTION_MS
@@ -4593,6 +4593,38 @@ class MainWindow(QMainWindow):
                 result=self.player.status(); result["page"]=self.current_page; result["taste"]=self.state.taste_summary()
             elif action=="set_queue":
                 tracks=[dict(x) for x in list(args.get("tracks") or []) if isinstance(x,dict)]; self.player.set_queue(tracks,int(args.get("start",0)),bool(args.get("autoplay",True)),intent=str(args.get("intent") or "manual_queue")); result=self.player.status()
+            elif action=="handoff_to_desktop":
+                tracks=[dict(x) for x in list(args.get("tracks") or []) if isinstance(x,dict)]
+                status=self.player.status()
+                reason=handoff_queue_conflict(status,tracks)
+                if reason:
+                    result={"ok":False,"reason":reason}
+                else:
+                    start=int(args.get("start",0))
+                    if start<0 or start>=len(tracks):
+                        raise RuntimeError("Handoff start index is outside the queue")
+                    self.player.set_queue(
+                        tracks,
+                        start,
+                        bool(args.get("autoplay",True)),
+                        intent="manual_queue",
+                    )
+                    position_ms=max(0,int(args.get("position_ms",0)))
+                    if position_ms:
+                        self._resume_checkpoint_when_ready(dict(tracks[start]),position_ms)
+                    result={"ok":True}
+            elif action=="stop_if_queue_matches":
+                status=self.player.status()
+                expected_queue=[dict(x) for x in list(args.get("expected_queue") or []) if isinstance(x,dict)]
+                expected_index=int(args.get("expected_index",-1))
+                if not playback_session_matches(status,expected_queue,expected_index):
+                    result={"ok":False,"stopped":False,"reason":"desktop_session_changed"}
+                else:
+                    # Stop only after the queue and current index still match the
+                    # session that the phone started. This also cancels a matching
+                    # queue that was paused while the phone was buffering.
+                    self.player.stop()
+                    result={"ok":True,"stopped":True,"reason":""}
             elif action=="append_queue":
                 tracks=[dict(x) for x in list(args.get("tracks") or []) if isinstance(x,dict)]; self.player.append_queue(tracks,bool(args.get("autoplay",False))); result=self.player.status()
             elif action=="play_pause":self.player.play_pause(); result=self.player.status()

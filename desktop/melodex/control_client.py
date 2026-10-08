@@ -152,6 +152,55 @@ class MelodexControlClient:
     def control(self, action: str, **args: Any) -> dict[str, Any]:
         return dict(self._request("POST", "/v1/control", {"action": action, "args": args}) or {})
 
+    def handoff_to_desktop(
+        self,
+        tracks: list[dict[str, Any]],
+        start: int = 0,
+        position_ms: int = 0,
+        autoplay: bool = True,
+    ) -> dict[str, Any]:
+        stable_tracks = [
+            {
+                "source": "bridge",
+                "provider_id": str(track.get("provider_id") or ""),
+                "track_id": str(track.get("track_id") or ""),
+                "title": str(track.get("title") or ""),
+                "artist": str(track.get("artist") or ""),
+                "album": str(track.get("album") or ""),
+            }
+            for track in tracks
+            if isinstance(track, dict)
+        ]
+        return dict(self._request(
+            "POST",
+            "/v1/handoff",
+            {
+                "tracks": stable_tracks,
+                "start": int(start),
+                "position_ms": max(0, int(position_ms)),
+                "autoplay": bool(autoplay),
+            },
+        ) or {})
+
+    def stop_desktop_if_session_matches(
+        self,
+        expected_queue: list[dict[str, Any]],
+        expected_index: int,
+    ) -> dict[str, Any]:
+        stable_queue = [
+            {
+                "provider_id": str(track.get("provider_id") or ""),
+                "track_id": str(track.get("track_id") or ""),
+            }
+            for track in expected_queue
+            if isinstance(track, dict)
+        ]
+        return dict(self._request(
+            "POST",
+            "/v1/handoff/stop",
+            {"expected_queue": stable_queue, "expected_index": int(expected_index)},
+        ) or {})
+
 
 def mcp_http_token_path() -> Path:
     return app_data_dir() / "mcp-http-token.txt"

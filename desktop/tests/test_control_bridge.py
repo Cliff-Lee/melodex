@@ -10,8 +10,12 @@ import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
-from melodex.bridge_server import ProviderBridge
-from melodex.control_client import MelodexControlClient
+from melodex.bridge_server import (
+    ProviderBridge,
+    handoff_queue_conflict,
+    playback_session_matches,
+)
+from melodex.control_client import ControlError, MelodexControlClient
 
 
 @dataclass
@@ -99,15 +103,45 @@ class FakeController:
     def __init__(self):
         self.actions = []
         self.queue = []
+        self.index = -1
+        self.playing = False
+
+    def _status(self):
+        return {
+            "playing": self.playing,
+            "queue": list(self.queue),
+            "current_track": self.queue[self.index] if 0 <= self.index < len(self.queue) else None,
+            "index": self.index,
+            "position_ms": 0,
+        }
 
     def __call__(self, action, args):
         self.actions.append((action, dict(args)))
         if action == "status":
-            return {"playing": bool(self.queue), "queue": list(self.queue), "current_track": self.queue[0] if self.queue else None, "index": 0 if self.queue else -1}
+            return self._status()
         if action == "set_queue":
             self.queue = list(args.get("tracks") or [])
+            self.index = int(args.get("start", 0)) if self.queue else -1
+            self.playing = bool(args.get("autoplay", True))
         elif action == "append_queue":
             self.queue.extend(list(args.get("tracks") or []))
+        elif action == "handoff_to_desktop":
+            reason = handoff_queue_conflict(self._status(), list(args.get("tracks") or []))
+            if reason:
+                return {"ok": False, "reason": reason}
+            self.queue = list(args.get("tracks") or [])
+            self.index = int(args.get("start", 0)) if self.queue else -1
+            self.playing = bool(args.get("autoplay", True))
+            return {"ok": True}
+        elif action == "stop_if_queue_matches":
+            expected = list(args.get("expected_queue") or [])
+            expected_index = int(args.get("expected_index", -1))
+            if not playback_session_matches(self._status(), expected, expected_index):
+                return {"ok": False, "stopped": False, "reason": "desktop_session_changed"}
+            self.playing = False
+            return {"ok": True, "stopped": True, "reason": ""}
+        elif action == "stop":
+            self.playing = False
         return {"action": action}
 
 
@@ -148,6 +182,95 @@ def test_control_bridge_and_client(tmp_path: Path):
     finally:
         bridge.stop()
     assert not state.exists()
+
+
+def test_bridge_handoff_is_guarded_and_stops_only_the_matching_desktop_session(tmp_path: Path):
+    media = tmp_path / "song.mp3"
+    media.write_bytes(b"track")
+    state = tmp_path / "bridge.json"
+    controller = FakeController()
+    bridge = ProviderBridge(
+        FakeManager(media),
+        "127.0.0.1",
+        0,
+        token="secret",
+        controller=controller,
+        state_path=state,
+    )
+    bridge.start()
+    try:
+        client = MelodexControlClient.from_state(state, timeout=3)
+        phone_track = {
+            "source": "bridge",
+            "provider_id": "web",
+            "track_id": "1",
+            "artist": "Example",
+            "title": "Song",
+        }
+
+        controller.queue = [{"provider_id": "local", "track_id": "other"}]
+        controller.index = 0
+        original_queue = list(controller.queue)
+        try:
+            client.handoff_to_desktop([phone_track])
+        except ControlError as exc:
+            assert "different queue" in str(exc)
+        else:
+            raise AssertionError("an unrelated desktop queue must be preserved")
+        assert controller.queue == original_queue
+        assert controller.playing is False
+
+        controller.playing = True
+        try:
+            client.handoff_to_desktop([phone_track])
+        except ControlError as exc:
+            assert "Pause desktop playback" in str(exc)
+        else:
+            raise AssertionError("active desktop playback must not be replaced")
+        assert controller.queue == original_queue
+        assert controller.playing is True
+
+        controller.queue = []
+        controller.index = -1
+        controller.playing = False
+        moved = client.handoff_to_desktop(
+            [phone_track],
+            start=0,
+            position_ms=42_000,
+            autoplay=True,
+        )
+        assert moved["ok"] is True
+        assert controller.queue[0]["provider_id"] == "web"
+        assert controller.queue[0]["track_id"] == "1"
+        assert controller.index == 0
+        assert controller.playing is True
+
+        expected = [{"provider_id": "web", "track_id": "1"}]
+        stopped = client.stop_desktop_if_session_matches(expected, 0)
+        assert stopped == {"ok": True, "stopped": True, "reason": ""}
+        assert controller.queue[0]["track_id"] == "1"
+        assert controller.playing is False
+
+        controller.queue = [{"provider_id": "local", "track_id": "new-session"}]
+        controller.index = 0
+        controller.playing = True
+        changed_session = client.stop_desktop_if_session_matches(expected, 0)
+        assert changed_session["stopped"] is False
+        assert changed_session["reason"] == "desktop_session_changed"
+        assert controller.queue[0]["track_id"] == "new-session"
+        assert controller.playing is True
+
+        phone_only = dict(phone_track, source="phone")
+        status, response = _bridge_http(
+            f"http://127.0.0.1:{bridge.port}/v1/handoff",
+            "POST",
+            {"tracks": [phone_only], "start": 0, "position_ms": 0, "autoplay": True},
+            token="secret",
+        )
+        assert status == 400
+        assert "only Bridge tracks" in response["error"]
+    finally:
+        bridge.stop()
 
 
 def test_client_follows_bridge_restart(tmp_path: Path):
