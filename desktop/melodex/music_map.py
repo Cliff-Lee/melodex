@@ -118,12 +118,13 @@ class _MapView(QGraphicsView):
 class _NodeItem(QGraphicsObject):
     """Album-art point that expands into a track detail card on hover."""
 
-    def __init__(self, ref: str, node: dict[str, Any], selected, activated, stage_for_ref):
+    def __init__(self, ref: str, node: dict[str, Any], selected, activated, stage_for_ref, clicked=None):
         super().__init__()
         self.ref = ref
         self.node = node
         self._selected = selected
         self._activated = activated
+        self._clicked = clicked
         self._stage_for_ref = stage_for_ref
         self._press_scene_pos = None
         self._bounds = QRectF(0, 0, 84, 84)
@@ -263,8 +264,13 @@ class _NodeItem(QGraphicsObject):
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
+        clicked = self._press_scene_pos is not None and event.button() == Qt.LeftButton
         self._press_scene_pos = None
         super().mouseReleaseEvent(event)
+        if clicked and self._clicked is not None:
+            # Only a genuine point click chooses a Journey destination.
+            # Programmatic selection, focusing and dragging never do.
+            self._clicked(self.ref)
 
     def mouseDoubleClickEvent(self, event):
         self._activated(self.ref)
@@ -379,6 +385,7 @@ class _ClusterItem(QGraphicsObject):
 
 class MusicMapWidget(QWidget):
     trackSelected = Signal(object)
+    trackClicked = Signal(str)
     trackActivated = Signal(object)
     regionListenRequested = Signal(object)
     artworkRequested = Signal(object)
@@ -665,6 +672,7 @@ class MusicMapWidget(QWidget):
                 self._select_ref,
                 self._activate_ref,
                 self._journey_stage_for_ref,
+                self.trackClicked.emit,
             )
             tooltip = (
                 "Drag this track to the Journey Composer timeline to add it as an exact waypoint."
