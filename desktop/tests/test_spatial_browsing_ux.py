@@ -530,3 +530,131 @@ def test_music_map_floating_tools_keep_canvas_geometry_and_camera(monkeypatch, t
 
     window.close()
     app.processEvents()
+
+
+def test_mm2_compact_controls_and_track_context(monkeypatch, tmp_path: Path):
+    """A map selection reveals actions without adding global toolbar clutter."""
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    try:
+        from PySide6.QtCore import Qt
+        from PySide6.QtTest import QTest
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app=QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window, "app_data_dir", lambda:tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self:None)
+
+    window=main_window.MainWindow()
+    window.show()
+    window.open_page("music_map")
+    app.processEvents()
+    QTest.qWait(window._page_refresh_delay_ms+10)
+    app.processEvents()
+    workspace=window.journey_workspace
+    canvas=workspace.music_map
+    assert workspace.music_map_track_panel.isHidden()
+    assert canvas.view_settings_panel.isHidden()
+    assert workspace.music_map_play_button.parentWidget() is workspace.music_map_track_panel
+    assert workspace.music_map_queue_button.parentWidget() is workspace.music_map_track_panel
+    assert workspace.music_map_plan_button.text()=="Journey"
+    assert canvas.view_button.text()=="View"
+
+    tracks={
+        "a":{"track_id":"a","artist":"First Artist","album":"First Album","title":"First Track"},
+        "b":{"track_id":"b","artist":"Second Artist","album":"Second Album","title":"Second Track"},
+    }
+    model={"nodes":[
+        {"ref":"a","title":"First Track","artist":"First Artist","x":-0.5,"y":0.0},
+        {"ref":"b","title":"Second Track","artist":"Second Artist","x":0.5,"y":0.2},
+    ],"edges":[],"analysed":2}
+    canvas.set_map(model,tracks)
+    app.processEvents()
+    assert workspace.music_map_track_panel.isHidden()
+
+    playback_requests=[]
+    workspace.playTracksRequested.connect(lambda rows:playback_requests.append(rows))
+    canvas._select_ref("a")
+    app.processEvents()
+    assert workspace.music_map_track_panel.isVisible()
+    assert "First Artist" in workspace.music_map_track_label.text()
+    assert workspace.music_map_play_button.isEnabled()
+    assert workspace.music_map_queue_button.isEnabled()
+    assert workspace.music_map_start_journey_button.isEnabled()
+    assert not playback_requests  # Selecting never triggers playback.
+
+    rect=canvas.geometry()
+    before_scale=float(canvas.view.transform().m11())
+    workspace.music_map_start_journey_button.click()
+    app.processEvents()
+    assert workspace.music_path_start_ref=="a"
+    assert workspace.music_map_power_scroll.isVisible()
+    assert canvas.geometry()==rect
+    assert abs(float(canvas.view.transform().m11())-before_scale)<0.01
+
+    # Escape dismisses the journey drawer without stopping or unselecting.
+    canvas.search.setFocus()
+    QTest.keyClick(canvas.search, Qt.Key_Escape)
+    app.processEvents()
+    assert not workspace.music_map_power_scroll.isVisible()
+    assert canvas.selected_ref_value()=="a"
+    assert workspace.music_map_track_panel.isVisible()
+    assert not playback_requests
+    window.close()
+    app.processEvents()
+
+
+def test_mm2_view_settings_are_overlay_not_an_expanding_toolbar(monkeypatch, tmp_path: Path):
+    """View menu keeps colour/connection options without resizing the map."""
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    try:
+        from PySide6.QtWidgets import QApplication
+        from PySide6.QtTest import QTest
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app=QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window,"app_data_dir",lambda:tmp_path)
+    monkeypatch.setattr(main_window.MainWindow,"_start_local_bridge",lambda self:None)
+    window=main_window.MainWindow()
+    window.show()
+    window.open_page("music_map")
+    app.processEvents()
+    QTest.qWait(window._page_refresh_delay_ms+10)
+    app.processEvents()
+    workspace=window.journey_workspace
+    canvas=workspace.music_map
+    rect=canvas.geometry()
+    viewport=canvas.view.geometry()
+    scale=float(canvas.view.transform().m11())
+
+    canvas.view_button.click()
+    app.processEvents()
+    assert canvas.view_settings_panel.isVisible()
+    assert canvas.mode.isVisible()
+    assert canvas.edge_mode.isHidden()
+    assert canvas.geometry()==rect
+    assert canvas.view.geometry()==viewport
+    canvas.connections_button.click()
+    app.processEvents()
+    assert canvas.edge_mode.isVisible()
+
+    workspace.music_map_plan_button.click()
+    app.processEvents()
+    assert not canvas.view_settings_panel.isVisible()
+    assert workspace.music_map_power_scroll.isVisible()
+    workspace.music_map_options_button.click()
+    app.processEvents()
+    assert not workspace.music_map_power_scroll.isVisible()
+    assert workspace.music_map_options_panel.isVisible()
+    assert canvas.geometry()==rect
+    assert canvas.view.geometry()==viewport
+    assert abs(float(canvas.view.transform().m11())-scale)<0.01
+
+    window.close()
+    app.processEvents()
