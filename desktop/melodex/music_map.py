@@ -326,7 +326,9 @@ class _ClusterItem(QGraphicsObject):
 
     def mousePressEvent(self, event) -> None:
         if event.button() == Qt.LeftButton:
-            self._opened(self.members)
+            # Defer the drill-down: it removes the clicked cluster overlay.
+            # Never delete a Qt graphics object during its own mouse event.
+            QTimer.singleShot(0, lambda: self._opened(self.members))
             event.accept()
             return
         super().mousePressEvent(event)
