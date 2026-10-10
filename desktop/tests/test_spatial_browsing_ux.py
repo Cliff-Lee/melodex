@@ -1191,3 +1191,87 @@ def test_mm2_region_navigation_menu_is_reversible_and_does_not_play():
     assert widget.region_menu.isHidden()
     widget.close()
     app.processEvents()
+
+
+def test_mm2_incremental_map_update_preserves_spatial_landmarks():
+    """An axis-mirrored refresh should not make existing tracks jump."""
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    try:
+        from PySide6.QtWidgets import QApplication
+        from melodex.music_map import MusicMapWidget
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+    app = QApplication.instance() or QApplication([])
+    widget = MusicMapWidget()
+    widget.resize(900, 640)
+    widget.show()
+    nodes = []
+    tracks = {}
+    for i in range(16):
+        ref = f"t{i:02d}"
+        x = -0.65 + (i % 4) * 0.35
+        y = -0.55 + (i // 4) * 0.30
+        nodes.append({"ref": ref, "x": x, "y": y, "artist": "Local", "title": ref})
+        tracks[ref] = {"track_id": ref, "artist": "Local", "title": ref}
+    widget.set_map({"nodes": nodes, "edges": [], "analysed": 16}, tracks)
+    app.processEvents()
+    positions = dict(widget.positions)
+    widget.focus_ref("t06")
+    center_before = widget._capture_location()
+    updated = [
+        {**node, "x": -node["y"], "y": node["x"]}
+        for node in nodes
+    ]
+    updated.append({"ref": "new", "x": 0.15, "y": 0.25,
+                    "artist": "New", "title": "New Track"})
+    widget.set_map(
+        {"nodes": updated, "edges": [], "analysed": len(updated)},
+        {**tracks, "new": {"track_id": "new", "artist": "New", "title": "New Track"}},
+    )
+    app.processEvents()
+    for ref, old_xy in positions.items():
+        new_xy = widget.positions[ref]
+        assert abs(old_xy[0] - new_xy[0]) < 0.02
+        assert abs(old_xy[1] - new_xy[1]) < 0.02
+    assert widget.selected_ref_value() == "t06"
+    assert abs(widget._capture_location()[0] - center_before[0]) < 4
+    assert not widget.back_button.isEnabled()
+    assert len(widget.node_items) == 17
+    widget.close()
+    app.processEvents()
+
+
+def test_mm2_cluster_zoom_hysteresis_keeps_items_stable_near_threshold():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    try:
+        from PySide6.QtWidgets import QApplication
+        from melodex.music_map import MusicMapWidget
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+    app = QApplication.instance() or QApplication([])
+    widget = MusicMapWidget()
+    widget.resize(900, 600)
+    widget.show()
+    nodes = [{"ref": f"r{i}", "x": -0.5 + (i % 12) * 0.007,
+              "y": 0.5 + (i // 12) * 0.006} for i in range(120)]
+    tracks = {row["ref"]: {"track_id": row["ref"], "artist": "Same",
+                            "title": row["ref"]} for row in nodes}
+    widget.set_map({"nodes": nodes, "edges": [], "analysed": 120}, tracks)
+    widget.view.resetTransform()
+    widget.view.scale(0.91, 0.91)
+    widget._refresh_clusters()
+    app.processEvents()
+    initial = [id(item) for item in widget._cluster_items]
+    assert initial
+    widget.view.scale(0.94 / 0.91, 0.94 / 0.91)
+    widget._refresh_clusters()
+    app.processEvents()
+    assert [id(item) for item in widget._cluster_items] == initial
+    widget.view.scale(1.02 / 0.94, 1.02 / 0.94)
+    widget._refresh_clusters()
+    app.processEvents()
+    assert widget._cluster_signature[0] == 125.0
+    widget.close()
+    app.processEvents()
