@@ -280,7 +280,7 @@ class JourneyWorkspace(QObject):
         self.music_map_surprise_button.setToolTip(
             "Build an exploratory playlist from your available local music"
         )
-        self.music_map_surprise_button.clicked.connect(self.surpriseMeRequested.emit)
+        self.music_map_surprise_button.clicked.connect(lambda _checked=False: self.surpriseMeRequested.emit())
         set_help(
             self.music_map_options_button,
             "Map options",
