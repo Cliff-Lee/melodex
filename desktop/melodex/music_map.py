@@ -322,13 +322,15 @@ class _ClusterItem(QGraphicsObject):
         font.setBold(True)
         font.setPointSize(9)
         painter.setFont(font)
-        painter.drawText(pill, Qt.AlignCenter, f"{len(self.members)} tracks")
+        painter.drawText(pill, Qt.AlignCenter, str(len(self.members)))
 
     def mousePressEvent(self, event) -> None:
         if event.button() == Qt.LeftButton:
             # Defer the drill-down: it removes the clicked cluster overlay.
             # Never delete a Qt graphics object during its own mouse event.
-            QTimer.singleShot(0, lambda: self._opened(self.members))
+            opened = self._opened
+            members = self.members
+            QTimer.singleShot(0, lambda: opened(members))
             event.accept()
             return
         super().mousePressEvent(event)
@@ -652,8 +654,15 @@ class MusicMapWidget(QWidget):
             )
             if isinstance(item, _NodeItem) and item.ref in self.ref_map
         ]
-        self._visible_art_refs = set(visible_refs)
-        self._art_prefetch_queue = visible_refs + [
+        # Cluster representatives must have their covers fetched first:
+        # their artwork is the *only* cover visible in a dense overview.
+        representatives = [
+            group.representative for group in self._cluster_items
+            if group.representative in self.node_items
+        ]
+        priority = list(dict.fromkeys(representatives + visible_refs))
+        self._visible_art_refs = set(priority)
+        self._art_prefetch_queue = priority + [
             ref for ref in self.node_items
             if ref in self.ref_map and ref not in self._visible_art_refs
         ]
