@@ -1861,7 +1861,7 @@ def test_mm2_map_actions_use_the_single_existing_player_handoff(monkeypatch, tmp
     ]}
     map_widget.show_route(ws.music_path_result)
     ws._sync_quick_music_route_panel()
-    assert not ws.music_map_quick_play_button.isEnabled() is False
+    assert ws.music_map_quick_play_button.isEnabled()
     assert len(played) == 1
     ws.music_map_quick_queue_button.click()
     assert len(queued) == 2
