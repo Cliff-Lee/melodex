@@ -833,7 +833,7 @@ class MusicMapWidget(QWidget):
     def _restore_location(self, location: tuple[float, float, float, str]) -> None:
         x, y, scale, ref = location
         self.view.resetTransform()
-        self.view.scale(max(0.62, min(3.0, scale)), max(0.62, min(3.0, scale)))
+        self.view.scale(max(0.0001, scale), max(0.0001, scale))
         self.view.centerOn(x, y)
         if ref and ref in self.ref_map:
             self._select_ref(ref)
