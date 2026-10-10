@@ -197,9 +197,17 @@ currently-playing and active-route tracks stay individually visible. On
 closer zoom, all individual covers reappear; zoom navigation can be reversed
 with Back. Small or dispersed maps are left unclustered.
 
-This is the first **MM2-3a** density layer on the development branch, not a
-claim that the full semantic-zoom/landmark system is already implemented.
-All mapped tracks keep their original graph identities and route calculations.
+**MM2-3b** adds artist-grounded landmarks beneath overview covers, with
+the count displayed on each tile. If no artist is strongly represented
+in that cell, the label says "Mixed artists"; it never invents a genre
+or listening mood. On clustered overviews, an optional **Regions** control
+lists up to eight of the largest mapped groups. Selecting one zooms in
+without changing playback, and **Back** restores the previous viewpoint.
+The Regions control disappears when the map shows individual tracks.
+
+The full semantic-zoom/artist-landmark system is still being developed.
+All mapped tracks keep their original graph identities and route calculations,
+and the entire map remains a bounded analysed preview, not the whole library.
 
 ### Navigation (MM2-2a)
 
