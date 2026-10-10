@@ -461,3 +461,72 @@ def test_spatial_pages_use_progressive_disclosure(monkeypatch, tmp_path: Path):
 
     window.close()
     app.processEvents()
+
+
+def test_music_map_floating_tools_keep_canvas_geometry_and_camera(monkeypatch, tmp_path: Path):
+    """MM2-1a: opening tools must never steal height from the map."""
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    try:
+        from PySide6.QtTest import QTest
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+
+    window = main_window.MainWindow()
+    window.show()
+    window.open_page("music_map")
+    app.processEvents()
+    QTest.qWait(window._page_refresh_delay_ms + 10)
+    app.processEvents()
+    journey = window.journey_workspace
+    canvas = journey.music_map
+    view = canvas.view
+
+    # The initial camera and canvas dimensions are part of the user's context.
+    view.centerOn(620.0, 400.0)
+    view.scale(1.2, 1.2)
+    app.processEvents()
+    canvas_geometry = canvas.geometry()
+    view_geometry = view.geometry()
+    scale_before = float(view.transform().m11())
+    center_before = view.mapToScene(view.viewport().rect().center())
+
+    journey.music_map_options_button.click()
+    app.processEvents()
+    assert journey.music_map_options_panel.isVisible()
+    assert journey.music_map_options_panel.parentWidget() is journey.music_map_page
+    assert canvas.geometry() == canvas_geometry
+    assert view.geometry() == view_geometry
+
+    # Journey replaces View; neither overlays should take layout height.
+    journey.music_map_plan_button.click()
+    app.processEvents()
+    assert not journey.music_map_options_panel.isVisible()
+    assert journey.music_map_power_scroll.isVisible()
+    assert journey.music_map_power_scroll.parentWidget() is journey.music_map_page
+    assert canvas.geometry() == canvas_geometry
+    assert view.geometry() == view_geometry
+    assert canvas_geometry.contains(journey.music_map_power_scroll.geometry())
+    assert abs(float(view.transform().m11()) - scale_before) < 0.01
+    center_after = view.mapToScene(view.viewport().rect().center())
+    assert abs(center_after.x() - center_before.x()) < 3
+    assert abs(center_after.y() - center_before.y()) < 3
+
+    journey._toggle_music_journey_options()
+    app.processEvents()
+    assert canvas.geometry() == canvas_geometry
+    assert view.geometry() == view_geometry
+
+    journey.music_map_plan_button.click()
+    app.processEvents()
+    assert not journey.music_map_power_scroll.isVisible()
+    assert canvas.geometry() == canvas_geometry
+
+    window.close()
+    app.processEvents()
