@@ -160,27 +160,33 @@ That separation is intentional.
 
 ## Progressive disclosure and navigation
 
-Music Map is primarily a spatial exploration surface, so the graph owns most of the page.
+Music Map keeps the **graph visible while its tools open**. Its main browsing surface has
+a compact search field, **View**, zoom controls, **Fit**, a separate **Journey** action
+and a quiet **More…** menu for occasional analysis and enrichment.
 
-Normal browsing shows only:
+- **Select a track once** to reveal a contextual Play / Queue / Start journey card.
+  A second/double-click activates playback as before; selecting does not play.
+- **View** floats over the graphics viewport and contains colour modes and the
+  detailed connection filters. It never occupies a new row in the page layout.
+- **Journey** opens a right-hand overlay containing existing Route / Compose / Live
+  controls. It does not push the map down. Select a start and destination on the map,
+  then preview and play or queue the result.
+- **More…** contains explicit local-analysis, refresh and metadata-detail actions.
+  Its overlay is anchored *below* the search toolbar.
+- Only one settings/Journey overlay is shown at a time. Contextual track actions
+  temporarily hide while a tool is open and return when it closes.
+- **Escape** dismisses an open overlay without cancelling selection or playback.
+  The Journey drawer also has an explicit Close control.
+- Both the Journey drawer and compact track card stay inside the graphical
+  viewport at supported window sizes rather than increasing the page's height.
 
-- **Map options…**
-- **Play selected**
-- **Queue selected**
-- **Plan a route…**
-- the compact **View / Connections / Search / Fit map** row
-- visible **Zoom in** and **Zoom out** controls
-- the map itself.
+Map movement is unchanged: drag empty space to pan, trackpad scroll to pan,
+mouse-wheel or Cmd/Ctrl-scroll to zoom, and use **+ / −** and **Fit** if preferred.
+Dense libraries currently use small album-cover points; zoom and hover reveal
+individual track detail. Semantic zoom/cluster navigation is a later MM2 stage,
+**not yet implemented**.
 
-**Map options…** reveals analysis, refresh and bounded metadata-enrichment actions.
-
-**Plan a route…** reveals Pathfinder start/destination controls.
-
-**Journey options…** is a further disclosure inside the route planner for starting shapes, semantic directions, the ordered journey timeline and live steering. Those controls are intentionally absent during ordinary map browsing.
-
-Global **Power tools** does not force any of these spatial panels open.
-
-Navigation mirrors Album Wall: drag to pan, two-finger trackpad scrolling pans, mouse-wheel or Cmd/Ctrl-scroll zooms smoothly, the **+ / −** controls zoom explicitly, and **Fit map** restores a useful overview. Dense collections use smaller album-cover points at overview scale; zooming into a region reveals individual covers and nearby sonic neighborhoods without drawing a wall of connection lines.
+Global **Power tools** does not force the map's advanced panels open.
 
 ## 8. Privacy
 
@@ -208,7 +214,10 @@ The map is therefore an exploration view, not an assertion that every indexed tr
 
 ## 10. Starting a journey
 
-Select a track, choose **Plan a route…**, then use **Start listening here** when you want the selected track to become a listening anchor.
+Select a track and choose **Start journey** in its contextual card. This sets
+the selected song as the Pathfinder start and opens Journey tools; choose another
+mapped track as a destination and request a route. Within Journey, **Start listening
+here** is a separate way to launch an open-ended Mind + Flow listening session.
 
 The selected mapped track becomes the starting anchor for Mind + Flow.
 
