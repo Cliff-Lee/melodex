@@ -935,7 +935,7 @@ def test_mm2_related_tracks_use_graph_evidence_not_canvas_distance():
     assert "MusicBrainz" in result[1]["reason"]
     assert widget.related_tracks("a", 8)[2]["ref"] == "b"
     assert "e" not in [r["ref"] for r in widget.related_tracks("a", 8)]
-    assert widget.related_tracks("e") == []
+    assert [r["ref"] for r in widget.related_tracks("e")] == ["d"]
     assert widget.related_tracks("unknown") == []
     widget.close()
     app.processEvents()
@@ -995,8 +995,8 @@ def test_mm2_explore_nearby_chips_are_contextual_and_do_not_start_audio(monkeypa
     app.processEvents()
     assert widget.selected_ref_value()=="b"
     assert widget.back_button.isEnabled()
-    assert not ws.music_map_nearby_label.isVisible()
-    assert not any(b.isVisible() for b in ws.music_map_related_buttons)
+    assert ws._music_map_related_refs == ["a"]
+    assert ws.music_map_nearby_label.isVisible()
     assert not playback and not queued
     widget.navigate_back()
     app.processEvents()
