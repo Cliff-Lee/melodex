@@ -1640,7 +1640,7 @@ def test_mm2_quick_journey_a_to_b_uses_map_clicks_and_existing_pathfinder(monkey
     app.processEvents()
     assert ws.music_map_power_scroll.isVisible()
     assert ws.music_map_quick_route_panel.isHidden()
-    ws.music_map_quick_more_button.click()
+    ws._toggle_music_map_tools()  # Return from Advanced to the simple map strip.
     app.processEvents()
     assert ws.music_map_quick_route_panel.isVisible()
 
