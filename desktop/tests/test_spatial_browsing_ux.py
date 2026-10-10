@@ -1463,9 +1463,13 @@ def test_mm2_play_region_uses_only_cluster_members_and_preserves_camera():
     cluster = widget._cluster_items[0]
     before = widget._capture_location()
     # Click the visible play glyph instead of the cover.
-    location = cluster.mapToScene(cluster.play_rect().center())
-    click_position = widget.view.mapFromScene(location)
-    QTest.mouseClick(widget.view.viewport(), Qt.LeftButton, pos=click_position)
+    # Screen-size-stable cluster controls require deviceTransform when mapping
+    # an item-local play target to its real viewport hit point.
+    assert cluster.flags() & cluster.GraphicsItemFlag.ItemIgnoresTransformations
+    location = cluster.deviceTransform(widget.view.viewportTransform()).map(
+        cluster.play_rect().center()
+    ).toPoint()
+    QTest.mouseClick(widget.view.viewport(), Qt.LeftButton, pos=location)
     app.processEvents()
     assert len(requests) == 1
     request = requests[0]
@@ -1476,9 +1480,10 @@ def test_mm2_play_region_uses_only_cluster_members_and_preserves_camera():
     assert not activated
 
     # Clicking the cover continues to drill down rather than start audio.
-    cover = cluster.mapToScene(cluster.boundingRect().center())
-    QTest.mouseClick(widget.view.viewport(), Qt.LeftButton,
-                     pos=widget.view.mapFromScene(cover))
+    cover = cluster.deviceTransform(widget.view.viewportTransform()).map(
+        cluster.boundingRect().center()
+    ).toPoint()
+    QTest.mouseClick(widget.view.viewport(), Qt.LeftButton, pos=cover)
     app.processEvents()
     assert abs(widget.view.transform().m11() - 1.55) < 0.01
     assert len(requests) == 1
