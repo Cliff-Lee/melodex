@@ -286,12 +286,14 @@ class _NodeItem(QGraphicsObject):
 class _ClusterItem(QGraphicsObject):
     """Representative album cover plus count; click drills into actual tracks."""
 
-    def __init__(self, members: tuple[str, ...], representative: str, landmark: str, opened):
+    def __init__(self, members: tuple[str, ...], representative: str, landmark: str,
+                 opened, listen):
         super().__init__()
         self.members = tuple(members)
         self.representative = representative
         self.landmark = str(landmark)
         self._opened = opened
+        self._listen = listen
         self._artwork = QPixmap()
         self.setZValue(15)
         self.setAcceptedMouseButtons(Qt.LeftButton)
@@ -343,14 +345,33 @@ class _ClusterItem(QGraphicsObject):
         painter.setPen(QColor("#e3edf8"))
         name = painter.fontMetrics().elidedText(self.landmark, Qt.ElideRight, 98)
         painter.drawText(landmark_rect, Qt.AlignCenter | Qt.AlignVCenter, name)
+        # A separate, directly clickable play affordance is visible even at
+        # overview zoom; the cover itself continues to mean "explore".
+        play_rect = self.play_rect()
+        painter.setPen(QPen(QColor("#bde2fa"), 1.4))
+        painter.setBrush(QColor("#175a85"))
+        painter.drawEllipse(play_rect)
+        painter.setPen(QColor("#ffffff"))
+        painter.drawText(play_rect, Qt.AlignCenter, "▶")
+
+    @staticmethod
+    def play_rect() -> QRectF:
+        return QRectF(79.0, 3.0, 23.0, 23.0)
 
     def mousePressEvent(self, event) -> None:
         if event.button() == Qt.LeftButton:
-            # Defer the drill-down: it removes the clicked cluster overlay.
-            # Never delete a Qt graphics object during its own mouse event.
-            opened = self._opened
+            # Both actions are deferred: drilling in removes this graphics
+            # item and playback must never start inside a mouse handler.
             members = self.members
-            QTimer.singleShot(0, lambda: opened(members))
+            if self.play_rect().contains(event.pos()):
+                listen = self._listen
+                representative = self.representative
+                QTimer.singleShot(
+                    0, lambda: listen(members, representative)
+                )
+            else:
+                opened = self._opened
+                QTimer.singleShot(0, lambda: opened(members))
             event.accept()
             return
         super().mousePressEvent(event)
@@ -359,6 +380,7 @@ class _ClusterItem(QGraphicsObject):
 class MusicMapWidget(QWidget):
     trackSelected = Signal(object)
     trackActivated = Signal(object)
+    regionListenRequested = Signal(object)
     artworkRequested = Signal(object)
 
     def __init__(self, parent=None):
@@ -1021,7 +1043,10 @@ class MusicMapWidget(QWidget):
             members = tuple(group["refs"])
             representative = str(group["representative"])
             landmark, landmark_detail = cluster_landmark(members, self.ref_map)
-            cluster = _ClusterItem(members, representative, landmark, self._open_cluster)
+            cluster = _ClusterItem(
+                members, representative, landmark, self._open_cluster,
+                self._listen_cluster,
+            )
             cluster.setPos(float(group["x"]) - 52, float(group["y"]) - 48)
             examples = [
                 f'{self.ref_map[ref].get("artist") or "Unknown artist"} — '
@@ -1029,7 +1054,8 @@ class MusicMapWidget(QWidget):
                 for ref in members[:3] if ref in self.ref_map
             ]
             cluster.setToolTip(
-                landmark_detail + " · Click to explore"
+                landmark_detail
+                + " · Click cover to explore · Click ▶ to play this region"
                 + ("\n" + "\n".join(examples) if examples else "")
             )
             representative_item = self.node_items.get(representative)
@@ -1043,6 +1069,23 @@ class MusicMapWidget(QWidget):
         self.regions_button.setVisible(bool(self._cluster_items))
         if not self._cluster_items:
             self.region_menu.hide()
+
+    def _listen_cluster(
+        self, members: tuple[str, ...], representative: str
+    ) -> None:
+        """Request local region playback; no camera or player state is changed."""
+        refs = tuple(dict.fromkeys(
+            ref for ref in members if ref in self.ref_map and ref in self.node_items
+        ))
+        if not refs or representative not in refs:
+            self.status.setText("This map region is no longer available.")
+            return
+        tracks = [dict(self.ref_map[ref]) for ref in refs]
+        self.regionListenRequested.emit({
+            "tracks": tracks,
+            "seed": dict(self.ref_map[representative]),
+            "count": len(tracks),
+        })
 
     def _open_cluster(self, members: tuple[str, ...]) -> None:
         """Zoom in on the actual constituent tracks without requesting audio."""
