@@ -668,8 +668,9 @@ class JourneyWorkspace(QObject):
         self.music_map_quick_route_label=QLabel("")
         self.music_map_quick_route_label.setAccessibleName("Journey start and destination")
         quick_layout.addWidget(self.music_map_quick_route_label)
-        quick_actions=QHBoxLayout()
-        quick_actions.setSpacing(5)
+        quick_actions=QGridLayout()
+        quick_actions.setHorizontalSpacing(5)
+        quick_actions.setVerticalSpacing(5)
         self.music_map_quick_preview_button=QPushButton("Preview route")
         self.music_map_quick_preview_button.setObjectName("primaryButton")
         self.music_map_quick_preview_button.clicked.connect(self._preview_quick_music_route)
@@ -683,14 +684,15 @@ class JourneyWorkspace(QObject):
         self.music_map_quick_cancel_button=QPushButton("Cancel")
         self.music_map_quick_cancel_button.setObjectName("quietButton")
         self.music_map_quick_cancel_button.clicked.connect(self._cancel_quick_music_route)
-        for control in (
-            self.music_map_quick_preview_button,
-            self.music_map_quick_play_button,
-            self.music_map_quick_queue_button,
-            self.music_map_quick_more_button,
-            self.music_map_quick_cancel_button,
-        ):
-            quick_actions.addWidget(control)
+        # Two short rows keep every action tappable at 1024x768 and below.
+        quick_actions.addWidget(self.music_map_quick_preview_button, 0, 0)
+        quick_actions.addWidget(self.music_map_quick_play_button, 0, 1)
+        quick_actions.addWidget(self.music_map_quick_queue_button, 0, 2)
+        quick_actions.addWidget(self.music_map_quick_more_button, 1, 0)
+        quick_actions.addWidget(self.music_map_quick_cancel_button, 1, 1)
+        quick_actions.setColumnStretch(0, 2)
+        quick_actions.setColumnStretch(1, 1)
+        quick_actions.setColumnStretch(2, 1)
         quick_layout.addLayout(quick_actions)
         self.music_map_quick_route_panel.hide()
 
@@ -747,7 +749,7 @@ class JourneyWorkspace(QObject):
             )
             self.music_map_quick_route_panel.setGeometry(
                 left + margin, top + margin,
-                min(500, available_width), min(105, available_height),
+                min(500, available_width), min(122, available_height),
             )
             self._sync_music_map_track_panel()
             self._sync_quick_music_route_panel()
