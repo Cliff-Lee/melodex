@@ -63,6 +63,11 @@ def main() -> int:
     from .main_window import MainWindow
     startup.mark("main_window_import_ready")
 
+    # Device-independent package qualification must not start a background
+    # local control bridge, bind a port or touch a real library.
+    if os.environ.get("MELODEX_MM2_PACKAGE_PROBE"):
+        MainWindow._start_local_bridge = lambda self: None
+
     startup.mark("main_window_construct_start")
     win = MainWindow(
         startup_timeline=startup,
