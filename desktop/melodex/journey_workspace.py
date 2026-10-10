@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import time
 import uuid
-from copy import deepcopy
 from pathlib import Path
 from typing import Any, Callable
 
@@ -869,6 +868,7 @@ class JourneyWorkspace(QObject):
     def _preview_quick_music_route(self) -> None:
         """Calculate Pathfinder off the UI thread; discard stale responses."""
         from .music_pathfinder import find_music_path
+        from .music_map_route_snapshot import snapshot_pathfinder_inputs
 
         if not self._map_quick_route_active or self._quick_route_pending:
             return
@@ -878,8 +878,9 @@ class JourneyWorkspace(QObject):
         mode = str(self.music_path_mode.currentData() or "balanced")
         # Snapshot the bounded data on the UI thread. The worker must never
         # access Qt scene objects or changing model/knowledge dictionaries.
-        model = deepcopy(self.music_map.model)
-        knowledge = deepcopy(self.music_map.knowledge_graph)
+        model, knowledge = snapshot_pathfinder_inputs(
+            self.music_map.model, self.music_map.knowledge_graph
+        )
         self._quick_route_generation += 1
         generation = self._quick_route_generation
         self._quick_route_pending = True
