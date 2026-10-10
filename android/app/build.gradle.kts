@@ -27,8 +27,8 @@ android {
         applicationId = "com.melodex.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 728
-        versionName = "0.7.28"
+        versionCode = 729
+        versionName = "0.7.29"
     }
 
     signingConfigs {
