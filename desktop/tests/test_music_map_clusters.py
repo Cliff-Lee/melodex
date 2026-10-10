@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from melodex.music_map_clusters import cluster_grid_size, cluster_mapped_positions
+from melodex.music_map_clusters import cluster_grid_size, cluster_landmark, cluster_mapped_positions
 
 
 def test_overview_clusters_are_stable_and_never_invent_relationships():
@@ -49,3 +49,24 @@ def test_adjacent_overview_regions_have_nonoverlapping_tile_centres():
     assert result[1]["x"] - result[0]["x"] == cluster_grid_size(0.7)
     assert result[0]["representative"] in result[0]["refs"]
     assert result[1]["representative"] in result[1]["refs"]
+
+
+def test_artist_landmarks_are_grounded_and_do_not_invent_genres():
+    tracks = {
+        **{f"a{i}": {"artist": "Pink Floyd"} for i in range(6)},
+        **{f"b{i}": {"artist": "Radiohead"} for i in range(2)},
+        **{f"c{i}": {"artist": ""} for i in range(2)},
+    }
+    members = list(tracks)
+    label, explanation = cluster_landmark(members, tracks)
+    assert label == "Pink Floyd + others"
+    assert "Pink Floyd (6)" in explanation
+    assert "Radiohead (2)" in explanation
+    assert "10 mapped tracks" in explanation
+    assert "genre" not in explanation.casefold()
+    assert cluster_landmark(list(reversed(members)), tracks) == (label, explanation)
+    assert cluster_landmark(["c0", "c1"], tracks)[0] == "Mixed tracks"
+
+    # Many different artists must not be misleadingly named for the first.
+    all_different = {f"i{i}": {"artist": f"Person {i}"} for i in range(12)}
+    assert cluster_landmark(all_different, all_different)[0] == "Mixed artists"
