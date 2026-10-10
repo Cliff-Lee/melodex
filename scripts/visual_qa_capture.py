@@ -300,7 +300,84 @@ def capture(out: Path, width: int = 1440, height: int = 900) -> dict[str, object
         first_item._resize_on_hover(True)
     _save_widget(music_map, out / "13-music-map.png", width, height)
     record("13-music-map.png", "Music Map with album covers, one expanded hover detail card, and zoom controls.")
+
+    # MM2: capture an actual open overlay at every qualification resolution.
+    # The viewport must not shrink when the visual controls are revealed.
+    original_view_rect = music_map.view.geometry()
+    music_map.view_button.click()
+    app.processEvents()
+    if music_map.view.geometry() != original_view_rect:
+        raise AssertionError("View settings unexpectedly resized the Music Map canvas")
+    _save_widget(music_map, out / "13b-music-map-view.png", width, height)
+    record("13b-music-map-view.png", "Music Map with floating colour/connection settings and unchanged viewport.")
+    music_map.view_button.click()
+    app.processEvents()
     music_map.deleteLater()
+
+    # MM2-3a: use actual Flow projection positions to exercise overview LOD.
+    dense_map = MusicMapWidget()
+    dense_nodes = []
+    dense_refs = {}
+    for index in range(240):
+        cluster = index // 80
+        local = index % 80
+        centres = ((-0.65, 0.37), (0.55, 0.42), (0.26, -0.53))
+        centre_x, centre_y = centres[cluster]
+        ref = f"dense-{index}"
+        track = {
+            "track_id": ref,
+            "artist": f"Local Artist {index // 6 + 1}",
+            "album": f"Album {index // 12 + 1}",
+            "title": f"Mapped song {index + 1}",
+        }
+        dense_nodes.append({
+            "ref": ref, **track,
+            "x": centre_x + (local % 10 - 5) * 0.011,
+            "y": centre_y + (local // 10 - 4) * 0.011,
+        })
+        dense_refs[ref] = track
+    dense_map.resize(width, height)
+    dense_map.set_map({
+        "nodes": dense_nodes, "edges": [], "analysed": len(dense_nodes),
+        "input_profiles": len(dense_nodes),
+    }, dense_refs)
+    app.processEvents()
+    if not dense_map._cluster_items:
+        raise AssertionError("Dense Music Map did not create overview clusters")
+    dense_map.set_artwork({
+        ref: {"generation": dense_map._art_generation, "image": QImage(str(art_path))}
+        for ref in dense_refs
+    })
+    _save_widget(dense_map, out / "13c-music-map-clusters.png", width, height)
+    record("13c-music-map-clusters.png", "MM2 overview groups nearby analysed tracks with album artwork and counts.")
+
+    # MM2-5/6: qualify actual graphical route contrast and the highlighted
+    # listening step without launching audio in the capture workflow.
+    route_refs = ("dense-0", "dense-80", "dense-160")
+    dense_map.set_route_endpoints(route_refs[0], route_refs[-1])
+    dense_map.show_route({
+        "found": True,
+        "path_refs": list(route_refs),
+        "hops": [
+            {"from": route_refs[0], "to": route_refs[1], "reason": "Flow similarity"},
+            {"from": route_refs[1], "to": route_refs[2], "reason": "Shared performer"},
+        ],
+        "score": 0.82,
+        "reason": "Synthetic route preview",
+    })
+    app.processEvents()
+    if len([x for x in dense_map.route_items if x.data(0) == "route_segment"]) != 2:
+        raise AssertionError("MM2 route preview did not render two visible route legs")
+    _save_widget(dense_map, out / "13d-music-map-route-preview.png", width, height)
+    record("13d-music-map-route-preview.png", "MM2 A-to-B route preview over a clustered overview; selected route tracks remain visible.")
+
+    dense_map.set_route_progress(1)
+    app.processEvents()
+    if dense_map._route_progress_index != 1:
+        raise AssertionError("MM2 journey track progress is not reflected in route rendering")
+    _save_widget(dense_map, out / "13e-music-map-route-progress.png", width, height)
+    record("13e-music-map-route-progress.png", "MM2 observed playback step highlighted on the map; synthetic fixture, no audio started.")
+    dense_map.deleteLater()
 
     overview = LivingCanvasView()
     overview.set_track(TRACK, ANALYSIS)

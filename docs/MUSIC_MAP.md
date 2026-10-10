@@ -160,27 +160,101 @@ That separation is intentional.
 
 ## Progressive disclosure and navigation
 
-Music Map is primarily a spatial exploration surface, so the graph owns most of the page.
+Music Map keeps the **graph visible while its tools open**. Its main browsing surface has
+a compact search field, **View**, zoom controls, **Fit**, a separate **Journey** action
+and a quiet **More…** menu for occasional analysis and enrichment.
 
-Normal browsing shows only:
+- **Surprise me**, beside Journey, starts an exploratory session using the
+  existing Mind + Flow player and the current listening preferences. No
+  selected track or route setup is required, and the map stays in place.
+- In the clustered overview, each region cover has a small **▶** glyph.
+  Click **▶** to build a listening session from locally available tracks
+  *inside that specific mapped region*. The existing Mind engine still
+  handles ranking and listening preferences; the candidate pool is limited
+  to catalogue tracks whose identities match mapped region members. Click
+  the **cover itself** to zoom in instead; this does not start playback.
+  Regions are a *bounded analysed preview* rather than a promise to play
+  everything in the entire library. If tracks are no longer in the local
+  catalogue, the app explains the problem instead of playing unrelated music.
+- **Select a track once** to reveal contextual actions: **Play** plays that
+  single track, **Queue** adds it to the queue, **Play from here** asks the
+  existing local Mind + Flow session builder for a listening session
+  starting from that track, and **Plan a journey** starts the compact
+  graphical A→B flow. Click another track on the map to set the destination,
+  then choose **Preview route**, **Play**, or **Queue** in the small floating
+  strip. The existing Pathfinder still calculates the route from musical
+  features and knowledge connections, not the screen coordinates.
+  **Advanced** opens the full Route / Compose / Live planner; **Cancel** clears
+  just this unfinished map journey. Search, Back, and programmatic focus do
+  not silently choose a destination. A second/double-click plays the track
+  directly.
+  **Selecting does not start playback or launch any background session.**
+  Session creation is asynchronous and may take time; direct Play remains
+  available for immediate single-track playback. If the local library is
+  empty, Melodex displays a helpful status instead of attempting a session.
+- When the selected track has *actual mapped relationships*, the contextual card
+  also shows up to **two Explore nearby suggestions**. Suggestions are based on
+  existing audio-feature similarity edges and/or cached metadata relationships,
+  not spatial pixel distance. The hover tooltip states the evidence, while a
+  concise connection type is visible on the chip. Selecting a suggestion changes
+  map focus and adds a navigation history entry; **it does not start playback**.
+  If a track has no mapped neighbours, no speculative suggestions are shown.
+- **View** floats over the graphics viewport and contains colour modes and the
+  detailed connection filters. It never occupies a new row in the page layout.
+- **Journey** opens a right-hand overlay containing existing Route / Compose / Live
+  controls. It does not push the map down. Select a start and destination on the map,
+  then preview and play or queue the result.
+- **More…** contains explicit local-analysis, refresh and metadata-detail actions.
+  Its overlay is anchored *below* the search toolbar.
+- Only one settings/Journey overlay is shown at a time. Contextual track actions
+  temporarily hide while a tool is open and return when it closes.
+- **Escape** dismisses an open overlay without cancelling selection or playback.
+  The Journey drawer also has an explicit Close control.
+- Both the Journey drawer and compact track card stay inside the graphical
+  viewport at supported window sizes rather than increasing the page's height.
 
-- **Map options…**
-- **Play selected**
-- **Queue selected**
-- **Plan a route…**
-- the compact **View / Connections / Search / Fit map** row
-- visible **Zoom in** and **Zoom out** controls
-- the map itself.
+Map movement is unchanged: drag empty space to pan, trackpad scroll to pan,
+mouse-wheel or Cmd/Ctrl-scroll to zoom, and use **+ / −** and **Fit** if preferred.
+At overview zoom, dense regions are grouped into representative album-cover
+tiles labelled with a mapped-track count; clicking a group zooms into its
+individual tracks. The groups are **spatial summaries of the existing Flow
+feature projection**, not inferred genres or factual links. Selected,
+currently-playing and active-route tracks stay individually visible. On
+closer zoom, all individual covers reappear; zoom navigation can be reversed
+with Back. Small or dispersed maps are left unclustered.
 
-**Map options…** reveals analysis, refresh and bounded metadata-enrichment actions.
+**MM2-3b** adds artist-grounded landmarks beneath overview covers, with
+the count displayed on each tile. If no artist is strongly represented
+in that cell, the label says "Mixed artists"; it never invents a genre
+or listening mood. On clustered overviews, an optional **Regions** control
+lists up to eight of the largest mapped groups. Selecting one zooms in
+without changing playback, and **Back** restores the previous viewpoint.
+The Regions control disappears when the map shows individual tracks.
 
-**Plan a route…** reveals Pathfinder start/destination controls.
+**MM2-3c** stabilises the existing smooth zoom. Overview/album detail
+switches have small hysteresis bands so artwork groups do not repeatedly pop
+in and out when the scroll position sits near a threshold. When the map is
+rebuilt with mostly the same tracks, Melodex compares their displayed
+coordinates and, only when it meaningfully improves continuity, corrects
+PCA axis flips/swaps using a conservative orientation transform. These
+changes affect only drawn positions; Flow features, the similarity graph,
+track identities and Pathfinder routes remain untouched. A substantially
+different map is not forcibly aligned with the old one.
 
-**Journey options…** is a further disclosure inside the route planner for starting shapes, semantic directions, the ordered journey timeline and live steering. Those controls are intentionally absent during ordinary map browsing.
+The full semantic-zoom/artist-landmark system is still being developed,
+and the map remains a bounded analysed preview, not the entire library.
 
-Global **Power tools** does not force any of these spatial panels open.
+### Navigation (MM2-2a)
 
-Navigation mirrors Album Wall: drag to pan, two-finger trackpad scrolling pans, mouse-wheel or Cmd/Ctrl-scroll zooms smoothly, the **+ / −** controls zoom explicitly, and **Fit map** restores a useful overview. Dense collections use smaller album-cover points at overview scale; zooming into a region reveals individual covers and nearby sonic neighborhoods without drawing a wall of connection lines.
+- **Back** and **Forward** (or Alt+Left / Alt+Right) revisit positions reached through track searches, **Now Playing**, or **Fit**. History stores the position, zoom and selected track; returning to a location does not change playback.
+- **Find playing track** (◎) locates the currently playing song **only if it is represented among the mapped tracks**. When a playing track is outside the bounded preview, Melodex explains that limitation and leaves the map where it is.
+- Searching for a mapped artist or track selects and centres it, adding the previous camera to Back history.
+- Manual panning and zooming remain free-form; history is recorded at deliberate navigation actions, not at every pixel of dragging.
+- Refreshing/rebuilding a projection clears camera history, preventing older saved scene coordinates from leading to misleading locations.
+
+These navigation features are **in the MM2 development branch** and are not yet part of a public release.
+
+Global **Power tools** does not force the map's advanced panels open.
 
 ## 8. Privacy
 
@@ -208,7 +282,45 @@ The map is therefore an exploration view, not an assertion that every indexed tr
 
 ## 10. Starting a journey
 
-Select a track, choose **Plan a route…**, then use **Start listening here** when you want the selected track to become a listening anchor.
+Select a track and choose **Plan a journey** in its contextual card.
+A small A→B strip appears *over* the canvas and the first selected track is
+marked as the start. Click a different actual track on the map to make it the
+destination, then use **Preview route** to draw Pathfinder's route on the map.
+Only **Play** or **Queue** starts or alters audio. **Advanced** reveals the
+original Route / Compose / Live planner without resetting the endpoints.
+**Cancel** or Escape dismisses the strip and clears the route. **Play from
+here** instead builds an open-ended session from one selected track using the
+existing Mind + Flow engine; it does not require the Journey drawer or a
+destination.
+
+In **MM2-5b**, **Preview route** runs Pathfinder through Melodex's existing
+background task scheduler, with a visible *Finding route…* state and Play/Queue
+disabled until a valid preview returns. Changing destination or recipe, cancelling
+the journey or rebuilding the map invalidates in-flight preview results; a late
+callback cannot replace the current choice. Failure leaves the route ready to
+retry. Advanced route tools continue using their original synchronous
+implementation for now.
+
+After explicitly selecting **Play route**, the actual currently playing mapped
+track advances the route highlight and displays *Playing step n/N*. This is
+observed playback progress, **not** an estimated arrival time, an inferred
+continuous mix or a promise that the device will successfully play every
+track. Playing music outside the route clears its progress indicator.
+**MM2-6a integration:** the quick preview now copies only the
+Pathfinder-required node fields and mapped sonic/knowledge relationships
+before sending the calculation to the worker. It preserves the original
+feature vectors, graph evidence and route ordering without copying unrelated
+album-art or UI metadata. A reproducible synthetic 700-track benchmark
+records both the main-thread snapshot p95 and the separate background route
+calculation time. The CI performance gate requires a snapshot p95 of at
+most **100 ms**; this is a *specific dispatch-stage budget*, not proof of
+overall UI responsiveness, actual playback latency, or a 700-track
+completion-time guarantee. Visual QA additionally captures both the drawn
+A→B route and its highlighted listening step at 1024×768, 1280×800 and
+1440×900.
+
+The final UX still requires clean CI, inspection of those screenshots and
+real packaged Mac/Ubuntu responsiveness and playback tests before release.
 
 The selected mapped track becomes the starting anchor for Mind + Flow.
 

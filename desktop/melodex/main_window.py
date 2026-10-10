@@ -709,6 +709,16 @@ class MainWindow(QMainWindow):
         self.journey_workspace.sessionFromTrackRequested.connect(
             self._start_session_from_map_track
         )
+        self.journey_workspace.regionSessionRequested.connect(
+            self._start_session_from_map_region
+        )
+        self.journey_workspace.surpriseMeRequested.connect(
+            lambda: self._play_for_me(
+                str(self.mode.currentData() or "balanced"),
+                int(self.minutes.currentText()),
+                self.adventure.value() / 100,
+            )
+        )
         self.journey_workspace.statusMessageRequested.connect(
             lambda message, timeout: self.statusBar().showMessage(message, timeout)
         )
@@ -4446,26 +4456,13 @@ class MainWindow(QMainWindow):
             return result
         self._run_async(load,self.album_wall.set_artwork, priority="background", task_name="album-wall-online-artwork")
 
+    def _start_session_from_map_region(self, request: object) -> None:
+        from .music_map_session_actions import start_session_from_map_region
+        start_session_from_map_region(self, request)
+
     def _start_session_from_map_track(self, track: object) -> None:
-        seed = dict(track or {}) if isinstance(track, dict) else {}
-        if not seed:
-            return
-        catalog = self.providers.local_catalog()
-        self.statusBar().showMessage("Building a journey from this part of your map…")
-        self._run_async(
-            lambda: self.mind.build_session(
-                catalog,
-                self._path_for,
-                minutes=int(self.minutes.currentText()),
-                adventure=self.adventure.value() / 100,
-                mode=str(self.mode.currentData() or "balanced"),
-                start_track=seed,
-            ),
-            lambda plan: self._apply_mind(plan),
-            priority="foreground",
-            task_name="journey-build",
-            replace_key="journey-build",
-        )
+        from .music_map_session_actions import start_session_from_map_track
+        start_session_from_map_track(self, track)
 
     # ------------------------------- Flow / Mind
     def _path_for(self,t):

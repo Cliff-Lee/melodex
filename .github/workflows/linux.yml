@@ -18,6 +18,13 @@ on:
 permissions:
   contents: write
 
+
+# On active PRs, supersede outdated check/build runs so fresh commits reach
+# runners promptly. Never auto-cancel main, tags or workflow_dispatch releases.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   build:
     runs-on: ubuntu-22.04
@@ -128,6 +135,28 @@ jobs:
             linux-artifacts/Melodex-linux-x86_64.AppImage \
             --appimage \
             --output "packaged-startup-appimage-${{ matrix.os }}.json"
+      # Run actual packaged GUI controls and async route logic on the
+      # installed DEB and AppImage. No test step plays real audio.
+      - name: Qualify packaged MM2 GUI in DEB and AppImage
+        run: |
+          python3 scripts/mm2_packaged_gui_probe.py \
+            /usr/bin/melodex \
+            --output "mm2-package-deb-${{ matrix.os }}.json"
+          python3 scripts/mm2_packaged_gui_probe.py \
+            linux-artifacts/Melodex-linux-x86_64.AppImage \
+            --appimage \
+            --output "mm2-package-appimage-${{ matrix.os }}.json"
+      - name: Upload Linux packaged MM2 GUI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: MM2-packaged-GUI-Linux-${{ matrix.os }}
+          path: |
+            mm2-package-deb-${{ matrix.os }}.json
+            mm2-package-deb-${{ matrix.os }}.png
+            mm2-package-appimage-${{ matrix.os }}.json
+            mm2-package-appimage-${{ matrix.os }}.png
+          if-no-files-found: warn
       - name: Upload Linux packaged startup measurements
         if: always()
         uses: actions/upload-artifact@v4
@@ -163,6 +192,8 @@ jobs:
               apt-get install -y python3 ./linux-artifacts/Melodex-linux-x86_64.deb
               python3 desktop/linux/smoke_launch.py /usr/bin/melodex
               python3 desktop/linux/smoke_launch.py linux-artifacts/Melodex-linux-x86_64.AppImage --appimage
+              python3 scripts/mm2_packaged_gui_probe.py /usr/bin/melodex --output /tmp/mm2-package-debian.json
+              python3 scripts/mm2_packaged_gui_probe.py linux-artifacts/Melodex-linux-x86_64.AppImage --appimage --output /tmp/mm2-appimage-debian.json
             '
 
   attach-release-assets:

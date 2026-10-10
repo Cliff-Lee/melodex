@@ -63,6 +63,11 @@ def main() -> int:
     from .main_window import MainWindow
     startup.mark("main_window_import_ready")
 
+    # Device-independent package qualification must not start a background
+    # local control bridge, bind a port or touch a real library.
+    if os.environ.get("MELODEX_MM2_PACKAGE_PROBE"):
+        MainWindow._start_local_bridge = lambda self: None
+
     startup.mark("main_window_construct_start")
     win = MainWindow(
         startup_timeline=startup,
@@ -119,6 +124,14 @@ def main() -> int:
                 QTimer.singleShot(0, win.close)
 
     QTimer.singleShot(0, first_event_loop_turn)
+
+    # Opt-in packaged build qualification. Runs only with an explicit probe
+    # output path and a fresh isolated data directory; never in normal use.
+    mm2_probe_output = str(os.environ.get("MELODEX_MM2_PACKAGE_PROBE") or "").strip()
+    if mm2_probe_output and not probe_exit:
+        from .mm2_package_probe import start_packaged_probe
+        QTimer.singleShot(0, lambda: start_packaged_probe(win, mm2_probe_output))
+
     return app.exec()
 
 
