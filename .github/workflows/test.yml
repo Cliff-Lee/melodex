@@ -147,6 +147,14 @@ jobs:
             --height 1080 \
             --frames 45 \
             --output visual-performance-high-1080p.json
+      - name: Enforce MM2 route request snapshot responsiveness
+        run: >-
+          python scripts/mm2_route_latency_probe.py
+          --tracks 700
+          --iterations 15
+          --snapshot-p95-limit-ms 100
+          --enforce
+          --output mm2-route-latency-700.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -154,6 +162,7 @@ jobs:
           path: |
             visual-performance-auto-720p.json
             visual-performance-high-1080p.json
+            mm2-route-latency-700.json
 
 
   visual-qa-captures:
