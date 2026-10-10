@@ -1364,3 +1364,58 @@ def test_mm2_play_from_here_starts_existing_session_only_on_explicit_click(monke
     assert ws.music_map_track_panel.isVisible()
     window.close()
     app.processEvents()
+
+
+def test_mm2_surprise_me_reuses_existing_mind_session_builder(monkeypatch, tmp_path: Path):
+    """Surprise me requires an explicit click and keeps the Map uncluttered."""
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    try:
+        from PySide6.QtTest import QTest
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    sessions = []
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+    monkeypatch.setattr(
+        main_window.MainWindow, "_play_for_me",
+        lambda self, mode, minutes, adventure: sessions.append(
+            (mode, minutes, adventure)
+        ),
+    )
+
+    window = main_window.MainWindow()
+    window.show()
+    window.open_page("music_map")
+    app.processEvents()
+    QTest.qWait(window._page_refresh_delay_ms + 10)
+    app.processEvents()
+
+    ws = window.journey_workspace
+    canvas = ws.music_map
+    assert ws.music_map_surprise_button.isVisible()
+    assert ws.music_map_surprise_button.text() == "Surprise me"
+    assert ws.music_map_track_panel.isHidden()
+    assert not sessions
+
+    canvas_geometry = canvas.geometry()
+    camera = canvas._capture_location()
+    ws.music_map_surprise_button.click()
+    app.processEvents()
+    assert len(sessions) == 1
+    assert sessions[0] == (
+        str(window.mode.currentData() or "balanced"),
+        int(window.minutes.currentText()),
+        window.adventure.value() / 100,
+    )
+    assert canvas.geometry() == canvas_geometry
+    assert canvas._capture_location() == camera
+    assert not ws.music_map_power_scroll.isVisible()
+    assert not ws.music_map_options_panel.isVisible()
+
+    window.close()
+    app.processEvents()
