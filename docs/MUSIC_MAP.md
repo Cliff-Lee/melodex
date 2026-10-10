@@ -166,6 +166,13 @@ and a quiet **More…** menu for occasional analysis and enrichment.
 
 - **Select a track once** to reveal a contextual Play / Queue / Start journey card.
   A second/double-click activates playback as before; selecting does not play.
+- When the selected track has *actual mapped relationships*, the contextual card
+  also shows up to **two Explore nearby suggestions**. Suggestions are based on
+  existing audio-feature similarity edges and/or cached metadata relationships,
+  not spatial pixel distance. The hover tooltip states the evidence, while a
+  concise connection type is visible on the chip. Selecting a suggestion changes
+  map focus and adds a navigation history entry; **it does not start playback**.
+  If a track has no mapped neighbours, no speculative suggestions are shown.
 - **View** floats over the graphics viewport and contains colour modes and the
   detailed connection filters. It never occupies a new row in the page layout.
 - **Journey** opens a right-hand overlay containing existing Route / Compose / Live
