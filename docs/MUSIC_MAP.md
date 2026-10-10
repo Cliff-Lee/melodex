@@ -186,6 +186,16 @@ Dense libraries currently use small album-cover points; zoom and hover reveal
 individual track detail. Semantic zoom/cluster navigation is a later MM2 stage,
 **not yet implemented**.
 
+### Navigation (MM2-2a)
+
+- **Back** and **Forward** (or Alt+Left / Alt+Right) revisit positions reached through track searches, **Now Playing**, or **Fit**. History stores the position, zoom and selected track; returning to a location does not change playback.
+- **Find playing track** (◎) locates the currently playing song **only if it is represented among the mapped tracks**. When a playing track is outside the bounded preview, Melodex explains that limitation and leaves the map where it is.
+- Searching for a mapped artist or track selects and centres it, adding the previous camera to Back history.
+- Manual panning and zooming remain free-form; history is recorded at deliberate navigation actions, not at every pixel of dragging.
+- Refreshing/rebuilding a projection clears camera history, preventing older saved scene coordinates from leading to misleading locations.
+
+These navigation features are **in the MM2 development branch** and are not yet part of a public release.
+
 Global **Power tools** does not force the map's advanced panels open.
 
 ## 8. Privacy
