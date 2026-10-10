@@ -642,6 +642,7 @@ class MusicMapWidget(QWidget):
         self.node_items.clear()
         self.edge_items.clear()
         self.route_items.clear()
+        self._route_progress_index = -1
         self.positions.clear()
         self.route_result = {}
         self.route_start_ref = ""
@@ -1014,6 +1015,7 @@ class MusicMapWidget(QWidget):
             label.setPos((ax + bx) / 2.0 - 5.0, (ay + by) / 2.0 - 10.0)
             label.setToolTip(reason)
             self.route_items.append(label)
+        self.set_route_progress(self._route_progress_index)
 
     def _open_region_menu(self) -> None:
         """Offer optional navigation among real, artist-labelled map groups."""
