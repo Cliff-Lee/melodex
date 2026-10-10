@@ -861,6 +861,7 @@ class JourneyWorkspace(QObject):
         if visible:
             self.music_map_options_panel.raise_()
         self._sync_music_map_track_panel()
+        self._sync_quick_music_route_panel()
 
     def _toggle_music_map_tools(self) -> None:
         visible = not self.music_map_power_scroll.isVisible()
@@ -879,6 +880,7 @@ class JourneyWorkspace(QObject):
                 5000,
             )
         self._sync_music_map_track_panel()
+        self._sync_quick_music_route_panel()
 
     def _toggle_music_journey_options(self) -> None:
         if not self.music_map_power_scroll.isVisible():
@@ -891,6 +893,7 @@ class JourneyWorkspace(QObject):
         if hasattr(self, "music_map_planner_tabs"):
             self.music_map_planner_tabs.setCurrentWidget(self.music_map_journey_panel)
         self._sync_music_map_track_panel()
+        self._sync_quick_music_route_panel()
 
     def _on_music_map_view_changed(self) -> None:
         if self.music_map.view_settings_panel.isVisible():
@@ -898,6 +901,7 @@ class JourneyWorkspace(QObject):
             self.music_map_power_scroll.hide()
             self.music_path_steps.hide()
         self._sync_music_map_track_panel()
+        self._sync_quick_music_route_panel()
 
     def _dismiss_music_map_overlays(self) -> None:
         # Preserve selected track and ongoing audio when closing an overlay.
@@ -908,7 +912,10 @@ class JourneyWorkspace(QObject):
             self.music_map_options_panel.hide()
         elif self.music_map.view_settings_panel.isVisible():
             self.music_map.view_settings_panel.hide()
+        elif self._map_quick_route_active:
+            self._cancel_quick_music_route()
         self._sync_music_map_track_panel()
+        self._sync_quick_music_route_panel()
 
     def _start_music_map_journey(self) -> None:
         ref = self.music_map.selected_ref_value()
