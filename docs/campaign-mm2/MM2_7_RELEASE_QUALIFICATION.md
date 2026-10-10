@@ -52,13 +52,44 @@ opening View, Regions, More, a selected-track card, or Journey tools.
 - [ ] Default overview does not become an empty-looking canvas with unreadably
   tiny album art; balance density against decluttering.
 
-**Evidence already inspected:** a CI visual capture from the older MM2-5a
-commit `37cf13d`, 1024x768 (`13c-music-map-clusters.png`) showed excessively
-small cluster labels and ▶ targets at Fit. MM2-7a sets those cluster graphics
-to ignore the map view transform so their on-screen size stays readable and
-adds a viewport geometry regression check. **That fix is not yet confirmed
-visually on the latest HEAD; this item stays open.** Screenshots from earlier
-commits are not substituted for latest-head sign-off.
+**Visual evidence reviewed, 2026-10-10:** the older MM2-5a
+`37cf13d` 1024x768 cluster screenshot showed tiny labels and ▶ targets.
+The newer `893c407` CI run produced all five MM2 screenshots at **1024x768,
+1280x800 and 1440x900**. Native-resolution inspection confirmed that
+the MM2-7a fixed-size cluster covers, counts, labels and ▶ controls are
+legible and spatially separated in the supplied synthetic fixtures. A→B
+preview/progress lines render above the map without obscuring top controls.
+**The screenshots do not test a complete populated application shell,
+real audio, very small viewports, the full selection/Quick Journey panel,
+or third-party artwork.** Those acceptance items remain open. Screenshots
+from `893c407` cannot be substituted for sign-off on later HEAD commits.
+
+## 2b. Measured automated evidence from previous commit
+
+**Reference only; not latest-HEAD qualification:** the GitHub `Tests`
+workflow at `893c407` (run #38025742601) reported:
+
+| Item | Outcome |
+|---|---|
+| Python 3.11 | 599 passed, 242 skipped; terminology check failed |
+| Python 3.12 | 599 passed, 242 skipped; terminology check failed |
+| Fluid release gates | Passed |
+| Code-health guardrails | Passed |
+| NAS, 12.7k scale/soak, startup and elastic-library jobs | Passed |
+| Visual QA captures at 3 sizes | Passed |
+| Route snapshot p50 / p95 at 700 mapped tracks | **23.122 / 25.444 ms** |
+| Route snapshot p95 budget | **100 ms** — passed |
+| Separate background Pathfinder calculation in synthetic fixture | **1419.348 ms** |
+| Linux packages at this commit | Passed |
+| Desktop build at this commit | Later cancelled; not qualified |
+
+The two failed Python jobs originated in
+`scripts/terminology_check.py` misreading the accurate warning in the
+**newer main-branch** `docs/INSTALL_MACOS.md`: *plugins are not fully
+sandboxed*. The checker was repaired in draft branch commits
+`c5560af`, `67d60da`, and `00fa26e`, with regression tests verifying
+that genuinely affirmative claims are still rejected. **The corrected
+latest-head workflow must still finish.**
 
 ## 3. Packaged hardware smoke tests
 
