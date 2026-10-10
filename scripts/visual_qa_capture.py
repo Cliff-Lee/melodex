@@ -350,6 +350,33 @@ def capture(out: Path, width: int = 1440, height: int = 900) -> dict[str, object
     })
     _save_widget(dense_map, out / "13c-music-map-clusters.png", width, height)
     record("13c-music-map-clusters.png", "MM2 overview groups nearby analysed tracks with album artwork and counts.")
+
+    # MM2-5/6: qualify actual graphical route contrast and the highlighted
+    # listening step without launching audio in the capture workflow.
+    route_refs = ("dense-0", "dense-80", "dense-160")
+    dense_map.set_route_endpoints(route_refs[0], route_refs[-1])
+    dense_map.show_route({
+        "found": True,
+        "path_refs": list(route_refs),
+        "hops": [
+            {"from": route_refs[0], "to": route_refs[1], "reason": "Flow similarity"},
+            {"from": route_refs[1], "to": route_refs[2], "reason": "Shared performer"},
+        ],
+        "score": 0.82,
+        "reason": "Synthetic route preview",
+    })
+    app.processEvents()
+    if len([x for x in dense_map.route_items if x.data(0) == "route_segment"]) != 2:
+        raise AssertionError("MM2 route preview did not render two visible route legs")
+    _save_widget(dense_map, out / "13d-music-map-route-preview.png", width, height)
+    record("13d-music-map-route-preview.png", "MM2 A-to-B route preview over a clustered overview; selected route tracks remain visible.")
+
+    dense_map.set_route_progress(1)
+    app.processEvents()
+    if dense_map._route_progress_index != 1:
+        raise AssertionError("MM2 journey track progress is not reflected in route rendering")
+    _save_widget(dense_map, out / "13e-music-map-route-progress.png", width, height)
+    record("13e-music-map-route-progress.png", "MM2 observed playback step highlighted on the map; synthetic fixture, no audio started.")
     dense_map.deleteLater()
 
     overview = LivingCanvasView()
