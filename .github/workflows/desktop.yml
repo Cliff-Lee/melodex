@@ -130,6 +130,32 @@ jobs:
           python scripts/packaged_startup_probe.py `
             "desktop/dist/Melodex/Melodex.exe" `
             --output "desktop/dist/packaged-startup-${{ matrix.name }}.json"
+      # Exercise the frozen application with the actual MM2 A→B UI, rather
+      # than assuming source tests and window geometry imply packaged behaviour.
+      # This synthetic probe never starts audio; real playback remains manual.
+      - name: Qualify packaged macOS Music Map controls
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          python scripts/mm2_packaged_gui_probe.py \
+            "desktop/dist/Melodex.app/Contents/MacOS/Melodex" \
+            --output "desktop/dist/mm2-package-${{ matrix.name }}.json"
+      - name: Qualify packaged Windows Music Map controls
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python scripts/mm2_packaged_gui_probe.py `
+            "desktop/dist/Melodex/Melodex.exe" `
+            --output "desktop/dist/mm2-package-${{ matrix.name }}.json"
+      - name: Upload packaged Music Map GUI qualification
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: MM2-packaged-GUI-${{ matrix.name }}
+          path: |
+            desktop/dist/mm2-package-${{ matrix.name }}.json
+            desktop/dist/mm2-package-${{ matrix.name }}.png
+          if-no-files-found: warn
       - name: Upload packaged startup measurement
         if: always()
         uses: actions/upload-artifact@v4
