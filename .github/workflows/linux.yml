@@ -18,6 +18,13 @@ on:
 permissions:
   contents: write
 
+
+# On active PRs, supersede outdated check/build runs so fresh commits reach
+# runners promptly. Never auto-cancel main, tags or workflow_dispatch releases.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   build:
     runs-on: ubuntu-22.04
