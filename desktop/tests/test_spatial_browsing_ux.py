@@ -141,14 +141,14 @@ def test_music_map_defaults_to_selection_focused_relationships():
     app.processEvents()
 
     assert widget.edge_mode.currentData() == "focused"
-    assert widget.edge_mode.isHidden()
+    assert not widget.edge_mode.isVisible()
     assert widget.zoom_in_button.accessibleName() == "Zoom into Music Map"
     assert widget.zoom_out_button.accessibleName() == "Zoom out of Music Map"
     assert widget.zoom_in_button.toolTip().startswith("Zoom in")
     assert widget.zoom_out_button.toolTip().startswith("Zoom out")
     assert len(widget.edge_items) == 0
     assert "deep cut from an album you enjoyed" in widget.node_items["a"].toolTip()
-    widget.connections_button.click()
+    widget.view_button.click()
     app.processEvents()
     assert widget.edge_mode.isVisible()
     assert widget.node_items["a"].boundingRect().width() == 86.0
@@ -637,12 +637,11 @@ def test_mm2_view_settings_are_overlay_not_an_expanding_toolbar(monkeypatch, tmp
     app.processEvents()
     assert canvas.view_settings_panel.isVisible()
     assert canvas.mode.isVisible()
-    assert canvas.edge_mode.isHidden()
+    assert canvas.edge_mode.isVisible()
     assert canvas.geometry()==rect
     assert canvas.view.geometry()==viewport
-    canvas.connections_button.click()
-    app.processEvents()
-    assert canvas.edge_mode.isVisible()
+    assert canvas.mode.isVisible()
+    assert canvas.view_settings_panel.geometry().height() <= 172
 
     workspace.music_map_plan_button.click()
     app.processEvents()
