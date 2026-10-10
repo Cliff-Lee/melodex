@@ -11,7 +11,6 @@ from __future__ import annotations
 import argparse
 import json
 import math
-import os
 import sys
 import time
 from pathlib import Path
@@ -69,20 +68,20 @@ def build_fixture(tracks: int) -> tuple[dict, dict]:
 def measure(tracks: int, iterations: int) -> dict:
     model, knowledge = build_fixture(tracks)
     samples: list[float] = []
-    snapshots = []
+    last_snapshot = None
     for index in range(max(5, iterations) + 2):
         start = time.perf_counter()
-        snapshot = snapshot_pathfinder_inputs(model, knowledge)
+        last_snapshot = snapshot_pathfinder_inputs(model, knowledge)
         elapsed = (time.perf_counter() - start) * 1000
         if index >= 2:
             samples.append(elapsed)
-        snapshots.append(snapshot)
-    del snapshots[:-1]
     ordered = sorted(samples)
     p95 = ordered[max(0, math.ceil(0.95 * len(ordered)) - 1)]
     routing_started = time.perf_counter()
+    assert last_snapshot is not None
     found = find_music_path(
-        *snapshots[-1], "mapped-0", f"mapped-{max(2,tracks)-1}",
+        last_snapshot[0], last_snapshot[1],
+        "mapped-0", f"mapped-{max(2, tracks)-1}",
         mode="balanced", max_hops=12
     )
     routed_ms = (time.perf_counter() - routing_started) * 1000
