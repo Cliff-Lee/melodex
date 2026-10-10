@@ -604,6 +604,7 @@ class JourneyWorkspace(QObject):
         listening_actions=QHBoxLayout()
         self.music_map_listen_here_button=QPushButton("Play from here")
         self.music_map_listen_here_button.setObjectName("primaryButton")
+        self.music_map_listen_here_button.setEnabled(False)
         self.music_map_listen_here_button.setToolTip(
             "Build a listening session beginning with this selected track"
         )
