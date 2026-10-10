@@ -179,8 +179,15 @@ and a quiet **More…** menu for occasional analysis and enrichment.
 - **Select a track once** to reveal contextual actions: **Play** plays that
   single track, **Queue** adds it to the queue, **Play from here** asks the
   existing local Mind + Flow session builder for a listening session
-  starting from that track, and **Plan a journey** opens start/destination
-  route tools. A second/double-click plays the track directly.
+  starting from that track, and **Plan a journey** starts the compact
+  graphical A→B flow. Click another track on the map to set the destination,
+  then choose **Preview route**, **Play**, or **Queue** in the small floating
+  strip. The existing Pathfinder still calculates the route from musical
+  features and knowledge connections, not the screen coordinates.
+  **Advanced** opens the full Route / Compose / Live planner; **Cancel** clears
+  just this unfinished map journey. Search, Back, and programmatic focus do
+  not silently choose a destination. A second/double-click plays the track
+  directly.
   **Selecting does not start playback or launch any background session.**
   Session creation is asynchronous and may take time; direct Play remains
   available for immediate single-track playback. If the local library is
@@ -275,11 +282,17 @@ The map is therefore an exploration view, not an assertion that every indexed tr
 
 ## 10. Starting a journey
 
-Select a track and choose **Plan a journey** in its contextual card. This sets
-the selected song as the Pathfinder start and opens Journey tools; choose another
-mapped track as a destination and request a route. **Play from here** instead
-builds an open-ended session from the selected track using the existing Mind + Flow
-engine; it does not require the Journey drawer or a chosen destination.
+Select a track and choose **Plan a journey** in its contextual card.
+A small A→B strip appears *over* the canvas and the first selected track is
+marked as the start. Click a different actual track on the map to make it the
+destination, then use **Preview route** to draw Pathfinder's route on the map.
+Only **Play** or **Queue** starts or alters audio. **Advanced** reveals the
+original Route / Compose / Live planner without resetting the endpoints.
+**Cancel** or Escape dismisses the strip and clears the route. **Play from
+here** instead builds an open-ended session from one selected track using the
+existing Mind + Flow engine; it does not require the Journey drawer or a
+destination. MM2-5a still uses the existing synchronous Pathfinder computation;
+interactive latency on dense maps must be separately qualified before release.
 
 The selected mapped track becomes the starting anchor for Mind + Flow.
 
