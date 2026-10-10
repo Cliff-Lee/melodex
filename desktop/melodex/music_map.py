@@ -402,6 +402,7 @@ class MusicMapWidget(QWidget):
         self.node_items: dict[str, _NodeItem] = {}
         self.edge_items: list[Any] = []
         self.route_items: list[Any] = []
+        self._route_progress_index = -1
         self.positions: dict[str, tuple[float, float]] = {}
         self._display_projection: dict[str, tuple[float, float]] = {}
         self.knowledge_graph: dict[str, Any] = {}
@@ -907,6 +908,7 @@ class MusicMapWidget(QWidget):
         return str(self.selected_ref or "")
 
     def set_route_endpoints(self, start_ref: str = "", end_ref: str = "") -> None:
+        self._route_progress_index = -1
         self.route_start_ref = str(start_ref or "")
         self.route_end_ref = str(end_ref or "")
         self.route_result = {}
@@ -915,6 +917,7 @@ class MusicMapWidget(QWidget):
         self._refresh_clusters()
 
     def show_route(self, result: dict[str, Any]) -> None:
+        self._route_progress_index = -1
         self.route_result = dict(result or {})
         refs = [str(x) for x in list(self.route_result.get("path_refs") or []) if str(x)]
         if refs:
@@ -936,12 +939,36 @@ class MusicMapWidget(QWidget):
             )
 
     def clear_route(self) -> None:
+        self._route_progress_index = -1
         self.route_result = {}
         self.route_start_ref = ""
         self.route_end_ref = ""
         self._redraw_route()
         self._recolour()
         self._refresh_clusters()
+
+    def set_route_progress(self, track_index: int) -> None:
+        """Show actual playback position on a prepared route, not an ETA."""
+        refs = list(self.route_result.get("path_refs") or [])
+        progress = int(track_index)
+        self._route_progress_index = (
+            progress if 0 <= progress < len(refs) else -1
+        )
+        for item in self.route_items:
+            if item.data(0) != "route_segment":
+                continue
+            segment = int(item.data(1))
+            if self._route_progress_index < 0:
+                colour, width = QColor("#71d8ff"), 4.2
+            elif segment < self._route_progress_index:
+                colour, width = QColor("#477f9c"), 3.0
+            elif segment == self._route_progress_index:
+                colour, width = QColor("#9ff0ff"), 5.4
+            else:
+                colour, width = QColor("#366079"), 2.4
+            pen = QPen(colour)
+            pen.setWidthF(width)
+            item.setPen(pen)
 
     def _redraw_route(self) -> None:
         for item in list(self.route_items):
@@ -967,6 +994,8 @@ class MusicMapWidget(QWidget):
             pen.setWidthF(4.2)
             line = self.scene.addLine(ax, ay, bx, by, pen)
             line.setZValue(6)
+            line.setData(0, "route_segment")
+            line.setData(1, index)
             reason = str(hops[index].get("reason") or "Pathfinder hop") if index < len(hops) else "Pathfinder hop"
             if index < len(hops) and hops[index].get("journey_stage"):
                 stage = str(hops[index].get("journey_stage") or "")
