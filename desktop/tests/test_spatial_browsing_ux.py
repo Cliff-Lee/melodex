@@ -814,6 +814,7 @@ def test_mm2_location_history_search_now_playing_and_safe_unmapped_fallback():
     app.processEvents()
     assert widget.selected_ref_value() == home[3]
     assert abs(widget._capture_location()[0] - home[0]) < 4
+    assert abs(widget._capture_location()[2] - home[2]) < 0.01
 
     # Navigating somewhere new after Back cuts off the previous Forward path.
     widget.focus_ref("b")
