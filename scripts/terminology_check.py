@@ -67,6 +67,28 @@ RULES: tuple[tuple[re.Pattern[str], str], ...] = (
 )
 
 
+def has_misleading_sandbox_claim(line: str) -> bool:
+    """Flag plugin sandbox *promises*, not warnings about missing isolation.
+
+    Check each individual claim so a negative caveat elsewhere on the same
+    line cannot hide an affirmative and potentially dangerous assurance.
+    """
+    lower = line.casefold()
+    matches = re.finditer(
+        r"\b(?:plugin|plugins|extension|extensions|package|packages)\b"
+        r".{0,50}\b(?:is|are)\b.{0,20}\bsandboxed\b",
+        lower,
+    )
+    for match in matches:
+        claim = match.group(0)
+        if not re.search(
+            r"\bnot\s+(?:(?:fully|completely|entirely)\s+)?sandboxed\b",
+            claim,
+        ):
+            return True
+    return False
+
+
 def markdown_files() -> list[Path]:
     files: list[Path] = []
     for path in ROOT.rglob("*.md"):
@@ -116,20 +138,7 @@ def main() -> int:
                         )
 
             lower = line.lower()
-            affirmative_sandbox = re.search(
-                r"\b(?:plugin|plugins|extension|extensions|package|packages)\b"
-                r".{0,50}\b(?:is|are)\b.{0,20}\bsandboxed\b",
-                lower,
-            )
-            # A truthful *negative* caveat ("not fully sandboxed",
-            # "not sandboxed") must not be misclassified as an affirmative
-            # promise. Continue rejecting unqualified claims that plugins
-            # are sandboxed from the user account.
-            negative_sandbox = re.search(
-                r"\bnot\s+(?:(?:fully|completely|entirely)\s+)?sandboxed\b",
-                lower,
-            )
-            if affirmative_sandbox and not negative_sandbox:
+            if has_misleading_sandbox_claim(line):
                 errors.append(
                     f"{path.relative_to(ROOT)}:{number}: {line.strip()} "
                     "— current plugins must not be described as sandboxed"
