@@ -605,6 +605,25 @@ class JourneyWorkspace(QObject):
         self.music_map_start_journey_button.clicked.connect(self._start_music_map_journey)
         track_actions.addWidget(self.music_map_start_journey_button)
         track_layout.addLayout(track_actions)
+        self.music_map_nearby_label=QLabel("Explore nearby")
+        self.music_map_nearby_label.setObjectName("mutedText")
+        track_layout.addWidget(self.music_map_nearby_label)
+        neighbours=QHBoxLayout()
+        neighbours.setSpacing(6)
+        self._music_map_related_refs: list[str]=[]
+        self.music_map_related_buttons: list[QPushButton]=[]
+        for index in range(2):
+            button=QPushButton("")
+            button.setObjectName("quietButton")
+            button.setAccessibleName(f"Explore related track {index + 1}")
+            button.clicked.connect(
+                lambda _checked=False, i=index: self._focus_music_map_related(i)
+            )
+            neighbours.addWidget(button,1)
+            self.music_map_related_buttons.append(button)
+            button.hide()
+        track_layout.addLayout(neighbours)
+        self.music_map_nearby_label.hide()
         self.music_map_track_panel.hide()
     
         self.music_path_steps=QListWidget()
@@ -649,7 +668,9 @@ class JourneyWorkspace(QObject):
         )
         if hasattr(self, "music_map_track_panel"):
             track_width = min(430, available_width)
-            track_height = min(104, available_height)
+            track_height = min(
+                158 if self._music_map_related_refs else 104, available_height
+            )
             self.music_map_track_panel.setGeometry(
                 left + margin,
                 top + viewport.height() - track_height - margin,
@@ -756,12 +777,36 @@ class JourneyWorkspace(QObject):
         self.music_map_planner_tabs.setCurrentWidget(self.music_map_route_tab)
         self._status("Select a destination track, then choose Use selected as destination", 5000)
 
+    def _focus_music_map_related(self, index: int) -> None:
+        """Navigate to a genuine graph neighbour without changing playback."""
+        if 0 <= index < len(self._music_map_related_refs):
+            self.music_map.focus_ref(self._music_map_related_refs[index])
+
     def _music_map_selection_changed(self, track: object) -> None:
         enabled = isinstance(track, dict) and bool(track)
         self.music_map_play_button.setEnabled(enabled)
         self.music_map_queue_button.setEnabled(enabled)
         self.music_map_start_journey_button.setEnabled(enabled)
         self._music_map_track_full_label = _track_text(dict(track)) if enabled else ""
+        rows = (
+            self.music_map.related_tracks(self.music_map.selected_ref_value(), limit=2)
+            if enabled else []
+        )
+        self._music_map_related_refs = [str(row["ref"]) for row in rows]
+        self.music_map_nearby_label.setVisible(bool(rows))
+        for i, button in enumerate(self.music_map_related_buttons):
+            if i >= len(rows):
+                button.hide()
+                continue
+            row = rows[i]
+            label = f'{row["kind"]} · {row["artist"]} — {row["title"]}'
+            button.setText(
+                button.fontMetrics().elidedText(
+                    label, Qt.ElideRight, max(65, (self.music_map_track_panel.width() - 36) // 2)
+                )
+            )
+            button.setToolTip(label + "\n" + str(row["reason"]))
+            button.show()
         self._position_music_map_overlays()
         self._sync_music_map_track_panel()
 
