@@ -1086,6 +1086,13 @@ class MusicMapWidget(QWidget):
                 pen.setWidthF(0.7)
             item.setPen(pen)
             item.setBrush(QBrush(colour))
+            # Overview badges must never obscure a selected, playing or route
+            # track: keep these real tracks above the decorative group layer.
+            important = (
+                is_selected or is_current or ref in route_refs
+                or ref in waypoint_refs or ref in (self.route_start_ref, self.route_end_ref)
+            )
+            item.setZValue(24 if important else 10)
 
     def _select_ref(self, ref: str) -> None:
         if ref not in self.ref_map:
