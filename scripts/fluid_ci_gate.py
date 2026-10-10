@@ -103,9 +103,14 @@ def main() -> int:
     # Each interpreter must exit cleanly: abnormal Qt shutdown is still a
     # HARD gate failure, never ignored or mapped to success.
     midpoint = (len(FLUID_GATE_TESTS) + 1) // 2
+    # The whole GUI group previously completed 30 tests then crashed during
+    # interpreter cleanup. Smaller *strict* batches identify which subset
+    # retains invalid Qt ownership. No test selector is removed or waived.
+    gui = FLUID_GATE_TESTS[midpoint:]
     batches = (
         ("library / transport", FLUID_GATE_TESTS[:midpoint]),
-        ("GUI / interaction", FLUID_GATE_TESTS[midpoint:]),
+        *((f"GUI / interaction {i // 7 + 1}", gui[i:i + 7])
+          for i in range(0, len(gui), 7)),
     )
     for label, specs in batches:
         print(f"Fluid gate: {label} ({len(specs)} test selectors)", flush=True)
