@@ -1054,11 +1054,19 @@ def test_mm2_cluster_drilldown_restores_map_and_protects_playing_track():
                       "x": x, "y": y})
         ref_map[ref] = {"track_id": ref, "artist": f"Artist {i}",
                         "title": f"Track {i}"}
-    widget.set_map({"nodes": nodes, "edges": [], "analysed": 220}, ref_map)
+    widget.set_map({"nodes": nodes, "edges": [
+        {"a": "t3", "b": "t4", "similarity": 0.89},
+    ], "analysed": 220}, ref_map)
     app.processEvents()
     assert len(widget.node_items) == 220
     assert widget._cluster_items
     assert len(widget._cluster_items) < 220
+    # Stored sonic edges remain in the scene but are invisible behind groups.
+    idx = widget.edge_mode.findData("sonic")
+    widget.edge_mode.setCurrentIndex(idx)
+    app.processEvents()
+    assert len(widget.edge_items) == 1
+    assert not widget.edge_items[0].isVisible()
     members = widget._cluster_items[0].members
     assert len(members) >= 3
     assert all(not widget.node_items[ref].isVisible() for ref in members)
@@ -1083,6 +1091,7 @@ def test_mm2_cluster_drilldown_restores_map_and_protects_playing_track():
     assert abs(widget.view.transform().m11() - 1.55) < 0.01
     assert not widget._cluster_items
     assert all(item.isVisible() for item in widget.node_items.values())
+    assert widget.edge_items[0].isVisible()
     assert not activated
     assert widget.back_button.isEnabled()
     widget.navigate_back()
