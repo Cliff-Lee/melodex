@@ -360,6 +360,9 @@ class JourneyWorkspace(QObject):
         self.music_path_mode.currentIndexChanged.connect(
             lambda *_:self._journey_recipe_mark_modified()
         )
+        self.music_path_mode.currentIndexChanged.connect(
+            lambda *_:self._quick_route_mode_changed()
+        )
         set_start=QPushButton("Use selected as start")
         set_start.clicked.connect(self._music_path_set_start)
         set_end=QPushButton("Use selected as destination")
@@ -875,6 +878,19 @@ class JourneyWorkspace(QObject):
             task_name="music-map-route-preview",
             replace_key="music-map-quick-route",
         )
+
+    def _quick_route_mode_changed(self) -> None:
+        # If the user changes the route recipe mid-computation, immediately
+        # release the waiting state. The superseded callback is ignored.
+        if not self._map_quick_route_active:
+            return
+        self._quick_route_generation += 1
+        self._quick_route_pending = False
+        self.music_path_result = {}
+        self.music_map.set_route_endpoints(
+            self.music_path_start_ref, self.music_path_end_ref
+        )
+        self._sync_quick_music_route_panel()
 
     def _quick_route_matches(
         self, generation: int, start: str, end: str, mode: str
