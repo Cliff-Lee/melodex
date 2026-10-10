@@ -611,6 +611,7 @@ class JourneyWorkspace(QObject):
         neighbours=QHBoxLayout()
         neighbours.setSpacing(6)
         self._music_map_related_refs: list[str]=[]
+        self._music_map_related_rows: list[dict[str, Any]]=[]
         self.music_map_related_buttons: list[QPushButton]=[]
         for index in range(2):
             button=QPushButton("")
@@ -692,6 +693,16 @@ class JourneyWorkspace(QObject):
                 )
             )
             self.music_map_track_label.setToolTip(self._music_map_track_full_label)
+        for i, button in enumerate(self.music_map_related_buttons):
+            if i < len(self._music_map_related_rows):
+                row = self._music_map_related_rows[i]
+                label = f'{row["kind"]} · {row["artist"]} — {row["title"]}'
+                button.setText(
+                    button.fontMetrics().elidedText(
+                        label, Qt.ElideRight,
+                        max(55, (self.music_map_track_panel.width() - 42) // 2),
+                    )
+                )
         tool_open = (
             self.music_map_power_scroll.isVisible()
             or self.music_map_options_panel.isVisible()
@@ -792,6 +803,7 @@ class JourneyWorkspace(QObject):
             self.music_map.related_tracks(self.music_map.selected_ref_value(), limit=2)
             if enabled else []
         )
+        self._music_map_related_rows = list(rows)
         self._music_map_related_refs = [str(row["ref"]) for row in rows]
         self.music_map_nearby_label.setVisible(bool(rows))
         for i, button in enumerate(self.music_map_related_buttons):
@@ -800,11 +812,6 @@ class JourneyWorkspace(QObject):
                 continue
             row = rows[i]
             label = f'{row["kind"]} · {row["artist"]} — {row["title"]}'
-            button.setText(
-                button.fontMetrics().elidedText(
-                    label, Qt.ElideRight, max(65, (self.music_map_track_panel.width() - 36) // 2)
-                )
-            )
             button.setToolTip(label + "\n" + str(row["reason"]))
             button.show()
         self._position_music_map_overlays()
