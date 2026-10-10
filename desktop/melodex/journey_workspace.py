@@ -600,11 +600,26 @@ class JourneyWorkspace(QObject):
         self.music_map_queue_button.setText("+ Queue")
         track_actions.addWidget(self.music_map_play_button)
         track_actions.addWidget(self.music_map_queue_button)
-        self.music_map_start_journey_button=QPushButton("Start journey")
-        self.music_map_start_journey_button.setObjectName("secondaryButton")
-        self.music_map_start_journey_button.clicked.connect(self._start_music_map_journey)
-        track_actions.addWidget(self.music_map_start_journey_button)
         track_layout.addLayout(track_actions)
+        listening_actions=QHBoxLayout()
+        self.music_map_listen_here_button=QPushButton("Play from here")
+        self.music_map_listen_here_button.setObjectName("primaryButton")
+        self.music_map_listen_here_button.setToolTip(
+            "Build a listening session beginning with this selected track"
+        )
+        self.music_map_listen_here_button.setAccessibleName(
+            "Play a listening session starting from the selected track"
+        )
+        self.music_map_listen_here_button.clicked.connect(self._journey_from_music_map)
+        listening_actions.addWidget(self.music_map_listen_here_button)
+        self.music_map_start_journey_button=QPushButton("Plan a journey")
+        self.music_map_start_journey_button.setObjectName("secondaryButton")
+        self.music_map_start_journey_button.setToolTip(
+            "Choose a destination and preview a route between tracks"
+        )
+        self.music_map_start_journey_button.clicked.connect(self._start_music_map_journey)
+        listening_actions.addWidget(self.music_map_start_journey_button)
+        track_layout.addLayout(listening_actions)
         self.music_map_nearby_label=QLabel("Explore nearby")
         self.music_map_nearby_label.setObjectName("mutedText")
         track_layout.addWidget(self.music_map_nearby_label)
@@ -670,7 +685,7 @@ class JourneyWorkspace(QObject):
         if hasattr(self, "music_map_track_panel"):
             track_width = min(430, available_width)
             track_height = min(
-                158 if self._music_map_related_refs else 104, available_height
+                188 if self._music_map_related_refs else 140, available_height
             )
             self.music_map_track_panel.setGeometry(
                 left + margin,
@@ -797,6 +812,7 @@ class JourneyWorkspace(QObject):
         enabled = isinstance(track, dict) and bool(track)
         self.music_map_play_button.setEnabled(enabled)
         self.music_map_queue_button.setEnabled(enabled)
+        self.music_map_listen_here_button.setEnabled(enabled)
         self.music_map_start_journey_button.setEnabled(enabled)
         self._music_map_track_full_label = _track_text(dict(track)) if enabled else ""
         rows = (
