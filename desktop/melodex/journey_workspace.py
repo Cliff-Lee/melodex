@@ -290,15 +290,15 @@ class JourneyWorkspace(QObject):
         self.music_map_options_panel.setObjectName("powerPanel")
         map_options=QVBoxLayout(self.music_map_options_panel)
         map_options.setContentsMargins(12,8,12,8)
-        improve=QPushButton("Improve map")
+        improve=QPushButton("Analyse local music")
         improve.clicked.connect(self._analyse_library_for_map)
         refresh_map=QPushButton("Refresh")
         refresh_map.clicked.connect(self._refresh_music_map)
-        enrich_selected=QPushButton("Find selected details")
+        enrich_selected=QPushButton("Find selected track details")
         enrich_selected.clicked.connect(self._enrich_selected_map_knowledge)
-        enrich_map=QPushButton("Find map details (+8)")
+        enrich_map=QPushButton("Find details for 8 tracks")
         enrich_map.clicked.connect(self._enrich_map_knowledge_batch)
-        map_options.addWidget(QLabel("Map options"))
+        map_options.addWidget(QLabel("Map tools"))
         map_options.addWidget(improve)
         map_options.addWidget(refresh_map)
         map_options.addWidget(enrich_selected)
@@ -323,7 +323,8 @@ class JourneyWorkspace(QObject):
         journey_options=QPushButton("Journey options…")
         journey_options.setObjectName("quietButton")
         journey_options.clicked.connect(self._toggle_music_journey_options)
-        close_tools=QPushButton("Hide route tools")
+        close_tools=QPushButton("Close")
+        close_tools.setAccessibleName("Close Journey tools")
         close_tools.setObjectName("quietButton")
         close_tools.clicked.connect(self._toggle_music_map_tools)
         top.addWidget(power_title,0,0)
@@ -591,6 +592,8 @@ class JourneyWorkspace(QObject):
         track_layout.setSpacing(6)
         self.music_map_track_label=QLabel("")
         self.music_map_track_label.setObjectName("mapSelectedTrack")
+        self.music_map_track_label.setAccessibleName("Selected Music Map track")
+        self._music_map_track_full_label=""
         track_layout.addWidget(self.music_map_track_label)
         track_actions=QHBoxLayout()
         self.music_map_play_button.setText("▶ Play")
@@ -620,40 +623,63 @@ class JourneyWorkspace(QObject):
     
     
     def _position_music_map_overlays(self) -> None:
-        """Keep floating map controls within the map without shrinking its viewport."""
+        """Position overlays inside the graphics view, not over the search bar."""
         if not hasattr(self, "music_map"):
             return
-        rect = self.music_map.geometry()
-        if rect.width() <= 0 or rect.height() <= 0:
+        viewport = self.music_map.view.geometry()
+        origin = self.music_map.mapTo(self.music_map_page, viewport.topLeft())
+        if viewport.width() <= 0 or viewport.height() <= 0:
             return
         margin = 10
-        width = max(1, rect.width() - 2 * margin)
-        height = max(1, rect.height() - 2 * margin)
-        options_width = min(280, width)
-        options_height = min(238, height)
+        left, top = origin.x(), origin.y()
+        available_width = max(1, viewport.width() - 2 * margin)
+        available_height = max(1, viewport.height() - 2 * margin)
         self.music_map_options_panel.setGeometry(
-            rect.x() + margin,
-            rect.y() + margin,
-            options_width,
-            options_height,
+            left + margin,
+            top + margin,
+            min(285, available_width),
+            min(260, available_height),
         )
-        route_width = min(440, width)
-        route_height = min(580, height)
+        journey_width = min(440, available_width)
         self.music_map_power_scroll.setGeometry(
-            rect.x() + rect.width() - route_width - margin,
-            rect.y() + margin,
-            route_width,
-            route_height,
+            left + viewport.width() - journey_width - margin,
+            top + margin,
+            journey_width,
+            min(540, available_height),
         )
         if hasattr(self, "music_map_track_panel"):
-            track_width=min(430, width)
-            track_height=min(98, height)
+            track_width = min(430, available_width)
+            track_height = min(104, available_height)
             self.music_map_track_panel.setGeometry(
-                rect.x()+margin,
-                rect.y()+rect.height()-track_height-margin,
+                left + margin,
+                top + viewport.height() - track_height - margin,
                 track_width,
                 track_height,
             )
+            self._sync_music_map_track_panel()
+
+    def _sync_music_map_track_panel(self) -> None:
+        """Hide contextual actions while a tool is open; preserve selection."""
+        if not hasattr(self, "music_map_track_panel"):
+            return
+        if self._music_map_track_full_label:
+            self.music_map_track_label.setText(
+                self.music_map_track_label.fontMetrics().elidedText(
+                    self._music_map_track_full_label,
+                    Qt.ElideRight,
+                    max(30, self.music_map_track_panel.width() - 24),
+                )
+            )
+            self.music_map_track_label.setToolTip(self._music_map_track_full_label)
+        tool_open = (
+            self.music_map_power_scroll.isVisible()
+            or self.music_map_options_panel.isVisible()
+            or self.music_map.view_settings_panel.isVisible()
+        )
+        selected = bool(self.music_map.selected_track())
+        self.music_map_track_panel.setVisible(selected and not tool_open)
+        if selected and not tool_open:
+            self.music_map_track_panel.raise_()
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:
         if hasattr(self, "music_map") and watched is self.music_map:
@@ -671,6 +697,7 @@ class JourneyWorkspace(QObject):
         self.music_map_options_panel.setVisible(visible)
         if visible:
             self.music_map_options_panel.raise_()
+        self._sync_music_map_track_panel()
 
     def _toggle_music_map_tools(self) -> None:
         visible = not self.music_map_power_scroll.isVisible()
@@ -685,9 +712,10 @@ class JourneyWorkspace(QObject):
             if hasattr(self, "music_map_planner_tabs"):
                 self.music_map_planner_tabs.setCurrentWidget(self.music_map_route_tab)
             self._status(
-                "Route planner ready · select a track, set start and destination, then Find route",
+                "Journey ready · select a start and destination on the map",
                 5000,
             )
+        self._sync_music_map_track_panel()
 
     def _toggle_music_journey_options(self) -> None:
         if not self.music_map_power_scroll.isVisible():
@@ -699,16 +727,17 @@ class JourneyWorkspace(QObject):
             self.music_map_power_scroll.raise_()
         if hasattr(self, "music_map_planner_tabs"):
             self.music_map_planner_tabs.setCurrentWidget(self.music_map_journey_panel)
-    
-    
+        self._sync_music_map_track_panel()
+
     def _on_music_map_view_changed(self) -> None:
         if self.music_map.view_settings_panel.isVisible():
             self.music_map_options_panel.hide()
             self.music_map_power_scroll.hide()
             self.music_path_steps.hide()
+        self._sync_music_map_track_panel()
 
     def _dismiss_music_map_overlays(self) -> None:
-        # Never clear the selected track or interrupt ongoing playback.
+        # Preserve selected track and ongoing audio when closing an overlay.
         if self.music_map_power_scroll.isVisible():
             self.music_map_power_scroll.hide()
             self.music_path_steps.hide()
@@ -716,6 +745,7 @@ class JourneyWorkspace(QObject):
             self.music_map_options_panel.hide()
         elif self.music_map.view_settings_panel.isVisible():
             self.music_map.view_settings_panel.hide()
+        self._sync_music_map_track_panel()
 
     def _start_music_map_journey(self) -> None:
         if not self._music_map_selected():
@@ -727,23 +757,14 @@ class JourneyWorkspace(QObject):
         self._status("Select a destination track, then choose Use selected as destination", 5000)
 
     def _music_map_selection_changed(self, track: object) -> None:
-        enabled=isinstance(track,dict) and bool(track)
+        enabled = isinstance(track, dict) and bool(track)
         self.music_map_play_button.setEnabled(enabled)
         self.music_map_queue_button.setEnabled(enabled)
         self.music_map_start_journey_button.setEnabled(enabled)
-        if enabled:
-            self.music_map_track_label.setText(
-                self.music_map_track_label.fontMetrics().elidedText(
-                    _track_text(dict(track)), Qt.ElideRight, 402
-                )
-            )
+        self._music_map_track_full_label = _track_text(dict(track)) if enabled else ""
         self._position_music_map_overlays()
-        self.music_map_track_panel.setVisible(enabled)
-        if enabled:
-            self.music_map_track_panel.raise_()
-    
-    
-    
+        self._sync_music_map_track_panel()
+
     def _archive_design_snapshot(self) -> dict[str, Any]:
         ref_map = (
             dict(self.music_map.ref_map or {})
