@@ -205,9 +205,18 @@ lists up to eight of the largest mapped groups. Selecting one zooms in
 without changing playback, and **Back** restores the previous viewpoint.
 The Regions control disappears when the map shows individual tracks.
 
-The full semantic-zoom/artist-landmark system is still being developed.
-All mapped tracks keep their original graph identities and route calculations,
-and the entire map remains a bounded analysed preview, not the whole library.
+**MM2-3c** stabilises the existing smooth zoom. Overview/album detail
+switches have small hysteresis bands so artwork groups do not repeatedly pop
+in and out when the scroll position sits near a threshold. When the map is
+rebuilt with mostly the same tracks, Melodex compares their displayed
+coordinates and, only when it meaningfully improves continuity, corrects
+PCA axis flips/swaps using a conservative orientation transform. These
+changes affect only drawn positions; Flow features, the similarity graph,
+track identities and Pathfinder routes remain untouched. A substantially
+different map is not forcibly aligned with the old one.
+
+The full semantic-zoom/artist-landmark system is still being developed,
+and the map remains a bounded analysed preview, not the entire library.
 
 ### Navigation (MM2-2a)
 
