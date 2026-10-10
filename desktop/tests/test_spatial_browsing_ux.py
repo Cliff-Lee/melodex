@@ -1891,3 +1891,58 @@ def test_mm2_map_actions_use_the_single_existing_player_handoff(monkeypatch, tmp
 
     window.close()
     app.processEvents()
+
+
+def test_mm2_route_preview_collapses_hover_card_without_losing_track_identity():
+    """A hovered album must not cover the visual A→B route or its controls."""
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    try:
+        from PySide6.QtWidgets import QApplication
+        from melodex.music_map import MusicMapWidget
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    widget = MusicMapWidget()
+    widget.resize(880, 640)
+    widget.show()
+    rows = [
+        {"ref": "a", "x": -0.5, "y": 0.1, "artist": "Alpha", "title": "A"},
+        {"ref": "b", "x": 0.5, "y": -0.1, "artist": "Beta", "title": "B"},
+    ]
+    widget.set_map(
+        {"nodes": rows, "edges": [{"a": "a", "b": "b", "similarity": 0.95}],
+         "analysed": 2},
+        {ref: {"track_id": ref, "artist": ref, "title": ref}
+         for ref in ("a", "b")},
+    )
+    app.processEvents()
+    item = widget.node_items["b"]
+    item._hovered = True
+    item._resize_on_hover(True)
+    assert item.boundingRect().width() == 296.0
+
+    widget.set_route_endpoints("a", "b")
+    assert item._suppress_hover_details
+    assert not item._hovered
+    assert item.boundingRect().width() == 84.0
+    widget.show_route({
+        "found": True,
+        "path_refs": ["a", "b"],
+        "hops": [{"from": "a", "to": "b", "reason": "Sonic similarity"}],
+    })
+    assert item._suppress_hover_details
+    assert item.boundingRect().width() == 84.0
+    assert item.zValue() > 15  # Both route anchors remain above cluster tiles.
+    assert widget.selected_ref_value() == ""
+
+    widget.clear_route()
+    assert not item._suppress_hover_details
+    item._hovered = True
+    item._resize_on_hover(True)
+    assert item.boundingRect().width() == 296.0
+    item._hovered = False
+    item._resize_on_hover(False)
+    widget.close()
+    app.processEvents()
