@@ -709,6 +709,13 @@ class MainWindow(QMainWindow):
         self.journey_workspace.sessionFromTrackRequested.connect(
             self._start_session_from_map_track
         )
+        self.journey_workspace.surpriseMeRequested.connect(
+            lambda: self._play_for_me(
+                str(self.mode.currentData() or "balanced"),
+                int(self.minutes.currentText()),
+                self.adventure.value() / 100,
+            )
+        )
         self.journey_workspace.statusMessageRequested.connect(
             lambda message, timeout: self.statusBar().showMessage(message, timeout)
         )
