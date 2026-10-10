@@ -27,6 +27,8 @@ Melodex works with music files you already have, leaves those files where they a
 
 ## See your collection differently
 
+The screenshots below illustrate three visual modes; the [v0.7.29 visual tour](docs/VISUAL_TOUR.md) explains the current controls and guided route-building flow. Updated v0.7.29 captures are being prepared for the gallery.
+
 <p align="center">
   <img src="docs/images/album-wall.webp" alt="Melodex Album Wall showing a visual collection of album artwork">
 </p>
@@ -44,6 +46,16 @@ Melodex works with music files you already have, leaves those files where they a
 </p>
 
 <p align="center"><em><strong>Constellation</strong> — make playback itself an exploration surface, with related tracks around what is playing.</em></p>
+
+## What you can actually do
+
+- **Start with three clear paths.** Explore offers Search everything, Album Wall and Music Map rather than an overwhelming panel of settings.
+- **Turn a map into a listening journey.** Pick tracks, preview a route of sonic/factual relationships, then play or queue the route. Its displayed score is a route heuristic, not a quality guarantee.
+- **See details while music plays.** Now Playing combines large artwork, optional MusicBrainz context, lyrics, releases and credits.
+- **Navigate through visuals.** The Constellation view surfaces related music as interactive nodes you can inspect and queue.
+- **Keep control accessible.** A persistent player provides transport and queue controls across pages.
+
+[Walk through the current desktop experience →](docs/VISUAL_TOUR.md)
 
 ## Why Melodex is different
 
