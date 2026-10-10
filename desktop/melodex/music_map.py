@@ -982,6 +982,82 @@ class MusicMapWidget(QWidget):
             return dict(self.ref_map[self.selected_ref])
         return {}
 
+    def related_tracks(self, ref: str, limit: int = 2) -> list[dict[str, Any]]:
+        """Explain genuine mapped connections; never infer ties from screen distance."""
+        source = str(ref or "")
+        if source not in self.node_items or limit <= 0:
+            return []
+        sonic: dict[str, dict[str, Any]] = {}
+        factual: dict[str, dict[str, Any]] = {}
+        for edge in self.model.get("edges") or []:
+            if not isinstance(edge, dict):
+                continue
+            a, b = str(edge.get("a") or ""), str(edge.get("b") or "")
+            other = b if a == source else a if b == source else ""
+            if not other or other not in self.node_items:
+                continue
+            similarity = max(0.0, min(1.0, float(edge.get("similarity") or 0.0)))
+            existing = sonic.get(other)
+            if existing is None or similarity > existing["score"]:
+                sonic[other] = {
+                    "ref": other, "kind": "Sonic neighbour",
+                    "reason": f"Audio-feature similarity estimate: {similarity:.0%}",
+                    "score": similarity,
+                }
+        for edge in self.knowledge_graph.get("edges") or []:
+            if not isinstance(edge, dict):
+                continue
+            a, b = str(edge.get("a") or ""), str(edge.get("b") or "")
+            other = b if a == source else a if b == source else ""
+            if not other or other not in self.node_items:
+                continue
+            kind = str(edge.get("kind") or "connection")
+            label = str(edge.get("label") or "").strip()
+            evidence = str(edge.get("evidence") or "").strip()
+            strength = max(0.0, min(1.0, float(edge.get("strength") or 0.0)))
+            short_kind = {
+                "artist": "Same artist", "album": "Same album",
+                "production": "Production", "performer": "Performer",
+                "composition_credit": "Composition", "work": "Shared work",
+                "song_relation": "Song relationship", "artist_relation": "Artist link",
+                "place": "Recording place",
+            }.get(kind, "Known connection")
+            explanation = short_kind + (f": {label}" if label else "")
+            if evidence:
+                explanation += f" · {evidence}"
+            entry = {
+                "ref": other, "kind": short_kind, "reason": explanation,
+                "score": strength,
+            }
+            if other not in factual or strength > factual[other]["score"]:
+                factual[other] = entry
+
+        def ranked(rows: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+            return sorted(rows.values(), key=lambda row: (-row["score"], row["ref"]))
+
+        # Mix the strongest sonic and factual links where both are available.
+        # Otherwise show the next-best genuine relationships, without duplicates.
+        picked: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for candidate in (
+            ranked(sonic)[:1] + ranked(factual)[:1]
+            + ranked(sonic)[1:] + ranked(factual)[1:]
+        ):
+            if candidate["ref"] in seen:
+                continue
+            seen.add(candidate["ref"])
+            track = self.ref_map.get(candidate["ref"], {})
+            if not track:
+                continue
+            picked.append({
+                **candidate,
+                "artist": str(track.get("artist") or "Unknown artist"),
+                "title": str(track.get("title") or "Unknown track"),
+            })
+            if len(picked) >= limit:
+                break
+        return picked
+
     def _journey_stage_for_ref(self, ref: str) -> dict[str, Any]:
         track = dict(self.ref_map.get(str(ref) or "") or {})
         if not track:
