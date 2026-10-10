@@ -51,12 +51,20 @@ def cluster_mapped_positions(
     for cell_key, tracks in sorted(cells.items()):
         if len(tracks) < max(3, int(minimum)):
             continue
-        cx = sum(x for _, x, _ in tracks) / len(tracks)
-        cy = sum(y for _, _, y in tracks) / len(tracks)
+        # Use the actual group centroid to choose meaningful representative
+        # artwork, but centre the overview tile within its spatial cell so
+        # neighbouring dense cells can never draw colliding count badges.
+        centroid_x = sum(x for _, x, _ in tracks) / len(tracks)
+        centroid_y = sum(y for _, _, y in tracks) / len(tracks)
         representative = min(
             tracks,
-            key=lambda row: ((row[1] - cx) ** 2 + (row[2] - cy) ** 2, row[0]),
+            key=lambda row: (
+                (row[1] - centroid_x) ** 2 + (row[2] - centroid_y) ** 2,
+                row[0],
+            ),
         )[0]
+        cx = (cell_key[0] + 0.5) * cell_size
+        cy = (cell_key[1] + 0.5) * cell_size
         result.append({
             "cell": cell_key,
             "x": cx,
