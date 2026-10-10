@@ -56,6 +56,7 @@ class JourneyWorkspace(QObject):
     queueTrackReasonsRequested = Signal(object)
     nextTrackRequested = Signal()
     sessionFromTrackRequested = Signal(object)
+    surpriseMeRequested = Signal()
     protectQueueTrackRequested = Signal(int)
     statusMessageRequested = Signal(str, int)
 
@@ -271,6 +272,15 @@ class JourneyWorkspace(QObject):
         self.music_map_plan_button=QPushButton("Journey")
         self.music_map_plan_button.setObjectName("secondaryButton")
         self.music_map_plan_button.clicked.connect(self._toggle_music_map_tools)
+        self.music_map_surprise_button=QPushButton("Surprise me")
+        self.music_map_surprise_button.setObjectName("secondaryButton")
+        self.music_map_surprise_button.setAccessibleName(
+            "Create a surprise listening session from local music"
+        )
+        self.music_map_surprise_button.setToolTip(
+            "Build an exploratory playlist from your available local music"
+        )
+        self.music_map_surprise_button.clicked.connect(self.surpriseMeRequested.emit)
         set_help(
             self.music_map_options_button,
             "Map options",
@@ -283,6 +293,7 @@ class JourneyWorkspace(QObject):
         )
         simple.addWidget(self.music_map_options_button)
         simple.addStretch(1)
+        simple.addWidget(self.music_map_surprise_button)
         simple.addWidget(self.music_map_plan_button)
         l.addLayout(simple)
     
