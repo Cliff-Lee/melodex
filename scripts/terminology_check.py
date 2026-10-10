@@ -76,7 +76,7 @@ def has_misleading_sandbox_claim(line: str) -> bool:
     lower = line.casefold()
     matches = re.finditer(
         r"\b(?:plugin|plugins|extension|extensions|package|packages)\b"
-        r".{0,50}\b(?:is|are)\b.{0,20}\bsandboxed\b",
+        r".{0,50}?\b(?:is|are)\b.{0,20}?\bsandboxed\b",
         lower,
     )
     for match in matches:
