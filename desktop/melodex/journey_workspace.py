@@ -93,6 +93,7 @@ class JourneyWorkspace(QObject):
         self.music_path_start_ref = ""
         self.music_path_end_ref = ""
         self.music_path_result: dict[str, Any] = {}
+        self._map_quick_route_active = False
         self.music_journey_stages_data: list[dict[str, Any]] = []
         self.music_live_active = False
         self.music_live_route: dict[str, Any] = {}
@@ -591,6 +592,7 @@ class JourneyWorkspace(QObject):
     
         self.music_map=MusicMapWidget(self.music_map_page)
         self.music_map.trackSelected.connect(self._music_map_selection_changed)
+        self.music_map.trackClicked.connect(self._quick_map_track_clicked)
         self.music_map.trackActivated.connect(self._play_music_map_track)
         self.music_map.regionListenRequested.connect(self.regionSessionRequested.emit)
         self.music_map.artworkRequested.connect(self._music_map_artwork_requested)
@@ -656,6 +658,42 @@ class JourneyWorkspace(QObject):
         self.music_map_nearby_label.hide()
         self.music_map_track_panel.hide()
     
+        # A compact floating A→B journey strip. Route/Compose/Live remain
+        # available in the existing Advanced planner.
+        self.music_map_quick_route_panel=QFrame(self.music_map_page)
+        self.music_map_quick_route_panel.setObjectName("powerPanel")
+        quick_layout=QVBoxLayout(self.music_map_quick_route_panel)
+        quick_layout.setContentsMargins(10,8,10,8)
+        quick_layout.setSpacing(5)
+        self.music_map_quick_route_label=QLabel("")
+        self.music_map_quick_route_label.setAccessibleName("Journey start and destination")
+        quick_layout.addWidget(self.music_map_quick_route_label)
+        quick_actions=QHBoxLayout()
+        quick_actions.setSpacing(5)
+        self.music_map_quick_preview_button=QPushButton("Preview route")
+        self.music_map_quick_preview_button.setObjectName("primaryButton")
+        self.music_map_quick_preview_button.clicked.connect(self._preview_quick_music_route)
+        self.music_map_quick_play_button=QPushButton("▶ Play")
+        self.music_map_quick_play_button.clicked.connect(self._music_path_play)
+        self.music_map_quick_queue_button=QPushButton("+ Queue")
+        self.music_map_quick_queue_button.clicked.connect(self._music_path_queue)
+        self.music_map_quick_more_button=QPushButton("Advanced")
+        self.music_map_quick_more_button.setObjectName("quietButton")
+        self.music_map_quick_more_button.clicked.connect(self._toggle_music_map_tools)
+        self.music_map_quick_cancel_button=QPushButton("Cancel")
+        self.music_map_quick_cancel_button.setObjectName("quietButton")
+        self.music_map_quick_cancel_button.clicked.connect(self._cancel_quick_music_route)
+        for control in (
+            self.music_map_quick_preview_button,
+            self.music_map_quick_play_button,
+            self.music_map_quick_queue_button,
+            self.music_map_quick_more_button,
+            self.music_map_quick_cancel_button,
+        ):
+            quick_actions.addWidget(control)
+        quick_layout.addLayout(quick_actions)
+        self.music_map_quick_route_panel.hide()
+
         self.music_path_steps=QListWidget()
         self.music_path_steps.setMaximumHeight(116)
         self.music_path_steps.addItem("Route explanations will appear here after you plan one.")
