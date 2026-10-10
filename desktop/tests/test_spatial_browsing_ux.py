@@ -1419,3 +1419,121 @@ def test_mm2_surprise_me_reuses_existing_mind_session_builder(monkeypatch, tmp_p
 
     window.close()
     app.processEvents()
+
+
+def test_mm2_play_region_uses_only_cluster_members_and_preserves_camera():
+    """The play glyph requests a scoped session; the cluster cover still zooms."""
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    try:
+        from PySide6.QtCore import Qt
+        from PySide6.QtTest import QTest
+        from PySide6.QtWidgets import QApplication
+        from melodex.music_map import MusicMapWidget
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    widget = MusicMapWidget()
+    widget.resize(980, 700)
+    widget.show()
+    nodes = []
+    tracks = {}
+    for i in range(100):
+        ref = f"t{i}"
+        artist = "North" if i < 50 else "South"
+        x = -0.55 + (i % 5) * 0.008 if i < 50 else 0.48 + (i % 5) * 0.008
+        y = 0.5 + (i % 7) * 0.008 if i < 50 else -0.48 + (i % 7) * 0.008
+        nodes.append({"ref": ref, "x": x, "y": y, "artist": artist,
+                      "title": f"Song {i}"})
+        tracks[ref] = {"track_id": ref, "local_path": f"/music/{ref}.flac",
+                       "artist": artist, "title": f"Song {i}"}
+    widget.set_map({"nodes": nodes, "edges": [], "analysed": 100}, tracks)
+    app.processEvents()
+    assert widget._cluster_items
+    requests = []
+    activated = []
+    widget.regionListenRequested.connect(requests.append)
+    widget.trackActivated.connect(activated.append)
+
+    cluster = widget._cluster_items[0]
+    before = widget._capture_location()
+    # Click the visible play glyph instead of the cover.
+    location = cluster.mapToScene(cluster.play_rect().center())
+    click_position = widget.view.mapFromScene(location)
+    QTest.mouseClick(widget.view.viewport(), Qt.LeftButton, pos=click_position)
+    app.processEvents()
+    assert len(requests) == 1
+    request = requests[0]
+    assert request["count"] == len(cluster.members)
+    assert {row["track_id"] for row in request["tracks"]} == set(cluster.members)
+    assert request["seed"]["track_id"] == cluster.representative
+    assert widget._capture_location() == before
+    assert not activated
+
+    # Clicking the cover continues to drill down rather than start audio.
+    cover = cluster.mapToScene(cluster.boundingRect().center())
+    QTest.mouseClick(widget.view.viewport(), Qt.LeftButton,
+                     pos=widget.view.mapFromScene(cover))
+    app.processEvents()
+    assert abs(widget.view.transform().m11() - 1.55) < 0.01
+    assert len(requests) == 1
+    assert not activated
+    widget.close()
+    app.processEvents()
+
+
+def test_mm2_region_session_reuses_mind_engine_with_local_pool(monkeypatch, tmp_path: Path):
+    """MainWindow filters the region before handing candidates to Mind."""
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    try:
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+    window = main_window.MainWindow()
+    catalog = [
+        {"local_path": "/music/stray.flac", "artist": "North", "title": "Not here"},
+        {"local_path": "/music/a.flac", "artist": "North", "title": "First"},
+        {"local_path": "/music/b.flac", "artist": "North", "title": "Second"},
+    ]
+    monkeypatch.setattr(window.providers, "local_catalog", lambda: list(catalog))
+    # Observe actual candidate selection but do not initiate playback.
+    captured = []
+    monkeypatch.setattr(
+        window.mind, "build_session",
+        lambda candidates, path_for, **kwargs: captured.append(
+            (list(candidates), kwargs)
+        ) or {"tracks": []},
+    )
+    monkeypatch.setattr(
+        window, "_run_async",
+        lambda worker, callback, **kwargs: worker(),
+    )
+    window._start_session_from_map_region({
+        "tracks": [
+            {"local_path": "/music/b.flac", "artist": "North", "title": "Second"},
+            {"local_path": "/music/a.flac", "artist": "North", "title": "First"},
+        ],
+        "seed": {"local_path": "/music/b.flac", "artist": "North", "title": "Second"},
+    })
+    assert len(captured) == 1
+    candidates, kwargs = captured[0]
+    assert {row["local_path"] for row in candidates} == {
+        "/music/a.flac", "/music/b.flac"
+    }
+    assert kwargs["start_track"]["local_path"] == "/music/b.flac"
+
+    captured.clear()
+    window._start_session_from_map_region({
+        "tracks": [{"local_path": "/gone.flac"}],
+        "seed": {"local_path": "/gone.flac"},
+    })
+    assert not captured  # Stale region does not fall back to the full library.
+    window.close()
+    app.processEvents()
