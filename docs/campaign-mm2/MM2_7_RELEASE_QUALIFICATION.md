@@ -130,6 +130,22 @@ python3 scripts/mm2_packaged_gui_probe.py /path/to/Melodex --output mm2-package.
 For an AppImage add `--appimage`. It creates `mm2-package.json` and
 `mm2-package.png`, with a temporary isolated profile and no audio.
 
+### MM2-7d full-window visual finding
+
+An actual macOS Apple Silicon frozen-executable probe screenshot (not merely
+a standalone widget capture) showed the hovered **destination track card**
+expanding across the route. This is a genuine clutter defect at 1024x768.
+The subsequent implementation keeps node hover cards compact while both
+Journey endpoints are set or a valid route is displayed. The compact route
+anchors retain their highlight and z-order. On clearing a route, the
+ordinary hover-details interaction is restored.
+
+The new regression test
+`test_mm2_route_preview_collapses_hover_card_without_losing_track_identity`
+and the packaged probe's `route anchor hover stays compact` check guard
+against recurrence. **The corrected latest package screenshot must be
+re-inspected before considering visual acceptance cleared.**
+
 ## 3. Packaged hardware smoke tests
 
 Use actual packaged applications, not just running Python from a checkout.
