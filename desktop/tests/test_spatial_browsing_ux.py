@@ -746,3 +746,141 @@ def test_mm2_overlays_respect_graphics_view_and_keep_track_actions_clear(monkeyp
     assert canvas.geometry() == start_geom
     window.close()
     app.processEvents()
+
+
+def test_mm2_location_history_search_now_playing_and_safe_unmapped_fallback():
+    """MM2-2a: camera visits are reversible and never emit a playback request."""
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    try:
+        from PySide6.QtWidgets import QApplication
+        from melodex.music_map import MusicMapWidget
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    widget = MusicMapWidget()
+    widget.resize(700, 460)
+    widget.show()
+    model = {"nodes": [
+        {"ref": "a", "artist": "Alpha", "title": "First", "x": -0.75, "y": 0},
+        {"ref": "b", "artist": "Beta", "title": "Second", "x": 0, "y": 0},
+        {"ref": "c", "artist": "Gamma", "title": "Third", "x": 0.75, "y": 0},
+    ], "edges": [], "analysed": 3}
+    tracks = {
+        ref: {"track_id": ref, "artist": name, "title": title}
+        for ref, name, title in [
+            ("a", "Alpha", "First"), ("b", "Beta", "Second"), ("c", "Gamma", "Third"),
+        ]
+    }
+    widget.set_map(model, tracks)
+    app.processEvents()
+    assert not widget.back_button.isEnabled()
+    assert not widget.forward_button.isEnabled()
+    assert not widget.now_playing_button.isEnabled()
+
+    selections = []
+    widget.trackSelected.connect(selections.append)
+    widget.view.centerOn(640, 410)
+    widget.view.scale(1.1, 1.1)
+    app.processEvents()
+    home = widget._capture_location()
+
+    assert widget.focus_ref("a")
+    assert widget.selected_ref_value() == "a"
+    assert widget.back_button.isEnabled()
+    assert not widget.forward_button.isEnabled()
+    at_a = widget._capture_location()
+
+    widget.search.setText("Gamma")
+    widget.search.returnPressed.emit()
+    app.processEvents()
+    assert widget.selected_ref_value() == "c"
+    assert widget._capture_location()[3] == "c"
+
+    widget.back_button.click()
+    app.processEvents()
+    assert widget.selected_ref_value() == "a"
+    restored = widget._capture_location()
+    assert abs(restored[0] - at_a[0]) < 4
+    assert abs(restored[1] - at_a[1]) < 4
+    assert widget.forward_button.isEnabled()
+
+    widget.forward_button.click()
+    app.processEvents()
+    assert widget.selected_ref_value() == "c"
+    widget.navigate_back()
+    widget.navigate_back()
+    app.processEvents()
+    assert widget.selected_ref_value() == home[3]
+    assert abs(widget._capture_location()[0] - home[0]) < 4
+
+    # Navigating somewhere new after Back cuts off the previous Forward path.
+    widget.focus_ref("b")
+    assert widget.selected_ref_value() == "b"
+    assert not widget.forward_button.isEnabled()
+
+    # Following playback never moves the map until the user deliberately asks.
+    widget.highlight_track(tracks["c"])
+    assert widget.now_playing_button.isEnabled()
+    before = widget._capture_location()
+    assert widget._capture_location() == before
+    assert widget.locate_now_playing()
+    assert widget.selected_ref_value() == "c"
+    widget.navigate_back()
+    assert widget.selected_ref_value() == "b"
+
+    widget.highlight_track({"track_id": "not-mapped", "artist": "Off-map", "title": "Elsewhere"})
+    before = widget._capture_location()
+    assert not widget.locate_now_playing()
+    assert widget._capture_location() == before
+    assert "not in this map" in widget.status.text()
+    assert widget.now_playing_button.isEnabled()  # Explains why locating is unavailable.
+
+    widget._fit_with_history()
+    assert widget.back_button.isEnabled()
+    widget.set_map(model, tracks)
+    assert not widget.back_button.isEnabled()
+    assert not widget.forward_button.isEnabled()
+    assert selections  # Selection signals are UI-only and never start playback.
+    widget.close()
+    app.processEvents()
+
+
+def test_mm2_navigation_via_workspace_does_not_start_music(monkeypatch, tmp_path: Path):
+    """Find Playing operates through existing workspace track updates."""
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    try:
+        from PySide6.QtWidgets import QApplication
+        from PySide6.QtTest import QTest
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+    window = main_window.MainWindow()
+    window.show()
+    window.open_page("music_map")
+    app.processEvents()
+    QTest.qWait(window._page_refresh_delay_ms + 10)
+    app.processEvents()
+    ws = window.journey_workspace
+    model = {"nodes": [
+        {"ref": "a", "artist": "Example", "title": "Example Song", "x": 0, "y": 0}
+    ], "edges": [], "analysed": 1}
+    track = {"track_id": "a", "artist": "Example", "title": "Example Song"}
+    ws.music_map.set_map(model, {"a": track})
+    requests = []
+    ws.playTracksRequested.connect(requests.append)
+    ws.on_track_changed(track)
+    assert ws.music_map.now_playing_button.isEnabled()
+    ws.music_map.now_playing_button.click()
+    app.processEvents()
+    assert ws.music_map.selected_ref_value() == "a"
+    assert ws.music_map_track_panel.isVisible()
+    assert requests == []
+    window.close()
+    app.processEvents()
