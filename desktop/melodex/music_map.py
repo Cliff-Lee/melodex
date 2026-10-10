@@ -776,8 +776,11 @@ class MusicMapWidget(QWidget):
                 pen.setWidthF(width)
                 line = self.scene.addLine(ax, ay, bx, by, pen)
                 line.setZValue(z_value)
+                line.setData(0, a)
+                line.setData(1, b)
                 line.setToolTip(f"Sonic neighbour · similarity {similarity:.0%}")
                 self.edge_items.append(line)
+            self._sync_cluster_edge_visibility()
             return
 
         edges = [
@@ -801,6 +804,8 @@ class MusicMapWidget(QWidget):
             pen.setWidthF(0.7 + 2.0 * strength)
             line = self.scene.addLine(ax, ay, bx, by, pen)
             line.setZValue(2)
+            line.setData(0, a)
+            line.setData(1, b)
             label = str(edge.get("label") or kind or "Knowledge connection")
             evidence = str(edge.get("evidence") or "")
             line.setToolTip(label + (f"\n{evidence}" if evidence else ""))
@@ -810,6 +815,7 @@ class MusicMapWidget(QWidget):
             self.status.setText(
                 "No cached connections of this type yet. Listen normally or use Enrich knowledge on the Music Map."
             )
+        self._sync_cluster_edge_visibility()
         self._redraw_route()
 
     def set_knowledge_graph(self, graph: dict[str, Any]) -> None:
@@ -899,6 +905,16 @@ class MusicMapWidget(QWidget):
             label.setToolTip(reason)
             self.route_items.append(label)
 
+    def _sync_cluster_edge_visibility(self) -> None:
+        """Show links only between expanded points at the current LOD."""
+        for line in self.edge_items:
+            a, b = str(line.data(0) or ""), str(line.data(1) or "")
+            visible = bool(
+                a in self.node_items and b in self.node_items
+                and self.node_items[a].isVisible() and self.node_items[b].isVisible()
+            )
+            line.setVisible(visible)
+
     def _refresh_clusters(self, *_args) -> None:
         """Change only the overview layer when crossing a semantic zoom band."""
         if not self.node_items:
@@ -953,6 +969,7 @@ class MusicMapWidget(QWidget):
             self._cluster_items.append(cluster)
             for ref in members:
                 self.node_items[ref].setVisible(False)
+        self._sync_cluster_edge_visibility()
 
     def _open_cluster(self, members: tuple[str, ...]) -> None:
         """Zoom in on the actual constituent tracks without requesting audio."""
