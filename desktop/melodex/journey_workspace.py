@@ -745,7 +745,12 @@ class JourneyWorkspace(QObject):
                 track_width,
                 track_height,
             )
+            self.music_map_quick_route_panel.setGeometry(
+                left + margin, top + margin,
+                min(500, available_width), min(105, available_height),
+            )
             self._sync_music_map_track_panel()
+            self._sync_quick_music_route_panel()
 
     def _sync_music_map_track_panel(self) -> None:
         """Hide contextual actions while a tool is open; preserve selection."""
@@ -774,11 +779,70 @@ class JourneyWorkspace(QObject):
             self.music_map_power_scroll.isVisible()
             or self.music_map_options_panel.isVisible()
             or self.music_map.view_settings_panel.isVisible()
+            or self._map_quick_route_active
         )
         selected = bool(self.music_map.selected_track())
         self.music_map_track_panel.setVisible(selected and not tool_open)
         if selected and not tool_open:
             self.music_map_track_panel.raise_()
+
+    def _sync_quick_music_route_panel(self) -> None:
+        if not hasattr(self, "music_map_quick_route_panel"):
+            return
+        obstructed = (
+            self.music_map_power_scroll.isVisible()
+            or self.music_map_options_panel.isVisible()
+            or self.music_map.view_settings_panel.isVisible()
+        )
+        visible = self._map_quick_route_active and not obstructed
+        if self._map_quick_route_active:
+            start = self._music_path_name(self.music_path_start_ref)
+            end = self._music_path_name(self.music_path_end_ref)
+            if not self.music_path_end_ref:
+                message = f"Start: {start}   →   Click a destination track"
+            else:
+                message = f"{start}   →   {end}"
+                if self.music_path_result.get("found"):
+                    message += f" · {len(self.music_path_result.get('hops') or [])} hops"
+                elif self.music_path_result:
+                    message += " · No route found"
+            self.music_map_quick_route_label.setToolTip(message)
+            self.music_map_quick_route_label.setText(
+                self.music_map_quick_route_label.fontMetrics().elidedText(
+                    message, Qt.ElideRight,
+                    max(80, self.music_map_quick_route_panel.width() - 20)
+                )
+            )
+        self.music_map_quick_preview_button.setEnabled(
+            bool(self.music_path_start_ref and self.music_path_end_ref)
+        )
+        route_ready = bool(self.music_path_result.get("found"))
+        self.music_map_quick_play_button.setEnabled(route_ready)
+        self.music_map_quick_queue_button.setEnabled(route_ready)
+        self.music_map_quick_route_panel.setVisible(visible)
+        if visible:
+            self.music_map_quick_route_panel.raise_()
+
+    def _quick_map_track_clicked(self, ref: str) -> None:
+        # Programmatic focus/history does not set endpoints. Only a real
+        # user point-click selects the second track of an A-to-B journey.
+        if not self._map_quick_route_active or ref == self.music_path_start_ref:
+            return
+        if self._music_path_set_endpoint("destination", ref):
+            self._sync_quick_music_route_panel()
+
+    def _preview_quick_music_route(self) -> None:
+        if not self._map_quick_route_active:
+            return
+        if self.music_path_start_ref and self.music_path_end_ref:
+            self._music_path_find()
+            self._sync_quick_music_route_panel()
+
+    def _cancel_quick_music_route(self) -> None:
+        self._map_quick_route_active = False
+        self._music_path_clear()
+        self._sync_quick_music_route_panel()
+        self._sync_music_map_track_panel()
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:
         if hasattr(self, "music_map") and watched is self.music_map:
@@ -847,13 +911,20 @@ class JourneyWorkspace(QObject):
         self._sync_music_map_track_panel()
 
     def _start_music_map_journey(self) -> None:
-        if not self._music_map_selected():
+        ref = self.music_map.selected_ref_value()
+        if not ref:
             return
-        self._music_path_set_start()
-        if not self.music_map_power_scroll.isVisible():
-            self._toggle_music_map_tools()
-        self.music_map_planner_tabs.setCurrentWidget(self.music_map_route_tab)
-        self._status("Select a destination track, then choose Use selected as destination", 5000)
+        self.music_path_end_ref = ""
+        self.music_path_result = {}
+        self._map_quick_route_active = True
+        self._music_path_set_endpoint("start", ref)
+        if self.music_map_power_scroll.isVisible():
+            self.music_map_power_scroll.hide()
+            self.music_path_steps.hide()
+        self._position_music_map_overlays()
+        self._sync_music_map_track_panel()
+        self._sync_quick_music_route_panel()
+        self._status("Click a destination track on the map, then Preview route", 5000)
 
     def _focus_music_map_related(self, index: int) -> None:
         """Navigate to a genuine graph neighbour without changing playback."""
