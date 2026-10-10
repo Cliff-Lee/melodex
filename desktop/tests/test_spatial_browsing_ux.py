@@ -1797,3 +1797,87 @@ def test_mm2_async_route_preview_discards_outdated_results(monkeypatch, tmp_path
     assert not played
     window.close()
     app.processEvents()
+
+
+def test_mm2_map_actions_use_the_single_existing_player_handoff(monkeypatch, tmp_path: Path):
+    """Direct Play/Queue and Pathfinder routes feed the normal player API."""
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    try:
+        from PySide6.QtWidgets import QApplication
+        from PySide6.QtTest import QTest
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+    window = main_window.MainWindow()
+    played, queued = [], []
+    monkeypatch.setattr(
+        window.player, "set_queue",
+        lambda rows, index, autoplay, **kwargs:
+            played.append((list(rows), index, autoplay, kwargs)),
+    )
+    monkeypatch.setattr(
+        window.player, "append_queue",
+        lambda rows, **kwargs: queued.append((list(rows), kwargs)),
+    )
+    window.show()
+    window.open_page("music_map")
+    app.processEvents()
+    QTest.qWait(window._page_refresh_delay_ms + 10)
+    app.processEvents()
+    ws, map_widget = window.journey_workspace, window.journey_workspace.music_map
+    a = {"track_id": "a", "local_path": "/fixture/a.flac", "title": "A", "artist": "Alpha"}
+    b = {"track_id": "b", "local_path": "/fixture/b.flac", "title": "B", "artist": "Beta"}
+    map_widget.set_map({
+        "nodes": [
+            {"ref": "a", "x": -0.4, "y": 0, "title": "A", "artist": "Alpha"},
+            {"ref": "b", "x": 0.4, "y": 0, "title": "B", "artist": "Beta"},
+        ],
+        "edges": [{"a": "a", "b": "b", "similarity": 0.9}],
+        "analysed": 2,
+    }, {"a": a, "b": b})
+    app.processEvents()
+
+    # A map selection alone never calls the player.
+    map_widget._select_ref("a")
+    app.processEvents()
+    assert not played and not queued
+    ws.music_map_play_button.click()
+    assert len(played) == 1
+    assert played[-1] == ([a], 0, True, {"intent": "journey"})
+    ws.music_map_queue_button.click()
+    assert len(queued) == 1
+    assert queued[-1] == ([a], {"autoplay": False, "intent": "journey"})
+
+    ws.music_map_start_journey_button.click()
+    ws._quick_map_track_clicked("b")
+    # The journey uses the same playback wiring, never a parallel player.
+    ws.music_path_result = {"found": True, "path_refs": ["a", "b"], "hops": [
+        {"from": "a", "to": "b", "reason": "Flow similarity"},
+    ]}
+    map_widget.show_route(ws.music_path_result)
+    ws._sync_quick_music_route_panel()
+    assert not ws.music_map_quick_play_button.isEnabled() is False
+    assert len(played) == 1
+    ws.music_map_quick_queue_button.click()
+    assert len(queued) == 2
+    assert queued[-1][0] == [a, b]
+    ws.music_map_quick_play_button.click()
+    assert len(played) == 2
+    assert played[-1][0] == [a, b]
+    assert played[-1][2] is True
+
+    ws.on_track_changed(a)
+    assert map_widget._route_progress_index == 0
+    ws.on_track_changed(b)
+    assert map_widget._route_progress_index == 1
+    ws._cancel_quick_music_route()
+    assert map_widget._route_progress_index == -1
+    assert not ws._quick_route_playing
+
+    window.close()
+    app.processEvents()
