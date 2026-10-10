@@ -23,7 +23,8 @@ from PySide6.QtWidgets import (
 )
 
 from .journey_composer import STAGE_MIME_TYPE
-from .music_map_clusters import cluster_grid_size, cluster_landmark, cluster_mapped_positions
+from .music_map_clusters import cluster_landmark, cluster_mapped_positions, stable_cluster_grid_size
+from .music_map_alignment import align_projection
 
 
 _KEY_NAMES = ("C", "C♯", "D", "E♭", "E", "F", "F♯", "G", "A♭", "A", "B♭", "B")
@@ -358,6 +359,7 @@ class MusicMapWidget(QWidget):
         self.edge_items: list[Any] = []
         self.route_items: list[Any] = []
         self.positions: dict[str, tuple[float, float]] = {}
+        self._display_projection: dict[str, tuple[float, float]] = {}
         self.knowledge_graph: dict[str, Any] = {}
         self.route_result: dict[str, Any] = {}
         self.route_start_ref = ""
@@ -570,6 +572,7 @@ class MusicMapWidget(QWidget):
         knowledge_graph: dict[str, Any] | None = None,
     ) -> None:
         old_refs = set(self.node_items)
+        old_projection = dict(self._display_projection)
         old_selected = self.selected_ref
         old_center = (
             self.view.mapToScene(self.view.viewport().rect().center())
@@ -600,12 +603,23 @@ class MusicMapWidget(QWidget):
 
         nodes = [dict(x) for x in list(self.model.get("nodes") or []) if isinstance(x, dict)]
         by_ref = {str(node.get("ref") or ""): node for node in nodes}
+        # PCA axes can swap or mirror after incremental library updates.
+        # Align only the displayed coordinates against strongly overlapping
+        # prior views; original music vectors and route edges stay unchanged.
+        current_projection = {
+            ref: (float(node.get("x") or 0.0), float(node.get("y") or 0.0))
+            for ref, node in by_ref.items() if ref
+        }
+        self._display_projection = align_projection(
+            current_projection, old_projection
+        )
 
         width, height, margin = 1280.0, 820.0, 60.0
         for node in nodes:
             ref = str(node.get("ref") or "")
-            x = margin + (float(node.get("x") or 0.0) + 1.0) * 0.5 * (width - 2 * margin)
-            y = margin + (1.0 - (float(node.get("y") or 0.0) + 1.0) * 0.5) * (height - 2 * margin)
+            mapped_x, mapped_y = self._display_projection.get(ref, (0.0, 0.0))
+            x = margin + (mapped_x + 1.0) * 0.5 * (width - 2 * margin)
+            y = margin + (1.0 - (mapped_y + 1.0) * 0.5) * (height - 2 * margin)
             self.positions[ref] = (x, y)
 
         for ref, node in by_ref.items():
@@ -960,7 +974,10 @@ class MusicMapWidget(QWidget):
         if not self.node_items:
             return
         scale = float(self.view.transform().m11())
-        cell = cluster_grid_size(scale)
+        previous_cell = (
+            self._cluster_signature[0] if self._cluster_signature is not None else None
+        )
+        cell = stable_cluster_grid_size(scale, previous_cell)
         pinned = {
             ref for ref in (self.selected_ref, self.route_start_ref, self.route_end_ref)
             if ref in self.node_items
@@ -986,7 +1003,7 @@ class MusicMapWidget(QWidget):
         for item in self.node_items.values():
             item.setVisible(True)
         groups = cluster_mapped_positions(
-            self.positions, scale=scale, protected=pinned
+            self.positions, scale=scale, protected=pinned, cell_size=cell
         )
         for group in groups:
             members = tuple(group["refs"])
