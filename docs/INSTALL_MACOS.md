@@ -27,26 +27,38 @@ Choose **Apple menu → About This Mac**.
 3. Eject the Melodex disk image.
 4. Open **Applications → Melodex**.
 
-## 3. If macOS blocks the first launch
+## 3. macOS security warning (unsigned public beta)
 
-Public preview builds may not yet be Apple-notarized. macOS may therefore warn that it cannot verify the developer.
+> **Before you open Melodex:** The current macOS GitHub builds are **not signed with an Apple Developer ID or notarized by Apple**. You may see “Apple cannot check it for malicious software” or “the developer cannot be verified.” This does **not** mean that macOS found malware, but it does mean Apple has **not verified** the build. Only proceed if you trust its source and accept that risk.
 
-Try this first:
+### How to open Melodex if macOS blocks it
 
-1. Open **Applications** in Finder.
-2. Control-click or right-click **Melodex**.
-3. Choose **Open**.
-4. Choose **Open** again when macOS asks.
+Apple's recommended app-specific exception method on current macOS versions is:
 
-If macOS still blocks it:
+1. Download Melodex **only from the [official GitHub Releases page](https://github.com/Cliff-Lee/melodex/releases/latest)**, and install it using step 2 above. Do not use third-party mirrors or unexpected downloads.
+2. In **Applications**, double-click **Melodex** once. If macOS blocks it, dismiss the warning with **Done** or **Cancel** (the wording depends on your macOS version).
+3. Open **Apple menu → System Settings → Privacy & Security**.
+4. Scroll down to **Security** and find the message about Melodex being blocked. Click **Open Anyway**. This option is normally available for roughly an hour after the blocked launch attempt.
+5. Read the confirmation carefully. If you decide to continue, click **Open** and authenticate if prompted.
 
-1. Open **System Settings → Privacy & Security**.
-2. Scroll to the security section.
-3. Find the message saying Melodex was blocked.
-4. Choose **Open Anyway**.
-5. Confirm the launch.
+macOS normally remembers this **one-app exception**. You do **not** need to switch off Gatekeeper or reduce security settings for other apps.
 
-Only bypass this warning for a Melodex build you downloaded from the official GitHub repository/release page.
+If **Open Anyway** is not visible, retry opening Melodex once and then revisit **Privacy & Security**. On a school/work-managed Mac, an administrator may prevent exceptions.
+
+**Important:** If macOS says **“will damage your computer,” reports malware, or says the app is damaged**, do **not** assume this is the ordinary unidentified-developer warning. Do not bypass the warning. Stop, check the download/source, and [report the issue](https://github.com/Cliff-Lee/melodex/issues/new?template=bug_report.yml) with the exact message. Never use blanket Terminal commands such as disabling Gatekeeper or stripping quarantine from all downloads.
+
+Read [Apple's official explanation of macOS app security](https://support.apple.com/en-us/102445).
+
+### Privacy and permissions on your Mac
+
+- **Local music stays local during normal local playback.** Melodex indexes folders you choose; it does not move or upload your music files for local playback. An account, subscription or AI service is not required.
+- **Melodex saves some local application data**, including library folder locations, listening history, preferences, playlists, and taste/Flow information under `~/Library/Application Support/Melodex/`. See the [Privacy Policy](PRIVACY.md).
+- **Optional features can use the network**, including streaming providers, cover-art/metadata lookups, Plugin Directory downloads, an external AI model, or a phone Bridge. The privacy terms of those external services may apply.
+- **Only grant permissions you need.** macOS may ask for access to music folders or permission to accept incoming network connections. Only allow the folders you want indexed, and enable LAN Bridge access only when using it on a trusted network. You do not need to give Melodex Full Disk Access for ordinary use.
+- **Treat third-party plugins as executable software.** Melodex's desktop plugins are not fully sandboxed from your user account. Install only packages you trust. See [Security](../SECURITY.md).
+- **Optional remote-LLM API keys:** If you enter an API key in Ask Melodex, the current desktop implementation stores it in local preferences rather than the macOS Keychain. See [Privacy Policy](PRIVACY.md) before entering a sensitive key.
+
+The [Privacy Policy](PRIVACY.md) explains exactly when data can be sent to external services. Open-source code and official GitHub hosting do not replace independent security verification.
 
 ## 4. Add your music
 
@@ -148,7 +160,7 @@ Do this only if you deliberately want to erase the local Melodex state.
 
 ### “Melodex cannot be opened because the developer cannot be verified”
 
-Use the **right-click → Open** method described above.
+Follow the **System Settings → Privacy & Security → Open Anyway** instructions in section 3. Do not disable Gatekeeper.
 
 ### No tracks appear after adding a folder
 
