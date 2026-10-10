@@ -885,3 +885,135 @@ def test_mm2_navigation_via_workspace_does_not_start_music(monkeypatch, tmp_path
     assert requests == []
     window.close()
     app.processEvents()
+
+
+def test_mm2_related_tracks_use_graph_evidence_not_canvas_distance():
+    """Only real sonic edges and cached relationships may be recommended."""
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    try:
+        from PySide6.QtWidgets import QApplication
+        from melodex.music_map import MusicMapWidget
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    widget = MusicMapWidget()
+    widget.resize(1000, 660)
+    widget.show()
+    refs = {
+        key: {"track_id": key, "artist": f"Artist {key}", "title": f"Track {key}"}
+        for key in ("a", "b", "c", "d", "e")
+    }
+    model = {
+        "nodes": [
+            {"ref": ref, "artist": f"Artist {ref}", "title": f"Track {ref}",
+             "x": 0.0 if ref in ("a", "e") else i / 4, "y": i / 4}
+            for i, ref in enumerate(refs)
+        ],
+        "edges": [
+            {"a": "a", "b": "b", "similarity": 0.72},
+            {"a": "c", "b": "a", "similarity": 0.89},
+            {"a": "a", "b": "unknown", "similarity": 0.98},
+            {"a": "b", "b": "c", "similarity": 0.99},
+        ],
+        "analysed": len(refs),
+    }
+    graph = {"edges": [
+        {"a": "a", "b": "d", "kind": "production", "label": "Shared producer",
+         "strength": 0.91, "evidence": "MusicBrainz credits"},
+        {"a": "a", "b": "b", "kind": "artist", "label": "Artist b",
+         "strength": 0.65},
+        {"a": "e", "b": "d", "kind": "album", "label": "Album Z", "strength": 0.8},
+    ]}
+    widget.set_map(model, refs, knowledge_graph=graph)
+    result = widget.related_tracks("a", 2)
+    assert [r["ref"] for r in result] == ["c", "d"]
+    assert result[0]["kind"] == "Sonic neighbour"
+    assert "89%" in result[0]["reason"]
+    assert result[1]["kind"] == "Production"
+    assert "MusicBrainz" in result[1]["reason"]
+    assert widget.related_tracks("a", 8)[2]["ref"] == "b"
+    assert "e" not in [r["ref"] for r in widget.related_tracks("a", 8)]
+    assert widget.related_tracks("e") == []
+    assert widget.related_tracks("unknown") == []
+    widget.close()
+    app.processEvents()
+
+
+def test_mm2_explore_nearby_chips_are_contextual_and_do_not_start_audio(monkeypatch, tmp_path: Path):
+    """Selecting another mapped song is navigation, not a playback request."""
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    try:
+        from PySide6.QtTest import QTest
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app=QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window,"app_data_dir",lambda:tmp_path)
+    monkeypatch.setattr(main_window.MainWindow,"_start_local_bridge",lambda self:None)
+    window=main_window.MainWindow()
+    window.show()
+    window.open_page("music_map")
+    app.processEvents()
+    QTest.qWait(window._page_refresh_delay_ms+10)
+    app.processEvents()
+    ws=window.journey_workspace
+    widget=ws.music_map
+    tracks={
+        "a":{"track_id":"a","artist":"Alpha","title":"First Song"},
+        "b":{"track_id":"b","artist":"Beta","title":"Second Song"},
+        "c":{"track_id":"c","artist":"Gamma","title":"Third Song"},
+    }
+    model={"nodes":[
+        {"ref":"a","artist":"Alpha","title":"First Song","x":-0.6,"y":0.0},
+        {"ref":"b","artist":"Beta","title":"Second Song","x":0.1,"y":0.3},
+        {"ref":"c","artist":"Gamma","title":"Third Song","x":0.7,"y":-0.2},
+    ],"edges":[{"a":"a","b":"b","similarity":0.86}],"analysed":3}
+    widget.set_map(model,tracks,knowledge_graph={
+        "edges":[{"a":"a","b":"c","kind":"album","label":"Album C",
+                  "strength":0.87,"evidence":"local album metadata"}]
+    })
+    app.processEvents()
+    playback=[]
+    queued=[]
+    ws.playTracksRequested.connect(playback.append)
+    ws.queueTracksRequested.connect(queued.append)
+    widget._select_ref("a")
+    app.processEvents()
+    assert ws.music_map_nearby_label.isVisible()
+    assert len(ws._music_map_related_refs)==2
+    assert "Sonic" in ws.music_map_related_buttons[0].toolTip()
+    assert "Same album" in ws.music_map_related_buttons[1].toolTip()
+    assert ws.music_map_track_panel.isVisible()
+    start_geom=widget.geometry()
+
+    ws.music_map_related_buttons[0].click()
+    app.processEvents()
+    assert widget.selected_ref_value()=="b"
+    assert widget.back_button.isEnabled()
+    assert not ws.music_map_nearby_label.isVisible()
+    assert not any(b.isVisible() for b in ws.music_map_related_buttons)
+    assert not playback and not queued
+    widget.navigate_back()
+    app.processEvents()
+    assert widget.selected_ref_value()=="a"
+    assert ws.music_map_nearby_label.isVisible()
+
+    ws.music_map_plan_button.click()
+    app.processEvents()
+    assert ws.music_map_power_scroll.isVisible()
+    assert ws.music_map_track_panel.isHidden()
+    widget._select_ref("c")
+    app.processEvents()
+    assert ws.music_map_track_panel.isHidden()
+    ws._dismiss_music_map_overlays()
+    app.processEvents()
+    assert ws.music_map_track_panel.isVisible()
+    assert widget.geometry()==start_geom
+    assert not playback and not queued
+    window.close()
+    app.processEvents()
