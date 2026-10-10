@@ -1552,7 +1552,15 @@ class JourneyWorkspace(QObject):
             mode=mode,
             max_hops=12,
         )
-        self.music_path_result=dict(result or {})
+        self._quick_route_generation += 1
+        self._quick_route_pending = False
+        self._apply_music_path_result(result)
+
+    def _apply_music_path_result(self, result: object) -> None:
+        self.music_path_result = dict(result) if isinstance(result, dict) else {
+            "found": False, "path_refs": [], "hops": [],
+            "reason": "Pathfinder returned no route.",
+        }
         self.music_map.show_route(self.music_path_result)
         self.music_path_steps.clear()
         if not self.music_path_result.get("found"):
