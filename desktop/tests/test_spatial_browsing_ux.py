@@ -1060,7 +1060,9 @@ def test_mm2_cluster_drilldown_restores_map_and_protects_playing_track():
     app.processEvents()
     assert len(widget.node_items) == 220
     assert widget._cluster_items
+    assert widget.regions_button.isVisible()
     assert len(widget._cluster_items) < 220
+    assert all(cluster.landmark for cluster in widget._cluster_items)
     # Stored sonic edges remain in the scene but are invisible behind groups.
     idx = widget.edge_mode.findData("sonic")
     widget.edge_mode.setCurrentIndex(idx)
@@ -1089,6 +1091,7 @@ def test_mm2_cluster_drilldown_restores_map_and_protects_playing_track():
     widget._open_cluster(cluster_members)
     app.processEvents()
     assert abs(widget.view.transform().m11() - 1.55) < 0.01
+    assert not widget.regions_button.isVisible()
     assert not widget._cluster_items
     assert all(item.isVisible() for item in widget.node_items.values())
     assert widget.edge_items[0].isVisible()
@@ -1098,6 +1101,7 @@ def test_mm2_cluster_drilldown_restores_map_and_protects_playing_track():
     app.processEvents()
     assert abs(widget.view.transform().m11() - before[2]) < 0.01
     assert widget._cluster_items
+    assert widget.regions_button.isVisible()
     assert len(widget.node_items) == 220
     assert widget.selected_ref_value() == pinned
 
@@ -1128,5 +1132,58 @@ def test_mm2_sparse_music_map_does_not_replace_album_covers_with_clusters():
     app.processEvents()
     assert not widget._cluster_items
     assert all(item.isVisible() for item in widget.node_items.values())
+    widget.close()
+    app.processEvents()
+
+
+def test_mm2_region_navigation_menu_is_reversible_and_does_not_play():
+    """Region chooser provides an optional compact index; no playback effects."""
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    try:
+        from PySide6.QtWidgets import QApplication
+        from melodex.music_map import MusicMapWidget
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+    app = QApplication.instance() or QApplication([])
+    widget = MusicMapWidget()
+    widget.resize(960, 680)
+    widget.show()
+    nodes = []
+    tracks = {}
+    for i in range(120):
+        ref = f"t{i}"
+        x = -0.55 + (i % 6) * 0.015 if i < 60 else 0.55 + (i % 6) * 0.015
+        y = -0.50 + (i % 10) * 0.013 if i < 60 else 0.55 + (i % 10) * 0.013
+        artist = "Northbound" if i < 60 else "The Islands"
+        nodes.append({"ref": ref, "x": x, "y": y, "artist": artist,
+                      "title": f"Song {i}"})
+        tracks[ref] = {"track_id": ref, "artist": artist, "title": f"Song {i}"}
+    widget.set_map({"nodes": nodes, "edges": [], "analysed": 120}, tracks)
+    app.processEvents()
+    assert widget.regions_button.isVisible()
+    assert widget._cluster_items
+    before = widget._capture_location()
+    activated = []
+    widget.trackActivated.connect(activated.append)
+    widget.regions_button.click()
+    app.processEvents()
+    actions = widget.region_menu.actions()
+    assert 1 <= len(actions) <= 8
+    assert any("Northbound" in action.text() for action in actions)
+    assert any("The Islands" in action.text() for action in actions)
+    assert all("mapped tracks" in action.text() for action in actions)
+
+    actions[0].trigger()
+    app.processEvents()
+    assert abs(float(widget.view.transform().m11()) - 1.55) < 0.01
+    assert not widget.regions_button.isVisible()
+    assert not activated
+    assert widget.back_button.isEnabled()
+    widget.navigate_back()
+    app.processEvents()
+    assert widget.regions_button.isVisible()
+    assert abs(widget._capture_location()[2] - before[2]) < 0.01
+    assert not activated
     widget.close()
     app.processEvents()
