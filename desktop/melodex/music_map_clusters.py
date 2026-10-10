@@ -21,6 +21,25 @@ def cluster_grid_size(scale: float) -> float:
     return 0.0
 
 
+def stable_cluster_grid_size(scale: float, previous: float | None) -> float:
+    """Avoid overview tiles flashing on/off near zoom-band boundaries.
+
+    Hysteresis operates on the existing three levels without changing the
+    underlying map; after moving comfortably across a boundary the correct
+    new band always becomes active.
+    """
+    scale = float(scale)
+    if previous is None:
+        return cluster_grid_size(scale)
+    if previous == 190.0 and scale <= 1.00:
+        return 190.0
+    if previous == 125.0 and 0.85 <= scale <= 1.46:
+        return 125.0
+    if previous == 0.0 and scale >= 1.31:
+        return 0.0
+    return cluster_grid_size(scale)
+
+
 def cluster_mapped_positions(
     positions: dict[str, tuple[float, float]],
     *,
@@ -105,4 +124,4 @@ def cluster_landmark(
     return short, f"{len(refs)} mapped tracks · Artists: {details}"
 
 
-__all__ = ["cluster_grid_size", "cluster_mapped_positions", "cluster_landmark"]
+__all__ = ["cluster_grid_size", "stable_cluster_grid_size", "cluster_mapped_positions", "cluster_landmark"]
