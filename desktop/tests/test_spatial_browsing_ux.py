@@ -1315,3 +1315,52 @@ def test_mm2_small_window_zoom_starts_smoothly_from_fitted_overview():
     assert widget.view._zoom_animation.state().value == 0
     widget.close()
     app.processEvents()
+
+
+def test_mm2_play_from_here_starts_existing_session_only_on_explicit_click(monkeypatch, tmp_path: Path):
+    """A selected track anchors Mind + Flow without modifying the player on selection."""
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    try:
+        from PySide6.QtWidgets import QApplication
+        from PySide6.QtTest import QTest
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+    app = QApplication.instance() or QApplication([])
+    requests = []
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+    monkeypatch.setattr(
+        main_window.MainWindow, "_start_session_from_map_track",
+        lambda self, track: requests.append(dict(track)),
+    )
+    window = main_window.MainWindow()
+    window.show()
+    window.open_page("music_map")
+    app.processEvents()
+    QTest.qWait(window._page_refresh_delay_ms + 10)
+    app.processEvents()
+    ws = window.journey_workspace
+    canvas = ws.music_map
+    seed = {"track_id": "anchor", "artist": "The Anchor", "title": "Start Here"}
+    model = {"nodes": [{"ref": "anchor", "artist": "The Anchor",
+                         "title": "Start Here", "x": 0.0, "y": 0.0}],
+             "edges": [], "analysed": 1}
+    canvas.set_map(model, {"anchor": seed})
+    app.processEvents()
+    assert ws.music_map_listen_here_button.isEnabled() is False
+    assert not requests
+    canvas._select_ref("anchor")
+    app.processEvents()
+    assert ws.music_map_listen_here_button.isEnabled()
+    assert ws.music_map_listen_here_button.text() == "Play from here"
+    assert not requests
+    ws.music_map_listen_here_button.click()
+    app.processEvents()
+    assert requests == [seed]
+    assert not ws.music_map_power_scroll.isVisible()
+    assert canvas.selected_ref_value() == "anchor"
+    assert ws.music_map_track_panel.isVisible()
+    window.close()
+    app.processEvents()
