@@ -167,6 +167,15 @@ and a quiet **More…** menu for occasional analysis and enrichment.
 - **Surprise me**, beside Journey, starts an exploratory session using the
   existing Mind + Flow player and the current listening preferences. No
   selected track or route setup is required, and the map stays in place.
+- In the clustered overview, each region cover has a small **▶** glyph.
+  Click **▶** to build a listening session from locally available tracks
+  *inside that specific mapped region*. The existing Mind engine still
+  handles ranking and listening preferences; the candidate pool is limited
+  to catalogue tracks whose identities match mapped region members. Click
+  the **cover itself** to zoom in instead; this does not start playback.
+  Regions are a *bounded analysed preview* rather than a promise to play
+  everything in the entire library. If tracks are no longer in the local
+  catalogue, the app explains the problem instead of playing unrelated music.
 - **Select a track once** to reveal contextual actions: **Play** plays that
   single track, **Queue** adds it to the queue, **Play from here** asks the
   existing local Mind + Flow session builder for a listening session
