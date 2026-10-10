@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from PySide6.QtCore import QAbstractAnimation, QEasingCurve, QMimeData, QRectF, Qt, QTimer, QVariantAnimation, Signal
-from PySide6.QtGui import QColor, QBrush, QDrag, QImage, QKeySequence, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap, QShortcut
+from PySide6.QtCore import QAbstractAnimation, QEasingCurve, QEvent, QMimeData, QRectF, Qt, QTimer, QVariantAnimation, Signal
+from PySide6.QtGui import QColor, QBrush, QDrag, QImage, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -472,15 +472,28 @@ class MusicMapWidget(QWidget):
         self.back_button.clicked.connect(self.navigate_back)
         self.forward_button.clicked.connect(self.navigate_forward)
         self.now_playing_button.clicked.connect(self.locate_now_playing)
-        self._back_shortcut = QShortcut(QKeySequence("Alt+Left"), self)
-        self._back_shortcut.setContext(Qt.WidgetWithChildrenShortcut)
-        self._back_shortcut.activated.connect(self.navigate_back)
-        self._forward_shortcut = QShortcut(QKeySequence("Alt+Right"), self)
-        self._forward_shortcut.setContext(Qt.WidgetWithChildrenShortcut)
-        self._forward_shortcut.activated.connect(self.navigate_forward)
+        # Handle these local navigation shortcuts without parent-owned QShortcut
+        # objects; in PySide a large number of bound QObject callbacks can
+        # complicate shutdown when multiple app shells are opened in tests.
+        for control in (
+            self.view, self.search, self.back_button, self.forward_button,
+            self.now_playing_button, self.view_button,
+            self.zoom_in_button, self.zoom_out_button, reset,
+        ):
+            control.installEventFilter(self)
         self.zoom_out_button.clicked.connect(lambda: self.view.smooth_zoom(1 / 1.25))
         self.zoom_in_button.clicked.connect(lambda: self.view.smooth_zoom(1.25))
         reset.clicked.connect(self._fit_with_history)
+
+    def eventFilter(self, watched, event) -> bool:
+        if event.type() == QEvent.KeyPress and event.modifiers() & Qt.AltModifier:
+            if event.key() == Qt.Key_Left:
+                self.navigate_back()
+                return True
+            if event.key() == Qt.Key_Right:
+                self.navigate_forward()
+                return True
+        return super().eventFilter(watched, event)
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
