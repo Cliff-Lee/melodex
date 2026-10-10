@@ -1017,3 +1017,95 @@ def test_mm2_explore_nearby_chips_are_contextual_and_do_not_start_audio(monkeypa
     assert not playback and not queued
     window.close()
     app.processEvents()
+
+
+def test_mm2_cluster_drilldown_restores_map_and_protects_playing_track():
+    """Clustering is only a visual LOD change: tracks and navigation remain intact."""
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    try:
+        from PySide6.QtWidgets import QApplication
+        from melodex.music_map import MusicMapWidget
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    widget = MusicMapWidget()
+    widget.resize(900, 620)
+    widget.show()
+    nodes = []
+    ref_map = {}
+    for i in range(220):
+        ref = f"t{i}"
+        x = -0.6 + (i % 11) * 0.008 if i < 110 else 0.45 + (i % 11) * 0.008
+        y = 0.2 + (i % 9) * 0.008 if i < 110 else -0.3 + (i % 9) * 0.008
+        nodes.append({"ref": ref, "title": f"Track {i}", "artist": f"Artist {i}",
+                      "x": x, "y": y})
+        ref_map[ref] = {"track_id": ref, "artist": f"Artist {i}",
+                        "title": f"Track {i}"}
+    widget.set_map({"nodes": nodes, "edges": [], "analysed": 220}, ref_map)
+    app.processEvents()
+    assert len(widget.node_items) == 220
+    assert widget._cluster_items
+    assert len(widget._cluster_items) < 220
+    members = widget._cluster_items[0].members
+    assert len(members) >= 3
+    assert all(not widget.node_items[ref].isVisible() for ref in members)
+
+    # Selected and currently playing points are always exposed individually.
+    pinned = members[0]
+    widget._select_ref(pinned)
+    assert widget.node_items[pinned].isVisible()
+    widget.highlight_track(ref_map[members[1]])
+    assert widget.node_items[members[1]].isVisible()
+    widget.set_route_endpoints(pinned, members[2])
+    assert widget.node_items[members[2]].isVisible()
+
+    # No music starts when an overview cluster is opened.
+    activated = []
+    widget.trackActivated.connect(activated.append)
+    before = widget._capture_location()
+    cluster_members = widget._cluster_items[0].members
+    widget._open_cluster(cluster_members)
+    app.processEvents()
+    assert abs(widget.view.transform().m11() - 1.55) < 0.01
+    assert not widget._cluster_items
+    assert all(item.isVisible() for item in widget.node_items.values())
+    assert not activated
+    assert widget.back_button.isEnabled()
+    widget.navigate_back()
+    app.processEvents()
+    assert abs(widget.view.transform().m11() - before[2]) < 0.01
+    assert widget._cluster_items
+    assert len(widget.node_items) == 220
+    assert widget.selected_ref_value() == pinned
+
+    widget.close()
+    app.processEvents()
+
+
+def test_mm2_sparse_music_map_does_not_replace_album_covers_with_clusters():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    try:
+        from PySide6.QtWidgets import QApplication
+        from melodex.music_map import MusicMapWidget
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+    app = QApplication.instance() or QApplication([])
+    widget = MusicMapWidget()
+    widget.resize(960, 640)
+    widget.show()
+    nodes = [
+        {"ref": f"r{i}", "artist": f"Artist {i}", "title": f"Song {i}",
+         "x": i / 15.0 - 1, "y": i / 15.0 - 1}
+        for i in range(28)
+    ]
+    ref_map = {row["ref"]: {"track_id": row["ref"], "artist": row["artist"],
+                            "title": row["title"]} for row in nodes}
+    widget.set_map({"nodes": nodes, "edges": [], "analysed": 28}, ref_map)
+    app.processEvents()
+    assert not widget._cluster_items
+    assert all(item.isVisible() for item in widget.node_items.values())
+    widget.close()
+    app.processEvents()
