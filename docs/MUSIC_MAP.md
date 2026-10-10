@@ -291,8 +291,23 @@ original Route / Compose / Live planner without resetting the endpoints.
 **Cancel** or Escape dismisses the strip and clears the route. **Play from
 here** instead builds an open-ended session from one selected track using the
 existing Mind + Flow engine; it does not require the Journey drawer or a
-destination. MM2-5a still uses the existing synchronous Pathfinder computation;
-interactive latency on dense maps must be separately qualified before release.
+destination.
+
+In **MM2-5b**, **Preview route** runs Pathfinder through Melodex's existing
+background task scheduler, with a visible *Finding route…* state and Play/Queue
+disabled until a valid preview returns. Changing destination or recipe, cancelling
+the journey or rebuilding the map invalidates in-flight preview results; a late
+callback cannot replace the current choice. Failure leaves the route ready to
+retry. Advanced route tools continue using their original synchronous
+implementation for now.
+
+After explicitly selecting **Play route**, the actual currently playing mapped
+track advances the route highlight and displays *Playing step n/N*. This is
+observed playback progress, **not** an estimated arrival time, an inferred
+continuous mix or a promise that the device will successfully play every
+track. Playing music outside the route clears its progress indicator.
+The final UX still requires real packaged-device responsiveness tests before
+release.
 
 The selected mapped track becomes the starting anchor for Mind + Flow.
 
