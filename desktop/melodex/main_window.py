@@ -2077,8 +2077,7 @@ class MainWindow(QMainWindow):
     def changeEvent(self, event):
         super().changeEvent(event)
         if event.type() == QEvent.WindowStateChange:
-            # Qt can emit a state change during restoreGeometry() in __init__,
-            # before the playback feature has been constructed.
+            # restoreGeometry() may emit this event before playback_feature exists.
             playback_feature = getattr(self, "playback_feature", None)
             if playback_feature is not None:
                 playback_feature.set_window_minimized(self.isMinimized())
