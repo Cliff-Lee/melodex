@@ -2077,7 +2077,11 @@ class MainWindow(QMainWindow):
     def changeEvent(self, event):
         super().changeEvent(event)
         if event.type() == QEvent.WindowStateChange:
-            self.playback_feature.set_window_minimized(self.isMinimized())
+            # Qt can emit a state change during restoreGeometry() in __init__,
+            # before the playback feature has been constructed.
+            playback_feature = getattr(self, "playback_feature", None)
+            if playback_feature is not None:
+                playback_feature.set_window_minimized(self.isMinimized())
 
     def open_page(self, name: str):
         self.navigation.open_page(name)
