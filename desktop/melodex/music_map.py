@@ -312,15 +312,15 @@ class MusicMapWidget(QWidget):
         self.edge_mode.addItem("Samples / remixes / versions", "song_relation")
         self.edge_mode.addItem("Artist relationships", "artist_relation")
         self.edge_mode.addItem("Recording places", "place")
+
         self.search = QLineEdit()
-        self.search.setPlaceholderText("Find artist or track on map…")
-        reset = QPushButton("Fit map")
-        reset.setObjectName("quietButton")
-        self.connections_button = QPushButton("Connections…")
-        self.connections_button.setObjectName("quietButton")
-        self.connections_button.clicked.connect(
-            lambda: self.edge_mode.setVisible(not self.edge_mode.isVisible())
-        )
+        self.search.setPlaceholderText("Find an artist or track on this map…")
+        self.search.setAccessibleName("Find a track on Music Map")
+        self.view_button = QPushButton("View")
+        self.view_button.setObjectName("quietButton")
+        self.view_button.setToolTip("Colour and relationship settings")
+        self.view_button.setAccessibleName("Show Music Map view settings")
+        self.view_button.clicked.connect(self._toggle_view_settings)
         self.zoom_out_button = QPushButton("−")
         self.zoom_out_button.setObjectName("quietButton")
         self.zoom_out_button.setFixedWidth(38)
@@ -331,17 +331,32 @@ class MusicMapWidget(QWidget):
         self.zoom_in_button.setFixedWidth(38)
         self.zoom_in_button.setAccessibleName("Zoom into Music Map")
         self.zoom_in_button.setToolTip("Zoom in · Ctrl/⌘-scroll also works")
-        controls.addWidget(QLabel("Colour"))
-        controls.addWidget(self.mode)
-        self.edge_mode.hide()
-        controls.addWidget(self.connections_button)
-        controls.addWidget(self.edge_mode)
-        controls.addSpacing(8)
+        reset = QPushButton("Fit")
+        reset.setObjectName("quietButton")
+        reset.setToolTip("Show the whole mapped collection")
+        reset.setAccessibleName("Fit Music Map to view")
         controls.addWidget(self.search, 1)
+        controls.addWidget(self.view_button)
         controls.addWidget(self.zoom_out_button)
         controls.addWidget(self.zoom_in_button)
         controls.addWidget(reset)
         layout.addLayout(controls)
+
+        # The appearance controls float *over* the map, not in its layout.
+        self.view_settings_panel = QFrame(self)
+        self.view_settings_panel.setObjectName("powerPanel")
+        view_layout = QVBoxLayout(self.view_settings_panel)
+        view_layout.setContentsMargins(12, 10, 12, 10)
+        view_layout.addWidget(QLabel("Colour by"))
+        view_layout.addWidget(self.mode)
+        self.connections_button = QPushButton("Connections…")
+        self.connections_button.setObjectName("quietButton")
+        self.connections_button.clicked.connect(self._toggle_connections)
+        view_layout.addWidget(self.connections_button)
+        view_layout.addWidget(self.edge_mode)
+        view_layout.addStretch(1)
+        self.edge_mode.hide()
+        self.view_settings_panel.hide()
 
         self.scene = QGraphicsScene(self)
         self.view = _MapView(self.scene)
@@ -364,6 +379,39 @@ class MusicMapWidget(QWidget):
         self.zoom_out_button.clicked.connect(lambda: self.view.smooth_zoom(1 / 1.25))
         self.zoom_in_button.clicked.connect(lambda: self.view.smooth_zoom(1.25))
         reset.clicked.connect(self.reset_view)
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        QTimer.singleShot(0, self._position_view_settings)
+
+    def _position_view_settings(self) -> None:
+        if not hasattr(self, "view_settings_panel") or not hasattr(self, "view"):
+            return
+        rect = self.view.geometry()
+        if rect.width() <= 0 or rect.height() <= 0:
+            return
+        margin = 10
+        width = min(250, max(1, rect.width() - 2 * margin))
+        height = min(230, max(1, rect.height() - 2 * margin))
+        self.view_settings_panel.setGeometry(
+            rect.right() - width - margin + 1,
+            rect.top() + margin,
+            width,
+            height,
+        )
+
+    def _toggle_view_settings(self) -> None:
+        visible = not self.view_settings_panel.isVisible()
+        self._position_view_settings()
+        self.view_settings_panel.setVisible(visible)
+        if visible:
+            self.view_settings_panel.raise_()
+
+    def _toggle_connections(self) -> None:
+        # Keeps relationship filters accessible under one compact View control.
+        if not self.view_settings_panel.isVisible():
+            self._toggle_view_settings()
+        self.edge_mode.setVisible(not self.edge_mode.isVisible())
 
     @staticmethod
     def _node_colour(node: dict[str, Any], mode: str) -> QColor:
