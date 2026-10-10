@@ -189,9 +189,17 @@ and a quiet **More…** menu for occasional analysis and enrichment.
 
 Map movement is unchanged: drag empty space to pan, trackpad scroll to pan,
 mouse-wheel or Cmd/Ctrl-scroll to zoom, and use **+ / −** and **Fit** if preferred.
-Dense libraries currently use small album-cover points; zoom and hover reveal
-individual track detail. Semantic zoom/cluster navigation is a later MM2 stage,
-**not yet implemented**.
+At overview zoom, dense regions are grouped into representative album-cover
+tiles labelled with a mapped-track count; clicking a group zooms into its
+individual tracks. The groups are **spatial summaries of the existing Flow
+feature projection**, not inferred genres or factual links. Selected,
+currently-playing and active-route tracks stay individually visible. On
+closer zoom, all individual covers reappear; zoom navigation can be reversed
+with Back. Small or dispersed maps are left unclustered.
+
+This is the first **MM2-3a** density layer on the development branch, not a
+claim that the full semantic-zoom/landmark system is already implemented.
+All mapped tracks keep their original graph identities and route calculations.
 
 ### Navigation (MM2-2a)
 
