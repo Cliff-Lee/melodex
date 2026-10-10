@@ -70,6 +70,8 @@ You don't need Python, Git, a server, or an AI model to install a release build.
 | Linux | [Install on Linux](docs/INSTALL_LINUX.md) |
 | Android | [Android setup](docs/INSTALL_ANDROID.md) — play local phone music or connect to a Melodex Bridge |
 
+> **macOS first-launch security notice:** Current Mac release builds are not Apple Developer ID signed or notarized. macOS may block the first launch. Read the [Mac installation and Privacy & Security instructions](docs/INSTALL_MACOS.md#3-macos-security-warning-unsigned-public-beta) before approving an app-specific exception. **Do not disable Gatekeeper globally.** See the [Privacy Policy](docs/PRIVACY.md) and [Security](SECURITY.md) for details.
+
 Melodex does not include a subscription music catalogue. A local collection is the best way to use its listening and discovery features; supported connected sources are also available. See [the FAQ](docs/FAQ.md) for details.
 
 ## Try the beta
