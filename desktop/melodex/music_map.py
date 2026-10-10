@@ -16,13 +16,14 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMenu,
     QPushButton,
     QVBoxLayout,
     QWidget,
 )
 
 from .journey_composer import STAGE_MIME_TYPE
-from .music_map_clusters import cluster_grid_size, cluster_mapped_positions
+from .music_map_clusters import cluster_grid_size, cluster_landmark, cluster_mapped_positions
 
 
 _KEY_NAMES = ("C", "C♯", "D", "E♭", "E", "F", "F♯", "G", "A♭", "A", "B♭", "B")
@@ -274,10 +275,11 @@ class _NodeItem(QGraphicsObject):
 class _ClusterItem(QGraphicsObject):
     """Representative album cover plus count; click drills into actual tracks."""
 
-    def __init__(self, members: tuple[str, ...], representative: str, opened):
+    def __init__(self, members: tuple[str, ...], representative: str, landmark: str, opened):
         super().__init__()
         self.members = tuple(members)
         self.representative = representative
+        self.landmark = str(landmark)
         self._opened = opened
         self._artwork = QPixmap()
         self.setZValue(15)
@@ -285,7 +287,7 @@ class _ClusterItem(QGraphicsObject):
         self.setCursor(Qt.PointingHandCursor)
 
     def boundingRect(self) -> QRectF:
-        return QRectF(0.0, 0.0, 68.0, 77.0)
+        return QRectF(0.0, 0.0, 104.0, 97.0)
 
     def setArtwork(self, art: QPixmap) -> None:
         if not art.isNull():
@@ -294,7 +296,7 @@ class _ClusterItem(QGraphicsObject):
 
     def paint(self, painter: QPainter, option, widget=None) -> None:
         painter.setRenderHint(QPainter.Antialiasing, True)
-        border = QRectF(6.0, 2.0, 56.0, 56.0)
+        border = QRectF(24.0, 3.0, 56.0, 56.0)
         painter.setPen(QPen(QColor("#67b5df"), 2.2))
         painter.setBrush(QColor("#1b3149"))
         painter.drawRoundedRect(border, 9.0, 9.0)
@@ -313,7 +315,7 @@ class _ClusterItem(QGraphicsObject):
             font.setBold(True)
             painter.setFont(font)
             painter.drawText(art_rect, Qt.AlignCenter, "♫")
-        pill = QRectF(8.0, 60.0, 52.0, 17.0)
+        pill = QRectF(35.0, 60.0, 34.0, 17.0)
         painter.setBrush(QColor("#173e61"))
         painter.setPen(QPen(QColor("#3f8ac0"), 1.0))
         painter.drawRoundedRect(pill, 8.0, 8.0)
@@ -323,6 +325,13 @@ class _ClusterItem(QGraphicsObject):
         font.setPointSize(9)
         painter.setFont(font)
         painter.drawText(pill, Qt.AlignCenter, str(len(self.members)))
+        landmark_rect = QRectF(2.0, 79.0, 100.0, 17.0)
+        font.setBold(False)
+        font.setPointSize(9)
+        painter.setFont(font)
+        painter.setPen(QColor("#e3edf8"))
+        name = painter.fontMetrics().elidedText(self.landmark, Qt.ElideRight, 98)
+        painter.drawText(landmark_rect, Qt.AlignCenter | Qt.AlignVCenter, name)
 
     def mousePressEvent(self, event) -> None:
         if event.button() == Qt.LeftButton:
@@ -409,6 +418,13 @@ class MusicMapWidget(QWidget):
         self.back_button.setEnabled(False)
         self.forward_button.setEnabled(False)
         self.now_playing_button.setEnabled(False)
+        self.regions_button = QPushButton("Regions")
+        self.regions_button.setObjectName("quietButton")
+        self.regions_button.setAccessibleName("Explore mapped musical regions")
+        self.regions_button.setToolTip("Choose a group of mapped tracks to explore")
+        self.regions_button.hide()
+        self.region_menu = QMenu(self)
+        self.regions_button.clicked.connect(self._open_region_menu)
         self.view_button = QPushButton("View")
         self.view_button.setObjectName("quietButton")
         self.view_button.setToolTip("Colour and relationship settings")
@@ -431,6 +447,7 @@ class MusicMapWidget(QWidget):
         controls.addWidget(self.back_button)
         controls.addWidget(self.forward_button)
         controls.addWidget(self.search, 1)
+        controls.addWidget(self.regions_button)
         controls.addWidget(self.now_playing_button)
         controls.addWidget(self.view_button)
         controls.addWidget(self.zoom_out_button)
@@ -478,7 +495,7 @@ class MusicMapWidget(QWidget):
         for control in (
             self.view, self.search, self.back_button, self.forward_button,
             self.now_playing_button, self.view_button,
-            self.zoom_in_button, self.zoom_out_button, reset,
+            self.regions_button, self.zoom_in_button, self.zoom_out_button, reset,
         ):
             control.installEventFilter(self)
         self.zoom_out_button.clicked.connect(lambda: self.view.smooth_zoom(1 / 1.25))
@@ -521,6 +538,7 @@ class MusicMapWidget(QWidget):
         self._position_view_settings()
         self.view_settings_panel.setVisible(visible)
         if visible:
+            self.region_menu.hide()
             self.view_settings_panel.raise_()
 
     @staticmethod
@@ -905,6 +923,26 @@ class MusicMapWidget(QWidget):
             label.setToolTip(reason)
             self.route_items.append(label)
 
+    def _open_region_menu(self) -> None:
+        """Offer optional navigation among real, artist-labelled map groups."""
+        self.view_settings_panel.hide()
+        self.region_menu.clear()
+        if not self._cluster_items:
+            return
+        ranked = sorted(
+            self._cluster_items,
+            key=lambda item: (-len(item.members), item.landmark.casefold(), item.representative),
+        )
+        for item in ranked[:8]:
+            members = item.members
+            title = f"{item.landmark} · {len(members)} mapped tracks"
+            action = self.region_menu.addAction(title)
+            action.setToolTip(item.toolTip())
+            action.triggered.connect(lambda checked=False, refs=members: self._open_cluster(refs))
+        self.region_menu.popup(
+            self.regions_button.mapToGlobal(self.regions_button.rect().bottomLeft())
+        )
+
     def _sync_cluster_edge_visibility(self) -> None:
         """Show links only between expanded points at the current LOD."""
         for line in self.edge_items:
@@ -951,15 +989,16 @@ class MusicMapWidget(QWidget):
         for group in groups:
             members = tuple(group["refs"])
             representative = str(group["representative"])
-            cluster = _ClusterItem(members, representative, self._open_cluster)
-            cluster.setPos(float(group["x"]) - 34, float(group["y"]) - 38)
+            landmark, landmark_detail = cluster_landmark(members, self.ref_map)
+            cluster = _ClusterItem(members, representative, landmark, self._open_cluster)
+            cluster.setPos(float(group["x"]) - 52, float(group["y"]) - 48)
             examples = [
                 f'{self.ref_map[ref].get("artist") or "Unknown artist"} — '
                 f'{self.ref_map[ref].get("title") or "Unknown track"}'
                 for ref in members[:3] if ref in self.ref_map
             ]
             cluster.setToolTip(
-                f"{len(members)} mapped tracks in this sonic region · Click to explore"
+                landmark_detail + " · Click to explore"
                 + ("\n" + "\n".join(examples) if examples else "")
             )
             representative_item = self.node_items.get(representative)
@@ -970,12 +1009,16 @@ class MusicMapWidget(QWidget):
             for ref in members:
                 self.node_items[ref].setVisible(False)
         self._sync_cluster_edge_visibility()
+        self.regions_button.setVisible(bool(self._cluster_items))
+        if not self._cluster_items:
+            self.region_menu.hide()
 
     def _open_cluster(self, members: tuple[str, ...]) -> None:
         """Zoom in on the actual constituent tracks without requesting audio."""
         locations = [self.positions[ref] for ref in members if ref in self.positions]
         if not locations:
             return
+        self.region_menu.hide()
         previous = self._capture_location()
         x = sum(p[0] for p in locations) / len(locations)
         y = sum(p[1] for p in locations) / len(locations)
