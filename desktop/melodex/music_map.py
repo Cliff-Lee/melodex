@@ -349,13 +349,9 @@ class MusicMapWidget(QWidget):
         view_layout.setContentsMargins(12, 10, 12, 10)
         view_layout.addWidget(QLabel("Colour by"))
         view_layout.addWidget(self.mode)
-        self.connections_button = QPushButton("Connections…")
-        self.connections_button.setObjectName("quietButton")
-        self.connections_button.clicked.connect(self._toggle_connections)
-        view_layout.addWidget(self.connections_button)
+        view_layout.addWidget(QLabel("Connections"))
         view_layout.addWidget(self.edge_mode)
         view_layout.addStretch(1)
-        self.edge_mode.hide()
         self.view_settings_panel.hide()
 
         self.scene = QGraphicsScene(self)
@@ -392,7 +388,7 @@ class MusicMapWidget(QWidget):
             return
         margin = 10
         width = min(250, max(1, rect.width() - 2 * margin))
-        height = min(230, max(1, rect.height() - 2 * margin))
+        height = min(172, max(1, rect.height() - 2 * margin))
         self.view_settings_panel.setGeometry(
             rect.right() - width - margin + 1,
             rect.top() + margin,
@@ -406,12 +402,6 @@ class MusicMapWidget(QWidget):
         self.view_settings_panel.setVisible(visible)
         if visible:
             self.view_settings_panel.raise_()
-
-    def _toggle_connections(self) -> None:
-        # Keeps relationship filters accessible under one compact View control.
-        if not self.view_settings_panel.isVisible():
-            self._toggle_view_settings()
-        self.edge_mode.setVisible(not self.edge_mode.isVisible())
 
     @staticmethod
     def _node_colour(node: dict[str, Any], mode: str) -> QColor:
