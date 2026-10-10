@@ -30,7 +30,7 @@ def test_overview_clusters_are_stable_and_never_invent_relationships():
 def test_groups_only_summarise_actual_dense_areas():
     sparse = {f"r{i}": (i * 210.0, i * 240.0) for i in range(70)}
     assert cluster_mapped_positions(sparse, scale=0.6) == []
-    assert cluster_mapped_positions({"a": (10, 10)} * 1, scale=0.6) == []
+    assert cluster_mapped_positions({"a": (10, 10)}, scale=0.6) == []
     nearby = {f"r{i}": (12 + i % 4, 18 + i // 4) for i in range(75)}
     assert len(cluster_mapped_positions(nearby, scale=0.7)) == 1
     assert len(cluster_mapped_positions(nearby, scale=0.7, minimum=76)) == 0
