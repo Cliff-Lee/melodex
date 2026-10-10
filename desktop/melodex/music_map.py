@@ -264,12 +264,17 @@ class _NodeItem(QGraphicsObject):
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
-        clicked = self._press_scene_pos is not None and event.button() == Qt.LeftButton
+        clicked = (
+            self._press_scene_pos is not None
+            and event.button() == Qt.LeftButton
+            and (event.scenePos() - self._press_scene_pos).manhattanLength()
+            < QApplication.startDragDistance()
+        )
         self._press_scene_pos = None
         super().mouseReleaseEvent(event)
         if clicked and self._clicked is not None:
-            # Only a genuine point click chooses a Journey destination.
-            # Programmatic selection, focusing and dragging never do.
+            # Only a genuine stationary point click chooses a destination.
+            # A drag towards Compose, a pan, search and Back never do.
             self._clicked(self.ref)
 
     def mouseDoubleClickEvent(self, event):
