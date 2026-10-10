@@ -11,9 +11,31 @@ import time
 import traceback
 from pathlib import Path
 
-from PySide6.QtCore import QTimer, Qt
-from PySide6.QtTest import QTest
+from PySide6.QtCore import QEvent, QTimer, Qt
+from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import QApplication
+
+
+def _click_viewport(view, position) -> None:
+    """Send an actual Qt mouse press/release without bundling QtTest.
+
+    QtTest is intentionally omitted from Melodex's production Qt families.
+    Delivering QWidget events through QtCore/QtGui exercises the same
+    QGraphicsView event dispatch used by physical clicks.
+    """
+    viewport = view.viewport()
+    local = position.toPointF() if hasattr(position, "toPointF") else position
+    global_point = viewport.mapToGlobal(position)
+    global_pos = global_point.toPointF()
+    for event_type, buttons in (
+        (QEvent.MouseButtonPress, Qt.LeftButton),
+        (QEvent.MouseButtonRelease, Qt.NoButton),
+    ):
+        event = QMouseEvent(
+            event_type, local, global_pos,
+            Qt.LeftButton, buttons, Qt.NoModifier,
+        )
+        QApplication.sendEvent(viewport, event)
 
 
 class PackagedMapProbe:
@@ -116,7 +138,7 @@ class PackagedMapProbe:
             point = canvas.view.mapFromScene(
                 item.mapToScene(item.boundingRect().center())
             )
-            QTest.mouseClick(canvas.view.viewport(), Qt.LeftButton, pos=point)
+            _click_viewport(canvas.view, point)
             QApplication.processEvents()
             self._check("viewport click chooses destination", ws.music_path_end_ref == "b")
             self._check("preview button enabled", ws.music_map_quick_preview_button.isEnabled())
