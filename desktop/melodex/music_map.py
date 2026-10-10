@@ -306,6 +306,10 @@ class _ClusterItem(QGraphicsObject):
         self._opened = opened
         self._listen = listen
         self._artwork = QPixmap()
+        # A cluster is a navigation control, not a data point. Keep its cover,
+        # count, label and play target legible in screen pixels at Fit zoom.
+        # Its centre still follows the underlying scene coordinates.
+        self.setFlag(QGraphicsItem.ItemIgnoresTransformations, True)
         self.setZValue(15)
         self.setAcceptedMouseButtons(Qt.LeftButton)
         self.setCursor(Qt.PointingHandCursor)
