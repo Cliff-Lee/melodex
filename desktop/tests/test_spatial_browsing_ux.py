@@ -1275,3 +1275,38 @@ def test_mm2_cluster_zoom_hysteresis_keeps_items_stable_near_threshold():
     assert widget._cluster_signature[0] == 125.0
     widget.close()
     app.processEvents()
+
+
+def test_mm2_small_window_zoom_starts_smoothly_from_fitted_overview():
+    """A wheel zoom must not jump from a 0.3-fit view straight to 0.62."""
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    try:
+        from PySide6.QtWidgets import QApplication
+        from melodex.music_map import MusicMapWidget
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+    app = QApplication.instance() or QApplication([])
+    widget = MusicMapWidget()
+    widget.resize(480, 330)
+    widget.show()
+    nodes = [
+        {"ref": f"s{i}", "x": -0.75 + (i % 8)*0.2,
+         "y": -0.75 + (i // 8)*0.25}
+        for i in range(48)
+    ]
+    tracks = {
+        row["ref"]: {"track_id": row["ref"], "artist": "Local", "title": row["ref"]}
+        for row in nodes
+    }
+    widget.set_map({"nodes": nodes, "edges": [], "analysed": 48}, tracks)
+    app.processEvents()
+    fitted = float(widget.view.transform().m11())
+    assert fitted < 0.62
+    widget.view.smooth_zoom(1.10)
+    target = float(widget.view._zoom_animation.endValue())
+    assert abs(target - fitted * 1.10) < 0.01
+    assert target < 0.62
+    widget.view._zoom_animation.stop()
+    widget.close()
+    app.processEvents()
