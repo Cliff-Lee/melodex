@@ -48,6 +48,7 @@ class _MapView(QGraphicsView):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self._overview_min_zoom = 0.62
         self._zoom_animation = QVariantAnimation(self)
         self._zoom_animation.setDuration(135)
         self._zoom_animation.setEasingCurve(QEasingCurve.OutCubic)
@@ -69,9 +70,13 @@ class _MapView(QGraphicsView):
             self.scale(factor, factor)
             self.zoomChanged.emit(float(self.transform().m11()))
 
+    def set_overview_zoom(self, fitted_scale: float) -> None:
+        """Keep the fitted overview reachable on small screens."""
+        self._overview_min_zoom = min(0.62, max(0.0001, float(fitted_scale)))
+
     def smooth_zoom(self, multiplier: float) -> None:
         current = max(0.0001, float(self.transform().m11()))
-        target = max(0.62, min(3.0, current * float(multiplier)))
+        target = max(self._overview_min_zoom, min(3.0, current * float(multiplier)))
         if abs(target - current) < 0.002:
             return
         if self._zoom_animation.state() == QAbstractAnimation.Running:
@@ -670,8 +675,9 @@ class MusicMapWidget(QWidget):
         self.highlight_track(current_track or {})
         if old_refs and overlap >= 0.5 and old_center is not None:
             self.view.resetTransform()
-            scale = max(0.62, min(3.0, old_scale))
+            scale = max(0.0001, min(3.0, old_scale))
             self.view.scale(scale, scale)
+            self.view.set_overview_zoom(scale)
             self.view.centerOn(old_center)
         else:
             self.reset_view()
@@ -1055,6 +1061,7 @@ class MusicMapWidget(QWidget):
         # A slightly closer starting view makes the map feel explorable instead
         # of presenting the whole library as a tiny diagram.
         self.view.scale(1.16, 1.16)
+        self.view.set_overview_zoom(float(self.view.transform().m11()))
         self.view.centerOn(self.scene.sceneRect().center())
         self._refresh_clusters()
 
@@ -1085,6 +1092,7 @@ class MusicMapWidget(QWidget):
         x, y, scale, ref = location
         self.view.resetTransform()
         self.view.scale(max(0.0001, scale), max(0.0001, scale))
+        self.view.set_overview_zoom(scale)
         self.view.centerOn(x, y)
         if ref and ref in self.ref_map:
             self._select_ref(ref)
