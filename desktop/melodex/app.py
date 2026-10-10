@@ -119,6 +119,14 @@ def main() -> int:
                 QTimer.singleShot(0, win.close)
 
     QTimer.singleShot(0, first_event_loop_turn)
+
+    # Opt-in packaged build qualification. Runs only with an explicit probe
+    # output path and a fresh isolated data directory; never in normal use.
+    mm2_probe_output = str(os.environ.get("MELODEX_MM2_PACKAGE_PROBE") or "").strip()
+    if mm2_probe_output and not probe_exit:
+        from .mm2_package_probe import start_packaged_probe
+        QTimer.singleShot(0, lambda: start_packaged_probe(win, mm2_probe_output))
+
     return app.exec()
 
 
