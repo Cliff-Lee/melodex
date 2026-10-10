@@ -658,3 +658,92 @@ def test_mm2_view_settings_are_overlay_not_an_expanding_toolbar(monkeypatch, tmp
 
     window.close()
     app.processEvents()
+
+
+def test_mm2_overlays_respect_graphics_view_and_keep_track_actions_clear(monkeypatch, tmp_path: Path):
+    """MM2-1c: tools stay below search, and selection never covers the Journey drawer."""
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    try:
+        from PySide6.QtCore import QRect, Qt
+        from PySide6.QtTest import QTest
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+    window = main_window.MainWindow()
+    window.show()
+    window.open_page("music_map")
+    app.processEvents()
+    QTest.qWait(window._page_refresh_delay_ms + 10)
+    app.processEvents()
+
+    workspace = window.journey_workspace
+    canvas = workspace.music_map
+    model = {"nodes": [
+        {"ref": "a", "title": "Long Track Name " * 8, "artist": "Artist One", "x": -0.5, "y": 0},
+        {"ref": "b", "title": "Track Two", "artist": "Artist Two", "x": 0.5, "y": 0},
+    ], "edges": [], "analysed": 2}
+    tracks = {
+        "a": {"track_id": "a", "title": "Long Track Name " * 8, "artist": "Artist One"},
+        "b": {"track_id": "b", "title": "Track Two", "artist": "Artist Two"},
+    }
+    canvas.set_map(model, tracks)
+    canvas._select_ref("a")
+    app.processEvents()
+    assert workspace.music_map_track_panel.isVisible()
+    assert workspace.music_map_track_label.toolTip().startswith("Artist One")
+    assert len(workspace.music_map_track_label.text()) < len(workspace.music_map_track_label.toolTip())
+
+    start_geom = canvas.geometry()
+    start_view_geom = canvas.view.geometry()
+    def viewport_rect():
+        return QRect(
+            canvas.mapTo(workspace.music_map_page, canvas.view.geometry().topLeft()),
+            canvas.view.size(),
+        )
+
+    workspace.music_map_options_button.click()
+    app.processEvents()
+    assert workspace.music_map_options_panel.isVisible()
+    assert viewport_rect().contains(workspace.music_map_options_panel.geometry())
+    assert workspace.music_map_options_panel.geometry().top() >= viewport_rect().top()
+    assert workspace.music_map_track_panel.isHidden()
+    assert canvas.geometry() == start_geom
+    assert canvas.view.geometry() == start_view_geom
+
+    # View settings takes precedence over More; track actions restore when closed.
+    canvas.view_button.click()
+    app.processEvents()
+    assert canvas.view_settings_panel.isVisible()
+    assert workspace.music_map_options_panel.isHidden()
+    assert workspace.music_map_track_panel.isHidden()
+    canvas.search.setFocus()
+    QTest.keyClick(canvas.search, Qt.Key_Escape)
+    app.processEvents()
+    assert canvas.view_settings_panel.isHidden()
+    assert workspace.music_map_track_panel.isVisible()
+
+    workspace.music_map_plan_button.click()
+    app.processEvents()
+    assert workspace.music_map_power_scroll.isVisible()
+    assert viewport_rect().contains(workspace.music_map_power_scroll.geometry())
+    assert workspace.music_map_track_panel.isHidden()
+    canvas._select_ref("b")
+    app.processEvents()
+    assert workspace.music_map_track_panel.isHidden()
+    assert workspace._music_map_track_full_label.startswith("Artist Two")
+    canvas.search.setFocus()
+    QTest.keyClick(canvas.search, Qt.Key_Escape)
+    app.processEvents()
+    assert workspace.music_map_power_scroll.isHidden()
+    assert workspace.music_map_track_panel.isVisible()
+    assert "Artist Two" in workspace.music_map_track_label.text()
+    assert canvas.selected_ref_value() == "b"
+    assert canvas.geometry() == start_geom
+    window.close()
+    app.processEvents()
