@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import time
 import uuid
+from copy import deepcopy
 from pathlib import Path
 from typing import Any, Callable
 
@@ -94,6 +95,8 @@ class JourneyWorkspace(QObject):
         self.music_path_end_ref = ""
         self.music_path_result: dict[str, Any] = {}
         self._map_quick_route_active = False
+        self._quick_route_generation = 0
+        self._quick_route_pending = False
         self.music_journey_stages_data: list[dict[str, Any]] = []
         self.music_live_active = False
         self.music_live_route: dict[str, Any] = {}
@@ -804,7 +807,9 @@ class JourneyWorkspace(QObject):
                 message = f"Start: {start}   →   Click a destination track"
             else:
                 message = f"{start}   →   {end}"
-                if self.music_path_result.get("found"):
+                if self._quick_route_pending:
+                    message += " · Finding route…"
+                elif self.music_path_result.get("found"):
                     message += f" · {len(self.music_path_result.get('hops') or [])} hops"
                 elif self.music_path_result:
                     message += " · No route found"
@@ -817,8 +822,9 @@ class JourneyWorkspace(QObject):
             )
         self.music_map_quick_preview_button.setEnabled(
             bool(self.music_path_start_ref and self.music_path_end_ref)
+            and not self._quick_route_pending
         )
-        route_ready = bool(self.music_path_result.get("found"))
+        route_ready = bool(self.music_path_result.get("found")) and not self._quick_route_pending
         self.music_map_quick_play_button.setEnabled(route_ready)
         self.music_map_quick_queue_button.setEnabled(route_ready)
         self.music_map_quick_route_panel.setVisible(visible)
@@ -834,11 +840,82 @@ class JourneyWorkspace(QObject):
             self._sync_quick_music_route_panel()
 
     def _preview_quick_music_route(self) -> None:
-        if not self._map_quick_route_active:
+        """Calculate Pathfinder off the UI thread; discard stale responses."""
+        from .music_pathfinder import find_music_path
+
+        if not self._map_quick_route_active or self._quick_route_pending:
             return
-        if self.music_path_start_ref and self.music_path_end_ref:
-            self._music_path_find()
-            self._sync_quick_music_route_panel()
+        start, end = self.music_path_start_ref, self.music_path_end_ref
+        if not start or not end:
+            return
+        mode = str(self.music_path_mode.currentData() or "balanced")
+        # Snapshot the bounded data on the UI thread. The worker must never
+        # access Qt scene objects or changing model/knowledge dictionaries.
+        model = deepcopy(self.music_map.model)
+        knowledge = deepcopy(self.music_map.knowledge_graph)
+        self._quick_route_generation += 1
+        generation = self._quick_route_generation
+        self._quick_route_pending = True
+        self.music_path_result = {}
+        self.music_map.set_route_endpoints(start, end)
+        self._sync_quick_music_route_panel()
+        self._status("Finding a musical route in the background…", 3000)
+
+        self._run_async(
+            lambda: find_music_path(
+                model, knowledge, start, end, mode=mode, max_hops=12
+            ),
+            lambda result: self._quick_route_completed(
+                generation, start, end, mode, result
+            ),
+            lambda error: self._quick_route_failed(
+                generation, start, end, mode, str(error)
+            ),
+            priority="foreground",
+            task_name="music-map-route-preview",
+            replace_key="music-map-quick-route",
+        )
+
+    def _quick_route_matches(
+        self, generation: int, start: str, end: str, mode: str
+    ) -> bool:
+        return (
+            self._map_quick_route_active
+            and self._quick_route_pending
+            and self._quick_route_generation == generation
+            and self.music_path_start_ref == start
+            and self.music_path_end_ref == end
+            and str(self.music_path_mode.currentData() or "balanced") == mode
+        )
+
+    def _quick_route_completed(
+        self, generation: int, start: str, end: str,
+        mode: str, result: object
+    ) -> None:
+        if not self._quick_route_matches(generation, start, end, mode):
+            return
+        self._quick_route_pending = False
+        self._apply_music_path_result(result)
+        self._sync_quick_music_route_panel()
+
+    def _quick_route_failed(
+        self, generation: int, start: str, end: str,
+        mode: str, error: str
+    ) -> None:
+        if not self._quick_route_matches(generation, start, end, mode):
+            return
+        self._quick_route_pending = False
+        self.music_path_result = {
+            "found": False, "path_refs": [], "hops": [],
+            "reason": "Route preview could not be completed.",
+        }
+        self.music_map.show_route(self.music_path_result)
+        self.music_path_steps.clear()
+        self.music_path_steps.addItem(
+            "Route preview failed. Try again or choose another destination."
+        )
+        self._status(f"Route preview failed · {error}", 6000)
+        self._sync_quick_music_route_panel()
 
     def _cancel_quick_music_route(self) -> None:
         self._map_quick_route_active = False
@@ -1219,6 +1296,8 @@ class JourneyWorkspace(QObject):
     
     def _apply_music_map_payload(self,payload):
         payload=dict(payload or {})
+        self._quick_route_generation += 1
+        self._quick_route_pending = False
         self._map_quick_route_active = False
         if self.music_live_active:
             self._journey_live_stop("map refreshed · adaptation stopped")
@@ -1434,6 +1513,8 @@ class JourneyWorkspace(QObject):
             message="Journey destination set"
         else:
             return False
+        self._quick_route_generation += 1
+        self._quick_route_pending = False
         self.music_path_result={}
         self.music_map.set_route_endpoints(
             self.music_path_start_ref,
@@ -1523,6 +1604,8 @@ class JourneyWorkspace(QObject):
     
     
     def _music_path_clear(self):
+        self._quick_route_generation += 1
+        self._quick_route_pending = False
         self._map_quick_route_active = False
         if self.music_live_active:
             self._journey_live_stop("route cleared")
