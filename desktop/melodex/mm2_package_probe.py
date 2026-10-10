@@ -166,6 +166,12 @@ class PackagedMapProbe:
             self._check("drawn route begins at A", ws.music_path_result["path_refs"][0] == "a")
             self._check("drawn route ends at B", ws.music_path_result["path_refs"][-1] == "b")
             self._check("map has route geometry", bool(canvas.route_items))
+            # The full-window package screenshot previously revealed an
+            # oversized hover detail card obscuring the highlighted path.
+            self._check(
+                "route anchor hover stays compact",
+                canvas.node_items["b"].boundingRect().width() <= 90,
+            )
             self._check("play/queue available only after preview",
                         ws.music_map_quick_play_button.isEnabled()
                         and ws.music_map_quick_queue_button.isEnabled())
