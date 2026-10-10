@@ -1565,6 +1565,8 @@ def test_mm2_quick_journey_a_to_b_uses_map_clicks_and_existing_pathfinder(monkey
     QTest.qWait(window._page_refresh_delay_ms + 10)
     app.processEvents()
     ws, canvas = window.journey_workspace, window.journey_workspace.music_map
+    # This test isolates the UI logic; real scheduling is tested separately.
+    ws._run_async = lambda work, done, on_error=None, **kwargs: done(work())
     tracks = {
         "a": {"track_id": "a", "artist": "Alpha", "title": "First"},
         "b": {"track_id": "b", "artist": "Beta", "title": "Second"},
@@ -1658,5 +1660,128 @@ def test_mm2_quick_journey_a_to_b_uses_map_clicks_and_existing_pathfinder(monkey
     assert ws.music_path_start_ref == ws.music_path_end_ref == ""
     assert canvas.geometry() == rect
 
+    window.close()
+    app.processEvents()
+
+
+def test_mm2_async_route_preview_discards_outdated_results(monkeypatch, tmp_path: Path):
+    """Background completion must never resurrect an edited or cancelled A→B route."""
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    try:
+        from PySide6.QtWidgets import QApplication
+        from PySide6.QtTest import QTest
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+    window = main_window.MainWindow()
+    window.show()
+    window.open_page("music_map")
+    app.processEvents()
+    QTest.qWait(window._page_refresh_delay_ms + 10)
+    app.processEvents()
+    ws, canvas = window.journey_workspace, window.journey_workspace.music_map
+    tracks = {
+        ref: {"track_id": ref, "artist": ref.upper(), "title": "Example"}
+        for ref in ("a", "b", "c")
+    }
+    model = {
+        "nodes": [
+            {"ref": ref, "artist": ref.upper(), "title": "Example",
+             "x": i / 2 - 0.5, "y": 0.1}
+            for i, ref in enumerate(tracks)
+        ],
+        "edges": [
+            {"a": "a", "b": "b", "similarity": 0.94},
+            {"a": "a", "b": "c", "similarity": 0.90},
+        ],
+        "analysed": 3,
+    }
+    canvas.set_map(model, tracks)
+    app.processEvents()
+    pending = []
+    ws._run_async = lambda work, done, on_error=None, **opts: pending.append(
+        (work, done, on_error, opts)
+    )
+    played = []
+    ws.playTracksRequested.connect(played.append)
+
+    canvas._select_ref("a")
+    ws.music_map_start_journey_button.click()
+    ws._quick_map_track_clicked("b")
+    ws.music_map_quick_preview_button.click()
+    app.processEvents()
+
+    assert len(pending) == 1
+    work_old, done_old, error_old, opts_old = pending[-1]
+    assert opts_old["priority"] == "foreground"
+    assert opts_old["replace_key"] == "music-map-quick-route"
+    assert ws._quick_route_pending
+    assert "Finding route" in ws.music_map_quick_route_label.toolTip()
+    assert not ws.music_map_quick_preview_button.isEnabled()
+    assert not ws.music_map_quick_play_button.isEnabled()
+    assert not ws.music_path_result
+    assert not played
+
+    # Changing the destination immediately unlocks Preview, while a late
+    # response from the earlier route is harmless.
+    ws._quick_map_track_clicked("c")
+    app.processEvents()
+    assert not ws._quick_route_pending
+    assert ws.music_map_quick_preview_button.isEnabled()
+    done_old(work_old())
+    assert not ws.music_path_result
+    assert not canvas.route_result
+    assert ws.music_path_end_ref == "c"
+
+    ws.music_map_quick_preview_button.click()
+    assert len(pending) == 2
+    work_new, done_new, error_new, opts_new = pending[-1]
+    done_new(work_new())
+    app.processEvents()
+    assert not ws._quick_route_pending
+    assert ws.music_path_result.get("found")
+    assert ws.music_path_result["path_refs"][-1] == "c"
+    assert ws.music_map_quick_play_button.isEnabled()
+    assert not played
+
+    # Changing recipe mode clears preview and enables a fresh request.
+    next_mode = ws.music_path_mode.findData("sonic")
+    ws.music_path_mode.setCurrentIndex(next_mode)
+    app.processEvents()
+    assert not ws.music_path_result
+    assert ws.music_map_quick_preview_button.isEnabled()
+
+    ws.music_map_quick_preview_button.click()
+    assert len(pending) == 3
+    work_mode, done_mode, error_mode, _opts_mode = pending[-1]
+    ws._cancel_quick_music_route()
+    app.processEvents()
+    done_mode(work_mode())
+    assert not ws._map_quick_route_active
+    assert not ws.music_path_result
+    assert not canvas.route_result
+
+    # A new journey may fail, but the error must be visible and allow retry.
+    canvas._select_ref("a")
+    ws.music_map_start_journey_button.click()
+    ws._quick_map_track_clicked("b")
+    ws.music_map_quick_preview_button.click()
+    assert len(pending) == 4
+    error_fn = pending[-1][2]
+    assert error_fn is not None
+    error_fn("Simulated pathfinder problem")
+    app.processEvents()
+    assert not ws._quick_route_pending
+    assert not ws.music_map_quick_play_button.isEnabled()
+    assert ws.music_map_quick_preview_button.isEnabled()
+    assert "failed" in ws.music_map_quick_route_label.toolTip().lower() or (
+        ws.music_path_result.get("found") is False
+    )
+    assert not played
     window.close()
     app.processEvents()
