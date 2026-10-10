@@ -1217,6 +1217,7 @@ class JourneyWorkspace(QObject):
     
     def _apply_music_map_payload(self,payload):
         payload=dict(payload or {})
+        self._map_quick_route_active = False
         if self.music_live_active:
             self._journey_live_stop("map refreshed · adaptation stopped")
         self.music_map.set_map(
@@ -1229,6 +1230,8 @@ class JourneyWorkspace(QObject):
         self.music_path_start_ref=""
         self.music_path_end_ref=""
         self.music_path_result={}
+        self._sync_quick_music_route_panel()
+        self._sync_music_map_track_panel()
         self.music_journey_stages_data=[]
         if self.pending_journey_recipe is None:
             self.music_active_recipe_id=""
@@ -1518,6 +1521,7 @@ class JourneyWorkspace(QObject):
     
     
     def _music_path_clear(self):
+        self._map_quick_route_active = False
         if self.music_live_active:
             self._journey_live_stop("route cleared")
         self.music_path_start_ref=""
@@ -1529,6 +1533,8 @@ class JourneyWorkspace(QObject):
             self.music_path_steps.clear()
             self.music_path_steps.addItem("Pathfinder explanations will appear here.")
         self._status("Pathfinder cleared",2500)
+        self._sync_quick_music_route_panel()
+        self._sync_music_map_track_panel()
     
     
     def _journey_recipe_mark_modified(self):
