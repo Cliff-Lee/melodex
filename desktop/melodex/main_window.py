@@ -4451,7 +4451,13 @@ class MainWindow(QMainWindow):
         if not seed:
             return
         catalog = self.providers.local_catalog()
-        self.statusBar().showMessage("Building a journey from this part of your map…")
+        if not catalog:
+            self.statusBar().showMessage(
+                "No local tracks available for a listening session. Add a music source and try again.",
+                6000,
+            )
+            return
+        self.statusBar().showMessage("Building a listening session from this track…")
         self._run_async(
             lambda: self.mind.build_session(
                 catalog,
