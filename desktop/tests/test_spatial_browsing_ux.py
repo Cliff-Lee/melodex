@@ -591,15 +591,19 @@ def test_mm2_compact_controls_and_track_context(monkeypatch, tmp_path: Path):
     workspace.music_map_start_journey_button.click()
     app.processEvents()
     assert workspace.music_path_start_ref=="a"
-    assert workspace.music_map_power_scroll.isVisible()
+    assert workspace.music_map_quick_route_panel.isVisible()
+    assert not workspace.music_map_power_scroll.isVisible()
+    assert workspace.music_map_track_panel.isHidden()
+    assert not workspace.music_map_quick_preview_button.isEnabled()
     assert canvas.geometry()==rect
     assert abs(float(canvas.view.transform().m11())-before_scale)<0.01
 
-    # Escape dismisses the journey drawer without stopping or unselecting.
+    # Escape dismisses the compact route without stopping or unselecting.
     canvas.search.setFocus()
     QTest.keyClick(canvas.search, Qt.Key_Escape)
     app.processEvents()
-    assert not workspace.music_map_power_scroll.isVisible()
+    assert not workspace.music_map_quick_route_panel.isVisible()
+    assert not workspace._map_quick_route_active
     assert canvas.selected_ref_value()=="a"
     assert workspace.music_map_track_panel.isVisible()
     assert not playback_requests
@@ -1535,5 +1539,117 @@ def test_mm2_region_session_reuses_mind_engine_with_local_pool(monkeypatch, tmp_
         "seed": {"local_path": "/gone.flac"},
     })
     assert not captured  # Stale region does not fall back to the full library.
+    window.close()
+    app.processEvents()
+
+
+def test_mm2_quick_journey_a_to_b_uses_map_clicks_and_existing_pathfinder(monkeypatch, tmp_path: Path):
+    """Start → destination → preview on the map; no playback until explicit Play."""
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    try:
+        from PySide6.QtCore import Qt
+        from PySide6.QtTest import QTest
+        from PySide6.QtWidgets import QApplication
+        import melodex.main_window as main_window
+    except ImportError as exc:
+        import pytest
+        pytest.skip(f"Qt desktop runtime is unavailable: {exc}")
+
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window, "app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_window.MainWindow, "_start_local_bridge", lambda self: None)
+    window = main_window.MainWindow()
+    window.show()
+    window.open_page("music_map")
+    app.processEvents()
+    QTest.qWait(window._page_refresh_delay_ms + 10)
+    app.processEvents()
+    ws, canvas = window.journey_workspace, window.journey_workspace.music_map
+    tracks = {
+        "a": {"track_id": "a", "artist": "Alpha", "title": "First"},
+        "b": {"track_id": "b", "artist": "Beta", "title": "Second"},
+        "c": {"track_id": "c", "artist": "Gamma", "title": "Third"},
+    }
+    model = {
+        "nodes": [
+            {"ref": "a", "artist": "Alpha", "title": "First", "x": -0.6, "y": 0.1},
+            {"ref": "b", "artist": "Beta", "title": "Second", "x": 0.6, "y": -0.1},
+            {"ref": "c", "artist": "Gamma", "title": "Third", "x": 0.0, "y": 0.5},
+        ],
+        "edges": [
+            {"a": "a", "b": "b", "similarity": 0.91},
+            {"a": "a", "b": "c", "similarity": 0.80},
+            {"a": "c", "b": "b", "similarity": 0.81},
+        ],
+        "analysed": 3,
+    }
+    canvas.set_map(model, tracks)
+    app.processEvents()
+    played, queued = [], []
+    ws.playTracksRequested.connect(played.append)
+    ws.queueTracksRequested.connect(queued.append)
+    canvas._select_ref("a")
+    ws.music_map_start_journey_button.click()
+    app.processEvents()
+    rect = canvas.geometry()
+    camera = canvas._capture_location()
+    assert ws.music_path_start_ref == "a"
+    assert not ws.music_path_end_ref
+    assert ws.music_map_quick_route_panel.isVisible()
+
+    # Programmatic navigation and Back are not treated as destination clicks.
+    canvas.focus_ref("c")
+    app.processEvents()
+    assert ws.music_path_end_ref == ""
+    assert not ws.music_map_quick_preview_button.isEnabled()
+    canvas.navigate_back()
+    app.processEvents()
+    assert ws.music_path_end_ref == ""
+
+    # A genuine click on the destination node arms the preview.
+    item = canvas.node_items["b"]
+    destination = canvas.view.mapFromScene(item.mapToScene(item.boundingRect().center()))
+    QTest.mouseClick(canvas.view.viewport(), Qt.LeftButton, pos=destination)
+    app.processEvents()
+    assert ws.music_path_end_ref == "b"
+    assert ws.music_map_quick_preview_button.isEnabled()
+    assert ws.music_map_quick_route_panel.isVisible()
+    assert not played and not queued
+    assert canvas.geometry() == rect
+    assert abs(canvas._capture_location()[2] - camera[2]) < 0.01
+
+    ws.music_map_quick_preview_button.click()
+    app.processEvents()
+    assert ws.music_path_result.get("found")
+    assert ws.music_path_result["path_refs"][0] == "a"
+    assert ws.music_path_result["path_refs"][-1] == "b"
+    assert canvas.route_result.get("found")
+    assert ws.music_map_quick_play_button.isEnabled()
+    assert ws.music_map_quick_queue_button.isEnabled()
+    assert not played and not queued
+
+    ws.music_map_quick_queue_button.click()
+    assert len(queued) == 1
+    assert queued[0][0]["track_id"] == "a"
+    assert not played
+    ws.music_map_quick_play_button.click()
+    assert len(played) == 1
+    assert played[0][-1]["track_id"] == "b"
+
+    ws.music_map_quick_more_button.click()
+    app.processEvents()
+    assert ws.music_map_power_scroll.isVisible()
+    assert ws.music_map_quick_route_panel.isHidden()
+    ws.music_map_quick_more_button.click()
+    app.processEvents()
+    assert ws.music_map_quick_route_panel.isVisible()
+
+    ws.music_map_quick_cancel_button.click()
+    app.processEvents()
+    assert not ws.music_map_quick_route_panel.isVisible()
+    assert not canvas.route_result
+    assert ws.music_path_start_ref == ws.music_path_end_ref == ""
+    assert canvas.geometry() == rect
+
     window.close()
     app.processEvents()
