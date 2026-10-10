@@ -11,7 +11,7 @@ import time
 import traceback
 from pathlib import Path
 
-from PySide6.QtCore import QEvent, QTimer, Qt
+from PySide6.QtCore import QEvent, QPointF, QTimer, Qt
 from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import QApplication
 
@@ -24,9 +24,8 @@ def _click_viewport(view, position) -> None:
     QGraphicsView event dispatch used by physical clicks.
     """
     viewport = view.viewport()
-    local = position.toPointF() if hasattr(position, "toPointF") else position
-    global_point = viewport.mapToGlobal(position)
-    global_pos = global_point.toPointF()
+    local = QPointF(position)
+    global_pos = QPointF(viewport.mapToGlobal(position))
     for event_type, buttons in (
         (QEvent.MouseButtonPress, Qt.LeftButton),
         (QEvent.MouseButtonRelease, Qt.NoButton),
