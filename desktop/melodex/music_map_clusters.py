@@ -7,8 +7,9 @@ They are not genres, inferred factual relationships, or alternative
 Pathfinder edges. No library data leaves the machine.
 """
 
+from collections import Counter
 from math import floor
-from typing import Iterable
+from typing import Any, Iterable
 
 
 def cluster_grid_size(scale: float) -> float:
@@ -75,4 +76,33 @@ def cluster_mapped_positions(
     return result
 
 
-__all__ = ["cluster_grid_size", "cluster_mapped_positions"]
+def cluster_landmark(
+    members: Iterable[str],
+    ref_map: dict[str, dict[str, Any]],
+) -> tuple[str, str]:
+    """Describe a region only with artists actually present in its tracks.
+
+    The visible label is deliberately conservative: a single artist is named
+    only if they account for >=25% of this spatial cell. No genre/mood is
+    inferred from map location. The tooltip gives concrete top counts.
+    """
+    refs = tuple(members)
+    artists = Counter(
+        str(ref_map.get(ref, {}).get("artist") or "").strip()
+        for ref in refs
+    )
+    artists.pop("", None)
+    artists.pop("Unknown artist", None)
+    if not artists:
+        return "Mixed tracks", f"{len(refs)} mapped tracks · No artist metadata"
+    ranking = sorted(artists.items(), key=lambda pair: (-pair[1], pair[0].casefold()))
+    artist, count = ranking[0]
+    if count / max(1, len(refs)) >= 0.25:
+        short = artist if len(ranking) == 1 else artist + " + others"
+    else:
+        short = "Mixed artists"
+    details = " · ".join(f"{name} ({num})" for name, num in ranking[:3])
+    return short, f"{len(refs)} mapped tracks · Artists: {details}"
+
+
+__all__ = ["cluster_grid_size", "cluster_mapped_positions", "cluster_landmark"]
