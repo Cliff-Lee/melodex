@@ -300,6 +300,18 @@ def capture(out: Path, width: int = 1440, height: int = 900) -> dict[str, object
         first_item._resize_on_hover(True)
     _save_widget(music_map, out / "13-music-map.png", width, height)
     record("13-music-map.png", "Music Map with album covers, one expanded hover detail card, and zoom controls.")
+
+    # MM2: capture an actual open overlay at every qualification resolution.
+    # The viewport must not shrink when the visual controls are revealed.
+    original_view_rect = music_map.view.geometry()
+    music_map.view_button.click()
+    app.processEvents()
+    if music_map.view.geometry() != original_view_rect:
+        raise AssertionError("View settings unexpectedly resized the Music Map canvas")
+    _save_widget(music_map, out / "13b-music-map-view.png", width, height)
+    record("13b-music-map-view.png", "Music Map with floating colour/connection settings and unchanged viewport.")
+    music_map.view_button.click()
+    app.processEvents()
     music_map.deleteLater()
 
     overview = LivingCanvasView()
