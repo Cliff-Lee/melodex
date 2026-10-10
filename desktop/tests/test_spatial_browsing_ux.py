@@ -1644,6 +1644,18 @@ def test_mm2_quick_journey_a_to_b_uses_map_clicks_and_existing_pathfinder(monkey
     ws.music_map_quick_play_button.click()
     assert len(played) == 1
     assert played[0][-1]["track_id"] == "b"
+    assert ws._quick_route_playing
+    # The route only reports progress after actual player track events.
+    ws.on_track_changed(tracks["a"])
+    assert canvas._route_progress_index == 0
+    assert "Playing step 1/" in ws.music_map_quick_route_label.toolTip()
+    ws.on_track_changed(tracks["b"])
+    assert canvas._route_progress_index == len(ws.music_path_result["path_refs"]) - 1
+    assert "Playing step" in ws.music_map_quick_route_label.toolTip()
+    # Leaving the route resets progress instead of pretending to continue it.
+    ws.on_track_changed({"track_id": "different", "artist": "Other", "title": "Elsewhere"})
+    assert not ws._quick_route_playing
+    assert canvas._route_progress_index == -1
 
     ws.music_map_quick_more_button.click()
     app.processEvents()
