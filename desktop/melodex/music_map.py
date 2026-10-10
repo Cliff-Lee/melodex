@@ -4,7 +4,7 @@ import json
 from typing import Any
 
 from PySide6.QtCore import QAbstractAnimation, QEasingCurve, QMimeData, QRectF, Qt, QTimer, QVariantAnimation, Signal
-from PySide6.QtGui import QColor, QBrush, QDrag, QImage, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap
+from PySide6.QtGui import QColor, QBrush, QDrag, QImage, QKeySequence, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -286,6 +286,10 @@ class MusicMapWidget(QWidget):
         self.route_end_ref = ""
         self.selected_ref = ""
         self.current_identity = ""
+        self._current_track: dict[str, Any] = {}
+        # Camera history is a local UI concern and does not affect playback.
+        self._back_locations: list[tuple[float, float, float, str]] = []
+        self._forward_locations: list[tuple[float, float, float, str]] = []
         self._art_generation = 0
         self._art_prefetch_queue: list[str] = []
         self._visible_art_refs: set[str] = set()
@@ -316,6 +320,24 @@ class MusicMapWidget(QWidget):
         self.search = QLineEdit()
         self.search.setPlaceholderText("Find an artist or track on this map…")
         self.search.setAccessibleName("Find a track on Music Map")
+        self.back_button = QPushButton("‹")
+        self.back_button.setObjectName("quietButton")
+        self.back_button.setFixedWidth(32)
+        self.back_button.setAccessibleName("Go back to previous Music Map location")
+        self.back_button.setToolTip("Back · Alt+Left")
+        self.forward_button = QPushButton("›")
+        self.forward_button.setObjectName("quietButton")
+        self.forward_button.setFixedWidth(32)
+        self.forward_button.setAccessibleName("Go forward to next Music Map location")
+        self.forward_button.setToolTip("Forward · Alt+Right")
+        self.now_playing_button = QPushButton("◎")
+        self.now_playing_button.setObjectName("quietButton")
+        self.now_playing_button.setFixedWidth(34)
+        self.now_playing_button.setAccessibleName("Locate currently playing track on Music Map")
+        self.now_playing_button.setToolTip("Find the track currently playing")
+        self.back_button.setEnabled(False)
+        self.forward_button.setEnabled(False)
+        self.now_playing_button.setEnabled(False)
         self.view_button = QPushButton("View")
         self.view_button.setObjectName("quietButton")
         self.view_button.setToolTip("Colour and relationship settings")
@@ -335,7 +357,10 @@ class MusicMapWidget(QWidget):
         reset.setObjectName("quietButton")
         reset.setToolTip("Show the whole mapped collection")
         reset.setAccessibleName("Fit Music Map to view")
+        controls.addWidget(self.back_button)
+        controls.addWidget(self.forward_button)
         controls.addWidget(self.search, 1)
+        controls.addWidget(self.now_playing_button)
         controls.addWidget(self.view_button)
         controls.addWidget(self.zoom_out_button)
         controls.addWidget(self.zoom_in_button)
@@ -372,9 +397,18 @@ class MusicMapWidget(QWidget):
         self.mode.currentIndexChanged.connect(lambda *_: self._recolour())
         self.edge_mode.currentIndexChanged.connect(lambda *_: self._redraw_edges())
         self.search.returnPressed.connect(self._find)
+        self.back_button.clicked.connect(self.navigate_back)
+        self.forward_button.clicked.connect(self.navigate_forward)
+        self.now_playing_button.clicked.connect(self.locate_now_playing)
+        self._back_shortcut = QShortcut(QKeySequence("Alt+Left"), self)
+        self._back_shortcut.setContext(Qt.WidgetWithChildrenShortcut)
+        self._back_shortcut.activated.connect(self.navigate_back)
+        self._forward_shortcut = QShortcut(QKeySequence("Alt+Right"), self)
+        self._forward_shortcut.setContext(Qt.WidgetWithChildrenShortcut)
+        self._forward_shortcut.activated.connect(self.navigate_forward)
         self.zoom_out_button.clicked.connect(lambda: self.view.smooth_zoom(1 / 1.25))
         self.zoom_in_button.clicked.connect(lambda: self.view.smooth_zoom(1.25))
-        reset.clicked.connect(self.reset_view)
+        reset.clicked.connect(self._fit_with_history)
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
@@ -442,7 +476,9 @@ class MusicMapWidget(QWidget):
         self.model = dict(model or {})
         self.ref_map = {str(key): dict(value) for key, value in ref_map.items()}
         self.knowledge_graph = dict(knowledge_graph or {})
-        self.current_identity = _track_identity(dict(current_track or {})) if current_track else ""
+        self._current_track = dict(current_track or {})
+        self.current_identity = _track_identity(self._current_track) if self._current_track else ""
+        self.now_playing_button.setEnabled(bool(self._current_track))
         self.selected_ref = old_selected
         self._art_prefetch_queue.clear()
         self.scene.clear()
@@ -517,6 +553,11 @@ class MusicMapWidget(QWidget):
             self.view.centerOn(old_center)
         else:
             self.reset_view()
+        # The projection can move after a new analysis. Do not replay stale
+        # scene coordinates against a different map, even with shared refs.
+        self._back_locations.clear()
+        self._forward_locations.clear()
+        self._update_navigation_buttons()
         analysed = int(self.model.get("analysed") or 0)
         total = int(self.model.get("input_profiles") or 0)
         if analysed:
@@ -766,6 +807,91 @@ class MusicMapWidget(QWidget):
         self.view.scale(1.16, 1.16)
         self.view.centerOn(self.scene.sceneRect().center())
 
+    def _capture_location(self) -> tuple[float, float, float, str]:
+        center = self.view.mapToScene(self.view.viewport().rect().center())
+        return (float(center.x()), float(center.y()),
+                float(self.view.transform().m11()), str(self.selected_ref or ""))
+
+    @staticmethod
+    def _same_location(a: tuple[float, float, float, str],
+                       b: tuple[float, float, float, str]) -> bool:
+        return (a[3] == b[3] and abs(a[0] - b[0]) < 1.0
+                and abs(a[1] - b[1]) < 1.0 and abs(a[2] - b[2]) < 0.001)
+
+    def _update_navigation_buttons(self) -> None:
+        self.back_button.setEnabled(bool(self._back_locations))
+        self.forward_button.setEnabled(bool(self._forward_locations))
+
+    def _remember_departure(self, previous: tuple[float, float, float, str]) -> None:
+        if self._same_location(previous, self._capture_location()):
+            return
+        self._back_locations.append(previous)
+        del self._back_locations[:-32]
+        self._forward_locations.clear()
+        self._update_navigation_buttons()
+
+    def _restore_location(self, location: tuple[float, float, float, str]) -> None:
+        x, y, scale, ref = location
+        self.view.resetTransform()
+        self.view.scale(max(0.62, min(3.0, scale)), max(0.62, min(3.0, scale)))
+        self.view.centerOn(x, y)
+        if ref and ref in self.ref_map:
+            self._select_ref(ref)
+        elif self.selected_ref:
+            self.selected_ref = ""
+            self._redraw_edges()
+            self._recolour()
+            self.trackSelected.emit({})
+
+    def navigate_back(self) -> None:
+        if not self._back_locations:
+            return
+        current = self._capture_location()
+        destination = self._back_locations.pop()
+        self._forward_locations.append(current)
+        self._restore_location(destination)
+        self._update_navigation_buttons()
+
+    def navigate_forward(self) -> None:
+        if not self._forward_locations:
+            return
+        current = self._capture_location()
+        destination = self._forward_locations.pop()
+        self._back_locations.append(current)
+        self._restore_location(destination)
+        self._update_navigation_buttons()
+
+    def focus_ref(self, ref: str) -> bool:
+        """Select and centre a mapped track, keeping a reversible camera visit."""
+        item = self.node_items.get(str(ref or ""))
+        if item is None:
+            return False
+        previous = self._capture_location()
+        self._select_ref(str(ref))
+        self.view.centerOn(item)
+        self._remember_departure(previous)
+        return True
+
+    def locate_now_playing(self) -> bool:
+        """Navigate only when playing music is represented in this map preview."""
+        if not self._current_track:
+            self.status.setText("No track is currently playing.")
+            return False
+        identity = _track_identity(self._current_track)
+        for ref, track in self.ref_map.items():
+            if _track_identity(track) == identity:
+                return self.focus_ref(ref)
+        self.status.setText(
+            "The currently playing track is not in this map's analysed preview. "
+            "Playback continues normally."
+        )
+        return False
+
+    def _fit_with_history(self) -> None:
+        previous = self._capture_location()
+        self.reset_view()
+        self._remember_departure(previous)
+
     def _recolour(self) -> None:
         mode = str(self.mode.currentData() or "sonic")
         for ref, item in self.node_items.items():
@@ -869,7 +995,9 @@ class MusicMapWidget(QWidget):
         }
 
     def highlight_track(self, track: dict[str, Any]) -> None:
-        self.current_identity = _track_identity(dict(track or {})) if track else ""
+        self._current_track = dict(track or {})
+        self.current_identity = _track_identity(self._current_track) if self._current_track else ""
+        self.now_playing_button.setEnabled(bool(self._current_track))
         self._recolour()
 
     def _find(self) -> None:
@@ -880,8 +1008,7 @@ class MusicMapWidget(QWidget):
             node = item.node
             hay = f"{node.get('artist','')} {node.get('title','')} {node.get('album','')}".casefold()
             if query in hay:
-                self._select_ref(ref)
-                self.view.centerOn(item)
+                self.focus_ref(ref)
                 return
         self.status.setText(f"No mapped track matches “{self.search.text().strip()}”.")
 
