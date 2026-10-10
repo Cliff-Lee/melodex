@@ -709,6 +709,9 @@ class MainWindow(QMainWindow):
         self.journey_workspace.sessionFromTrackRequested.connect(
             self._start_session_from_map_track
         )
+        self.journey_workspace.regionSessionRequested.connect(
+            self._start_session_from_map_region
+        )
         self.journey_workspace.surpriseMeRequested.connect(
             lambda: self._play_for_me(
                 str(self.mode.currentData() or "balanced"),
@@ -4452,6 +4455,55 @@ class MainWindow(QMainWindow):
                 )
             return result
         self._run_async(load,self.album_wall.set_artwork, priority="background", task_name="album-wall-online-artwork")
+
+    def _start_session_from_map_region(self, request: object) -> None:
+        """Play within a mapped region using the existing local Mind engine."""
+        from .music_map_region import local_tracks_for_region
+
+        payload = dict(request) if isinstance(request, dict) else {}
+        mapped = [
+            dict(row) for row in list(payload.get("tracks") or [])[:700]
+            if isinstance(row, dict)
+        ]
+        if not mapped:
+            self.statusBar().showMessage(
+                "This region has no available mapped tracks.", 5000
+            )
+            return
+        catalog = self.providers.local_catalog()
+        pool = local_tracks_for_region(
+            mapped, catalog, self.mind.track_key, max_tracks=200
+        )
+        if not pool:
+            self.statusBar().showMessage(
+                "No locally playable tracks from this region are available. "
+                "Try another region or refresh your library.",
+                6000,
+            )
+            return
+        seed = dict(payload.get("seed") or {})
+        seed_key = self.mind.track_key(seed) if seed else ""
+        matched_seed = next(
+            (track for track in pool if self.mind.track_key(track) == seed_key),
+            pool[0],
+        )
+        self.statusBar().showMessage(
+            f"Building a listening session from {len(pool)} tracks in this region…"
+        )
+        self._run_async(
+            lambda: self.mind.build_session(
+                pool,
+                self._path_for,
+                minutes=int(self.minutes.currentText()),
+                adventure=self.adventure.value() / 100,
+                mode=str(self.mode.currentData() or "balanced"),
+                start_track=matched_seed,
+            ),
+            self._apply_mind,
+            priority="foreground",
+            task_name="map-region-session",
+            replace_key="journey-build",
+        )
 
     def _start_session_from_map_track(self, track: object) -> None:
         seed = dict(track or {}) if isinstance(track, dict) else {}
