@@ -1466,6 +1466,11 @@ def test_mm2_play_region_uses_only_cluster_members_and_preserves_camera():
     # Screen-size-stable cluster controls require deviceTransform when mapping
     # an item-local play target to its real viewport hit point.
     assert cluster.flags() & cluster.GraphicsItemFlag.ItemIgnoresTransformations
+    before_bounds = cluster.deviceTransform(widget.view.viewportTransform()).mapRect(
+        cluster.boundingRect()
+    )
+    assert 101 <= before_bounds.width() <= 107
+    assert 94 <= before_bounds.height() <= 100
     location = cluster.deviceTransform(widget.view.viewportTransform()).map(
         cluster.play_rect().center()
     ).toPoint()
