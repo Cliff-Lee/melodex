@@ -164,8 +164,15 @@ Music Map keeps the **graph visible while its tools open**. Its main browsing su
 a compact search field, **View**, zoom controls, **Fit**, a separate **Journey** action
 and a quiet **More…** menu for occasional analysis and enrichment.
 
-- **Select a track once** to reveal a contextual Play / Queue / Start journey card.
-  A second/double-click activates playback as before; selecting does not play.
+- **Select a track once** to reveal contextual actions: **Play** plays that
+  single track, **Queue** adds it to the queue, **Play from here** asks the
+  existing local Mind + Flow session builder for a listening session
+  starting from that track, and **Plan a journey** opens start/destination
+  route tools. A second/double-click plays the track directly.
+  **Selecting does not start playback or launch any background session.**
+  Session creation is asynchronous and may take time; direct Play remains
+  available for immediate single-track playback. If the local library is
+  empty, Melodex displays a helpful status instead of attempting a session.
 - When the selected track has *actual mapped relationships*, the contextual card
   also shows up to **two Explore nearby suggestions**. Suggestions are based on
   existing audio-feature similarity edges and/or cached metadata relationships,
@@ -256,10 +263,11 @@ The map is therefore an exploration view, not an assertion that every indexed tr
 
 ## 10. Starting a journey
 
-Select a track and choose **Start journey** in its contextual card. This sets
+Select a track and choose **Plan a journey** in its contextual card. This sets
 the selected song as the Pathfinder start and opens Journey tools; choose another
-mapped track as a destination and request a route. Within Journey, **Start listening
-here** is a separate way to launch an open-ended Mind + Flow listening session.
+mapped track as a destination and request a route. **Play from here** instead
+builds an open-ended session from the selected track using the existing Mind + Flow
+engine; it does not require the Journey drawer or a chosen destination.
 
 The selected mapped track becomes the starting anchor for Mind + Flow.
 
