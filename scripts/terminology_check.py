@@ -121,7 +121,15 @@ def main() -> int:
                 r".{0,50}\b(?:is|are)\b.{0,20}\bsandboxed\b",
                 lower,
             )
-            if affirmative_sandbox and "not sandboxed" not in lower:
+            # A truthful *negative* caveat ("not fully sandboxed",
+            # "not sandboxed") must not be misclassified as an affirmative
+            # promise. Continue rejecting unqualified claims that plugins
+            # are sandboxed from the user account.
+            negative_sandbox = re.search(
+                r"\bnot\s+(?:(?:fully|completely|entirely)\s+)?sandboxed\b",
+                lower,
+            )
+            if affirmative_sandbox and not negative_sandbox:
                 errors.append(
                     f"{path.relative_to(ROOT)}:{number}: {line.strip()} "
                     "— current plugins must not be described as sandboxed"
