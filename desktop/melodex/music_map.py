@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 )
 
 from .journey_composer import STAGE_MIME_TYPE
+from .music_map_clusters import cluster_grid_size, cluster_mapped_positions
 
 
 _KEY_NAMES = ("C", "C♯", "D", "E♭", "E", "F", "F♯", "G", "A♭", "A", "B♭", "B")
@@ -40,6 +41,8 @@ def _track_identity(track: dict[str, Any]) -> str:
 
 class _MapView(QGraphicsView):
     """Smooth map navigation with trackpad panning and bounded zoom."""
+
+    zoomChanged = Signal(float)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -62,6 +65,7 @@ class _MapView(QGraphicsView):
         factor = target / current
         if abs(factor - 1.0) > 0.0005:
             self.scale(factor, factor)
+            self.zoomChanged.emit(float(self.transform().m11()))
 
     def smooth_zoom(self, multiplier: float) -> None:
         current = max(0.0001, float(self.transform().m11()))
@@ -267,6 +271,67 @@ class _NodeItem(QGraphicsObject):
         super().hoverLeaveEvent(event)
 
 
+class _ClusterItem(QGraphicsObject):
+    """Representative album cover plus count; click drills into actual tracks."""
+
+    def __init__(self, members: tuple[str, ...], representative: str, opened):
+        super().__init__()
+        self.members = tuple(members)
+        self.representative = representative
+        self._opened = opened
+        self._artwork = QPixmap()
+        self.setZValue(15)
+        self.setAcceptedMouseButtons(Qt.LeftButton)
+        self.setCursor(Qt.PointingHandCursor)
+
+    def boundingRect(self) -> QRectF:
+        return QRectF(0.0, 0.0, 68.0, 77.0)
+
+    def setArtwork(self, art: QPixmap) -> None:
+        if not art.isNull():
+            self._artwork = QPixmap(art)
+            self.update()
+
+    def paint(self, painter: QPainter, option, widget=None) -> None:
+        painter.setRenderHint(QPainter.Antialiasing, True)
+        border = QRectF(6.0, 2.0, 56.0, 56.0)
+        painter.setPen(QPen(QColor("#67b5df"), 2.2))
+        painter.setBrush(QColor("#1b3149"))
+        painter.drawRoundedRect(border, 9.0, 9.0)
+        art_rect = border.adjusted(4.0, 4.0, -4.0, -4.0)
+        if not self._artwork.isNull():
+            painter.save()
+            clip = QPainterPath()
+            clip.addRoundedRect(art_rect, 6.0, 6.0)
+            painter.setClipPath(clip)
+            painter.drawPixmap(art_rect, self._artwork, QRectF(self._artwork.rect()))
+            painter.restore()
+        else:
+            painter.setPen(QColor("#d0eaff"))
+            font = painter.font()
+            font.setPointSize(18)
+            font.setBold(True)
+            painter.setFont(font)
+            painter.drawText(art_rect, Qt.AlignCenter, "♫")
+        pill = QRectF(8.0, 60.0, 52.0, 17.0)
+        painter.setBrush(QColor("#173e61"))
+        painter.setPen(QPen(QColor("#3f8ac0"), 1.0))
+        painter.drawRoundedRect(pill, 8.0, 8.0)
+        painter.setPen(QColor("#eaf5ff"))
+        font = painter.font()
+        font.setBold(True)
+        font.setPointSize(9)
+        painter.setFont(font)
+        painter.drawText(pill, Qt.AlignCenter, f"{len(self.members)} tracks")
+
+    def mousePressEvent(self, event) -> None:
+        if event.button() == Qt.LeftButton:
+            self._opened(self.members)
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+
 class MusicMapWidget(QWidget):
     trackSelected = Signal(object)
     trackActivated = Signal(object)
@@ -293,6 +358,8 @@ class MusicMapWidget(QWidget):
         self._art_generation = 0
         self._art_prefetch_queue: list[str] = []
         self._visible_art_refs: set[str] = set()
+        self._cluster_items: list[_ClusterItem] = []
+        self._cluster_signature: tuple[float, tuple[str, ...]] | None = None
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -381,6 +448,7 @@ class MusicMapWidget(QWidget):
 
         self.scene = QGraphicsScene(self)
         self.view = _MapView(self.scene)
+        self.view.zoomChanged.connect(self._refresh_clusters)
         self.view.setRenderHint(QPainter.Antialiasing, True)
         self.view.setDragMode(QGraphicsView.ScrollHandDrag)
         self.view.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
@@ -413,6 +481,7 @@ class MusicMapWidget(QWidget):
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         QTimer.singleShot(0, self._position_view_settings)
+        QTimer.singleShot(0, self._refresh_clusters)
 
     def _position_view_settings(self) -> None:
         if not hasattr(self, "view_settings_panel") or not hasattr(self, "view"):
@@ -482,6 +551,8 @@ class MusicMapWidget(QWidget):
         self.selected_ref = old_selected
         self._art_prefetch_queue.clear()
         self.scene.clear()
+        self._cluster_items.clear()
+        self._cluster_signature = None
         self.node_items.clear()
         self.edge_items.clear()
         self.route_items.clear()
@@ -553,6 +624,7 @@ class MusicMapWidget(QWidget):
             self.view.centerOn(old_center)
         else:
             self.reset_view()
+        self._refresh_clusters()
         # The projection can move after a new analysis. Do not replay stale
         # scene coordinates against a different map, even with shared refs.
         self._back_locations.clear()
@@ -613,6 +685,9 @@ class MusicMapWidget(QWidget):
             image = payload.get("image")
             if isinstance(image, QImage):
                 self.node_items[ref].setArtwork(image)
+                for cluster in self._cluster_items:
+                    if cluster.representative == ref:
+                        cluster.setArtwork(self.node_items[ref]._artwork)
         if self._art_prefetch_queue:
             QTimer.singleShot(0, self._request_artwork_batch)
 
@@ -726,6 +801,7 @@ class MusicMapWidget(QWidget):
         self.route_result = {}
         self._redraw_route()
         self._recolour()
+        self._refresh_clusters()
 
     def show_route(self, result: dict[str, Any]) -> None:
         self.route_result = dict(result or {})
@@ -735,6 +811,7 @@ class MusicMapWidget(QWidget):
             self.route_end_ref = refs[-1]
         self._redraw_route()
         self._recolour()
+        self._refresh_clusters()
         surface = "Journey Designer" if self.route_result.get("journey") else "Pathfinder"
         if self.route_result.get("found"):
             self.status.setText(
@@ -753,6 +830,7 @@ class MusicMapWidget(QWidget):
         self.route_end_ref = ""
         self._redraw_route()
         self._recolour()
+        self._refresh_clusters()
 
     def _redraw_route(self) -> None:
         for item in list(self.route_items):
@@ -797,6 +875,75 @@ class MusicMapWidget(QWidget):
             label.setToolTip(reason)
             self.route_items.append(label)
 
+    def _refresh_clusters(self, *_args) -> None:
+        """Change only the overview layer when crossing a semantic zoom band."""
+        if not self.node_items:
+            return
+        scale = float(self.view.transform().m11())
+        cell = cluster_grid_size(scale)
+        pinned = {
+            ref for ref in (self.selected_ref, self.route_start_ref, self.route_end_ref)
+            if ref in self.node_items
+        }
+        pinned.update(
+            ref for ref in self.route_result.get("path_refs", [])
+            if ref in self.node_items
+        )
+        if self.current_identity:
+            pinned.update(
+                ref for ref, track in self.ref_map.items()
+                if ref in self.node_items and _track_identity(track) == self.current_identity
+            )
+        signature = (cell, tuple(sorted(pinned)))
+        if signature == self._cluster_signature:
+            return
+        self._cluster_signature = signature
+        # These items are overlays. Preserve track identities, route edges and
+        # scene coordinates; no music data is recalculated or reordered.
+        for cluster in self._cluster_items:
+            self.scene.removeItem(cluster)
+        self._cluster_items.clear()
+        for item in self.node_items.values():
+            item.setVisible(True)
+        groups = cluster_mapped_positions(
+            self.positions, scale=scale, protected=pinned
+        )
+        for group in groups:
+            members = tuple(group["refs"])
+            representative = str(group["representative"])
+            cluster = _ClusterItem(members, representative, self._open_cluster)
+            cluster.setPos(float(group["x"]) - 34, float(group["y"]) - 38)
+            examples = [
+                f'{self.ref_map[ref].get("artist") or "Unknown artist"} — '
+                f'{self.ref_map[ref].get("title") or "Unknown track"}'
+                for ref in members[:3] if ref in self.ref_map
+            ]
+            cluster.setToolTip(
+                f"{len(members)} mapped tracks in this sonic region · Click to explore"
+                + ("\n" + "\n".join(examples) if examples else "")
+            )
+            representative_item = self.node_items.get(representative)
+            if representative_item is not None:
+                cluster.setArtwork(representative_item._artwork)
+            self.scene.addItem(cluster)
+            self._cluster_items.append(cluster)
+            for ref in members:
+                self.node_items[ref].setVisible(False)
+
+    def _open_cluster(self, members: tuple[str, ...]) -> None:
+        """Zoom in on the actual constituent tracks without requesting audio."""
+        locations = [self.positions[ref] for ref in members if ref in self.positions]
+        if not locations:
+            return
+        previous = self._capture_location()
+        x = sum(p[0] for p in locations) / len(locations)
+        y = sum(p[1] for p in locations) / len(locations)
+        self.view.resetTransform()
+        self.view.scale(1.55, 1.55)
+        self.view.centerOn(x, y)
+        self._refresh_clusters()
+        self._remember_departure(previous)
+
     def reset_view(self) -> None:
         self.view.resetTransform()
         if not self.scene.items():
@@ -806,6 +953,7 @@ class MusicMapWidget(QWidget):
         # of presenting the whole library as a tiny diagram.
         self.view.scale(1.16, 1.16)
         self.view.centerOn(self.scene.sceneRect().center())
+        self._refresh_clusters()
 
     def _capture_location(self) -> tuple[float, float, float, str]:
         center = self.view.mapToScene(self.view.viewport().rect().center())
@@ -842,6 +990,7 @@ class MusicMapWidget(QWidget):
             self._redraw_edges()
             self._recolour()
             self.trackSelected.emit({})
+        self._refresh_clusters()
 
     def navigate_back(self) -> None:
         if not self._back_locations:
@@ -869,6 +1018,7 @@ class MusicMapWidget(QWidget):
         previous = self._capture_location()
         self._select_ref(str(ref))
         self.view.centerOn(item)
+        self._refresh_clusters()
         self._remember_departure(previous)
         return True
 
@@ -933,6 +1083,7 @@ class MusicMapWidget(QWidget):
         if str(self.edge_mode.currentData() or "") == "focused":
             self._redraw_edges()
         self._recolour()
+        self._refresh_clusters()
         track = dict(self.ref_map[ref])
         node = self.node_items[ref].node
         connections = []
@@ -1075,6 +1226,7 @@ class MusicMapWidget(QWidget):
         self.current_identity = _track_identity(self._current_track) if self._current_track else ""
         self.now_playing_button.setEnabled(bool(self._current_track))
         self._recolour()
+        self._refresh_clusters()
 
     def _find(self) -> None:
         query = self.search.text().strip().casefold()
