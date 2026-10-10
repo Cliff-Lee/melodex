@@ -5,7 +5,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Callable
 
-from PySide6.QtCore import QObject, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QObject, Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -290,9 +290,9 @@ class JourneyWorkspace(QObject):
         simple.addWidget(self.music_map_plan_button)
         l.addLayout(simple)
     
-        self.music_map_options_panel=QFrame()
+        self.music_map_options_panel=QFrame(self.music_map_page)
         self.music_map_options_panel.setObjectName("powerPanel")
-        map_options=QHBoxLayout(self.music_map_options_panel)
+        map_options=QVBoxLayout(self.music_map_options_panel)
         map_options.setContentsMargins(12,8,12,8)
         improve=QPushButton("Improve map")
         improve.clicked.connect(self._analyse_library_for_map)
@@ -308,8 +308,8 @@ class JourneyWorkspace(QObject):
         map_options.addWidget(enrich_selected)
         map_options.addWidget(enrich_map)
         map_options.addStretch(1)
+        # Floating controls must not consume height from the map canvas.
         self.music_map_options_panel.hide()
-        l.addWidget(self.music_map_options_panel)
     
         self.music_map_power_panel=QFrame()
         self.music_map_power_panel.setObjectName("powerPanel")
@@ -570,16 +570,15 @@ class JourneyWorkspace(QObject):
         self.music_map_planner_tabs.addTab(self.music_map_live_tab,"Live")
         power.addWidget(self.music_map_planner_tabs)
     
-        self.music_map_power_scroll=QScrollArea()
+        self.music_map_power_scroll=QScrollArea(self.music_map_page)
         self.music_map_power_scroll.setWidgetResizable(True)
         self.music_map_power_scroll.setFrameShape(QFrame.NoFrame)
         self.music_map_power_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.music_map_power_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.music_map_power_scroll.setMinimumHeight(108)
-        self.music_map_power_scroll.setMaximumHeight(420)
+        self.music_map_power_scroll.setMaximumHeight(600)
         self.music_map_power_scroll.setWidget(self.music_map_power_panel)
         self.music_map_power_scroll.hide()
-        l.addWidget(self.music_map_power_scroll)
     
         self.music_map=MusicMapWidget(self.music_map_page)
         self.music_map.trackSelected.connect(self._music_map_selection_changed)
@@ -591,32 +590,81 @@ class JourneyWorkspace(QObject):
         self.music_path_steps.setMaximumHeight(116)
         self.music_path_steps.addItem("Route explanations will appear here after you plan one.")
         self.music_path_steps.hide()
-        l.addWidget(self.music_path_steps)
+        power.addWidget(self.music_path_steps)
+
+        # Position the panels over the canvas (rather than in its layout).
+        # Reposition on map resize/move; the QGraphicsView keeps its viewport.
+        self.music_map.installEventFilter(self)
+        QTimer.singleShot(0, self._position_music_map_overlays)
     
     
+    def _position_music_map_overlays(self) -> None:
+        """Keep floating map controls within the map without shrinking its viewport."""
+        if not hasattr(self, "music_map"):
+            return
+        rect = self.music_map.geometry()
+        if rect.width() <= 0 or rect.height() <= 0:
+            return
+        margin = 10
+        width = max(1, rect.width() - 2 * margin)
+        height = max(1, rect.height() - 2 * margin)
+        options_width = min(280, width)
+        options_height = min(238, height)
+        self.music_map_options_panel.setGeometry(
+            rect.x() + margin,
+            rect.y() + margin,
+            options_width,
+            options_height,
+        )
+        route_width = min(440, width)
+        route_height = min(580, height)
+        self.music_map_power_scroll.setGeometry(
+            rect.x() + rect.width() - route_width - margin,
+            rect.y() + margin,
+            route_width,
+            route_height,
+        )
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        if hasattr(self, "music_map") and watched is self.music_map:
+            if event.type() in (QEvent.Resize, QEvent.Move, QEvent.Show):
+                QTimer.singleShot(0, self._position_music_map_overlays)
+        return super().eventFilter(watched, event)
+
     def _toggle_music_map_options(self) -> None:
-        visible=not self.music_map_options_panel.isVisible()
+        visible = not self.music_map_options_panel.isVisible()
+        if visible:
+            self.music_map_power_scroll.hide()
+            self.music_path_steps.hide()
+        self._position_music_map_overlays()
         self.music_map_options_panel.setVisible(visible)
-    
-    
+        if visible:
+            self.music_map_options_panel.raise_()
+
     def _toggle_music_map_tools(self) -> None:
-        visible=not self.music_map_power_scroll.isVisible()
+        visible = not self.music_map_power_scroll.isVisible()
+        if visible:
+            self.music_map_options_panel.hide()
+        self._position_music_map_overlays()
         self.music_map_power_scroll.setVisible(visible)
         self.music_path_steps.setVisible(visible)
         if visible:
-            if hasattr(self,"music_map_planner_tabs"):
+            self.music_map_power_scroll.raise_()
+            if hasattr(self, "music_map_planner_tabs"):
                 self.music_map_planner_tabs.setCurrentWidget(self.music_map_route_tab)
             self._status(
                 "Route planner ready · select a track, set start and destination, then Find route",
                 5000,
             )
-    
-    
+
     def _toggle_music_journey_options(self) -> None:
         if not self.music_map_power_scroll.isVisible():
+            self.music_map_options_panel.hide()
+            self._position_music_map_overlays()
             self.music_map_power_scroll.show()
             self.music_path_steps.show()
-        if hasattr(self,"music_map_planner_tabs"):
+            self.music_map_power_scroll.raise_()
+        if hasattr(self, "music_map_planner_tabs"):
             self.music_map_planner_tabs.setCurrentWidget(self.music_map_journey_panel)
     
     
