@@ -306,8 +306,21 @@ track advances the route highlight and displays *Playing step n/N*. This is
 observed playback progress, **not** an estimated arrival time, an inferred
 continuous mix or a promise that the device will successfully play every
 track. Playing music outside the route clears its progress indicator.
-The final UX still requires real packaged-device responsiveness tests before
-release.
+**MM2-6a integration:** the quick preview now copies only the
+Pathfinder-required node fields and mapped sonic/knowledge relationships
+before sending the calculation to the worker. It preserves the original
+feature vectors, graph evidence and route ordering without copying unrelated
+album-art or UI metadata. A reproducible synthetic 700-track benchmark
+records both the main-thread snapshot p95 and the separate background route
+calculation time. The CI performance gate requires a snapshot p95 of at
+most **100 ms**; this is a *specific dispatch-stage budget*, not proof of
+overall UI responsiveness, actual playback latency, or a 700-track
+completion-time guarantee. Visual QA additionally captures both the drawn
+A→B route and its highlighted listening step at 1024×768, 1280×800 and
+1440×900.
+
+The final UX still requires clean CI, inspection of those screenshots and
+real packaged Mac/Ubuntu responsiveness and playback tests before release.
 
 The selected mapped track becomes the starting anchor for Mind + Flow.
 
