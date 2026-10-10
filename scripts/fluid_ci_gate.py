@@ -97,16 +97,31 @@ def main() -> int:
         else desktop_path + os.pathsep + current_pythonpath
     )
 
-    command = [
-        sys.executable,
-        "-m",
-        "pytest",
-        "-q",
-        "--maxfail=1",
-        *FLUID_GATE_TESTS,
-    ]
-    completed = subprocess.run(command, cwd=ROOT, env=env, check=False)
-    return int(completed.returncode)
+    # Qt-backed GUI modules can retain process-global objects between test
+    # modules. Run the same complete acceptance list in two fresh interpreters
+    # so object-lifetime problems can be attributed to a specific group.
+    # Each interpreter must exit cleanly: abnormal Qt shutdown is still a
+    # HARD gate failure, never ignored or mapped to success.
+    midpoint = (len(FLUID_GATE_TESTS) + 1) // 2
+    batches = (
+        ("library / transport", FLUID_GATE_TESTS[:midpoint]),
+        ("GUI / interaction", FLUID_GATE_TESTS[midpoint:]),
+    )
+    for label, specs in batches:
+        print(f"Fluid gate: {label} ({len(specs)} test selectors)", flush=True)
+        command = [
+            sys.executable,
+            "-m", "pytest", "-q", "--maxfail=1",
+            *specs,
+        ]
+        completed = subprocess.run(command, cwd=ROOT, env=env, check=False)
+        if completed.returncode:
+            print(
+                f"Fluid gate FAIL: {label} exited {completed.returncode}",
+                flush=True,
+            )
+            return int(completed.returncode)
+    return 0
 
 
 if __name__ == "__main__":
