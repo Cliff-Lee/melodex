@@ -91,6 +91,45 @@ sandboxed*. The checker was repaired in draft branch commits
 that genuinely affirmative claims are still rejected. **The corrected
 latest-head workflow must still finish.**
 
+## 2c. MM2-7d frozen-executable GUI contract
+
+The test/build workflows now execute `scripts/mm2_packaged_gui_probe.py`
+against actual frozen executables, not merely source or Qt test widgets.
+The probe runs only when explicitly requested by a private
+`MELODEX_MM2_PACKAGE_PROBE` environment variable. It uses an isolated
+temporary profile, blocks the local control bridge, supplies synthetic
+mapped tracks and **does not start audio**.
+
+For macOS arm64/Intel, Windows x64, installed Ubuntu DEB and AppImage, and
+Debian 12, the probe must confirm:
+
+- [ ] Open Music Map within the packaged GUI
+- [ ] Cluster a dense synthetic map and retain legible ▶ play controls
+- [ ] Select A without playback, then genuinely click B on the canvas
+- [ ] Show compact Journey controls without shrinking the map
+- [ ] Calculate A→B via the real asynchronous Pathfinder scheduler
+- [ ] Enable Play/Queue only after a valid preview, without invoking either
+- [ ] Render route geometry and a synthetic visible playback-step highlight
+- [ ] Cancel without leaving stale route state or triggering player signals
+- [ ] Save JSON evidence and a full-window screenshot as CI artifacts
+- [ ] Exit the frozen process with code 0 and without the Qt
+      `shared QObject was deleted directly` warning
+
+These steps are an **automated packaged GUI simulation**, not evidence of
+audible playback, usable NAS permissions, full-real-library performance,
+input-device accessibility or packaging distribution signing.
+
+CI evidence artifacts are named `MM2-packaged-GUI-<platform>` for desktop
+and `MM2-packaged-GUI-Linux-<ubuntu-version>` for installed Linux builds.
+The interactive driver can also be run on a test machine:
+
+```bash
+python3 scripts/mm2_packaged_gui_probe.py /path/to/Melodex --output mm2-package.json
+```
+
+For an AppImage add `--appimage`. It creates `mm2-package.json` and
+`mm2-package.png`, with a temporary isolated profile and no audio.
+
 ## 3. Packaged hardware smoke tests
 
 Use actual packaged applications, not just running Python from a checkout.
