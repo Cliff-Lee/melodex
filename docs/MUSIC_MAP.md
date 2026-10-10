@@ -164,6 +164,9 @@ Music Map keeps the **graph visible while its tools open**. Its main browsing su
 a compact search field, **View**, zoom controls, **Fit**, a separate **Journey** action
 and a quiet **More…** menu for occasional analysis and enrichment.
 
+- **Surprise me**, beside Journey, starts an exploratory session using the
+  existing Mind + Flow player and the current listening preferences. No
+  selected track or route setup is required, and the map stays in place.
 - **Select a track once** to reveal contextual actions: **Play** plays that
   single track, **Queue** adds it to the queue, **Play from here** asks the
   existing local Mind + Flow session builder for a listening session
