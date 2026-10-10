@@ -1615,6 +1615,13 @@ def test_mm2_quick_journey_a_to_b_uses_map_clicks_and_existing_pathfinder(monkey
     assert ws.music_map_quick_preview_button.isEnabled()
     assert ws.music_map_quick_route_panel.isVisible()
     assert not played and not queued
+    # Five route actions are grouped into two rows so the map's usable
+    # viewport stays large on compact displays.
+    action_grid = ws.music_map_quick_route_panel.layout().itemAt(1).layout()
+    assert action_grid.itemAtPosition(0, 0).widget() is ws.music_map_quick_preview_button
+    assert action_grid.itemAtPosition(0, 2).widget() is ws.music_map_quick_queue_button
+    assert action_grid.itemAtPosition(1, 0).widget() is ws.music_map_quick_more_button
+    assert action_grid.itemAtPosition(1, 1).widget() is ws.music_map_quick_cancel_button
     assert canvas.geometry() == rect
     assert abs(canvas._capture_location()[2] - camera[2]) < 0.01
 
