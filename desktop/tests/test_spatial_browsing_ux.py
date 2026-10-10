@@ -1185,5 +1185,9 @@ def test_mm2_region_navigation_menu_is_reversible_and_does_not_play():
     assert widget.regions_button.isVisible()
     assert abs(widget._capture_location()[2] - before[2]) < 0.01
     assert not activated
+    widget.set_map({"nodes": [], "edges": [], "analysed": 0}, {})
+    app.processEvents()
+    assert not widget.regions_button.isVisible()
+    assert widget.region_menu.isHidden()
     widget.close()
     app.processEvents()
