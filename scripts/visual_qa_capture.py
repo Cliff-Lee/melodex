@@ -314,6 +314,44 @@ def capture(out: Path, width: int = 1440, height: int = 900) -> dict[str, object
     app.processEvents()
     music_map.deleteLater()
 
+    # MM2-3a: use actual Flow projection positions to exercise overview LOD.
+    dense_map = MusicMapWidget()
+    dense_nodes = []
+    dense_refs = {}
+    for index in range(240):
+        cluster = index // 80
+        local = index % 80
+        centres = ((-0.65, 0.37), (0.55, 0.42), (0.26, -0.53))
+        centre_x, centre_y = centres[cluster]
+        ref = f"dense-{index}"
+        track = {
+            "track_id": ref,
+            "artist": f"Local Artist {index // 6 + 1}",
+            "album": f"Album {index // 12 + 1}",
+            "title": f"Mapped song {index + 1}",
+        }
+        dense_nodes.append({
+            "ref": ref, **track,
+            "x": centre_x + (local % 10 - 5) * 0.011,
+            "y": centre_y + (local // 10 - 4) * 0.011,
+        })
+        dense_refs[ref] = track
+    dense_map.resize(width, height)
+    dense_map.set_map({
+        "nodes": dense_nodes, "edges": [], "analysed": len(dense_nodes),
+        "input_profiles": len(dense_nodes),
+    }, dense_refs)
+    app.processEvents()
+    if not dense_map._cluster_items:
+        raise AssertionError("Dense Music Map did not create overview clusters")
+    dense_map.set_artwork({
+        ref: {"generation": dense_map._art_generation, "image": QImage(str(art_path))}
+        for ref in dense_refs
+    })
+    _save_widget(dense_map, out / "13c-music-map-clusters.png", width, height)
+    record("13c-music-map-clusters.png", "MM2 overview groups nearby analysed tracks with album artwork and counts.")
+    dense_map.deleteLater()
+
     overview = LivingCanvasView()
     overview.set_track(TRACK, ANALYSIS)
     overview.set_palette(PALETTE)
