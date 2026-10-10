@@ -27,25 +27,40 @@ Melodex works with music files you already have, leaves those files where they a
 
 ## See your collection differently
 
-The screenshots below illustrate three visual modes; the [v0.7.29 visual tour](docs/VISUAL_TOUR.md) explains the current controls and guided route-building flow. Updated v0.7.29 captures are being prepared for the gallery.
+Real screenshots from the running **v0.7.29 desktop app**. [Explore the full six-screen visual tour](docs/VISUAL_TOUR.md).
+
+### Plan a route through your music
+
+![Melodex Music Map showing a preview of a multi-track journey across the library](docs/images/v0.7.29/music-map-route.webp)
+
+Choose a starting point and destination, preview a route of musical connections, and play or queue the result. Melodex distinguishes factual links from sonic suggestions; the displayed route score is a heuristic, not a promise of perfect recommendations.
+
+### Navigate the Music Map
+
+![Melodex Music Map showing album-art track clusters and a track action card](docs/images/v0.7.29/music-map.webp)
+
+Pan and zoom through cover-art clusters, search for a track, and explore nearby music. The map is interactive, not just an illustration.
+
+### Browse your albums visually
+
+![Melodex Album Wall showing covers arranged spatially with navigation and search controls](docs/images/v0.7.29/album-wall.webp)
+
+Browse by artwork, arrange by sound, and locate artists or albums without relying entirely on long lists.
+
+### Discover music while it plays
+
+![Melodex Constellation visualizer showing interactive related music around the current track](docs/images/v0.7.29/now-playing-constellation.webp)
+
+Constellation offers another route to related tracks: inspect surrounding nodes and queue music without leaving playback.
+
+### A simpler starting point, richer listening detail
 
 <p align="center">
-  <img src="docs/images/album-wall.webp" alt="Melodex Album Wall showing a visual collection of album artwork">
+  <img src="docs/images/v0.7.29/explore.webp" width="49%" alt="Explore landing page with Search, Album Wall and Music Map" />
+  <img src="docs/images/v0.7.29/now-playing-lyrics.webp" width="49%" alt="Now Playing with artwork, recording details and lyric controls" />
 </p>
 
-<p align="center"><em><strong>Album Wall</strong> — browse by artwork and familiarity instead of treating your library like a spreadsheet.</em></p>
-
-<p align="center">
-  <img src="docs/images/music-map.webp" alt="Melodex Music Map showing relationships between tracks">
-</p>
-
-<p align="center"><em><strong>Music Map</strong> — pan and zoom through relationships between tracks, then follow the connections that interest you.</em></p>
-
-<p align="center">
-  <img src="docs/images/constellation.webp" alt="Melodex Constellation visual playback view">
-</p>
-
-<p align="center"><em><strong>Constellation</strong> — make playback itself an exploration surface, with related tracks around what is playing.</em></p>
+Explore keeps search, artwork browsing and the map clearly separated. Now Playing provides cover art, recording context and lyrics, with more detail available when you want it.
 
 ## What you can actually do
 
