@@ -809,6 +809,17 @@ def test_mm2_location_history_search_now_playing_and_safe_unmapped_fallback():
     widget.forward_button.click()
     app.processEvents()
     assert widget.selected_ref_value() == "c"
+    # Keyboard navigation works with the search control focused, without
+    # introducing separate Qt shortcut objects or changing playback.
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+    widget.search.setFocus()
+    QTest.keyClick(widget.search, Qt.Key_Left, Qt.AltModifier)
+    app.processEvents()
+    assert widget.selected_ref_value() == "a"
+    QTest.keyClick(widget.search, Qt.Key_Right, Qt.AltModifier)
+    app.processEvents()
+    assert widget.selected_ref_value() == "c"
     widget.navigate_back()
     widget.navigate_back()
     app.processEvents()
@@ -1056,6 +1067,7 @@ def test_mm2_cluster_drilldown_restores_map_and_protects_playing_track():
     pinned = members[0]
     widget._select_ref(pinned)
     assert widget.node_items[pinned].isVisible()
+    assert widget.node_items[pinned].zValue() > widget._cluster_items[0].zValue()
     widget.highlight_track(ref_map[members[1]])
     assert widget.node_items[members[1]].isVisible()
     widget.set_route_endpoints(pinned, members[2])
