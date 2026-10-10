@@ -585,6 +585,8 @@ class MusicMapWidget(QWidget):
         self.now_playing_button.setEnabled(bool(self._current_track))
         self.selected_ref = old_selected
         self._art_prefetch_queue.clear()
+        self.region_menu.hide()
+        self.regions_button.hide()
         self.scene.clear()
         self._cluster_items.clear()
         self._cluster_signature = None
