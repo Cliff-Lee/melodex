@@ -46,6 +46,7 @@ def cluster_mapped_positions(
     scale: float,
     protected: Iterable[str] = (),
     minimum: int = 3,
+    cell_size: float | None = None,
 ) -> list[dict[str, object]]:
     """Group dense feature-map positions with deterministic cell boundaries.
 
@@ -55,7 +56,8 @@ def cluster_mapped_positions(
     """
     if len(positions) < 60:
         return []
-    cell_size = cluster_grid_size(float(scale))
+    cell_size = (cluster_grid_size(float(scale))
+                 if cell_size is None else float(cell_size))
     if cell_size <= 0:
         return []
     excluded = set(protected)
