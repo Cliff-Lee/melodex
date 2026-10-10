@@ -1,6 +1,8 @@
 # Next release — draft notes
 
-Current target version: **0.7.28**.
-Previous stable release: **0.7.27**, completing P24 predictive playback.
+Current target version: **0.7.29**.
+Previous stable release: **0.7.28**.
 
-P25 scope will be set during campaign planning. Native iPhone support remains deferred; Google Play publication remains outside current release work.
+This is the v0.7.29 macOS startup hotfix. It prevents an early `WindowStateChange` event during geometry restoration from referencing `playback_feature` before initialization. See `docs/releases/v0.7.29.md` for the public release notes and testing guidance.
+
+Native iPhone support remains deferred; Google Play publication remains outside current release work.
