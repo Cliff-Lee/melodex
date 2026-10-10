@@ -130,6 +130,7 @@ class _NodeItem(QGraphicsObject):
         self._bounds = QRectF(0, 0, 84, 84)
         self._base_size = (84.0, 84.0)
         self._hovered = False
+        self._suppress_hover_details = False
         self._artwork = QPixmap()
         self._pen = QPen(QColor(255, 255, 255, 95), 1.0)
         self._brush = QBrush(QColor(91, 145, 194))
@@ -160,6 +161,13 @@ class _NodeItem(QGraphicsObject):
     def setBrush(self, brush: QBrush) -> None:
         self._brush = QBrush(brush)
         self.update()
+
+    def set_route_compact(self, compact: bool) -> None:
+        """Keep a hovered track from covering a route being previewed."""
+        self._suppress_hover_details = bool(compact)
+        if compact and self._hovered:
+            self._hovered = False
+            self._resize_on_hover(False)
 
     def _resize_on_hover(self, hovered: bool) -> None:
         center = self.mapToScene(self._bounds.center())
@@ -282,15 +290,19 @@ class _NodeItem(QGraphicsObject):
         super().mouseDoubleClickEvent(event)
 
     def hoverEnterEvent(self, event):
-        self._hovered = True
-        self._resize_on_hover(True)
-        self.setZValue(30)
+        if not self._suppress_hover_details:
+            self._hovered = True
+            self._resize_on_hover(True)
+            self.setZValue(30)
         super().hoverEnterEvent(event)
 
     def hoverLeaveEvent(self, event):
-        self._hovered = False
-        self._resize_on_hover(False)
-        self.setZValue(10)
+        if self._hovered:
+            self._hovered = False
+            self._resize_on_hover(False)
+        # Route cards maintain their higher z-order even after mouse leave.
+        if not self._suppress_hover_details:
+            self.setZValue(10)
         super().hoverLeaveEvent(event)
 
 
@@ -912,11 +924,16 @@ class MusicMapWidget(QWidget):
     def selected_ref_value(self) -> str:
         return str(self.selected_ref or "")
 
+    def _set_route_hover_compact(self, compact: bool) -> None:
+        for item in self.node_items.values():
+            item.set_route_compact(compact)
+
     def set_route_endpoints(self, start_ref: str = "", end_ref: str = "") -> None:
         self._route_progress_index = -1
         self.route_start_ref = str(start_ref or "")
         self.route_end_ref = str(end_ref or "")
         self.route_result = {}
+        self._set_route_hover_compact(bool(self.route_start_ref and self.route_end_ref))
         self._redraw_route()
         self._recolour()
         self._refresh_clusters()
@@ -928,6 +945,7 @@ class MusicMapWidget(QWidget):
         if refs:
             self.route_start_ref = refs[0]
             self.route_end_ref = refs[-1]
+        self._set_route_hover_compact(bool(self.route_result.get("found") and len(refs) >= 2))
         self._redraw_route()
         self._recolour()
         self._refresh_clusters()
@@ -948,6 +966,7 @@ class MusicMapWidget(QWidget):
         self.route_result = {}
         self.route_start_ref = ""
         self.route_end_ref = ""
+        self._set_route_hover_compact(False)
         self._redraw_route()
         self._recolour()
         self._refresh_clusters()
