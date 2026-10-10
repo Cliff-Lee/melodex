@@ -1307,6 +1307,11 @@ def test_mm2_small_window_zoom_starts_smoothly_from_fitted_overview():
     target = float(widget.view._zoom_animation.endValue())
     assert abs(target - fitted * 1.10) < 0.01
     assert target < 0.62
-    widget.view._zoom_animation.stop()
+    # An explicit navigation must cancel the unfinished zoom animation.
+    widget.focus_ref("s20")
+    assert widget.view._zoom_animation.state().value == 0
+    widget.view.smooth_zoom(1.15)
+    widget.reset_view()
+    assert widget.view._zoom_animation.state().value == 0
     widget.close()
     app.processEvents()
