@@ -74,6 +74,11 @@ class _MapView(QGraphicsView):
         """Keep the fitted overview reachable on small screens."""
         self._overview_min_zoom = min(0.62, max(0.0001, float(fitted_scale)))
 
+    def stop_zoom(self) -> None:
+        """Stop a previous zoom before explicit camera navigation."""
+        if self._zoom_animation.state() == QAbstractAnimation.Running:
+            self._zoom_animation.stop()
+
     def smooth_zoom(self, multiplier: float) -> None:
         current = max(0.0001, float(self.transform().m11()))
         target = max(self._overview_min_zoom, min(3.0, current * float(multiplier)))
@@ -595,6 +600,7 @@ class MusicMapWidget(QWidget):
         self._art_prefetch_queue.clear()
         self.region_menu.hide()
         self.regions_button.hide()
+        self.view.stop_zoom()
         self.scene.clear()
         self._cluster_items.clear()
         self._cluster_signature = None
@@ -1044,6 +1050,7 @@ class MusicMapWidget(QWidget):
         if not locations:
             return
         self.region_menu.hide()
+        self.view.stop_zoom()
         previous = self._capture_location()
         x = sum(p[0] for p in locations) / len(locations)
         y = sum(p[1] for p in locations) / len(locations)
@@ -1054,6 +1061,7 @@ class MusicMapWidget(QWidget):
         self._remember_departure(previous)
 
     def reset_view(self) -> None:
+        self.view.stop_zoom()
         self.view.resetTransform()
         if not self.scene.items():
             return
@@ -1090,6 +1098,7 @@ class MusicMapWidget(QWidget):
 
     def _restore_location(self, location: tuple[float, float, float, str]) -> None:
         x, y, scale, ref = location
+        self.view.stop_zoom()
         self.view.resetTransform()
         self.view.scale(max(0.0001, scale), max(0.0001, scale))
         self.view.set_overview_zoom(scale)
@@ -1126,6 +1135,7 @@ class MusicMapWidget(QWidget):
         item = self.node_items.get(str(ref or ""))
         if item is None:
             return False
+        self.view.stop_zoom()
         previous = self._capture_location()
         self._select_ref(str(ref))
         self.view.centerOn(item)
