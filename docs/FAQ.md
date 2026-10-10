@@ -1,5 +1,9 @@
 # FAQ
 
+## Why does macOS warn when opening Melodex?
+
+The current public-beta Mac builds are not signed with an Apple Developer ID or notarized by Apple. macOS may block the first launch because Apple has not verified the app. If you trust the official download and choose to proceed, follow the [Mac installation guide](INSTALL_MACOS.md#3-macos-security-warning-unsigned-public-beta) for Apple's app-specific **System Settings → Privacy & Security → Open Anyway** procedure. Do **not** disable Gatekeeper globally. For data handling, see the [Privacy Policy](PRIVACY.md).
+
 ## Does Melodex need an LLM?
 No. Home sessions, Flow, taste memory, lyrics browsing, and local playback work without one.
 
