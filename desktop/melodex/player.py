@@ -103,6 +103,10 @@ class FlowPlayer(QObject):
         self._playback_recovery_candidate: dict[str, Any] | None = None
         self._playback_recovery_position_ms = 0
         self._playback_recovery_exhausted_reported = False
+        self._playback_recovery_resume_position_ms: int | None = None
+        self._playback_recovery_request_timeout_ms = 15_000
+        self._playback_recovery_load_timeout_ms = 10_000
+        self._buffer_stall_recovery_grace_ms = 3_500
         self._predictive_prefetch_generation = 0
         self._predictive_prefetch_request: dict[str, Any] | None = None
         self._predictive_prefetch: dict[str, Any] | None = None
@@ -131,6 +135,7 @@ class FlowPlayer(QObject):
         self._buffer_stall_deck: int | None = None
         self._buffer_stall_causes: set[str] = set()
         self._buffer_stall_notice_shown = False
+        self._buffer_stall_position_ms = 0
         self._last_progress_position_ms = 0
         self._last_progress_at = time.monotonic()
         self._position_stall_monitor_active = False
@@ -178,6 +183,12 @@ class FlowPlayer(QObject):
             "recovery_stale_results": 0,
             "recovery_skipped_paused": 0,
             "recovery_unavailable": 0,
+            "recovery_stall_triggers": 0,
+            "recovery_resume_confirmations": 0,
+            "recovery_duplicate_errors_ignored": 0,
+            "recovery_request_timeouts": 0,
+            "recovery_load_timeouts": 0,
+            "local_reconnect_load_timeouts": 0,
             "local_resource_errors": 0,
             "local_reconnect_attempts": 0,
             "local_reconnect_probe_failures": 0,
@@ -216,6 +227,16 @@ class FlowPlayer(QObject):
         self._playback_recovery_timer.setSingleShot(True)
         self._playback_recovery_timer.timeout.connect(
             self._start_playback_recovery
+        )
+        self._playback_recovery_watchdog_timer = QTimer(self)
+        self._playback_recovery_watchdog_timer.setSingleShot(True)
+        self._playback_recovery_watchdog_timer.timeout.connect(
+            self._on_playback_recovery_watchdog_timeout
+        )
+        self._buffer_stall_recovery_timer = QTimer(self)
+        self._buffer_stall_recovery_timer.setSingleShot(True)
+        self._buffer_stall_recovery_timer.timeout.connect(
+            self._on_buffer_stall_recovery_timeout
         )
         self._buffer_notice_timer = QTimer(self)
         self._buffer_notice_timer.setSingleShot(True)
@@ -573,6 +594,8 @@ class FlowPlayer(QObject):
     def _invalidate_playback_recovery(self, *, reset_attempts: bool) -> None:
         self._playback_recovery_generation += 1
         self._playback_recovery_timer.stop()
+        self._playback_recovery_watchdog_timer.stop()
+        self._buffer_stall_recovery_timer.stop()
         self._buffer_notice_timer.stop()
         self._end_buffer_stall()
         self._position_stall_monitor_active = False
@@ -589,6 +612,7 @@ class FlowPlayer(QObject):
         self._playback_recovery_pending = False
         self._playback_recovery_request = None
         self._playback_recovery_candidate = None
+        self._playback_recovery_resume_position_ms = None
         if reset_attempts:
             self._playback_recovery_attempts = 0
             self._local_reconnect_attempts = 0
@@ -632,6 +656,7 @@ class FlowPlayer(QObject):
     ) -> None:
         if self._playback_recovery_pending:
             return
+        self._playback_recovery_watchdog_timer.stop()
         if not (0 <= index < len(self.queue)):
             return
         mode = "local" if mode == "local" else "remote"
@@ -767,6 +792,9 @@ class FlowPlayer(QObject):
             self._runtime_metrics["local_reconnect_attempts"] += 1
         else:
             self._runtime_metrics["recovery_attempts"] += 1
+        self._playback_recovery_watchdog_timer.start(
+            self._playback_recovery_request_timeout_ms
+        )
 
     def _apply_playback_recovery(
         self,
@@ -781,6 +809,7 @@ class FlowPlayer(QObject):
         ):
             self._runtime_metrics["recovery_stale_results"] += 1
             return
+        self._playback_recovery_watchdog_timer.stop()
         request = self._playback_recovery_request or {}
         mode = str(request.get("mode") or "remote")
         self._playback_recovery_pending = False
@@ -815,9 +844,13 @@ class FlowPlayer(QObject):
                     request.get("resume_after_recovery", True)
                 ),
             }
+            self._playback_recovery_watchdog_timer.start(
+                self._playback_recovery_load_timeout_ms
+            )
             try:
                 self._set_local_recovery_source(deck, candidate_url)
             except Exception:
+                self._playback_recovery_watchdog_timer.stop()
                 self._playback_recovery_candidate = None
                 self._runtime_metrics["local_reconnect_probe_failures"] += 1
                 self._retry_or_finish_playback_recovery(
@@ -856,9 +889,13 @@ class FlowPlayer(QObject):
             "position_ms": int(self._playback_recovery_position_ms),
             "resume_after_recovery": True,
         }
+        self._playback_recovery_watchdog_timer.start(
+            self._playback_recovery_load_timeout_ms
+        )
         try:
             self.players[deck].setSource(url)
         except Exception:
+            self._playback_recovery_watchdog_timer.stop()
             self._playback_recovery_candidate = None
             self._runtime_metrics["recovery_source_rejections"] += 1
             self._retry_or_finish_playback_recovery(
@@ -895,10 +932,13 @@ class FlowPlayer(QObject):
 
     def _finish_playback_recovery(self, *, mode: str = "remote") -> None:
         self._playback_recovery_timer.stop()
+        self._playback_recovery_watchdog_timer.stop()
+        self._end_buffer_stall()
         self._playback_recovery_pending = False
         self._playback_recovery_request = None
         candidate = self._playback_recovery_candidate
         self._playback_recovery_candidate = None
+        self._playback_recovery_resume_position_ms = None
         if candidate is not None:
             deck = int(candidate.get("deck", -1))
             if 0 <= deck < len(self.players):
@@ -918,6 +958,56 @@ class FlowPlayer(QObject):
             self.error.emit(
                 "Playback could not be resumed. The track remains in your queue."
             )
+
+    def _on_playback_recovery_watchdog_timeout(self) -> None:
+        """Bound a stalled provider refresh or a media source that never loads."""
+        request = self._playback_recovery_request
+        if self._playback_recovery_pending and request is not None:
+            generation = int(request["generation"])
+            index = int(request["index"])
+            deck = int(request["deck"])
+            mode = str(request.get("mode") or "remote")
+            self._playback_recovery_pending = False
+            self._playback_recovery_request = None
+            if mode == "local":
+                self._runtime_metrics["local_reconnect_probe_failures"] += 1
+            else:
+                self._runtime_metrics["recovery_request_timeouts"] += 1
+            self._retry_or_finish_playback_recovery(
+                generation, index, deck, mode=mode
+            )
+            return
+
+        candidate = self._playback_recovery_candidate
+        if candidate is None:
+            return
+        generation = int(candidate.get("generation", -1))
+        index = int(candidate.get("index", -1))
+        deck = int(candidate.get("deck", -1))
+        mode = str(candidate.get("mode") or "remote")
+        if (
+            generation != self._playback_recovery_generation
+            or index != self.index
+            or deck != self.active
+            or not (0 <= index < len(self.queue))
+        ):
+            self._runtime_metrics["recovery_stale_results"] += 1
+            self._playback_recovery_candidate = None
+            return
+
+        self._playback_recovery_candidate = None
+        if mode == "local":
+            self._runtime_metrics["local_reconnect_load_timeouts"] += 1
+        else:
+            self._runtime_metrics["recovery_load_timeouts"] += 1
+        try:
+            self.players[deck].stop()
+            self.players[deck].setSource(QUrl())
+        except Exception:
+            pass
+        self._retry_or_finish_playback_recovery(
+            generation, index, deck, mode=mode
+        )
 
     def _set_local_recovery_source(self, deck: int, url: QUrl) -> None:
         self.players[deck].setSource(url)
@@ -944,6 +1034,7 @@ class FlowPlayer(QObject):
             # event without dropping the candidate we are still loading.
             self._runtime_metrics["recovery_stale_results"] += 1
             return
+        self._playback_recovery_watchdog_timer.stop()
         mode = str(candidate.get("mode") or "remote")
         index = int(candidate["index"])
         player = self.players[deck]
@@ -963,11 +1054,20 @@ class FlowPlayer(QObject):
                 self.playingChanged.emit(False)
                 self.playbackNotice.emit("Storage is available.", 4000)
             self._runtime_metrics["local_reconnect_successes"] += 1
+            self._local_reconnect_attempts = 0
+            self._playback_recovery_exhausted_reported = False
+            self._playback_recovery_resume_position_ms = None
             return
 
         track = dict(candidate["track"])
         self.queue[index] = track
         self._runtime_metrics["recovery_successes"] += 1
+        # Keep this incident's retry budget until the new stream actually
+        # advances. LoadedMedia alone can precede a long buffering phase.
+        self._playback_recovery_resume_position_ms = (
+            int(candidate.get("position_ms", self._playback_recovery_position_ms))
+            if bool(candidate.get("resume_after_recovery", True)) else None
+        )
         self.queueChanged.emit(self.queue)
         player.play()
         self.playingChanged.emit(True)
@@ -1688,6 +1788,12 @@ class FlowPlayer(QObject):
         deck = int(deck)
         if not (0 <= deck < len(self.players)):
             return
+        # Once a recovery request is in flight, Qt may continue emitting
+        # NetworkError for the same failed source. Count but ignore duplicates:
+        # they must not flood diagnostics or compete with the active retry.
+        if deck == self.active and self._playback_recovery_pending:
+            self._runtime_metrics["recovery_duplicate_errors_ignored"] += 1
+            return
 
         detail = str(message or "").strip() or "Playback failed"
         self._runtime_metrics["playback_errors"] += 1
@@ -1727,6 +1833,7 @@ class FlowPlayer(QObject):
             self._runtime_metrics["local_resource_errors"] += 1
             candidate = self._playback_recovery_candidate
             if candidate is not None and candidate.get("mode") == "local":
+                self._playback_recovery_watchdog_timer.stop()
                 self._playback_recovery_candidate = None
                 self.players[deck].stop()
                 self.players[deck].setSource(QUrl())
@@ -1823,9 +1930,18 @@ class FlowPlayer(QObject):
         if self._buffer_stall_started_at is None:
             self._buffer_stall_started_at = time.monotonic()
             self._buffer_stall_deck = deck
+            # Capture the active deck position at stall onset. Do not use
+            # the progress monitor's last value here: it may belong to the
+            # previous track during an unusually slow initial load.
+            self._buffer_stall_position_ms = max(
+                0, int(self.players[deck].position())
+            )
             self._buffer_stall_causes.clear()
             self._runtime_metrics["buffer_stall_events"] += 1
             self._buffer_notice_timer.start(400)
+            self._buffer_stall_recovery_timer.start(
+                self._buffer_stall_recovery_grace_ms
+            )
         if cause not in self._buffer_stall_causes:
             self._buffer_stall_causes.add(cause)
             if cause == "media_status":
@@ -1844,7 +1960,9 @@ class FlowPlayer(QObject):
         started_at = self._buffer_stall_started_at
         self._buffer_stall_started_at = None
         self._buffer_stall_deck = None
+        self._buffer_stall_position_ms = 0
         self._buffer_stall_causes.clear()
+        self._buffer_stall_recovery_timer.stop()
         self._buffer_notice_timer.stop()
         if started_at is not None:
             elapsed_ms = max(0, int((time.monotonic() - started_at) * 1000))
@@ -1871,6 +1989,18 @@ class FlowPlayer(QObject):
             if position_ms != self._last_progress_position_ms:
                 self._last_progress_position_ms = position_ms
                 self._last_progress_at = now
+                resume_position = self._playback_recovery_resume_position_ms
+                if (
+                    resume_position is not None
+                    and position_ms >= int(resume_position) + 1_000
+                ):
+                    # A loaded media source is not proof that playback resumed.
+                    # Reset the incident retry budget only after the recovered
+                    # deck has actually advanced past its requested seek.
+                    self._playback_recovery_attempts = 0
+                    self._playback_recovery_exhausted_reported = False
+                    self._playback_recovery_resume_position_ms = None
+                    self._runtime_metrics["recovery_resume_confirmations"] += 1
                 self._end_buffer_stall()
             elif now - self._last_progress_at >= (
                 self._position_stall_threshold_ms / 1000.0
@@ -1881,6 +2011,54 @@ class FlowPlayer(QObject):
         self._last_progress_at = now
         if playback_state == QMediaPlayer.PausedState:
             self._end_buffer_stall()
+
+    def _on_buffer_stall_recovery_timeout(self) -> None:
+        """Recover a remote stream that stops progressing without a Qt error."""
+        self._buffer_stall_recovery_timer.stop()
+        if self._buffer_stall_started_at is None:
+            return
+        deck = self._buffer_stall_deck
+        if (
+            deck is None
+            or int(deck) != self.active
+            or not self._playback_should_play
+            or not (0 <= self.index < len(self.queue))
+            or self._playback_recovery_exhausted_reported
+        ):
+            return
+        if (
+            self._playback_recovery_pending
+            or self._playback_recovery_request is not None
+            or self._playback_recovery_candidate is not None
+        ):
+            return
+        track = self.queue[self.index]
+        if track.get("local_path"):
+            return
+        if (
+            self.playback_refresher is None
+            or self._playback_refresh_submit is None
+        ):
+            return
+        position = max(
+            0,
+            int(self.players[deck].position()),
+            int(self._buffer_stall_position_ms),
+        )
+        # Do not turn a slow initial load at position zero into a retry loop.
+        if position <= 0:
+            return
+        self._playback_recovery_position_ms = position
+        self._runtime_metrics["recovery_stall_triggers"] += 1
+        if self._playback_recovery_attempts == 0:
+            self.error.emit(
+                "Connection stalled. Trying to resume playback."
+            )
+        self._queue_playback_recovery(
+            self._playback_recovery_generation,
+            self.index,
+            deck,
+        )
 
     def _on_media_status(self, deck: int, status: QMediaPlayer.MediaStatus) -> None:
         deck = int(deck)

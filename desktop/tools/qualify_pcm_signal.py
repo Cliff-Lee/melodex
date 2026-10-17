@@ -14,8 +14,13 @@ from pathlib import Path
 import sys
 
 
-def inspect(path: Path) -> dict:
+def inspect(path: Path, *, tail_seconds: float | None = None) -> dict:
     pcm = path.read_bytes()
+    if tail_seconds is not None:
+        if tail_seconds <= 0:
+            raise ValueError("tail_seconds must be positive")
+        tail_bytes = int(tail_seconds * 44_100 * 2 * 2)
+        pcm = pcm[-tail_bytes:]
     if len(pcm) % 2:
         pcm = pcm[:-1]
     samples = array("h")
@@ -50,9 +55,17 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("pcm", type=Path)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument(
+        "--tail-seconds",
+        type=float,
+        default=None,
+        help="Analyze only the final N seconds of the capture (for post-recovery audio gates)",
+    )
     args = parser.parse_args()
     try:
-        result = inspect(args.pcm)
+        result = inspect(args.pcm, tail_seconds=args.tail_seconds)
+        if args.tail_seconds is not None:
+            result["analysis_window"] = f"last {args.tail_seconds:g} seconds"
     except (OSError, ValueError):
         result = {"passed": False, "scope": "virtual sink capture unavailable"}
     args.output.parent.mkdir(parents=True, exist_ok=True)
