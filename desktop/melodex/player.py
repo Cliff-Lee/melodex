@@ -103,6 +103,7 @@ class FlowPlayer(QObject):
         self._playback_recovery_candidate: dict[str, Any] | None = None
         self._playback_recovery_position_ms = 0
         self._playback_recovery_exhausted_reported = False
+        self._playback_recovery_resume_position_ms: int | None = None
         self._playback_recovery_request_timeout_ms = 15_000
         self._playback_recovery_load_timeout_ms = 10_000
         self._buffer_stall_recovery_grace_ms = 1_200
@@ -183,6 +184,7 @@ class FlowPlayer(QObject):
             "recovery_skipped_paused": 0,
             "recovery_unavailable": 0,
             "recovery_stall_triggers": 0,
+            "recovery_resume_confirmations": 0,
             "recovery_request_timeouts": 0,
             "recovery_load_timeouts": 0,
             "local_reconnect_load_timeouts": 0,
@@ -609,6 +611,7 @@ class FlowPlayer(QObject):
         self._playback_recovery_pending = False
         self._playback_recovery_request = None
         self._playback_recovery_candidate = None
+        self._playback_recovery_resume_position_ms = None
         if reset_attempts:
             self._playback_recovery_attempts = 0
             self._local_reconnect_attempts = 0
@@ -934,6 +937,7 @@ class FlowPlayer(QObject):
         self._playback_recovery_request = None
         candidate = self._playback_recovery_candidate
         self._playback_recovery_candidate = None
+        self._playback_recovery_resume_position_ms = None
         if candidate is not None:
             deck = int(candidate.get("deck", -1))
             if 0 <= deck < len(self.players):
@@ -1051,13 +1055,18 @@ class FlowPlayer(QObject):
             self._runtime_metrics["local_reconnect_successes"] += 1
             self._local_reconnect_attempts = 0
             self._playback_recovery_exhausted_reported = False
+            self._playback_recovery_resume_position_ms = None
             return
 
         track = dict(candidate["track"])
         self.queue[index] = track
         self._runtime_metrics["recovery_successes"] += 1
-        self._playback_recovery_attempts = 0
-        self._playback_recovery_exhausted_reported = False
+        # Keep this incident's retry budget until the new stream actually
+        # advances. LoadedMedia alone can precede a long buffering phase.
+        self._playback_recovery_resume_position_ms = (
+            int(candidate.get("position_ms", self._playback_recovery_position_ms))
+            if bool(candidate.get("resume_after_recovery", True)) else None
+        )
         self.queueChanged.emit(self.queue)
         player.play()
         self.playingChanged.emit(True)
@@ -1973,6 +1982,18 @@ class FlowPlayer(QObject):
             if position_ms != self._last_progress_position_ms:
                 self._last_progress_position_ms = position_ms
                 self._last_progress_at = now
+                resume_position = self._playback_recovery_resume_position_ms
+                if (
+                    resume_position is not None
+                    and position_ms >= int(resume_position) + 1_000
+                ):
+                    # A loaded media source is not proof that playback resumed.
+                    # Reset the incident retry budget only after the recovered
+                    # deck has actually advanced past its requested seek.
+                    self._playback_recovery_attempts = 0
+                    self._playback_recovery_exhausted_reported = False
+                    self._playback_recovery_resume_position_ms = None
+                    self._runtime_metrics["recovery_resume_confirmations"] += 1
                 self._end_buffer_stall()
             elif now - self._last_progress_at >= (
                 self._position_stall_threshold_ms / 1000.0
