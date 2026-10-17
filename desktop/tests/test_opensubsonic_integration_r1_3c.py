@@ -83,8 +83,13 @@ def fake_subsonic_server():
                     self.send_error(404)
                     return
                 requested = self.headers.get("Range")
+                range_header = None
                 if requested == "bytes=4-7":
                     status, body = 206, AUDIO[4:8]
+                    range_header = "bytes 4-7/16"
+                elif requested == "bytes=0-4095":
+                    status, body = 206, AUDIO
+                    range_header = "bytes 0-15/16"
                 else:
                     status, body = 200, AUDIO
                 self.send_response(status)
@@ -92,7 +97,7 @@ def fake_subsonic_server():
                 self.send_header("Accept-Ranges", "bytes")
                 self.send_header("Content-Length", str(len(body)))
                 if status == 206:
-                    self.send_header("Content-Range", "bytes 4-7/16")
+                    self.send_header("Content-Range", range_header)
                 self.end_headers()
                 if not head_only:
                     self.wfile.write(body)
@@ -209,3 +214,26 @@ def test_wrong_password_never_reveals_private_data(fake_subsonic_server, install
         installed_provider.search("Synthetic")
     assert "incorrect-password" not in str(exc.value)
     assert any(not row["valid"] for row in calls)
+
+
+def test_live_probe_uses_real_host_and_gateway_without_metadata(
+    fake_subsonic_server
+):
+    import runpy
+
+    server_url, calls = fake_subsonic_server
+    tool = runpy.run_path(str(ROOT / "tools" / "qualify_opensubsonic_live.py"),
+                          run_name="r1_3c_test")
+    steps = tool["qualify"](
+        server=server_url, username="listener", password="correct-password",
+        allow_http=True, query="Synthetic",
+    )
+    assert all(steps.values()), steps
+    assert any(row["range"] == "bytes=0-4095" and row["valid"] for row in calls)
+    failed = tool["qualify"](
+        server=server_url, username="listener", password="invalid-secret",
+        allow_http=True, query="Synthetic",
+    )
+    assert failed["provider_configured"] is True
+    assert failed["authenticated_health"] is False
+    assert failed["range_seek_206"] is False
