@@ -597,3 +597,29 @@ def test_recovery_media_load_watchdog_bounds_candidate_that_never_loads():
     assert player._playback_recovery_candidate is None
     assert player.current_track()["track_id"] == "stalled"
     player.close()
+
+
+def test_recovery_budget_resets_only_after_resumed_position_advances():
+    import pytest
+
+    try:
+        from PySide6.QtMultimedia import QMediaPlayer
+    except (ImportError, OSError) as exc:
+        pytest.skip(f"Qt multimedia runtime is unavailable: {exc}")
+    player = _player()
+    player._playback_recovery_attempts = 1
+    player._playback_recovery_resume_position_ms = 4_000
+    player._last_progress_position_ms = 4_000
+
+    # Source commit alone must not reset the incident budget; the stream has
+    # only advanced 500 ms past the requested resume point.
+    player._monitor_position_progress(0, 4_500, QMediaPlayer.PlayingState)
+    assert player._playback_recovery_attempts == 1
+    assert player._playback_recovery_resume_position_ms == 4_000
+
+    # Confirm only after another real position change crosses +1000 ms.
+    player._monitor_position_progress(0, 5_000, QMediaPlayer.PlayingState)
+    assert player._playback_recovery_attempts == 0
+    assert player._playback_recovery_resume_position_ms is None
+    assert player._runtime_metrics["recovery_resume_confirmations"] == 1
+    player.close()
