@@ -7,6 +7,7 @@ on:
       - desktop/bundled_provider_sources/opensubsonic_personal/**
       - desktop/tools/qualify_opensubsonic_live.py
       - desktop/tools/qualify_opensubsonic_inflight.py
+      - desktop/tools/qualify_opensubsonic_natural_outage.py
       - desktop/melodex/playback_gateway.py
 permissions:
   contents: read
@@ -59,6 +60,17 @@ jobs:
             -metadata title=R1SyntheticSignal \
             -codec:a libmp3lame -q:a 4 -y \
             "$fixture_root/music/R1SyntheticSignal.mp3"
+
+          # A separate high-bitrate, long fixture ensures the HTTP stream is
+          # still in flight while playback is underway; the natural-outage
+          # probe throttles its local proxy to near real-time.
+          ffmpeg -hide_banner -loglevel error -f lavfi -i \
+            sine=frequency=660:duration=180 -ar 44100 -ac 2 \
+            -metadata artist=MelodexCI \
+            -metadata album=DisposableFixture \
+            -metadata title=R1NaturalOutageSignal \
+            -codec:a libmp3lame -b:a 192k -y \
+            "$fixture_root/music/R1NaturalOutageSignal.mp3"
 
           # Short-lived randomly generated credential, never printed.
           ND_DEVAUTOCREATEADMINPASSWORD=$(python -c 'import secrets; print(secrets.token_hex(14))')
@@ -196,6 +208,42 @@ jobs:
             exit 1
           fi
           echo "Existing FlowPlayer recovery with injected NetworkError: PASS"
+
+          # Wait for the long, throttled fixture to be indexed before the
+          # natural transport-stall experiment.
+          natural_track_ready=0
+          for attempt in $(seq 1 30); do
+            if MELODEX_SUBSONIC_QUERY=R1NaturalOutageSignal \
+              PYTHONPATH=desktop python desktop/tools/qualify_opensubsonic_live.py \
+              > "$RUNNER_TEMP/natural-track-transport.json"; then
+              natural_track_ready=1
+              break
+            fi
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/natural-track-transport.json"
+          if [[ "$natural_track_ready" != 1 ]]; then
+            echo "Long natural-outage fixture was not ready"
+            exit 1
+          fi
+
+          natural_status=0
+          MELODEX_SUBSONIC_QUERY=R1NaturalOutageSignal \
+            MELODEX_NATURAL_OUTAGE_PCM_PATH="$RUNNER_TEMP/natural-outage-recovered.pcm" \
+            PYTHONPATH=desktop QT_QPA_PLATFORM=offscreen QT_MEDIA_BACKEND=ffmpeg \
+            python desktop/tools/qualify_opensubsonic_natural_outage.py \
+            > "$RUNNER_TEMP/natural-outage-recovery.json" \
+            2> "$RUNNER_TEMP/natural-outage-qt-stderr.log" || natural_status=1
+          cat "$RUNNER_TEMP/natural-outage-recovery.json"
+          natural_pcm_status=0
+          python desktop/tools/qualify_pcm_signal.py \
+            "$RUNNER_TEMP/natural-outage-recovered.pcm" \
+            --output "$RUNNER_TEMP/natural-outage-pcm.json" || natural_pcm_status=1
+          if [[ "$natural_status" != 0 || "$natural_pcm_status" != 0 ]]; then
+            echo "Natural outage detection, bounded recovery or post-recovery PCM failed"
+            exit 1
+          fi
+          echo "Natural Navidrome outage detection and post-recovery PCM: PASS"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -209,4 +257,7 @@ jobs:
             ${{ runner.temp }}/post-restart-pcm.json
             ${{ runner.temp }}/inflight-recovery.json
             ${{ runner.temp }}/inflight-pcm.json
+            ${{ runner.temp }}/natural-track-transport.json
+            ${{ runner.temp }}/natural-outage-recovery.json
+            ${{ runner.temp }}/natural-outage-pcm.json
           if-no-files-found: warn
