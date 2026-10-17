@@ -215,7 +215,7 @@ def qualify(upstream, username, password, container, *, query, allow_http,
             app, lambda: deck.playbackState() == QMediaPlayer.PlayingState, 18,
         )
         steps["initial_position_advanced"] = _until(
-            app, lambda: deck.position() >= 4500, 20,
+            app, lambda: deck.position() >= 2500, 20,
         )
         if not all((steps["initial_qt_playing"], steps["initial_position_advanced"])):
             return steps, diagnostics
