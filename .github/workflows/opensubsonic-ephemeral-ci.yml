@@ -11,7 +11,7 @@ permissions:
   contents: read
 jobs:
   disposable-navidrome:
-    name: Real Navidrome authenticated search and HTTP Range (no audio output)
+    name: Real Navidrome Qt PCM, seeking and post-restart playback
     runs-on: ubuntu-22.04
     timeout-minutes: 15
     steps:
@@ -114,6 +114,46 @@ jobs:
             exit 1
           fi
           echo "Qt FlowPlayer decoded non-silent audio through PulseAudio virtual sink: PASS"
+
+          # This is post-restart reconnection, NOT seamless mid-stream recovery.
+          docker restart --time 1 "$service_name" >/dev/null
+          reconnected=0
+          for attempt in $(seq 1 50); do
+            if PYTHONPATH=desktop python desktop/tools/qualify_opensubsonic_live.py \
+              > "$RUNNER_TEMP/post-restart-transport.json"; then
+              reconnected=1
+              break
+            fi
+            sleep 2
+          done
+          cat "$RUNNER_TEMP/post-restart-transport.json"
+          if [[ "$reconnected" != 1 ]]; then
+            echo "Provider could not reconnect after disposable server restart"
+            exit 1
+          fi
+
+          parec --device=melodex_r1.monitor --raw \
+            --format=s16le --rate=44100 --channels=2 \
+            > "$RUNNER_TEMP/post-restart-audio.pcm" \
+            2>"$RUNNER_TEMP/post-restart-parec.log" &
+          capture_pid=$!
+          sleep 1
+          replay_status=0
+          PYTHONPATH=desktop QT_QPA_PLATFORM=offscreen QT_MEDIA_BACKEND=ffmpeg \
+            python desktop/tools/qualify_opensubsonic_qt_audio.py \
+            > "$RUNNER_TEMP/post-restart-qt-audio.json" || replay_status=1
+          kill "$capture_pid" >/dev/null 2>&1 || true
+          wait "$capture_pid" >/dev/null 2>&1 || true
+          cat "$RUNNER_TEMP/post-restart-qt-audio.json"
+          replay_pcm_status=0
+          python desktop/tools/qualify_pcm_signal.py \
+            "$RUNNER_TEMP/post-restart-audio.pcm" \
+            --output "$RUNNER_TEMP/post-restart-pcm.json" || replay_pcm_status=1
+          if [[ "$replay_status" != 0 || "$replay_pcm_status" != 0 ]]; then
+            echo "Post-restart authenticated Qt playback or PCM gate FAILED"
+            exit 1
+          fi
+          echo "Post-restart Navidrome reauthentication and fresh Qt PCM playback: PASS"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -122,4 +162,7 @@ jobs:
             ${{ runner.temp }}/navidrome-transport-check.json
             ${{ runner.temp }}/qt-audio-check.json
             ${{ runner.temp }}/pcm-check.json
+            ${{ runner.temp }}/post-restart-transport.json
+            ${{ runner.temp }}/post-restart-qt-audio.json
+            ${{ runner.temp }}/post-restart-pcm.json
           if-no-files-found: warn
