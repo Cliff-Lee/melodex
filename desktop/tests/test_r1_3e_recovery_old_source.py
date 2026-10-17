@@ -6,9 +6,14 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 
 def test_old_source_media_event_does_not_discard_current_remote_recovery():
-    from PySide6.QtCore import QUrl
-    from PySide6.QtWidgets import QApplication
-    from melodex.player import FlowPlayer
+    import pytest
+
+    try:
+        from PySide6.QtCore import QUrl
+        from PySide6.QtWidgets import QApplication
+        from melodex.player import FlowPlayer
+    except (ImportError, OSError) as exc:
+        pytest.skip(f"Qt desktop runtime unavailable: {exc}")
 
     app = QApplication.instance() or QApplication([])
     player = FlowPlayer(lambda track: dict(track))
