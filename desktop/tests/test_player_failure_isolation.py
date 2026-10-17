@@ -623,3 +623,34 @@ def test_recovery_budget_resets_only_after_resumed_position_advances():
     assert player._playback_recovery_resume_position_ms is None
     assert player._runtime_metrics["recovery_resume_confirmations"] == 1
     player.close()
+
+
+def test_duplicate_active_deck_errors_are_ignored_during_pending_recovery():
+    player = _player()
+    player.queue = [{
+        "track_id": "stalled",
+        "stream_url": "https://stream.example/current.mp3",
+    }]
+    player.index = 0
+    player.active = 0
+    player._playback_should_play = True
+    player._playback_recovery_pending = True
+    request = {
+        "generation": player._playback_recovery_generation,
+        "index": 0,
+        "deck": 0,
+        "attempt": 1,
+        "mode": "remote",
+    }
+    player._playback_recovery_request = request
+
+    for _ in range(25):
+        player._on_player_error(0, _network_error(), "duplicate network error")
+
+    assert player._runtime_metrics["recovery_duplicate_errors_ignored"] == 25
+    assert player._runtime_metrics["playback_errors"] == 0
+    assert player._runtime_metrics["active_deck_errors"] == 0
+    assert player._runtime_metrics["transient_source_errors"] == 0
+    assert player._playback_recovery_pending is True
+    assert player._playback_recovery_request is request
+    player.close()
