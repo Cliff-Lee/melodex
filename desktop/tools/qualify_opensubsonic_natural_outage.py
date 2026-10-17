@@ -172,6 +172,7 @@ def qualify(upstream, username, password, container, *, query, allow_http,
         "server_restart_requested": False,
         "server_restart_completed": False,
         "server_reauthenticated": False,
+        "error_storm_suppressed": False,
         "stream_transport_blocked": False,
         "natural_detection_observed": False,
         "natural_qt_error_observed": False,
@@ -361,6 +362,10 @@ def qualify(upstream, username, password, container, *, query, allow_http,
         steps["qt_error_free_stall"] = (
             not qt_errors and snapshot["transient_source_errors"] == 0
         )
+        steps["error_storm_suppressed"] = (
+            snapshot["playback_errors"] <= 2
+            and snapshot["transient_source_errors"] <= 2
+        )
         diagnostics["mode"] = mode
         diagnostics["server_restart_completed"] = bool(restart_state["completed"])
         diagnostics["natural_qt_error_count"] = len(qt_errors)
@@ -381,6 +386,7 @@ def qualify(upstream, username, password, container, *, query, allow_http,
                 and steps["server_restart_completed"]
                 and steps["server_reauthenticated"]
                 and steps["natural_qt_error_observed"]
+                and steps["error_storm_suppressed"]
             )
         passed = (
             steps["authenticated_track"]
