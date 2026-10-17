@@ -102,7 +102,8 @@ jobs:
           audio_status=0
           PYTHONPATH=desktop QT_QPA_PLATFORM=offscreen QT_MEDIA_BACKEND=ffmpeg \
             python desktop/tools/qualify_opensubsonic_qt_audio.py \
-            > "$RUNNER_TEMP/qt-audio-check.json" || audio_status=1
+            > "$RUNNER_TEMP/qt-audio-check.json" \
+            2> "$RUNNER_TEMP/qt-audio-stderr.log" || audio_status=1
           kill "$capture_pid" >/dev/null 2>&1 || true
           wait "$capture_pid" >/dev/null 2>&1 || true
           cat "$RUNNER_TEMP/qt-audio-check.json"
@@ -142,7 +143,8 @@ jobs:
           replay_status=0
           PYTHONPATH=desktop QT_QPA_PLATFORM=offscreen QT_MEDIA_BACKEND=ffmpeg \
             python desktop/tools/qualify_opensubsonic_qt_audio.py \
-            > "$RUNNER_TEMP/post-restart-qt-audio.json" || replay_status=1
+            > "$RUNNER_TEMP/post-restart-qt-audio.json" \
+            2> "$RUNNER_TEMP/post-restart-qt-stderr.log" || replay_status=1
           kill "$capture_pid" >/dev/null 2>&1 || true
           wait "$capture_pid" >/dev/null 2>&1 || true
           cat "$RUNNER_TEMP/post-restart-qt-audio.json"
@@ -170,7 +172,8 @@ jobs:
           inflight_status=0
           PYTHONPATH=desktop QT_QPA_PLATFORM=offscreen QT_MEDIA_BACKEND=ffmpeg \
             python desktop/tools/qualify_opensubsonic_inflight.py \
-            > "$RUNNER_TEMP/inflight-recovery.json" || inflight_status=1
+            > "$RUNNER_TEMP/inflight-recovery.json" \
+            2> "$RUNNER_TEMP/inflight-qt-stderr.log" || inflight_status=1
           kill "$capture_pid" >/dev/null 2>&1 || true
           wait "$capture_pid" >/dev/null 2>&1 || true
           cat "$RUNNER_TEMP/inflight-recovery.json"
