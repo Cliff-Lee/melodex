@@ -23,7 +23,7 @@ jobs:
         run: |
           python -m pip install numpy mutagen requests PySide6 "segno>=1.6,<2" keyring
           sudo apt-get update
-          sudo apt-get install -y ffmpeg
+          sudo apt-get install -y ffmpeg pulseaudio pulseaudio-utils
       - name: Run private disposable Navidrome and Melodex provider probe
         shell: bash
         env:
@@ -36,7 +36,7 @@ jobs:
           fixture_root="$RUNNER_TEMP/r1-opensubsonic-fixture"
           mkdir -p "$fixture_root/music" "$fixture_root/data"
           ffmpeg -hide_banner -loglevel error -f lavfi -i \
-            sine=frequency=440:duration=8 -ar 44100 -ac 2 \
+            sine=frequency=440:duration=20 -ar 44100 -ac 2 \
             -metadata artist=MelodexCI \
             -metadata album=DisposableFixture \
             -metadata title=R1SyntheticSignal \
@@ -77,9 +77,43 @@ jobs:
             exit 1
           fi
           echo "Disposable real Navidrome authenticated search and Range: PASS"
+          echo "Starting disposable PulseAudio virtual output for real Qt playback"
+          export XDG_RUNTIME_DIR="$RUNNER_TEMP/melodex-pulse-runtime"
+          mkdir -p "$XDG_RUNTIME_DIR"
+          chmod 700 "$XDG_RUNTIME_DIR"
+          pulseaudio --start --daemonize=yes --exit-idle-time=-1
+          pactl info >/dev/null
+          pactl load-module module-null-sink sink_name=melodex_r1 \
+            rate=44100 channels=2 >/dev/null
+          pactl set-default-sink melodex_r1
+          export PULSE_SINK=melodex_r1
+          parec --device=melodex_r1.monitor --raw \
+            --format=s16le --rate=44100 --channels=2 \
+            > "$RUNNER_TEMP/r1-audio.pcm" 2>"$RUNNER_TEMP/parec.log" &
+          capture_pid=$!
+          sleep 1
+          audio_status=0
+          PYTHONPATH=desktop QT_QPA_PLATFORM=offscreen QT_MEDIA_BACKEND=ffmpeg \
+            python desktop/tools/qualify_opensubsonic_qt_audio.py \
+            > "$RUNNER_TEMP/qt-audio-check.json" || audio_status=1
+          kill "$capture_pid" >/dev/null 2>&1 || true
+          wait "$capture_pid" >/dev/null 2>&1 || true
+          cat "$RUNNER_TEMP/qt-audio-check.json"
+          pcm_status=0
+          python desktop/tools/qualify_pcm_signal.py \
+            "$RUNNER_TEMP/r1-audio.pcm" \
+            --output "$RUNNER_TEMP/pcm-check.json" || pcm_status=1
+          if [[ "$audio_status" != 0 || "$pcm_status" != 0 ]]; then
+            echo "Qt audio device or PCM output gate FAILED"
+            exit 1
+          fi
+          echo "Qt FlowPlayer decoded non-silent audio through PulseAudio virtual sink: PASS"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: disposable-navidrome-transport-result
-          path: ${{ runner.temp }}/navidrome-transport-check.json
+          path: |
+            ${{ runner.temp }}/navidrome-transport-check.json
+            ${{ runner.temp }}/qt-audio-check.json
+            ${{ runner.temp }}/pcm-check.json
           if-no-files-found: warn
