@@ -49,6 +49,5 @@
   },
   "entrypoints": {
     "python": "provider.py"
-  },
-  "rpc_timeout_seconds": 20
+  }
 }
