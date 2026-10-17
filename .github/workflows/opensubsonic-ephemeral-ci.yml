@@ -43,9 +43,14 @@ jobs:
           PYTHONPATH: desktop
         run: |
           set -o pipefail
-          python -m pytest -q desktop/tests/test_r1_3e_recovery_old_source.py \
-            | tee "$RUNNER_TEMP/r1-3e-old-source-test.txt"
-          grep -F "1 passed" "$RUNNER_TEMP/r1-3e-old-source-test.txt"
+          python -m pytest -q \
+            desktop/tests/test_r1_3e_recovery_old_source.py \
+            desktop/tests/test_player_failure_isolation.py::test_sustained_remote_stall_recovers_without_qt_error_signal \
+            desktop/tests/test_player_failure_isolation.py::test_recovery_request_watchdog_is_bounded_and_fences_late_results \
+            desktop/tests/test_player_failure_isolation.py::test_recovery_media_load_watchdog_bounds_candidate_that_never_loads \
+            desktop/tests/test_player_failure_isolation.py::test_recovery_budget_resets_only_after_resumed_position_advances \
+            | tee "$RUNNER_TEMP/r1-3f-qt-recovery-tests.txt"
+          grep -F "5 passed" "$RUNNER_TEMP/r1-3f-qt-recovery-tests.txt"
       - name: Run private disposable Navidrome and Melodex provider probe
         shell: bash
         env:
