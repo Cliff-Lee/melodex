@@ -79,8 +79,26 @@ class _ProxyServer(ThreadingHTTPServer):
         self.transport_gate = threading.Event()
         self.transport_gate.set()
         self.metrics_lock = threading.Lock()
-        self.metrics = {"stream_gate_waits": 0, "request_gate_waits": 0}
+        self.stream_generation = 0
+        self.metrics = {
+            "stream_gate_waits": 0,
+            "request_gate_waits": 0,
+            "stream_generation_aborts": 0,
+        }
         super().__init__(address, _ProxyHandler)
+
+    def bump_stream_generation(self):
+        with self.metrics_lock:
+            self.stream_generation += 1
+            return self.stream_generation
+
+    def current_stream_generation(self):
+        with self.metrics_lock:
+            return self.stream_generation
+
+    def record_stream_generation_abort(self):
+        with self.metrics_lock:
+            self.metrics["stream_generation_aborts"] += 1
 
     def wait_for_transport(self, *, stream: bool, timeout: float = 35.0) -> bool:
         if not self.transport_gate.is_set():
@@ -103,6 +121,9 @@ class _ProxyHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         is_stream = urlsplit(self.path).path.endswith("/stream.view")
+        request_stream_generation = (
+            self.server.current_stream_generation() if is_stream else None
+        )
         if not self.server.wait_for_transport(stream=is_stream):
             self.send_error(504, "Transport unavailable")
             return
@@ -133,9 +154,15 @@ class _ProxyHandler(BaseHTTPRequestHandler):
             self.close_connection = True
             chunk_size = CHUNK_BYTES if is_stream else 65_536
             while True:
+                if is_stream and request_stream_generation != self.server.current_stream_generation():
+                    self.server.record_stream_generation_abort()
+                    break
                 if is_stream and not self.server.wait_for_transport(stream=True):
                     break
                 chunk = response.read(chunk_size)
+                if is_stream and request_stream_generation != self.server.current_stream_generation():
+                    self.server.record_stream_generation_abort()
+                    break
                 if not chunk:
                     break
                 self.wfile.write(chunk)
@@ -264,6 +291,10 @@ def qualify(upstream, username, password, container, *, query, allow_http,
 
             def restart_server():
                 time.sleep(0.25)
+                # Model the TCP stream reset that accompanies process restart:
+                # old stream handlers are closed, but new requests are allowed
+                # once the proxy observes the new stream generation.
+                proxy.bump_stream_generation()
                 try:
                     _docker_restart(container)
                     restart_state["completed"] = True
@@ -292,6 +323,9 @@ def qualify(upstream, username, password, container, *, query, allow_http,
         diagnostics["proxy_metrics"] = proxy_metrics
         steps["stream_transport_blocked"] = (
             proxy_metrics["stream_gate_waits"] >= 1
+        )
+        steps["stream_generation_aborted"] = (
+            proxy_metrics["stream_generation_aborts"] >= 1
         )
         steps["natural_qt_error_observed"] = (
             snapshot["transient_source_errors"] >= 1 and bool(qt_errors)
@@ -384,6 +418,7 @@ def qualify(upstream, username, password, container, *, query, allow_http,
             outage_checks = (
                 steps["server_restart_requested"]
                 and steps["server_restart_completed"]
+                and steps["stream_generation_aborted"]
                 and steps["server_reauthenticated"]
                 and steps["natural_qt_error_observed"]
                 and steps["error_storm_suppressed"]
@@ -459,7 +494,7 @@ def main():
         "scope": (
             "real Navidrome pause with stream gate; no injected Qt error"
             if mode == "stall"
-            else "real Navidrome process restart during playback; no injected Qt error"
+            else "real Navidrome process restart with old-stream teardown; no injected Qt error"
         ),
         "checks": checks,
         "diagnostics": diagnostics,
