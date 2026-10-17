@@ -4794,6 +4794,12 @@ class MainWindow(QMainWindow):
             )
 
     def closeEvent(self,event):
+        # Qt can deliver close more than once for the same window. State,
+        # providers and playback connections have already been closed after
+        # the first event; repeating those side effects is invalid.
+        if getattr(self, "_closing", False):
+            super().closeEvent(event)
+            return
         self._window_settings.setValue("window/geometry", self.saveGeometry())
         self._window_settings.setValue("window/normal_geometry_trusted", True)
         self._invalidate_async("playback-queue-save")
