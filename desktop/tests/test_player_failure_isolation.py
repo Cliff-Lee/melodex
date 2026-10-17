@@ -450,3 +450,150 @@ def test_local_reconnect_is_bounded_and_keeps_track_queued(tmp_path):
     assert snapshot["local_reconnect_probe_failures"] == 3
     assert snapshot["local_reconnect_exhausted"] == 1
     player.close()
+
+
+def test_sustained_remote_stall_recovers_without_qt_error_signal():
+    import time
+
+    jobs = []
+
+    def submit(callback, **_kwargs):
+        jobs.append(callback)
+        return True
+
+    player = _player(
+        playback_refresher=lambda track: {
+            **track, "stream_url": "https://stream.example/recovered.mp3",
+        },
+        submit=submit,
+    )
+    app = _APP
+    assert app is not None
+    player._playback_recovery_delays_ms = (0, 0)
+    player.queue = [{
+        "track_id": "stalled",
+        "stream_url": "https://stream.example/current.mp3",
+    }]
+    player.index = 0
+    player.active = 0
+    player._playback_should_play = True
+    player._last_progress_position_ms = 2400
+    player._buffer_stall_position_ms = 2400
+    player._buffer_stall_started_at = time.monotonic() - 2.0
+    player._buffer_stall_deck = 0
+
+    # Exercise the timer callback directly: no QMediaPlayer error is injected.
+    player._on_buffer_stall_recovery_timeout()
+    snapshot = player.diagnostics_snapshot()
+    assert snapshot["recovery_stall_triggers"] == 1
+    assert snapshot["playback_errors"] == 0
+    assert snapshot["active_deck_errors"] == 0
+    assert player._playback_recovery_pending is True
+
+    _process_events(app)
+    assert len(jobs) == 1
+    assert player.diagnostics_snapshot()["recovery_attempts"] == 1
+    player.close()
+
+
+def test_recovery_request_watchdog_is_bounded_and_fences_late_results():
+    jobs = []
+
+    def submit(callback, **_kwargs):
+        jobs.append(callback)
+        return True
+
+    player = _player(
+        playback_refresher=lambda track: {
+            **track, "stream_url": "https://stream.example/recovered.mp3",
+        },
+        submit=submit,
+    )
+    app = _APP
+    assert app is not None
+    player._playback_recovery_delays_ms = (0, 0)
+    player.queue = [{
+        "track_id": "stalled",
+        "stream_url": "https://stream.example/current.mp3",
+    }]
+    player.index = 0
+    player._playback_should_play = True
+
+    player._on_player_error(0, _network_error(), "network unavailable")
+    _process_events(app)
+    assert len(jobs) == 1
+    first_job = jobs.pop(0)
+
+    # Simulate a provider call that never returns before its deadline.
+    player._on_playback_recovery_watchdog_timeout()
+    _process_events(app)
+    assert len(jobs) == 1
+    assert player._playback_recovery_request["attempt"] == 2
+
+    # The late result from attempt 1 must not overwrite attempt 2's state.
+    _run_in_worker(first_job)
+    _process_events(app)
+    assert player._playback_recovery_pending is True
+    assert player._playback_recovery_request["attempt"] == 2
+    assert player._playback_recovery_candidate is None
+
+    player._on_playback_recovery_watchdog_timeout()
+    assert player._playback_recovery_pending is False
+    assert player._playback_recovery_request is None
+    snapshot = player.diagnostics_snapshot()
+    assert snapshot["recovery_request_timeouts"] == 2
+    assert snapshot["recovery_exhausted"] == 1
+    assert player.current_track()["track_id"] == "stalled"
+    player.close()
+
+
+def test_recovery_media_load_watchdog_bounds_candidate_that_never_loads():
+    jobs = []
+
+    def submit(callback, **_kwargs):
+        jobs.append(callback)
+        return True
+
+    player = _player(
+        playback_refresher=lambda track: {
+            **track, "stream_url": "https://stream.example/recovered.mp3",
+        },
+        submit=submit,
+    )
+    app = _APP
+    assert app is not None
+    player._playback_recovery_delays_ms = (0, 0)
+    # The actual media backend must not asynchronously complete this
+    # deliberately non-routable candidate during the watchdog assertion.
+    player.players[0].errorOccurred.disconnect()
+    player.players[0].mediaStatusChanged.disconnect()
+    player.queue = [{
+        "track_id": "stalled",
+        "stream_url": "https://stream.example/current.mp3",
+    }]
+    player.index = 0
+    player._playback_should_play = True
+
+    player._on_player_error(0, _network_error(), "network unavailable")
+    _process_events(app)
+    assert len(jobs) == 1
+    _run_in_worker(jobs.pop(0))
+    _process_events(app)
+    assert player._playback_recovery_candidate is not None
+
+    player._on_playback_recovery_watchdog_timeout()
+    assert player._playback_recovery_candidate is None
+    assert player.diagnostics_snapshot()["recovery_load_timeouts"] == 1
+    _process_events(app)
+    assert len(jobs) == 1
+    _run_in_worker(jobs.pop(0))
+    _process_events(app)
+    assert player._playback_recovery_candidate is not None
+
+    player._on_playback_recovery_watchdog_timeout()
+    snapshot = player.diagnostics_snapshot()
+    assert snapshot["recovery_load_timeouts"] == 2
+    assert snapshot["recovery_exhausted"] == 1
+    assert player._playback_recovery_candidate is None
+    assert player.current_track()["track_id"] == "stalled"
+    player.close()
