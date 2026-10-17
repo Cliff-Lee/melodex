@@ -50,7 +50,7 @@ def _docker(action, container):
     )
 
 
-def qualify(server, username, password, container, *, query, allow_http):
+def qualify(server, username, password, container, *, query, allow_http, diagnostics):
     steps = {
         "authenticated_track": False,
         "initial_qt_playing": False,
@@ -137,6 +137,25 @@ def qualify(server, username, password, container, *, query, allow_http):
         )
         return steps
     finally:
+        if player is not None:
+            snapshot = player.diagnostics_snapshot()
+            safe_metrics = (
+                "recovery_attempts", "recovery_successes", "recovery_refresh_failures",
+                "recovery_source_rejections", "recovery_submit_rejected",
+                "recovery_stale_results", "recovery_exhausted", "recovery_unavailable",
+                "playback_errors", "transient_source_errors", "permanent_source_errors",
+                "buffer_stall_events", "seek_requests", "natural_ends",
+            )
+            diagnostics["metrics"] = {
+                key: int(snapshot.get(key, 0)) for key in safe_metrics
+            }
+            live_deck = player.players[player.active]
+            diagnostics["media_status"] = str(live_deck.mediaStatus().name)
+            diagnostics["playback_state"] = str(live_deck.playbackState().name)
+            diagnostics["position_ms"] = int(live_deck.position())
+            diagnostics["duration_ms"] = int(live_deck.duration())
+            diagnostics["candidate_pending"] = bool(player._playback_recovery_candidate)
+            diagnostics["request_pending"] = bool(player._playback_recovery_pending)
         if release_thread is not None:
             release_thread.join(timeout=18)
         # Always unfreeze the disposable server, including failed tests.
@@ -166,12 +185,13 @@ def main():
         "allow_http": env.get("MELODEX_SUBSONIC_ALLOW_HTTP", "") == "1",
     }
     complete = False
+    diagnostics = {}
     steps = {"disposable_configuration": all(kwargs[x] for x in (
         "server", "username", "password", "container",
     ))}
     if steps["disposable_configuration"]:
         try:
-            steps = qualify(**kwargs)
+            steps = qualify(**kwargs, diagnostics=diagnostics)
             complete = all(steps.values())
         except Exception:
             # Exceptions from playback backends may embed token-bearing URLs.
@@ -181,6 +201,7 @@ def main():
         "injected_network_error": True,
         "scope": "controlled Docker pause plus explicitly injected Qt NetworkError",
         "checks": steps,
+        "diagnostics": diagnostics,
         "passed": complete,
         "note": "Not a natural outage-detection test or physical-speaker qualification.",
     }, indent=2, sort_keys=True), flush=True)
