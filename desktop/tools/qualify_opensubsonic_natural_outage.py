@@ -35,7 +35,7 @@ from melodex.provider import ExternalProvider  # noqa: E402
 
 PROVIDER_ROOT = ROOT / "bundled_provider_sources" / "opensubsonic_personal"
 CHUNK_BYTES = 4096
-STREAM_CHUNK_DELAY_SECONDS = 0.125  # 32 KiB/s: close to real-time for the fixture.
+STREAM_CHUNK_DELAY_SECONDS = 0.08  # ~50 KiB/s: enough headroom to resume a 192-kbps fixture.
 
 
 def _until(app, condition, timeout_seconds):
@@ -229,7 +229,7 @@ def qualify(upstream, username, password, container, *, query, allow_http,
         # No synthetic QMediaPlayer error is injected. Restore the disposable
         # server after a short real transport outage so a retry can succeed.
         def release_server():
-            time.sleep(12.0)
+            time.sleep(15.0)
             try:
                 _docker("unpause", container)
             except Exception:
@@ -246,7 +246,7 @@ def qualify(upstream, username, password, container, *, query, allow_http,
                 player.diagnostics_snapshot()["transient_source_errors"] >= 1
                 or player.diagnostics_snapshot()["recovery_stall_triggers"] >= 1
             ),
-            14,
+            17,
         )
         snapshot = player.diagnostics_snapshot()
         proxy_metrics = proxy.metrics_snapshot()
