@@ -229,7 +229,7 @@ def qualify(upstream, username, password, container, *, query, allow_http,
         # No synthetic QMediaPlayer error is injected. Restore the disposable
         # server after a short real transport outage so a retry can succeed.
         def release_server():
-            time.sleep(15.0)
+            time.sleep(20.0)
             try:
                 _docker("unpause", container)
             except Exception:
@@ -246,7 +246,7 @@ def qualify(upstream, username, password, container, *, query, allow_http,
                 player.diagnostics_snapshot()["transient_source_errors"] >= 1
                 or player.diagnostics_snapshot()["recovery_stall_triggers"] >= 1
             ),
-            17,
+            22,
         )
         snapshot = player.diagnostics_snapshot()
         proxy_metrics = proxy.metrics_snapshot()
@@ -294,7 +294,8 @@ def qualify(upstream, username, password, container, *, query, allow_http,
             "recovery_attempts", "recovery_successes", "recovery_refresh_failures",
             "recovery_source_rejections", "recovery_submit_rejected",
             "recovery_stale_results", "recovery_exhausted", "recovery_unavailable",
-            "recovery_stall_triggers", "recovery_request_timeouts",
+            "recovery_stall_triggers", "recovery_resume_confirmations",
+            "recovery_request_timeouts",
             "recovery_load_timeouts", "playback_errors", "active_deck_errors",
             "transient_source_errors", "buffer_stall_events",
             "buffer_stall_status_events", "buffer_stall_no_progress_events",
@@ -325,7 +326,7 @@ def qualify(upstream, username, password, container, *, query, allow_http,
         return {**steps, "passed": bool(passed)}, diagnostics
     finally:
         if release_thread is not None:
-            release_thread.join(timeout=12)
+            release_thread.join(timeout=22)
         if server_paused:
             try:
                 _docker("unpause", container)
