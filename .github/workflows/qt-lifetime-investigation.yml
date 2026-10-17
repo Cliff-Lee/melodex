@@ -44,6 +44,14 @@ jobs:
         run: |
           python scripts/qt_lifetime_isolation.py \
             --mode all --repeats 2 --json-out qt-lifetime-triage.json
+      - name: Minimize first-four selectors across all subsets
+        env:
+          QT_QPA_PLATFORM: offscreen
+          PYTHONPATH: desktop
+          PYTHONFAULTHANDLER: '1'
+        run: |
+          python scripts/qt_lifetime_isolation.py \
+            --mode quartet --repeats 8 --json-out qt-lifetime-quartet.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -51,13 +59,14 @@ jobs:
           path: |
             qt-lifetime-original.json
             qt-lifetime-triage.json
+            qt-lifetime-quartet.json
           if-no-files-found: error
       - name: Enforce strict interpreter exit
         run: |
           python - <<'PY'
           import json
           from pathlib import Path
-          paths = (Path("qt-lifetime-original.json"), Path("qt-lifetime-triage.json"))
+          paths = (Path("qt-lifetime-original.json"), Path("qt-lifetime-triage.json"), Path("qt-lifetime-quartet.json"))
           reports = [json.loads(path.read_text("utf-8")) for path in paths]
           total = sum(report["runs"] for report in reports)
           fails = sum(report["failures"] for report in reports)
