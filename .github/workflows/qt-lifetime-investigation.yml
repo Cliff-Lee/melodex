@@ -1,10 +1,6 @@
 name: Qt shutdown investigation
 on:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - scripts/qt_lifetime_isolation.py
-      - .github/workflows/qt-lifetime-investigation.yml
 jobs:
   qt-lifetime-isolation:
     name: Strict Qt exit-code reproduction

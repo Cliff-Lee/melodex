@@ -1,10 +1,6 @@
 name: Qt native shutdown backtrace
 on:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - scripts/qt_native_backtrace.sh
-      - .github/workflows/qt-native-backtrace.yml
 jobs:
   native-qt-backtrace:
     name: Qt SIGSEGV C++ backtrace

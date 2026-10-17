@@ -1,11 +1,6 @@
 name: Qt QApplication lifetime ablation
 on:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - scripts/qt_lifetime_isolation.py
-      - scripts/qt_lifetime_app_probe.py
-      - .github/workflows/qt-app-lifetime-ablation.yml
 jobs:
   qt-app-ablation:
     name: QApplication lifetime ${{ matrix.variant }}

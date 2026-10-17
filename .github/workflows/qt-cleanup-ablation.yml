@@ -1,12 +1,6 @@
 name: Qt deterministic teardown ablation
 on:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - scripts/qt_lifetime_cleanup_probe.py
-      - desktop/melodex/main_window.py
-      - desktop/tests/test_main_window_close_idempotent.py
-      - .github/workflows/qt-cleanup-ablation.yml
 jobs:
   deterministic-cleanup:
     name: Qt explicit teardown before PySide atexit
