@@ -35,7 +35,7 @@ from melodex.provider import ExternalProvider  # noqa: E402
 
 PROVIDER_ROOT = ROOT / "bundled_provider_sources" / "opensubsonic_personal"
 CHUNK_BYTES = 4096
-STREAM_CHUNK_DELAY_SECONDS = 0.042  # ~96 KiB/s: ample post-recovery headroom.
+STREAM_CHUNK_DELAY_SECONDS = 0.07  # ~58 KiB/s: enough headroom without prebuffering the whole fixture.
 
 
 def _until(app, condition, timeout_seconds):
@@ -229,7 +229,7 @@ def qualify(upstream, username, password, container, *, query, allow_http,
         # No synthetic QMediaPlayer error is injected. Restore the disposable
         # server after a short real transport outage so a retry can succeed.
         def release_server():
-            time.sleep(25.0)
+            time.sleep(14.0)
             try:
                 _docker("unpause", container)
             except Exception:
@@ -246,7 +246,7 @@ def qualify(upstream, username, password, container, *, query, allow_http,
                 player.diagnostics_snapshot()["transient_source_errors"] >= 1
                 or player.diagnostics_snapshot()["recovery_stall_triggers"] >= 1
             ),
-            27,
+            16,
         )
         snapshot = player.diagnostics_snapshot()
         proxy_metrics = proxy.metrics_snapshot()
@@ -302,7 +302,7 @@ def qualify(upstream, username, password, container, *, query, allow_http,
             "recovery_source_rejections", "recovery_submit_rejected",
             "recovery_stale_results", "recovery_exhausted", "recovery_unavailable",
             "recovery_stall_triggers", "recovery_resume_confirmations",
-            "recovery_request_timeouts",
+            "recovery_duplicate_errors_ignored", "recovery_request_timeouts",
             "recovery_load_timeouts", "playback_errors", "active_deck_errors",
             "transient_source_errors", "buffer_stall_events",
             "buffer_stall_status_events", "buffer_stall_no_progress_events",
@@ -310,6 +310,9 @@ def qualify(upstream, username, password, container, *, query, allow_http,
         diagnostics["metrics"] = {
             key: int(snapshot.get(key, 0)) for key in safe_metrics
         }
+        steps["qt_error_free_stall"] = (
+            not qt_errors and snapshot["transient_source_errors"] == 0
+        )
         diagnostics["natural_qt_error_count"] = len(qt_errors)
         diagnostics["media_status"] = str(deck.mediaStatus().name)
         diagnostics["playback_state"] = str(deck.playbackState().name)
@@ -322,6 +325,8 @@ def qualify(upstream, username, password, container, *, query, allow_http,
             and steps["server_pause_applied"]
             and steps["stream_transport_blocked"]
             and steps["natural_detection_observed"]
+            and steps["stall_watchdog_triggered"]
+            and steps["qt_error_free_stall"]
             and steps["recovery_attempt_dispatched"]
             and steps["recovery_commit"]
             and steps["same_track_retained"]
@@ -335,7 +340,7 @@ def qualify(upstream, username, password, container, *, query, allow_http,
         return {**steps, "passed": bool(passed)}, diagnostics
     finally:
         if release_thread is not None:
-            release_thread.join(timeout=28)
+            release_thread.join(timeout=18)
         if server_paused:
             try:
                 _docker("unpause", container)
