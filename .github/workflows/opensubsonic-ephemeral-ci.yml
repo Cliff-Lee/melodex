@@ -8,12 +8,15 @@ on:
       - desktop/tools/qualify_opensubsonic_live.py
       - desktop/tools/qualify_opensubsonic_inflight.py
       - desktop/tools/qualify_opensubsonic_natural_outage.py
+      - desktop/melodex/player.py
       - desktop/melodex/playback_gateway.py
+      - desktop/tests/test_player_failure_isolation.py
+      - desktop/tests/test_r1_3e_recovery_old_source.py
 permissions:
   contents: read
 jobs:
   disposable-navidrome:
-    name: Real Navidrome Qt audio, restart and injected in-flight recovery
+    name: Real Navidrome Qt audio, natural outage and bounded recovery
     runs-on: ubuntu-22.04
     timeout-minutes: 15
     steps:
