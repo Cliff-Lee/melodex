@@ -6,12 +6,13 @@ on:
       - .github/workflows/opensubsonic-ephemeral-ci.yml
       - desktop/bundled_provider_sources/opensubsonic_personal/**
       - desktop/tools/qualify_opensubsonic_live.py
+      - desktop/tools/qualify_opensubsonic_inflight.py
       - desktop/melodex/playback_gateway.py
 permissions:
   contents: read
 jobs:
   disposable-navidrome:
-    name: Real Navidrome Qt PCM, seeking and post-restart playback
+    name: Real Navidrome Qt audio, restart and injected in-flight recovery
     runs-on: ubuntu-22.04
     timeout-minutes: 15
     steps:
@@ -154,6 +155,34 @@ jobs:
             exit 1
           fi
           echo "Post-restart Navidrome reauthentication and fresh Qt PCM playback: PASS"
+
+          # Test *existing* production FlowPlayer scheduler/resume behaviour
+          # with a deliberately injected active-deck NetworkError while the
+          # disposable real Navidrome server is briefly paused.
+          # Natural Qt outage detection remains a distinct untested gate.
+          export MELODEX_SUBSONIC_CONTAINER="$service_name"
+          parec --device=melodex_r1.monitor --raw \
+            --format=s16le --rate=44100 --channels=2 \
+            > "$RUNNER_TEMP/inflight-recovery-audio.pcm" \
+            2>"$RUNNER_TEMP/inflight-recovery-parec.log" &
+          capture_pid=$!
+          sleep 1
+          inflight_status=0
+          PYTHONPATH=desktop QT_QPA_PLATFORM=offscreen QT_MEDIA_BACKEND=ffmpeg \
+            python desktop/tools/qualify_opensubsonic_inflight.py \
+            > "$RUNNER_TEMP/inflight-recovery.json" || inflight_status=1
+          kill "$capture_pid" >/dev/null 2>&1 || true
+          wait "$capture_pid" >/dev/null 2>&1 || true
+          cat "$RUNNER_TEMP/inflight-recovery.json"
+          inflight_pcm_status=0
+          python desktop/tools/qualify_pcm_signal.py \
+            "$RUNNER_TEMP/inflight-recovery-audio.pcm" \
+            --output "$RUNNER_TEMP/inflight-pcm.json" || inflight_pcm_status=1
+          if [[ "$inflight_status" != 0 || "$inflight_pcm_status" != 0 ]]; then
+            echo "Controlled mid-playback recovery or decoded PCM qualification failed"
+            exit 1
+          fi
+          echo "Existing FlowPlayer recovery with injected NetworkError: PASS"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -165,4 +194,6 @@ jobs:
             ${{ runner.temp }}/post-restart-transport.json
             ${{ runner.temp }}/post-restart-qt-audio.json
             ${{ runner.temp }}/post-restart-pcm.json
+            ${{ runner.temp }}/inflight-recovery.json
+            ${{ runner.temp }}/inflight-pcm.json
           if-no-files-found: warn
