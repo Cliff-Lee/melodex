@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from itertools import combinations
 import os
 import subprocess
 import sys
@@ -47,6 +48,14 @@ def selectors(mode: str) -> list[tuple[str, list[str]]]:
         return [(f"suffix-{size}", group[-size:]) for size in range(1, len(group) + 1)]
     if mode == "single":
         return [(f"single-{i+1}", [spec]) for i, spec in enumerate(group)]
+    if mode == "quartet":
+        first = group[:4]
+        return [
+            ("quartet-" + "-".join(str(i + 1) for i in chosen),
+             [first[i] for i in chosen])
+            for size in range(1, 5)
+            for chosen in combinations(range(4), size)
+        ]
     if mode == "all":
         return (
             [("original", group), ("reverse", list(reversed(group)))]
@@ -93,7 +102,7 @@ def trial(label: str, specs: list[str], repeat: int, timeout: int) -> dict:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--mode", choices=("group", "reverse", "prefix", "suffix", "single", "all"), default="group")
+    parser.add_argument("--mode", choices=("group", "reverse", "prefix", "suffix", "single", "quartet", "all"), default="group")
     parser.add_argument("--repeats", type=int, default=12)
     parser.add_argument("--timeout", type=int, default=45)
     parser.add_argument("--json-out", type=Path, required=True)
