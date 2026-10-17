@@ -285,9 +285,11 @@ class PlaybackGateway:
         except PermissionError as exc:
             failed = True
             handler.send_error(502, str(exc))
-        except Exception as exc:
+        except Exception:
             failed = True
-            handler.send_error(502, f"Upstream playback request failed: {exc}")
+            # Upstream exceptions can contain complete URLs with provider
+            # authentication tokens; never reflect them in loopback HTTP errors.
+            handler.send_error(502, "Upstream playback request failed")
         finally:
             if response is not None:
                 try:
