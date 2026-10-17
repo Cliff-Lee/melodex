@@ -16,7 +16,6 @@ import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
 from urllib.error import HTTPError
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
@@ -152,38 +151,8 @@ class _ProxyHandler(BaseHTTPRequestHandler):
             self.close_connection = True
 
 
-def _capture_post_recovery(app, deck, path: Path, seconds: float = 3.2) -> bool:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        with path.open("wb") as output:
-            proc = subprocess.Popen(
-                [
-                    "parec", "--device=melodex_r1.monitor", "--raw",
-                    "--format=s16le", "--rate=44100", "--channels=2",
-                ],
-                stdout=output,
-                stderr=subprocess.DEVNULL,
-            )
-            started = time.monotonic()
-            try:
-                while time.monotonic() - started < seconds:
-                    app.processEvents()
-                    time.sleep(0.018)
-            finally:
-                proc.terminate()
-                try:
-                    proc.wait(timeout=3)
-                except subprocess.TimeoutExpired:
-                    proc.kill()
-                    proc.wait(timeout=3)
-        expected_bytes = int(seconds * 44_100 * 2 * 2 * 0.65)
-        return path.is_file() and path.stat().st_size >= expected_bytes
-    except (OSError, subprocess.SubprocessError):
-        return False
-
-
 def qualify(upstream, username, password, container, *, query, allow_http,
-            proxy_port, pcm_path):
+            proxy_port):
     steps = {
         "authenticated_track": False,
         "initial_qt_playing": False,
@@ -199,7 +168,7 @@ def qualify(upstream, username, password, container, *, query, allow_http,
         "playing_after_recovery": False,
         "position_resumed": False,
         "bounded_state_cleared": False,
-        "post_recovery_pcm_captured": False,
+        "post_recovery_audio_window": False,
     }
     diagnostics = {}
     app = QApplication.instance() or QApplication([])
@@ -304,6 +273,15 @@ def qualify(upstream, username, password, container, *, query, allow_http,
         steps["position_resumed"] = _until(
             app, lambda: deck.position() >= before + 350, 10,
         )
+        resumed_position = int(deck.position())
+        steps["post_recovery_audio_window"] = _until(
+            app,
+            lambda: (
+                deck.playbackState() == QMediaPlayer.PlayingState
+                and deck.position() >= resumed_position + 3000
+            ),
+            9,
+        )
         snapshot = player.diagnostics_snapshot()
         steps["bounded_state_cleared"] = (
             not player._playback_recovery_pending
@@ -311,11 +289,6 @@ def qualify(upstream, username, password, container, *, query, allow_http,
             and player._playback_recovery_candidate is None
             and snapshot["recovery_exhausted"] == 0
         )
-        steps["post_recovery_pcm_captured"] = (
-            _capture_post_recovery(app, deck, Path(pcm_path))
-            if pcm_path else False
-        )
-
         safe_metrics = (
             "recovery_attempts", "recovery_successes", "recovery_refresh_failures",
             "recovery_source_rejections", "recovery_submit_rejected",
@@ -346,7 +319,7 @@ def qualify(upstream, username, password, container, *, query, allow_http,
             and steps["playing_after_recovery"]
             and steps["position_resumed"]
             and steps["bounded_state_cleared"]
-            and steps["post_recovery_pcm_captured"]
+            and steps["post_recovery_audio_window"]
         )
         return {**steps, "passed": bool(passed)}, diagnostics
     finally:
@@ -381,10 +354,9 @@ def main():
     query = env.get("MELODEX_SUBSONIC_QUERY", "R1NaturalOutageSignal")
     allow_http = env.get("MELODEX_SUBSONIC_ALLOW_HTTP", "") == "1"
     proxy_port = int(env.get("MELODEX_NATURAL_PROXY_PORT", "4534"))
-    pcm_path = env.get("MELODEX_NATURAL_OUTAGE_PCM_PATH", "").strip()
     passed = False
     checks = {"disposable_configuration": all(
-        (upstream, username, password, container, pcm_path)
+        (upstream, username, password, container)
     )}
     diagnostics = {}
     if checks["disposable_configuration"]:
@@ -392,7 +364,7 @@ def main():
             checks, diagnostics = qualify(
                 upstream, username, password, container,
                 query=query, allow_http=allow_http,
-                proxy_port=proxy_port, pcm_path=pcm_path,
+                proxy_port=proxy_port,
             )
             passed = bool(checks.get("passed"))
         except Exception:
@@ -406,8 +378,8 @@ def main():
         "passed": passed,
         "note": (
             "Controlled transport outage; automatic Qt error detection and/or "
-            "stall watchdog is measured separately. PCM captured after recovery "
-            "at a virtual sink, not physical speakers."
+            "stall watchdog is measured separately. The workflow checks the "
+            "final three seconds of virtual-sink PCM after recovery, not speakers."
         ),
     }, indent=2, sort_keys=True), flush=True)
     return 0 if passed else 1
