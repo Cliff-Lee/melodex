@@ -185,6 +185,7 @@ class FlowPlayer(QObject):
             "recovery_unavailable": 0,
             "recovery_stall_triggers": 0,
             "recovery_resume_confirmations": 0,
+            "recovery_duplicate_errors_ignored": 0,
             "recovery_request_timeouts": 0,
             "recovery_load_timeouts": 0,
             "local_reconnect_load_timeouts": 0,
@@ -1786,6 +1787,12 @@ class FlowPlayer(QObject):
         """Keep failures on a speculative deck from disrupting active playback."""
         deck = int(deck)
         if not (0 <= deck < len(self.players)):
+            return
+        # Once a recovery request is in flight, Qt may continue emitting
+        # NetworkError for the same failed source. Count but ignore duplicates:
+        # they must not flood diagnostics or compete with the active retry.
+        if deck == self.active and self._playback_recovery_pending:
+            self._runtime_metrics["recovery_duplicate_errors_ignored"] += 1
             return
 
         detail = str(message or "").strip() or "Playback failed"
