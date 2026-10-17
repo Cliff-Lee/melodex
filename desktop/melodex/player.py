@@ -106,7 +106,7 @@ class FlowPlayer(QObject):
         self._playback_recovery_resume_position_ms: int | None = None
         self._playback_recovery_request_timeout_ms = 15_000
         self._playback_recovery_load_timeout_ms = 10_000
-        self._buffer_stall_recovery_grace_ms = 1_200
+        self._buffer_stall_recovery_grace_ms = 3_500
         self._predictive_prefetch_generation = 0
         self._predictive_prefetch_request: dict[str, Any] | None = None
         self._predictive_prefetch: dict[str, Any] | None = None
