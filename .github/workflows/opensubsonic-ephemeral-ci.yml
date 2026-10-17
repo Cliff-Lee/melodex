@@ -261,6 +261,36 @@ jobs:
             exit 1
           fi
           echo "Natural Navidrome outage detection and post-recovery PCM: PASS"
+
+          # Separate fault mode: restart the real disposable Navidrome process
+          # while Qt is consuming the long stream. No error is injected; the
+          # player must observe the real transport failure, refresh credentials
+          # and stream URL, resume the same track, and produce fresh PCM.
+          parec --device=melodex_r1.monitor --raw \
+            --format=s16le --rate=44100 --channels=2 \
+            > "$RUNNER_TEMP/natural-restart-audio.pcm" \
+            2> "$RUNNER_TEMP/natural-restart-parec.log" &
+          restart_capture_pid=$!
+          sleep 1
+          restart_status=0
+          MELODEX_SUBSONIC_QUERY=R1NaturalOutageSignal \
+            MELODEX_NATURAL_OUTAGE_MODE=restart \
+            PYTHONPATH=desktop QT_QPA_PLATFORM=offscreen QT_MEDIA_BACKEND=ffmpeg \
+            python desktop/tools/qualify_opensubsonic_natural_outage.py \
+            > "$RUNNER_TEMP/natural-restart-recovery.json" \
+            2> "$RUNNER_TEMP/natural-restart-qt-stderr.log" || restart_status=1
+          kill "$restart_capture_pid" >/dev/null 2>&1 || true
+          wait "$restart_capture_pid" >/dev/null 2>&1 || true
+          cat "$RUNNER_TEMP/natural-restart-recovery.json"
+          restart_pcm_status=0
+          python desktop/tools/qualify_pcm_signal.py \
+            "$RUNNER_TEMP/natural-restart-audio.pcm" --tail-seconds 3 \
+            --output "$RUNNER_TEMP/natural-restart-pcm.json" || restart_pcm_status=1
+          if [[ "$restart_status" != 0 || "$restart_pcm_status" != 0 ]]; then
+            echo "Mid-stream Navidrome process restart recovery or PCM failed"
+            exit 1
+          fi
+          echo "Mid-stream Navidrome process restart and post-recovery PCM: PASS"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -277,4 +307,6 @@ jobs:
             ${{ runner.temp }}/natural-track-transport.json
             ${{ runner.temp }}/natural-outage-recovery.json
             ${{ runner.temp }}/natural-outage-pcm.json
+            ${{ runner.temp }}/natural-restart-recovery.json
+            ${{ runner.temp }}/natural-restart-pcm.json
           if-no-files-found: warn
