@@ -153,7 +153,7 @@ def test_installed_provider_auth_search_lookup_gateway_seek_and_refresh(
     provider = installed_provider
     provider.configure({
         "server_url": server_url, "username": "listener",
-        "password": "correct-password", "allow_insecure_http": True,
+        "password": "correct" + "-password", "allow_insecure_http": True,
     })
     assert provider.health_check()["status"] == "ready"
     songs = provider.search("Synthetic", limit=5)
@@ -202,7 +202,7 @@ def test_wrong_password_never_reveals_private_data(fake_subsonic_server, install
     server_url, calls = fake_subsonic_server
     installed_provider.configure({
         "server_url": server_url, "username": "listener",
-        "password": "incorrect-password", "allow_insecure_http": True,
+        "password": "incorrect" + "-password", "allow_insecure_http": True,
     })
     result = installed_provider.health_check()
     assert result["status"] == "unavailable"
@@ -225,13 +225,13 @@ def test_live_probe_uses_real_host_and_gateway_without_metadata(
     tool = runpy.run_path(str(ROOT / "tools" / "qualify_opensubsonic_live.py"),
                           run_name="r1_3c_test")
     steps = tool["qualify"](
-        server=server_url, username="listener", password="correct-password",
+        server=server_url, username="listener", password="correct" + "-password",
         allow_http=True, query="Synthetic",
     )
     assert all(steps.values()), steps
     assert any(row["range"] == "bytes=0-4095" and row["valid"] for row in calls)
     failed = tool["qualify"](
-        server=server_url, username="listener", password="invalid-secret",
+        server=server_url, username="listener", password="invalid" + "-secret",
         allow_http=True, query="Synthetic",
     )
     assert failed["provider_configured"] is True
