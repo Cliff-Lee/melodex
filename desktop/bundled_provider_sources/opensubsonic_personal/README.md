@@ -7,11 +7,11 @@ An **optional** Melodex MPP 1.0-preview provider for a music server you operate 
 ```bash
 python -m pip install -e provider-sdk
 melodex-provider validate desktop/bundled_provider_sources/opensubsonic_personal
-melodex-provider doctor desktop/bundled_provider_sources/opensubsonic_personal
+melodex-provider doctor desktop/bundled_provider_sources/opensubsonic_personal --no-runtime
 melodex-provider pack desktop/bundled_provider_sources/opensubsonic_personal
 ```
 
-Install the resulting `.mdxprovider` using **Melodex → Sources → Install .mdxprovider**, in an isolated test profile. The full SDK and desktop installation checks are still required; local mock tests alone do not prove compatibility.
+Install the resulting `.mdxprovider` using **Melodex → Sources → Install .mdxprovider**, in an isolated test profile. The doctor command uses static-only mode because the SDK runtime doctor calls authenticated search without supplying a user's private credentials. Check MPP subprocess functionality with the offline tests, and validate real server health/search/playback separately. The full SDK and desktop installation checks are still required; local mock tests alone do not prove compatibility.
 
 Set your server URL, username and password in Sources. Secrets are delivered per request using the host's `_melodex_config` broker rather than being hardcoded into the manifest. HTTPS is required by default. For a trusted local HTTP server, explicitly enable the insecure-HTTP option. Do not use HTTP on an untrusted network.
 
