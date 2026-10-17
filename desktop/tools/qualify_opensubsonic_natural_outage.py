@@ -60,6 +60,16 @@ def _docker(action, container):
     )
 
 
+def _docker_restart(container):
+    subprocess.run(
+        ["docker", "restart", "--time", "1", container],
+        check=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        timeout=35,
+    )
+
+
 class _ProxyServer(ThreadingHTTPServer):
     allow_reuse_address = True
     daemon_threads = True
@@ -69,8 +79,26 @@ class _ProxyServer(ThreadingHTTPServer):
         self.transport_gate = threading.Event()
         self.transport_gate.set()
         self.metrics_lock = threading.Lock()
-        self.metrics = {"stream_gate_waits": 0, "request_gate_waits": 0}
+        self.stream_generation = 0
+        self.metrics = {
+            "stream_gate_waits": 0,
+            "request_gate_waits": 0,
+            "stream_generation_aborts": 0,
+        }
         super().__init__(address, _ProxyHandler)
+
+    def bump_stream_generation(self):
+        with self.metrics_lock:
+            self.stream_generation += 1
+            return self.stream_generation
+
+    def current_stream_generation(self):
+        with self.metrics_lock:
+            return self.stream_generation
+
+    def record_stream_generation_abort(self):
+        with self.metrics_lock:
+            self.metrics["stream_generation_aborts"] += 1
 
     def wait_for_transport(self, *, stream: bool, timeout: float = 35.0) -> bool:
         if not self.transport_gate.is_set():
@@ -93,6 +121,9 @@ class _ProxyHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         is_stream = urlsplit(self.path).path.endswith("/stream.view")
+        request_stream_generation = (
+            self.server.current_stream_generation() if is_stream else None
+        )
         if not self.server.wait_for_transport(stream=is_stream):
             self.send_error(504, "Transport unavailable")
             return
@@ -123,9 +154,15 @@ class _ProxyHandler(BaseHTTPRequestHandler):
             self.close_connection = True
             chunk_size = CHUNK_BYTES if is_stream else 65_536
             while True:
+                if is_stream and request_stream_generation != self.server.current_stream_generation():
+                    self.server.record_stream_generation_abort()
+                    break
                 if is_stream and not self.server.wait_for_transport(stream=True):
                     break
                 chunk = response.read(chunk_size)
+                if is_stream and request_stream_generation != self.server.current_stream_generation():
+                    self.server.record_stream_generation_abort()
+                    break
                 if not chunk:
                     break
                 self.wfile.write(chunk)
@@ -153,12 +190,16 @@ class _ProxyHandler(BaseHTTPRequestHandler):
 
 
 def qualify(upstream, username, password, container, *, query, allow_http,
-            proxy_port):
+            proxy_port, mode="stall"):
     steps = {
         "authenticated_track": False,
         "initial_qt_playing": False,
         "initial_position_advanced": False,
         "server_pause_applied": False,
+        "server_restart_requested": False,
+        "server_restart_completed": False,
+        "server_reauthenticated": False,
+        "error_storm_suppressed": False,
         "stream_transport_blocked": False,
         "natural_detection_observed": False,
         "natural_qt_error_observed": False,
@@ -184,6 +225,7 @@ def qualify(upstream, username, password, container, *, query, allow_http,
     player = None
     release_thread = None
     server_paused = False
+    restart_state = {"completed": False}
     try:
         provider.configure({
             "server_url": f"http://127.0.0.1:{int(proxy_port)}",
@@ -221,24 +263,48 @@ def qualify(upstream, username, password, container, *, query, allow_http,
             return steps, diagnostics
         before = int(deck.position())
 
-        proxy.transport_gate.clear()
-        _docker("pause", container)
-        server_paused = True
-        steps["server_pause_applied"] = True
+        if mode == "stall":
+            proxy.transport_gate.clear()
+            _docker("pause", container)
+            server_paused = True
+            steps["server_pause_applied"] = True
 
-        # No synthetic QMediaPlayer error is injected. Restore the disposable
-        # server after a short real transport outage so a retry can succeed.
-        def release_server():
-            time.sleep(14.0)
-            try:
-                _docker("unpause", container)
-            except Exception:
-                pass
-            finally:
-                proxy.transport_gate.set()
+            # No synthetic Qt error is injected. Restore the disposable server
+            # after a controlled silent transport stall.
+            def release_server():
+                time.sleep(14.0)
+                try:
+                    _docker("unpause", container)
+                except Exception:
+                    pass
+                finally:
+                    proxy.transport_gate.set()
 
-        release_thread = threading.Thread(target=release_server, daemon=True)
-        release_thread.start()
+            release_thread = threading.Thread(target=release_server, daemon=True)
+            release_thread.start()
+        elif mode == "restart":
+            # Kill the upstream TCP stream by restarting the disposable
+            # Navidrome process while QMediaPlayer is actively consuming it.
+            # The proxy gate remains open; any Qt error is genuinely emitted
+            # by the media pipeline, never manually injected.
+            steps["server_restart_requested"] = True
+
+            def restart_server():
+                time.sleep(0.25)
+                # Model the TCP stream reset that accompanies process restart:
+                # old stream handlers are closed, but new requests are allowed
+                # once the proxy observes the new stream generation.
+                proxy.bump_stream_generation()
+                try:
+                    _docker_restart(container)
+                    restart_state["completed"] = True
+                except Exception:
+                    restart_state["completed"] = False
+
+            release_thread = threading.Thread(target=restart_server, daemon=True)
+            release_thread.start()
+        else:
+            raise ValueError("mode must be 'stall' or 'restart'")
 
         steps["natural_detection_observed"] = _until(
             app,
@@ -248,11 +314,18 @@ def qualify(upstream, username, password, container, *, query, allow_http,
             ),
             16,
         )
+        if mode == "restart":
+            steps["server_restart_completed"] = _until(
+                app, lambda: bool(restart_state["completed"]), 20,
+            )
         snapshot = player.diagnostics_snapshot()
         proxy_metrics = proxy.metrics_snapshot()
         diagnostics["proxy_metrics"] = proxy_metrics
         steps["stream_transport_blocked"] = (
             proxy_metrics["stream_gate_waits"] >= 1
+        )
+        steps["stream_generation_aborted"] = (
+            proxy_metrics["stream_generation_aborts"] >= 1
         )
         steps["natural_qt_error_observed"] = (
             snapshot["transient_source_errors"] >= 1 and bool(qt_errors)
@@ -264,6 +337,13 @@ def qualify(upstream, username, password, container, *, query, allow_http,
         steps["recovery_commit"] = _until(
             app, lambda: player.diagnostics_snapshot()["recovery_successes"] >= 1, 30,
         )
+        if mode == "restart" and steps["server_restart_completed"]:
+            try:
+                steps["server_reauthenticated"] = (
+                    provider.health_check(timeout=8).get("status") == "ready"
+                )
+            except Exception:
+                steps["server_reauthenticated"] = False
         steps["same_track_retained"] = (
             player.current_track() is not None
             and player.current_track().get("track_id") == track_identity
@@ -310,23 +390,45 @@ def qualify(upstream, username, password, container, *, query, allow_http,
         diagnostics["metrics"] = {
             key: int(snapshot.get(key, 0)) for key in safe_metrics
         }
+        steps["natural_qt_error_observed"] = (
+            snapshot["transient_source_errors"] >= 1 and bool(qt_errors)
+        )
         steps["qt_error_free_stall"] = (
             not qt_errors and snapshot["transient_source_errors"] == 0
         )
+        steps["error_storm_suppressed"] = (
+            snapshot["playback_errors"] <= 2
+            and snapshot["transient_source_errors"] <= 2
+        )
+        diagnostics["mode"] = mode
+        diagnostics["server_restart_completed"] = bool(restart_state["completed"])
         diagnostics["natural_qt_error_count"] = len(qt_errors)
         diagnostics["media_status"] = str(deck.mediaStatus().name)
         diagnostics["playback_state"] = str(deck.playbackState().name)
         diagnostics["position_ms"] = int(deck.position())
         diagnostics["resume_baseline_ms"] = before
+        if mode == "stall":
+            outage_checks = (
+                steps["server_pause_applied"]
+                and steps["stream_transport_blocked"]
+                and steps["stall_watchdog_triggered"]
+                and steps["qt_error_free_stall"]
+            )
+        else:
+            outage_checks = (
+                steps["server_restart_requested"]
+                and steps["server_restart_completed"]
+                and steps["stream_generation_aborted"]
+                and steps["server_reauthenticated"]
+                and steps["natural_qt_error_observed"]
+                and steps["error_storm_suppressed"]
+            )
         passed = (
             steps["authenticated_track"]
             and steps["initial_qt_playing"]
             and steps["initial_position_advanced"]
-            and steps["server_pause_applied"]
-            and steps["stream_transport_blocked"]
+            and outage_checks
             and steps["natural_detection_observed"]
-            and steps["stall_watchdog_triggered"]
-            and steps["qt_error_free_stall"]
             and steps["recovery_attempt_dispatched"]
             and steps["recovery_commit"]
             and steps["same_track_retained"]
@@ -340,7 +442,7 @@ def qualify(upstream, username, password, container, *, query, allow_http,
         return {**steps, "passed": bool(passed)}, diagnostics
     finally:
         if release_thread is not None:
-            release_thread.join(timeout=18)
+            release_thread.join(timeout=35)
         if server_paused:
             try:
                 _docker("unpause", container)
@@ -370,6 +472,7 @@ def main():
     query = env.get("MELODEX_SUBSONIC_QUERY", "R1NaturalOutageSignal")
     allow_http = env.get("MELODEX_SUBSONIC_ALLOW_HTTP", "") == "1"
     proxy_port = int(env.get("MELODEX_NATURAL_PROXY_PORT", "4534"))
+    mode = env.get("MELODEX_NATURAL_OUTAGE_MODE", "stall").strip().lower()
     passed = False
     checks = {"disposable_configuration": all(
         (upstream, username, password, container)
@@ -380,7 +483,7 @@ def main():
             checks, diagnostics = qualify(
                 upstream, username, password, container,
                 query=query, allow_http=allow_http,
-                proxy_port=proxy_port,
+                proxy_port=proxy_port, mode=mode,
             )
             passed = bool(checks.get("passed"))
         except Exception:
@@ -388,7 +491,11 @@ def main():
             checks["safe_probe_completed"] = False
     print(json.dumps({
         "campaign": "R1-3F",
-        "scope": "real Navidrome pause through throttled proxy; no injected Qt error",
+        "scope": (
+            "real Navidrome pause with stream gate; no injected Qt error"
+            if mode == "stall"
+            else "real Navidrome process restart with old-stream teardown; no injected Qt error"
+        ),
         "checks": checks,
         "diagnostics": diagnostics,
         "passed": passed,
