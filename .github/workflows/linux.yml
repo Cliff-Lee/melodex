@@ -135,6 +135,15 @@ jobs:
             linux-artifacts/Melodex-linux-x86_64.AppImage \
             --appimage \
             --output "packaged-startup-appimage-${{ matrix.os }}.json"
+      - name: Qualify repeated installed DEB and AppImage shutdown
+        run: |
+          python3 scripts/package_shutdown_soak.py \
+            /usr/bin/melodex \
+            --repeats 8 --output "package-shutdown-deb-${{ matrix.os }}.json"
+          python3 scripts/package_shutdown_soak.py \
+            linux-artifacts/Melodex-linux-x86_64.AppImage \
+            --appimage \
+            --repeats 8 --output "package-shutdown-appimage-${{ matrix.os }}.json"
       # Run actual packaged GUI controls and async route logic on the
       # installed DEB and AppImage. No test step plays real audio.
       - name: Qualify packaged MM2 GUI in DEB and AppImage
@@ -165,6 +174,8 @@ jobs:
           path: |
             packaged-startup-deb-${{ matrix.os }}.json
             packaged-startup-appimage-${{ matrix.os }}.json
+            package-shutdown-deb-${{ matrix.os }}.json
+            package-shutdown-appimage-${{ matrix.os }}.json
           if-no-files-found: warn
       - name: Validate AppStream metadata
         if: matrix.os == 'ubuntu-26.04'

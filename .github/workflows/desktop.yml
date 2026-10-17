@@ -123,6 +123,13 @@ jobs:
           python scripts/packaged_startup_probe.py \
             "desktop/dist/Melodex.app/Contents/MacOS/Melodex" \
             --output "desktop/dist/packaged-startup-${{ matrix.name }}.json"
+      - name: Qualify repeated macOS packaged Qt shutdown
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          python scripts/package_shutdown_soak.py \
+            "desktop/dist/Melodex.app/Contents/MacOS/Melodex" \
+            --repeats 12 --output "desktop/dist/package-shutdown-${{ matrix.name }}.json"
       - name: Measure packaged Windows startup
         if: runner.os == 'Windows'
         shell: pwsh
@@ -130,6 +137,13 @@ jobs:
           python scripts/packaged_startup_probe.py `
             "desktop/dist/Melodex/Melodex.exe" `
             --output "desktop/dist/packaged-startup-${{ matrix.name }}.json"
+      - name: Qualify repeated Windows packaged Qt shutdown
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python scripts/package_shutdown_soak.py `
+            "desktop/dist/Melodex/Melodex.exe" `
+            --repeats 12 --output "desktop/dist/package-shutdown-${{ matrix.name }}.json"
       # Exercise the frozen application with the actual MM2 A→B UI, rather
       # than assuming source tests and window geometry imply packaged behaviour.
       # This synthetic probe never starts audio; real playback remains manual.
@@ -161,7 +175,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Packaged-startup-${{ matrix.name }}
-          path: desktop/dist/packaged-startup-${{ matrix.name }}.json
+          path: |
+            desktop/dist/packaged-startup-${{ matrix.name }}.json
+            desktop/dist/package-shutdown-${{ matrix.name }}.json
           if-no-files-found: warn
       - name: Upload macOS artifact
         if: runner.os == 'macOS'

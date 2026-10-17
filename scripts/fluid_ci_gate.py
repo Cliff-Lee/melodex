@@ -91,10 +91,9 @@ def main() -> int:
     env.setdefault("QT_QPA_PLATFORM", "offscreen")
     current_pythonpath = env.get("PYTHONPATH", "")
     desktop_path = str(DESKTOP)
-    env["PYTHONPATH"] = (
-        desktop_path
-        if not current_pythonpath
-        else desktop_path + os.pathsep + current_pythonpath
+    env["PYTHONPATH"] = os.pathsep.join(
+        [desktop_path, str(ROOT / "scripts")]
+        + ([current_pythonpath] if current_pythonpath else [])
     )
 
     # Qt-backed GUI modules can retain process-global objects between test
@@ -117,6 +116,11 @@ def main() -> int:
         command = [
             sys.executable,
             "-m", "pytest", "-q", "--maxfail=1",
+            # GUI tests construct and close multiple QApplications. Drain Qt's
+            # deferred widget deletions before PySide's interpreter-exit hook.
+            # Nonzero native exits are still hard failures.
+            *(("-p", "qt_lifetime_cleanup_probe")
+              if label.startswith("GUI / interaction") else ()),
             *specs,
         ]
         completed = subprocess.run(command, cwd=ROOT, env=env, check=False)

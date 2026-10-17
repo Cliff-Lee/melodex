@@ -1,0 +1,60 @@
+name: Qt release stress qualification
+on:
+  pull_request:
+    paths:
+      - .github/workflows/qt-release-stress.yml
+      - scripts/qt_lifetime_cleanup_probe.py
+      - scripts/fluid_ci_gate.py
+      - desktop/melodex/main_window.py
+  workflow_dispatch:
+jobs:
+  strict-100-clean-exits:
+    name: Fluid batch 2 - 100 clean interpreter exits
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install headless Qt libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libasound2 libdbus-1-3 libegl1 libfontconfig1 libfreetype6 \
+            libgl1 libglib2.0-0 libpulse0 libwayland-client0 \
+            libwayland-cursor0 libwayland-egl1 libxcb-cursor0 libxcb-icccm4 \
+            libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 \
+            libxcb-shape0 libxcb-shm0 libxcb-sync1 libxcb-util1 \
+            libxcb-xfixes0 libxcb-xinerama0 libxcb-xinput0 libxcb-xkb1 \
+            libxkbcommon0 libxkbcommon-x11-0 libx11-6 libxext6 libxrender1
+      - name: Install desktop test dependencies
+        run: python -m pip install pytest numpy mutagen requests PySide6 "segno>=1.6,<2" keyring
+      - name: Run complete original failing GUI batch in 100 fresh processes
+        env:
+          QT_QPA_PLATFORM: offscreen
+          PYTHONPATH: desktop:scripts
+          PYTHONFAULTHANDLER: '1'
+          PYTEST_ADDOPTS: -p qt_lifetime_cleanup_probe
+        run: |
+          python scripts/qt_lifetime_isolation.py \
+            --mode group --repeats 100 \
+            --json-out qt-release-100.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: qt-release-100-strict-exits
+          path: qt-release-100.json
+          if-no-files-found: error
+      - name: Fail if any subprocess exits abnormally
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path("qt-release-100.json").read_text("utf-8"))
+          failures = report["failures"]
+          total = report["runs"]
+          print(f"Full seven-selector GUI batch: {total - failures}/{total} clean interpreter exits")
+          if total != 100 or failures:
+              raise SystemExit("Strict Qt shutdown qualification failed")
+          PY

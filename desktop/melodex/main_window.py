@@ -10,7 +10,6 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
-
 from PySide6.QtCore import QEvent, QSettings, QSize, Qt, QTimer, Signal, Slot, QObject
 from PySide6.QtGui import QAction, QColor, QDesktopServices, QKeySequence, QPixmap, QShortcut
 from PySide6.QtWidgets import (
@@ -277,7 +276,6 @@ class MainWindow(QMainWindow):
         self._local_cache_hydration_pending = False
         self._optional_plugins_loading = False
         self.externalCommand.connect(self._on_external_command)
-
         self.player = FlowPlayer(
             self.providers.resolve, self._transition_for, self,
             playback_refresher=self.providers.refresh_playback,
@@ -4794,6 +4792,8 @@ class MainWindow(QMainWindow):
             )
 
     def closeEvent(self,event):
+        if self._closing:
+            return super().closeEvent(event)
         self._window_settings.setValue("window/geometry", self.saveGeometry())
         self._window_settings.setValue("window/normal_geometry_trusted", True)
         self._invalidate_async("playback-queue-save")

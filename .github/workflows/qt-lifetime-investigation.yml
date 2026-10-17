@@ -1,0 +1,72 @@
+name: Qt shutdown investigation
+on:
+  workflow_dispatch:
+jobs:
+  qt-lifetime-isolation:
+    name: Strict Qt exit-code reproduction
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Qt headless runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libasound2 libdbus-1-3 libegl1 libfontconfig1 libfreetype6 \
+            libgl1 libglib2.0-0 libpulse0 libwayland-client0 \
+            libwayland-cursor0 libwayland-egl1 libxcb-cursor0 libxcb-icccm4 \
+            libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 \
+            libxcb-shape0 libxcb-shm0 libxcb-sync1 libxcb-util1 \
+            libxcb-xfixes0 libxcb-xinerama0 libxcb-xinput0 libxcb-xkb1 \
+            libxkbcommon0 libxkbcommon-x11-0 libx11-6 libxext6 libxrender1
+      - name: Install Melodex Fluid test dependencies
+        run: python -m pip install pytest numpy mutagen requests PySide6 "segno>=1.6,<2" keyring
+      - name: Repeated original batch with strict process-exit accounting
+        env:
+          QT_QPA_PLATFORM: offscreen
+          PYTHONPATH: desktop
+          PYTHONFAULTHANDLER: '1'
+        run: |
+          python scripts/qt_lifetime_isolation.py \
+            --mode group --repeats 24 --json-out qt-lifetime-original.json
+      - name: Original, reverse, prefixes, suffixes and individuals
+        env:
+          QT_QPA_PLATFORM: offscreen
+          PYTHONPATH: desktop
+          PYTHONFAULTHANDLER: '1'
+        run: |
+          python scripts/qt_lifetime_isolation.py \
+            --mode all --repeats 2 --json-out qt-lifetime-triage.json
+      - name: Minimize first-four selectors across all subsets
+        env:
+          QT_QPA_PLATFORM: offscreen
+          PYTHONPATH: desktop
+          PYTHONFAULTHANDLER: '1'
+        run: |
+          python scripts/qt_lifetime_isolation.py \
+            --mode quartet --repeats 8 --json-out qt-lifetime-quartet.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: qt-lifetime-diagnostics
+          path: |
+            qt-lifetime-original.json
+            qt-lifetime-triage.json
+            qt-lifetime-quartet.json
+          if-no-files-found: error
+      - name: Enforce strict interpreter exit
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          paths = (Path("qt-lifetime-original.json"), Path("qt-lifetime-triage.json"), Path("qt-lifetime-quartet.json"))
+          reports = [json.loads(path.read_text("utf-8")) for path in paths]
+          total = sum(report["runs"] for report in reports)
+          fails = sum(report["failures"] for report in reports)
+          print(f"Qt interpreter exits: {total - fails}/{total} passed, {fails} nonzero")
+          if fails:
+              raise SystemExit("Qt lifetime defect reproduced. See attached per-process evidence.")
+          PY
