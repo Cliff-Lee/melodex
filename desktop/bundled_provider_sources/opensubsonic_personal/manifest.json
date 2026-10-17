@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "id": "org.melodex.opensubsonic.personal",
+  "name": "Navidrome / OpenSubsonic",
+  "version": "0.1.1",
+  "publisher": "Melodex R1 research",
+  "protocol_version": "1.0",
+  "description": "Connect to your own Navidrome or OpenSubsonic-compatible server. Authenticated search and playback.",
+  "homepage": "https://www.navidrome.org/",
+  "capabilities": [
+    "search",
+    "track",
+    "playback"
+  ],
+  "configuration": [
+    {
+      "key": "server_url",
+      "label": "Server URL (HTTPS recommended)",
+      "type": "string",
+      "required": true
+    },
+    {
+      "key": "username",
+      "label": "Subsonic username",
+      "type": "string",
+      "required": true
+    },
+    {
+      "key": "password",
+      "label": "Subsonic password",
+      "type": "secret",
+      "required": true
+    },
+    {
+      "key": "allow_insecure_http",
+      "label": "Allow HTTP for trusted local server only",
+      "type": "boolean"
+    }
+  ],
+  "permissions": {
+    "network_hosts": [
+      "127.0.0.1",
+      "localhost"
+    ],
+    "offline_downloads": false,
+    "local_files": false,
+    "browser_auth": false,
+    "lan_discovery": false
+  },
+  "entrypoints": {
+    "python": "provider.py"
+  }
+}
