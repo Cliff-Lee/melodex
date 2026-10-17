@@ -66,7 +66,22 @@ class _ProxyServer(ThreadingHTTPServer):
 
     def __init__(self, address, upstream):
         self.upstream = upstream.rstrip("/")
+        self.transport_gate = threading.Event()
+        self.transport_gate.set()
+        self.metrics_lock = threading.Lock()
+        self.metrics = {"stream_gate_waits": 0, "request_gate_waits": 0}
         super().__init__(address, _ProxyHandler)
+
+    def wait_for_transport(self, *, stream: bool, timeout: float = 35.0) -> bool:
+        if not self.transport_gate.is_set():
+            key = "stream_gate_waits" if stream else "request_gate_waits"
+            with self.metrics_lock:
+                self.metrics[key] += 1
+        return self.transport_gate.wait(timeout=timeout)
+
+    def metrics_snapshot(self):
+        with self.metrics_lock:
+            return dict(self.metrics)
 
 
 class _ProxyHandler(BaseHTTPRequestHandler):
@@ -77,6 +92,10 @@ class _ProxyHandler(BaseHTTPRequestHandler):
         return
 
     def do_GET(self):
+        is_stream = urlsplit(self.path).path.endswith("/stream.view")
+        if not self.server.wait_for_transport(stream=is_stream):
+            self.send_error(504, "Transport unavailable")
+            return
         upstream_url = self.server.upstream + self.path
         headers = {}
         for name in ("Accept", "User-Agent", "Range", "If-Range"):
@@ -102,9 +121,10 @@ class _ProxyHandler(BaseHTTPRequestHandler):
             self.send_header("Connection", "close")
             self.end_headers()
             self.close_connection = True
-            is_stream = urlsplit(self.path).path.endswith("/stream.view")
             chunk_size = CHUNK_BYTES if is_stream else 65_536
             while True:
+                if is_stream and not self.server.wait_for_transport(stream=True):
+                    break
                 chunk = response.read(chunk_size)
                 if not chunk:
                     break
@@ -169,6 +189,7 @@ def qualify(upstream, username, password, container, *, query, allow_http,
         "initial_qt_playing": False,
         "initial_position_advanced": False,
         "server_pause_applied": False,
+        "stream_transport_blocked": False,
         "natural_detection_observed": False,
         "natural_qt_error_observed": False,
         "stall_watchdog_triggered": False,
@@ -230,6 +251,7 @@ def qualify(upstream, username, password, container, *, query, allow_http,
             return steps, diagnostics
         before = int(deck.position())
 
+        proxy.transport_gate.clear()
         _docker("pause", container)
         server_paused = True
         steps["server_pause_applied"] = True
@@ -237,11 +259,13 @@ def qualify(upstream, username, password, container, *, query, allow_http,
         # No synthetic QMediaPlayer error is injected. Restore the disposable
         # server after a short real transport outage so a retry can succeed.
         def release_server():
-            time.sleep(9.0)
+            time.sleep(12.0)
             try:
                 _docker("unpause", container)
             except Exception:
                 pass
+            finally:
+                proxy.transport_gate.set()
 
         release_thread = threading.Thread(target=release_server, daemon=True)
         release_thread.start()
@@ -252,9 +276,14 @@ def qualify(upstream, username, password, container, *, query, allow_http,
                 player.diagnostics_snapshot()["transient_source_errors"] >= 1
                 or player.diagnostics_snapshot()["recovery_stall_triggers"] >= 1
             ),
-            11,
+            14,
         )
         snapshot = player.diagnostics_snapshot()
+        proxy_metrics = proxy.metrics_snapshot()
+        diagnostics["proxy_metrics"] = proxy_metrics
+        steps["stream_transport_blocked"] = (
+            proxy_metrics["stream_gate_waits"] >= 1
+        )
         steps["natural_qt_error_observed"] = (
             snapshot["transient_source_errors"] >= 1 and bool(qt_errors)
         )
@@ -309,6 +338,7 @@ def qualify(upstream, username, password, container, *, query, allow_http,
             and steps["initial_qt_playing"]
             and steps["initial_position_advanced"]
             and steps["server_pause_applied"]
+            and steps["stream_transport_blocked"]
             and steps["natural_detection_observed"]
             and steps["recovery_attempt_dispatched"]
             and steps["recovery_commit"]
@@ -327,6 +357,7 @@ def qualify(upstream, username, password, container, *, query, allow_http,
                 _docker("unpause", container)
             except Exception:
                 pass
+        proxy.transport_gate.set()
         # Let in-flight provider calls finish after the server has been restored.
         scheduler.shutdown(wait=True)
         if player is not None:
