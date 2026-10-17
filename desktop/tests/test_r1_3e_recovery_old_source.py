@@ -69,7 +69,7 @@ def test_old_source_media_event_does_not_discard_current_remote_recovery():
         # installed, but before QMediaPlayer.source() switches to that source.
         player._complete_playback_recovery(0)
         assert player._playback_recovery_candidate is candidate
-        assert player.diagnostics_snapshot()["recovery_successes"] == 0
+        assert player._runtime_metrics["recovery_successes"] == 0
         assert fake.play_count == 0
         assert fake.seek_target == -1
 
@@ -77,7 +77,7 @@ def test_old_source_media_event_does_not_discard_current_remote_recovery():
         fake.current_source = expected
         player._complete_playback_recovery(0)
         assert player._playback_recovery_candidate is None
-        assert player.diagnostics_snapshot()["recovery_successes"] == 1
+        assert player._runtime_metrics["recovery_successes"] == 1
         assert fake.play_count == 1
         assert fake.seek_target == 1200
         assert player.current_track()["title"] == "Refreshed metadata"
