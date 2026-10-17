@@ -22,7 +22,7 @@ jobs:
           python-version: '3.12'
       - name: Install test and audio fixture dependencies
         run: |
-          python -m pip install numpy mutagen requests PySide6 "segno>=1.6,<2" keyring
+          python -m pip install pytest numpy mutagen requests PySide6 "segno>=1.6,<2" keyring
           sudo apt-get update
           sudo apt-get install -y \
             ffmpeg pulseaudio pulseaudio-utils libegl1 libgl1 \
@@ -31,6 +31,16 @@ jobs:
             libxcb-randr0 libxcb-render-util0 libxcb-shape0 libxcb-shm0 \
             libxcb-sync1 libxcb-util1 libxcb-xfixes0 libxcb-xinerama0 \
             libxcb-xinput0 libxcb-xkb1 libxkbcommon0 libxkbcommon-x11-0
+      - name: Verify recovery candidate lifecycle against actual Qt runtime
+        env:
+          QT_QPA_PLATFORM: offscreen
+          QT_MEDIA_BACKEND: ffmpeg
+          PYTHONPATH: desktop
+        run: |
+          set -o pipefail
+          python -m pytest -q desktop/tests/test_r1_3e_recovery_old_source.py \
+            | tee "$RUNNER_TEMP/r1-3e-old-source-test.txt"
+          grep -F "1 passed" "$RUNNER_TEMP/r1-3e-old-source-test.txt"
       - name: Run private disposable Navidrome and Melodex provider probe
         shell: bash
         env:
