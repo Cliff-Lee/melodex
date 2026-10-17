@@ -44,6 +44,13 @@ jobs:
           melodex-registry validate provider-sdk/registry/registry.json
           melodex-registry verify-packages provider-sdk/registry/registry.json --packages provider-sdk/registry/packages
           melodex-registry validate-reviews provider-sdk/registry/registry.json --reviews provider-sdk/registry/reviews
+      - name: Qualify optional OpenSubsonic provider SDK contract
+        run: |
+          melodex-provider validate desktop/bundled_provider_sources/opensubsonic_personal
+          melodex-provider doctor desktop/bundled_provider_sources/opensubsonic_personal --no-runtime
+          melodex-provider pack desktop/bundled_provider_sources/opensubsonic_personal \
+            -o "$RUNNER_TEMP/opensubsonic-personal.mdxprovider"
+          python -c 'from zipfile import ZipFile; import os; from pathlib import Path; p=Path(os.environ["RUNNER_TEMP"])/"opensubsonic-personal.mdxprovider"; required={"provider.py","manifest.json","README.md","SOURCE_POLICY.md","LICENSE"}; assert required.issubset(set(ZipFile(p).namelist()))'
 
 
   code-health:
