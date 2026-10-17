@@ -163,7 +163,7 @@ class _ProxyHandler(BaseHTTPRequestHandler):
 
 
 def qualify(upstream, username, password, container, *, query, allow_http,
-            proxy_port, mode="stall")
+            proxy_port, mode="stall"):
     steps = {
         "authenticated_track": False,
         "initial_qt_playing": False,
