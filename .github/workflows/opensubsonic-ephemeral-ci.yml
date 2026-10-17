@@ -44,9 +44,9 @@ jobs:
             "$fixture_root/music/R1SyntheticSignal.mp3"
 
           # Short-lived randomly generated credential, never printed.
-          ND_DEVAUTOCREATEADMINPASSWORD="$(python -c 'import secrets; print(secrets.token_hex(14))')"
+          ND_DEVAUTOCREATEADMINPASSWORD=$(python -c 'import secrets; print(secrets.token_hex(14))')
           export ND_DEVAUTOCREATEADMINPASSWORD
-          export MELODEX_SUBSONIC_PASSWORD="$ND_DEVAUTOCREATEADMINPASSWORD"
+          export MELODEX_SUBSONIC_PASSWORD=${ND_DEVAUTOCREATEADMINPASSWORD}
           service_name="melodex-r1-nav-$$"
           cleanup() { docker rm -f "$service_name" >/dev/null 2>&1 || true; }
           trap cleanup EXIT
