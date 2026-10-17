@@ -8,6 +8,7 @@ on:
       - desktop/tools/qualify_opensubsonic_live.py
       - desktop/tools/qualify_opensubsonic_inflight.py
       - desktop/tools/qualify_opensubsonic_natural_outage.py
+      - desktop/tools/qualify_pcm_signal.py
       - desktop/melodex/player.py
       - desktop/melodex/playback_gateway.py
       - desktop/tests/test_player_failure_isolation.py
@@ -230,17 +231,24 @@ jobs:
             exit 1
           fi
 
+          parec --device=melodex_r1.monitor --raw \
+            --format=s16le --rate=44100 --channels=2 \
+            > "$RUNNER_TEMP/natural-outage-audio.pcm" \
+            2> "$RUNNER_TEMP/natural-outage-parec.log" &
+          natural_capture_pid=$!
+          sleep 1
           natural_status=0
           MELODEX_SUBSONIC_QUERY=R1NaturalOutageSignal \
-            MELODEX_NATURAL_OUTAGE_PCM_PATH="$RUNNER_TEMP/natural-outage-recovered.pcm" \
             PYTHONPATH=desktop QT_QPA_PLATFORM=offscreen QT_MEDIA_BACKEND=ffmpeg \
             python desktop/tools/qualify_opensubsonic_natural_outage.py \
             > "$RUNNER_TEMP/natural-outage-recovery.json" \
             2> "$RUNNER_TEMP/natural-outage-qt-stderr.log" || natural_status=1
+          kill "$natural_capture_pid" >/dev/null 2>&1 || true
+          wait "$natural_capture_pid" >/dev/null 2>&1 || true
           cat "$RUNNER_TEMP/natural-outage-recovery.json"
           natural_pcm_status=0
           python desktop/tools/qualify_pcm_signal.py \
-            "$RUNNER_TEMP/natural-outage-recovered.pcm" \
+            "$RUNNER_TEMP/natural-outage-audio.pcm" --tail-seconds 3 \
             --output "$RUNNER_TEMP/natural-outage-pcm.json" || natural_pcm_status=1
           if [[ "$natural_status" != 0 || "$natural_pcm_status" != 0 ]]; then
             echo "Natural outage detection, bounded recovery or post-recovery PCM failed"
