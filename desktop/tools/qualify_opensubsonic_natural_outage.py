@@ -35,7 +35,7 @@ from melodex.provider import ExternalProvider  # noqa: E402
 
 PROVIDER_ROOT = ROOT / "bundled_provider_sources" / "opensubsonic_personal"
 CHUNK_BYTES = 4096
-STREAM_CHUNK_DELAY_SECONDS = 0.08  # ~50 KiB/s: enough headroom to resume a 192-kbps fixture.
+STREAM_CHUNK_DELAY_SECONDS = 0.042  # ~96 KiB/s: ample post-recovery headroom.
 
 
 def _until(app, condition, timeout_seconds):
@@ -229,7 +229,7 @@ def qualify(upstream, username, password, container, *, query, allow_http,
         # No synthetic QMediaPlayer error is injected. Restore the disposable
         # server after a short real transport outage so a retry can succeed.
         def release_server():
-            time.sleep(20.0)
+            time.sleep(25.0)
             try:
                 _docker("unpause", container)
             except Exception:
@@ -246,7 +246,7 @@ def qualify(upstream, username, password, container, *, query, allow_http,
                 player.diagnostics_snapshot()["transient_source_errors"] >= 1
                 or player.diagnostics_snapshot()["recovery_stall_triggers"] >= 1
             ),
-            22,
+            27,
         )
         snapshot = player.diagnostics_snapshot()
         proxy_metrics = proxy.metrics_snapshot()
@@ -284,6 +284,13 @@ def qualify(upstream, username, password, container, *, query, allow_http,
             9,
         )
         snapshot = player.diagnostics_snapshot()
+        steps["resume_progress_confirmed"] = (
+            snapshot["recovery_resume_confirmations"] >= 1
+        )
+        steps["recovery_cycle_bounded"] = (
+            snapshot["recovery_attempts"] <= 2
+            and snapshot["recovery_exhausted"] == 0
+        )
         steps["bounded_state_cleared"] = (
             not player._playback_recovery_pending
             and player._playback_recovery_request is None
@@ -320,13 +327,15 @@ def qualify(upstream, username, password, container, *, query, allow_http,
             and steps["same_track_retained"]
             and steps["playing_after_recovery"]
             and steps["position_resumed"]
+            and steps["resume_progress_confirmed"]
+            and steps["recovery_cycle_bounded"]
             and steps["bounded_state_cleared"]
             and steps["post_recovery_audio_window"]
         )
         return {**steps, "passed": bool(passed)}, diagnostics
     finally:
         if release_thread is not None:
-            release_thread.join(timeout=22)
+            release_thread.join(timeout=28)
         if server_paused:
             try:
                 _docker("unpause", container)
