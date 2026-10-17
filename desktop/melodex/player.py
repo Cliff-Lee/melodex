@@ -1914,10 +1914,11 @@ class FlowPlayer(QObject):
         if self._buffer_stall_started_at is None:
             self._buffer_stall_started_at = time.monotonic()
             self._buffer_stall_deck = deck
+            # Capture the active deck position at stall onset. Do not use
+            # the progress monitor's last value here: it may belong to the
+            # previous track during an unusually slow initial load.
             self._buffer_stall_position_ms = max(
-                0,
-                int(self.players[deck].position()),
-                int(self._last_progress_position_ms),
+                0, int(self.players[deck].position())
             )
             self._buffer_stall_causes.clear()
             self._runtime_metrics["buffer_stall_events"] += 1
@@ -1985,6 +1986,7 @@ class FlowPlayer(QObject):
 
     def _on_buffer_stall_recovery_timeout(self) -> None:
         """Recover a remote stream that stops progressing without a Qt error."""
+        self._buffer_stall_recovery_timer.stop()
         if self._buffer_stall_started_at is None:
             return
         deck = self._buffer_stall_deck
@@ -2014,7 +2016,6 @@ class FlowPlayer(QObject):
             0,
             int(self.players[deck].position()),
             int(self._buffer_stall_position_ms),
-            int(self._last_progress_position_ms),
         )
         # Do not turn a slow initial load at position zero into a retry loop.
         if position <= 0:
