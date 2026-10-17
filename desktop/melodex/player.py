@@ -931,13 +931,18 @@ class FlowPlayer(QObject):
             or int(candidate["index"]) != self.index
             or int(candidate["deck"]) != int(deck)
             or int(deck) != self.active
-            or (
-                candidate.get("mode") != "local"
-                and self.players[int(deck)].source() != candidate.get("url")
-            )
         ):
             self._runtime_metrics["recovery_stale_results"] += 1
             self._playback_recovery_candidate = None
+            return
+        if (
+            candidate.get("mode") != "local"
+            and self.players[int(deck)].source() != candidate.get("url")
+        ):
+            # Qt may report LoadedMedia/BufferedMedia from the *old* source
+            # while a refreshed one is being installed. Ignore this stale
+            # event without dropping the candidate we are still loading.
+            self._runtime_metrics["recovery_stale_results"] += 1
             return
         mode = str(candidate.get("mode") or "remote")
         index = int(candidate["index"])
