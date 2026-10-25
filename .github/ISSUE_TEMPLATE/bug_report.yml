@@ -24,7 +24,7 @@ body:
     id: version
     attributes:
       label: Melodex version
-      placeholder: "e.g. v0.1.1"
+      placeholder: "e.g. v0.7.29 (see About or the release page)"
     validations:
       required: true
   - type: dropdown
